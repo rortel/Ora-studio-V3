@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Sparkles, Upload, Link2, X, Check, Loader2, Eye, Save,
@@ -9,11 +9,18 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
+  Layers,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
+import { getTemplatesForFormat, getTemplateById, registerTemplate } from "./templates";
+import type { TemplateDefinition } from "./templates/types";
+
+const LazyTemplateEngine = lazy(() => import("./TemplateEngine").then(m => ({ default: m.TemplateEngine })));
+const LazySVGTemplateEngine = lazy(() => import("./SVGTemplateEngine").then(m => ({ default: m.SVGTemplateEngine })));
+const LazyHTMLTemplateEngine = lazy(() => import("./HTMLTemplateEngine").then(m => ({ default: m.HTMLTemplateEngine })));
 
 /* ═══════════════════════════════════
    TYPES
@@ -242,6 +249,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [repromptText, setRepromptText] = useState("");
   const [regeneratingAsset, setRegeneratingAsset] = useState<string | null>(null);
   const [savingCampaign, setSavingCampaign] = useState(false);
+  const [upscalingAsset, setUpscalingAsset] = useState<string | null>(null);
+  const [assetTemplates, setAssetTemplates] = useState<Record<string, string>>({}); // formatId → templateId
+  const [aiTemplateFile, setAiTemplateFile] = useState<{ file: File; preview: string } | null>(null);
+  const [aiTemplateLoading, setAiTemplateLoading] = useState(false);
+  const [aiGeneratedTemplates, setAiGeneratedTemplates] = useState<TemplateDefinition[]>([]);
+  const aiTemplateInputRef = useRef<HTMLInputElement>(null);
 
   // ── Calendar + Deploy state ──
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
@@ -307,6 +320,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       }
     };
     fetchVault(1).finally(() => setVaultLoading(false));
+    // Load persisted AI-generated templates
+    serverPost("/vault/template/list", {}, 10_000).then((res: any) => {
+      if (res.success && Array.isArray(res.templates) && res.templates.length) {
+        for (const t of res.templates) registerTemplate(t);
+        setAiGeneratedTemplates(res.templates);
+      }
+    }).catch(() => {});
   }, [getAuthToken]);
 
   // ── Photo upload handlers (client-side only — used as visual ref in UI) ──
@@ -494,15 +514,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   // ── Helper: Generate image via GET routes (CORS-safe, no preflight issues) ──
   // Uses /generate/image-ref-via-get with FAL Flux img2img (strength=0.85, preserveContent) when refs exist.
   // Falls back to /generate/image-via-get when no ref.
-  const generateImageViaHub = async (prompt: string, aspectRatio: string, imageRefUrl: string | null, models: string[] = ["photon-1"]): Promise<{ imageUrl: string; index: number }[]> => {
+  const generateImageViaHub = async (prompt: string, aspectRatio: string, imageRefUrl: string | null, models: string[] = ["photon-1"], formatId?: string): Promise<{ imageUrl: string; index: number }[]> => {
     try {
       const realisticPrompt = prompt + REALISM_SUFFIX;
+      const fmtParam = formatId ? `&formatId=${encodeURIComponent(formatId)}` : "";
       if (imageRefUrl && !imageRefUrl.startsWith("data:")) {
         // ── GET route with image ref — FAL Flux img2img (strength=0.25, preserveContent) ──
         const encodedPrompt = encodeURIComponent(realisticPrompt.slice(0, 400));
         const encodedRef = encodeURIComponent(imageRefUrl);
-        const url = `${API_BASE}/generate/image-ref-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&imageRefUrl=${encodedRef}&strength=0.80&mode=content&aspectRatio=${encodeURIComponent(aspectRatio)}`;
-        console.log(`[CampaignLab] Image GET+ref: ar=${aspectRatio}, strength=0.80 (FAL img2img — new scene + brand name in prompt), ref=${imageRefUrl.slice(0, 60)}`);
+        const url = `${API_BASE}/generate/image-ref-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&imageRefUrl=${encodedRef}&strength=0.80&mode=content&aspectRatio=${encodeURIComponent(aspectRatio)}${fmtParam}`;
+        console.log(`[CampaignLab] Image GET+ref: ar=${aspectRatio}, strength=0.80, formatId=${formatId || "none"}, ref=${imageRefUrl.slice(0, 60)}`);
         const res = await fetch(url, {
           method: "GET",
           headers: { Authorization: `Bearer ${publicAnonKey}` },
@@ -519,7 +540,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       }
       // No ref OR ref was base64 (can't pass in URL) → standard generation
       const encodedPrompt = encodeURIComponent(realisticPrompt.slice(0, 600));
-      const url = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent(models[0] || "photon-1")}&aspectRatio=${encodeURIComponent(aspectRatio)}`;
+      const url = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent(models[0] || "photon-1")}&aspectRatio=${encodeURIComponent(aspectRatio)}${fmtParam}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${publicAnonKey}` },
@@ -617,7 +638,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     const arMap: Record<string, string> = { "1:1": "1:1", "1.91:1": "16:9", "9:16": "9:16", "16:9": "16:9" };
     const ar = arMap[fmt.aspectRatio] || "1:1";
     const encodedPrompt = encodeURIComponent(imgPrompt.slice(0, 400));
-    const imageGetUrl = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&aspectRatio=${ar}`;
+    const imageGetUrl = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&aspectRatio=${ar}&formatId=${encodeURIComponent(fmt.id)}`;
     console.log(`[CampaignLab] Image GET [${fmt.id}]:`, imageGetUrl.slice(0, 150));
     const res = await fetch(imageGetUrl, {
       method: "GET",
@@ -867,7 +888,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   try {
                     if (useV2Pipeline && refSignedUrls.length > 0) {
                       const refUrl = refSignedUrls[slideIdx % refSignedUrls.length];
-                      const candidates = await generateImageViaHub(slidePrompt, ar, refUrl, ["photon-1"]);
+                      const candidates = await generateImageViaHub(slidePrompt, ar, refUrl, ["photon-1"], fmt.id);
                       if (candidates.length > 0) {
                         updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: candidates[0].imageUrl, status: "ready" };
                       } else {
@@ -923,7 +944,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
               console.log(`[CampaignLab] V2 Image [${fmt.id}]: ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}, prompt=${finalPrompt.slice(0, 80)}...`);
 
-              const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"]);
+              const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"], fmt.id);
 
               if (candidates.length === 0) {
                 console.warn(`[CampaignLab] V2 Hub failed for [${fmt.id}], falling back to classic`);
@@ -1055,6 +1076,86 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   };
 
   // ── Download asset ──
+  // ── Upscale handler — AI-powered image enhancement ──
+  const handleUpscaleAsset = async (asset: GeneratedAsset) => {
+    if (!asset.imageUrl || upscalingAsset) return;
+    setUpscalingAsset(asset.formatId);
+    toast("Enhancing image resolution...");
+    try {
+      const encodedUrl = encodeURIComponent(asset.imageUrl);
+      const url = `${API_BASE}/generate/upscale?imageUrl=${encodedUrl}&scale=2`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        signal: AbortSignal.timeout(120_000),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        setAssets(prev => prev.map(a =>
+          a.formatId === asset.formatId ? { ...a, imageUrl: data.imageUrl } : a
+        ));
+        if (selectedAsset?.formatId === asset.formatId) {
+          setSelectedAsset(prev => prev ? { ...prev, imageUrl: data.imageUrl } : prev);
+        }
+        toast.success(`Image enhanced (${data.provider})`);
+      } else {
+        toast.error(data.error || "Upscale failed");
+      }
+    } catch (err: any) {
+      toast.error(`Enhance failed: ${err?.message || "Timeout"}`);
+    } finally {
+      setUpscalingAsset(null);
+    }
+  };
+
+  // ── AI template from reference visual ──
+  const handleGenerateTemplateFromVisual = useCallback(async (targetFormatId?: string) => {
+    if (!aiTemplateFile) return;
+    setAiTemplateLoading(true);
+    try {
+      const token = getAuthToken();
+      const formatId = targetFormatId || selectedFormats.find(f => FORMAT_OPTIONS.find(fo => fo.id === f && fo.type === "image")) || "instagram-post";
+      const formatDef = FORMAT_OPTIONS.find(f => f.id === formatId);
+      const [arW, arH] = (formatDef?.aspectRatio || "1:1").split(":").map(Number);
+      const baseSize = 1080;
+      const canvasWidth = arW >= arH ? Math.round(baseSize * (arW / arH)) : baseSize;
+      const canvasHeight = arW >= arH ? baseSize : Math.round(baseSize * (arH / arW));
+
+      // Send file directly via FormData — backend converts to base64 data URI and calls Vision AI
+      const fd = new FormData();
+      fd.append("file", aiTemplateFile.file);
+      fd.append("formatId", formatId);
+      fd.append("canvasWidth", String(canvasWidth));
+      fd.append("canvasHeight", String(canvasHeight));
+      fd.append("aspectRatio", formatDef?.aspectRatio || "1:1");
+      if (token) fd.append("_token", token);
+
+      console.log(`[CampaignLab] Sending reference visual for SVG template extraction (${aiTemplateFile.file.size} bytes)...`);
+      const uploadRes = await fetch(`${API_BASE}/vault/template/from-visual`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        body: fd,
+        signal: AbortSignal.timeout(120_000),
+      });
+      const res = await uploadRes.json();
+
+      if (res.success && res.template) {
+        registerTemplate(res.template);
+        setAiGeneratedTemplates(prev => [...prev, res.template]);
+        setAssetTemplates(prev => ({ ...prev, [formatId]: res.template.id }));
+        toast.success("Template generated!");
+      } else {
+        console.error("[CampaignLab] Template generation error:", res);
+        toast.error(res.error || "Template generation failed");
+      }
+    } catch (err: any) {
+      console.error("[CampaignLab] Template generation exception:", err);
+      toast.error(`Template generation failed: ${err?.message || err}`);
+    } finally {
+      setAiTemplateLoading(false);
+    }
+  }, [aiTemplateFile, selectedFormats, getAuthToken]);
+
   const handleDownload = async (asset: GeneratedAsset) => {
     const url = asset.imageUrl || asset.videoUrl;
     if (url) {
@@ -1150,7 +1251,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         const arMap: Record<string, string> = { "1:1": "1:1", "1.91:1": "16:9", "9:16": "9:16", "16:9": "16:9", "2:3": "2:3" };
         const ar = arMap[fmt.aspectRatio] || "1:1";
         toast("Regenerating image...");
-        const results = await generateImageViaHub(fullPrompt, ar, null, ["photon-1"]);
+        const results = await generateImageViaHub(fullPrompt, ar, null, ["photon-1"], fmt.id);
         if (results.length > 0) {
           setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, imageUrl: results[0].imageUrl, imagePrompt: customPrompt } : a));
           setSelectedAsset(prev => prev && prev.formatId === asset.formatId ? { ...prev, imageUrl: results[0].imageUrl, imagePrompt: customPrompt } : prev);
@@ -2522,11 +2623,39 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                   </span>
                                 </div>
                               </div>
+                            ) : assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId]) ? (
+                              <Suspense fallback={<div className="w-full h-full flex items-center justify-center"><Loader2 size={16} className="animate-spin" style={{ color: "#7A7572" }} /></div>}>
+                                {getTemplateById(assetTemplates[asset.formatId])!.htmlTemplate ? (
+                                  <LazyHTMLTemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset}
+                                    vault={vault}
+                                    brandLogoUrl={rawLogoUrl}
+                                    width={280}
+                                  />
+                                ) : getTemplateById(assetTemplates[asset.formatId])!.svgTemplate ? (
+                                  <LazySVGTemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset}
+                                    vault={vault}
+                                    brandLogoUrl={rawLogoUrl}
+                                    width={280}
+                                  />
+                                ) : (
+                                  <LazyTemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset}
+                                    vault={vault}
+                                    brandLogoUrl={rawLogoUrl}
+                                    width={280}
+                                  />
+                                )}
+                              </Suspense>
                             ) : (
                               <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
                             )}
-                            {/* Brand logo overlay */}
-                            {brandLogoUrl && (
+                            {/* Brand logo overlay (only when no template active) */}
+                            {!assetTemplates[asset.formatId] && brandLogoUrl && (
                               <img
                                 src={brandLogoUrl}
                                 alt="Brand logo"
@@ -2653,11 +2782,86 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                               <button onClick={() => handleDownload(asset)} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
                                 <Download size={12} style={{ color: "#7A7572" }} />
                               </button>
+                              {asset.type === "image" && asset.imageUrl && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleUpscaleAsset(asset); }}
+                                  disabled={upscalingAsset === asset.formatId}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  title="Enhance resolution (2x upscale)"
+                                  style={{ background: upscalingAsset === asset.formatId ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}
+                                >
+                                  {upscalingAsset === asset.formatId
+                                    ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
+                                    : <Zap size={12} style={{ color: "#7A7572" }} />}
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
                         {asset.headline && (
                           <p className="line-clamp-1 mb-1" style={{ fontSize: "12px", fontWeight: 600, color: "#C4BEB8", lineHeight: 1.4 }}>{asset.headline}</p>
+                        )}
+                        {/* Template selector */}
+                        {asset.type === "image" && asset.imageUrl && (
+                          <div className="flex flex-wrap items-center gap-1 mb-1">
+                            <Layers size={10} style={{ color: "#7A7572", flexShrink: 0 }} />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setAssetTemplates(prev => { const n = { ...prev }; delete n[asset.formatId]; return n; }); }}
+                              className="px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer"
+                              style={{
+                                background: !assetTemplates[asset.formatId] ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
+                                color: !assetTemplates[asset.formatId] ? "#fff" : "#7A7572",
+                              }}
+                            >Raw</button>
+                            {getTemplatesForFormat(asset.formatId).map(tmpl => (
+                              <button
+                                key={tmpl.id}
+                                onClick={(e) => { e.stopPropagation(); setAssetTemplates(prev => ({ ...prev, [asset.formatId]: tmpl.id })); }}
+                                className="px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer"
+                                title={tmpl.name}
+                                style={{
+                                  background: assetTemplates[asset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
+                                  color: assetTemplates[asset.formatId] === tmpl.id ? "#fff" : "#7A7572",
+                                }}
+                              >{tmpl.source === "ai-generated" ? `AI · ${tmpl.name}` : tmpl.name}</button>
+                            ))}
+                            {/* AI template from visual */}
+                            {!aiTemplateFile ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); aiTemplateInputRef.current?.click(); }}
+                                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer"
+                                style={{ background: "rgba(255,255,255,0.04)", color: "#7A7572", border: "1px dashed rgba(255,255,255,0.1)" }}
+                                title="Generate template from a reference visual"
+                              >
+                                <Sparkles size={8} /> From visual
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <img src={aiTemplateFile.preview} alt="ref" className="w-5 h-5 rounded object-cover" />
+                                <button
+                                  onClick={() => handleGenerateTemplateFromVisual(asset.formatId)}
+                                  disabled={aiTemplateLoading}
+                                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer"
+                                  style={{ background: "var(--ora-signal)", color: "#fff" }}
+                                >
+                                  {aiTemplateLoading ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                                  {aiTemplateLoading ? "Analyzing..." : "Analyze"}
+                                </button>
+                                <button onClick={() => setAiTemplateFile(null)} className="p-0.5 rounded cursor-pointer" style={{ color: "#7A7572" }}>
+                                  <X size={8} />
+                                </button>
+                              </div>
+                            )}
+                            <input
+                              ref={aiTemplateInputRef}
+                              type="file" accept="image/*" className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) setAiTemplateFile({ file, preview: URL.createObjectURL(file) });
+                                if (aiTemplateInputRef.current) aiTemplateInputRef.current.value = "";
+                              }}
+                            />
+                          </div>
                         )}
                         {(asset.caption || asset.copy) && (
                           <p className="line-clamp-3" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
@@ -2963,6 +3167,18 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   <button onClick={() => handleDownload(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}>
                     <Download size={12} /> Export
                   </button>
+                  {selectedAsset.type === "image" && selectedAsset.imageUrl && (
+                    <button
+                      onClick={() => handleUpscaleAsset(selectedAsset)}
+                      disabled={upscalingAsset === selectedAsset.formatId}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                      style={{ background: upscalingAsset === selectedAsset.formatId ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}
+                    >
+                      {upscalingAsset === selectedAsset.formatId
+                        ? <><Loader2 size={12} className="animate-spin" /> Enhancing...</>
+                        : <><Zap size={12} /> Enhance 2x</>}
+                    </button>
+                  )}
                   <button onClick={() => setSelectedAsset(null)} className="p-2 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
                     <X size={16} style={{ color: "#7A7572" }} />
                   </button>
@@ -3004,9 +3220,62 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 {/* Single image (non-carousel) */}
                 {selectedAsset.imageUrl && (!selectedAsset.carouselSlides || selectedAsset.carouselSlides.length <= 1) && (
                   <div className="relative inline-block w-full">
-                    <img src={selectedAsset.imageUrl} alt={selectedAsset.label} className="w-full rounded-xl max-h-[50vh] object-contain" style={{ background: "#0e0d0c" }} />
-                    {brandLogoUrl && (
-                      <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                    {assetTemplates[selectedAsset.formatId] && getTemplateById(assetTemplates[selectedAsset.formatId]) ? (
+                      <Suspense fallback={<div className="w-full flex items-center justify-center py-20"><Loader2 size={20} className="animate-spin" style={{ color: "#7A7572" }} /></div>}>
+                        {getTemplateById(assetTemplates[selectedAsset.formatId])!.htmlTemplate ? (
+                          <LazyHTMLTemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset}
+                            vault={vault}
+                            brandLogoUrl={rawLogoUrl}
+                            width={Math.min(700, window.innerWidth - 120)}
+                            showExport
+                            onExport={(dataUrl) => {
+                              const a = document.createElement("a");
+                              a.href = dataUrl;
+                              a.download = `ora-${selectedAsset.formatId}-${Date.now()}.png`;
+                              a.click();
+                            }}
+                          />
+                        ) : getTemplateById(assetTemplates[selectedAsset.formatId])!.svgTemplate ? (
+                          <LazySVGTemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset}
+                            vault={vault}
+                            brandLogoUrl={rawLogoUrl}
+                            width={Math.min(700, window.innerWidth - 120)}
+                            showExport
+                            onExport={(dataUrl) => {
+                              const a = document.createElement("a");
+                              a.href = dataUrl;
+                              a.download = `ora-${selectedAsset.formatId}-${Date.now()}.png`;
+                              a.click();
+                            }}
+                          />
+                        ) : (
+                          <LazyTemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset}
+                            vault={vault}
+                            brandLogoUrl={rawLogoUrl}
+                            width={Math.min(700, window.innerWidth - 120)}
+                            showExport
+                            onExport={(dataUrl) => {
+                              const a = document.createElement("a");
+                              a.href = dataUrl;
+                              a.download = `ora-${selectedAsset.formatId}-${Date.now()}.png`;
+                              a.click();
+                            }}
+                          />
+                        )}
+                      </Suspense>
+                    ) : (
+                      <>
+                        <img src={selectedAsset.imageUrl} alt={selectedAsset.label} className="w-full rounded-xl max-h-[50vh] object-contain" style={{ background: "#0e0d0c" }} />
+                        {brandLogoUrl && (
+                          <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                        )}
+                      </>
                     )}
                   </div>
                 )}

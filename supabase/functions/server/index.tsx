@@ -259,7 +259,69 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 
 // ── Credit Helpers ───────────────────────────────────────────
 const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 200, generate: 1500, studio: 5000 };
-const CREDIT_COST = { text: 1, image: 5, video: 30, audio: 5, code: 2 } as const;
+const CREDIT_COST = { text: 1, image: 5, video: 30, audio: 5, code: 2, upscale: 3 } as const;
+
+// ── Negative Prompts per photography style ──
+const NEGATIVE_PROMPTS: Record<string, string> = {
+  default: "text overlay, watermark, visible letters, visible words, brand names, logos, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime, low quality, blurry, noisy, pixelated, overexposed, underexposed, deformed, disfigured, duplicate, mutated",
+  product: "wrong brand, competitor brand, altered product, text overlay, watermark, visible letters, 3D render, CGI, illustration, cartoon, low quality, blurry, deformed, cluttered background",
+  lifestyle: "text overlay, watermark, posed, stock photo feeling, artificial, staged, logos, letters, low quality, blurry, overexposed, deformed, plastic skin",
+  editorial: "text overlay, watermark, amateur, snapshot, logos, visible text, low quality, blurry, overexposed, cluttered background, oversaturated",
+  fashion: "text overlay, watermark, amateur lighting, unflattering angles, logos, visible text, low quality, wrinkled, stained, blurry, overexposed",
+  cinematic: "text overlay, watermark, flat lighting, amateur, snapshot, logos, visible text, low quality, blurry, overexposed, video game, 3D render",
+};
+
+// ── Photography Style Presets per platform ──
+const PHOTOGRAPHY_STYLE_PRESETS: Record<string, {
+  prompt_prefix: string;
+  camera: string;
+  lighting: string;
+  negative: string;
+  platforms: string[];
+}> = {
+  editorial: {
+    prompt_prefix: "High-end editorial photography, magazine-quality composition",
+    camera: "Shot on Hasselblad X2D 100C, 90mm f/3.2, medium format sensor",
+    lighting: "Natural directional light with subtle fill, golden ratio composition",
+    negative: NEGATIVE_PROMPTS.editorial,
+    platforms: ["linkedin-post", "linkedin-carousel", "x-post", "youtube-thumbnail", "blog-header"],
+  },
+  product: {
+    prompt_prefix: "Premium product photography, clean commercial shot",
+    camera: "Shot on Phase One IQ4 150MP, 120mm f/4 macro, tethered to Capture One",
+    lighting: "Three-point studio lighting, key light 45deg with softbox, fill bounced, rim light for separation",
+    negative: NEGATIVE_PROMPTS.product,
+    platforms: ["facebook-ad", "pinterest-pin", "instagram-post", "landing-hero"],
+  },
+  lifestyle: {
+    prompt_prefix: "Authentic lifestyle photography, environmental portrait",
+    camera: "Shot on Sony A7IV, 35mm f/1.4 GM, natural ambient exposure",
+    lighting: "Available light, golden hour side-light, natural reflections",
+    negative: NEGATIVE_PROMPTS.lifestyle,
+    platforms: ["instagram-post", "instagram-carousel", "instagram-story", "facebook-post", "facebook-story", "tiktok-image"],
+  },
+  fashion: {
+    prompt_prefix: "High-fashion campaign photography, Vogue-quality",
+    camera: "Shot on Canon EOS R5, 85mm f/1.2L, beauty dish lighting",
+    lighting: "Dramatic Rembrandt lighting, single key with v-flat reflector",
+    negative: NEGATIVE_PROMPTS.fashion,
+    platforms: ["instagram-story", "pinterest-pin"],
+  },
+  cinematic: {
+    prompt_prefix: "Cinematic still frame, film-grade composition",
+    camera: "Anamorphic lens, ARRI Alexa 35, 40mm T2.1 Cooke S7i, 2.39:1 framing",
+    lighting: "Motivated practical lighting, atmospheric haze, volumetric light shafts",
+    negative: NEGATIVE_PROMPTS.cinematic,
+    platforms: ["youtube-thumbnail", "linkedin-video", "facebook-video", "youtube-short", "instagram-reel", "tiktok-video"],
+  },
+};
+
+function getStylePresetForFormat(formatId: string): typeof PHOTOGRAPHY_STYLE_PRESETS[string] | null {
+  for (const [, preset] of Object.entries(PHOTOGRAPHY_STYLE_PRESETS)) {
+    if (preset.platforms.includes(formatId)) return preset;
+  }
+  return PHOTOGRAPHY_STYLE_PRESETS.editorial; // default fallback
+}
 
 // Timeout wrapper for KV operations (prevents hanging on DB issues)
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -557,12 +619,29 @@ const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 const LEONARDO_V2_BASE = "https://cloud.leonardo.ai/api/rest/v2";
 
 // ── PROMPT ENHANCER — translates any language to English + produces cinematic photorealistic prompts ──
-async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false): Promise<string> {
+async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false, formatId?: string, brandCtx?: BrandContext | null): Promise<string> {
   const t0 = Date.now();
   // Always enhance — even English prompts benefit from photorealistic detail injection
   const key = Deno.env.get("APIPOD_API_KEY");
   if (!key) { console.log("[enhancePrompt] No API key, using raw"); return rawPrompt; }
   const enhanceModels = ["gpt-4o", "gpt-5"];
+
+  // Inject photography style preset if formatId is provided
+  const preset = formatId ? getStylePresetForFormat(formatId) : null;
+  const presetBlock = preset
+    ? `\nPHOTOGRAPHY STYLE DIRECTIVE for this platform format (${formatId}):
+- Style: ${preset.prompt_prefix}
+- Camera: ${preset.camera}
+- Lighting: ${preset.lighting}
+Match this style while keeping the user's creative intent.\n`
+    : "";
+
+  // Inject brand visual DNA from image bank analysis
+  const brandVisualBlock = brandCtx?.visualDirective
+    ? `\nBRAND VISUAL DNA (match this aesthetic closely):
+${brandCtx.visualDirective}\n`
+    : "";
+
   const systemPrompt = `You are a world-class image prompt engineer specializing in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
 
 RULES:
@@ -573,7 +652,7 @@ RULES:
 - ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt (e.g. "MAN eTGX", "Nike Air Max 90"). The brand name helps the AI match the reference image identity. Do NOT remove or replace brand names with generic descriptions. However, do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
 - CRITICAL TEMPORAL: Vehicles, machines, technology MUST be described as MODERN, CONTEMPORARY, CURRENT-GENERATION (2024-era). NEVER vintage, retro, classic, old, antique. Always add "modern, latest generation" for vehicles.
 - NEVER reference competing brands or any brand at all.
-
+${presetBlock}${brandVisualBlock}
 ALWAYS ADD these technical details (pick what is relevant):
 - Camera and lens: specific camera model, focal length, aperture (e.g. "shot on Sony A7IV, 85mm f/1.4")
 - Lighting: specific lighting setup (golden hour, studio softbox, overcast diffused, neon-lit, etc.)
@@ -583,6 +662,8 @@ ALWAYS ADD these technical details (pick what is relevant):
 - Composition: rule of thirds, leading lines, shallow depth of field, bokeh quality
 - Resolution keywords: "8K resolution", "ultra-detailed", "photorealistic", "hyperrealistic"
 - Style anchor: "editorial photography", "cinematic still", "commercial product shot", "documentary style"
+
+LUMA PHOTON OPTIMIZATION (power keywords for best results): "photorealistic", "8K", "ultra-detailed", "cinematic color grading", "anamorphic bokeh", "volumetric atmosphere", "film grain texture", "subsurface scattering". Be concrete and visual — avoid abstract descriptions.
 
 NEVER add: text, watermarks, logos, brand names, product names, model numbers, signatures, borders, collages, split screens, any readable writing.
 End the prompt with: "Absolutely no visible text, no letters, no words, no brand names, no logos anywhere in the image. Ultra-detailed, 8K resolution, photorealistic."`;
@@ -894,7 +975,7 @@ async function generateImageDallE(req: { prompt: string; model: string; aspectRa
 }
 
 // ── FLUX PRO IMAGE GENERATION (FAL API) ──
-async function generateImageFluxPro(req: { prompt: string; model: string; aspectRatio?: string }) {
+async function generateImageFluxPro(req: { prompt: string; model: string; aspectRatio?: string; negativePrompt?: string }) {
   const start = Date.now();
   const key = Deno.env.get("FAL_API_KEY");
   if (!key) throw new Error("FAL_API_KEY not configured");
@@ -912,7 +993,7 @@ async function generateImageFluxPro(req: { prompt: string; model: string; aspect
   const submitRes = await fetch("https://queue.fal.run/fal-ai/flux-pro/v1.1", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
-    body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, safety_tolerance: "5" }),
+    body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, safety_tolerance: "5", ...(req.negativePrompt ? { negative_prompt: req.negativePrompt } : {}) }),
   });
   if (!submitRes.ok) {
     const body = await submitRes.text();
@@ -7639,6 +7720,398 @@ app.post("/vault/images/analyze-batch", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// VISION AI → TEMPLATE GENERATION
+// ══════════════════════════════════════════════════════════════
+
+// ── Pass 1: Design Analysis Prompt ──
+function DESIGN_ANALYSIS_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string): string {
+  return `You are a graphic design analyst. Analyze the reference visual and extract a structured design blueprint.
+
+CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
+
+Analyze the image and return a JSON object with this exact structure:
+{
+  "designAnalysis": {
+    "colorPalette": [
+      { "hex": "#RRGGBB", "role": "primary|secondary|accent|background|text", "usage": "what this color is used for" }
+    ],
+    "layout": {
+      "type": "full-bleed|split-horizontal|split-vertical|split-diagonal|collage|grid|centered|asymmetric",
+      "description": "brief description of the spatial arrangement",
+      "background": "solid color|gradient|image|texture|pattern"
+    },
+    "photoTreatments": [
+      {
+        "id": "photo1",
+        "position": "describe position as percentage from top-left (e.g. 'left:5% top:10% width:45% height:80%')",
+        "rotation": 0,
+        "border": "none|white 4px|colored 2px",
+        "clipShape": "rectangle|rounded-rectangle|circle|ellipse|diagonal-cut|custom",
+        "clipDetails": "describe any custom clipping (e.g. diagonal cut at 30 degrees)",
+        "shadow": "none|soft drop shadow|hard shadow",
+        "zIndex": 1
+      }
+    ],
+    "decorativeElements": [
+      {
+        "type": "wavy-line|straight-line|circle|badge|rectangle|triangle|gradient-overlay|pattern|dots|stripes|speech-bubble|arrow|star|custom-shape",
+        "description": "detailed description of the element",
+        "color": "#RRGGBB",
+        "position": "describe position",
+        "size": "describe relative size",
+        "count": 1,
+        "style": "solid|dashed|dotted|filled|outlined"
+      }
+    ],
+    "typography": {
+      "headline": {
+        "content": "exact text visible in the image for this role (or empty if none)",
+        "fontFamily": "closest system font: Arial|Helvetica|Impact|Georgia|Verdana|Trebuchet MS|Courier New|Times New Roman",
+        "weight": "400|700|900",
+        "style": "normal|italic|uppercase",
+        "color": "#RRGGBB",
+        "outline": "#RRGGBB or none",
+        "outlineWidth": 0,
+        "size": "relative to canvas: tiny|small|medium|large|xlarge|xxlarge",
+        "sizePixels": 48,
+        "position": "describe position",
+        "alignment": "left|center|right",
+        "maxWidth": "percentage of canvas width this text spans"
+      },
+      "subheadline": { "...same fields..." },
+      "cta": { "...same fields...", "background": "#RRGGBB or none", "borderRadius": 0, "padding": "8px 16px" },
+      "additionalTexts": [{ "text": "...", "role": "tagline|hashtag|info|label", "...same fields..." }]
+    },
+    "overallStyle": "bold|minimal|editorial|playful|corporate|luxury|grunge|retro|modern",
+    "mood": "energetic|calm|professional|fun|serious|inspiring"
+  }
+}
+
+RULES:
+1. Be EXHAUSTIVE — list every single visual element, even small decorative details
+2. Colors must be exact hex values extracted from the image
+3. Positions must be precise (use percentages relative to canvas)
+4. Font sizes in pixels relative to ${canvasWidth}×${canvasHeight}
+5. Include ALL decorative elements — wavy lines, dots, circles, badges, patterns, overlays
+6. Count multiple similar elements (e.g. "3 parallel wavy lines")
+7. Describe clip shapes and photo treatments in detail
+8. Output ONLY valid JSON, no markdown fences, no explanations`;
+}
+
+// ── Pass 2: HTML/CSS Template Generation Prompt ──
+function HTML_TEMPLATE_GENERATION_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string, designAnalysis: string): string {
+  return `You are a front-end developer specializing in pixel-perfect HTML/CSS reproduction of graphic designs.
+
+CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
+
+DESIGN BLUEPRINT (from analysis phase):
+${designAnalysis}
+
+Using this blueprint AND the reference image, generate self-contained HTML/CSS that faithfully reproduces the design.
+
+STRUCTURE:
+- Root: <div style="position:relative; width:${canvasWidth}px; height:${canvasHeight}px; overflow:hidden; ...">
+- All children use position:absolute with top/left/width/height in pixels
+- Use z-index for layering (higher = on top)
+
+PLACEHOLDERS — use these exact tokens (they will be replaced with real content at render time):
+- {{PHOTO_1}} — primary photo URL → use as src in <img> tags
+- {{PHOTO_2}} — secondary photo URL (use {{PHOTO_1}} if only one photo in design)
+- {{HEADLINE}} — main headline text
+- {{SUBHEADLINE}} — subtitle or body text
+- {{CTA}} — call-to-action text
+- {{LOGO_URL}} — brand logo URL → use as src in <img> tag
+- {{PRIMARY_COLOR}} — brand primary color (use in background, border, etc.)
+- {{SECONDARY_COLOR}} — brand secondary color
+- {{ACCENT_COLOR}} — brand accent color
+- {{BACKGROUND_COLOR}} — background color
+
+IMAGES:
+- <img src="{{PHOTO_1}}" style="position:absolute; top:Ypx; left:Xpx; width:Wpx; height:Hpx; object-fit:cover;" />
+- For shaped clips: add clip-path (e.g. clip-path:circle(50%); or clip-path:polygon(...); or border-radius:50%;)
+- For rotated photos: transform:rotate(Ndeg); with transform-origin
+- For photo borders: add a div behind the image with white/colored background, slightly larger, matching rotation
+- For diagonal cuts: clip-path:polygon(...)
+
+TEXT:
+- <div style="position:absolute; top:Ypx; left:Xpx; width:Wpx; font-family:Arial,sans-serif; font-size:Npx; font-weight:900; color:#fff; text-transform:uppercase; line-height:1.1; ...">{{HEADLINE}}</div>
+- For text with outline/stroke: use text-shadow with multiple offsets (e.g. text-shadow: -2px -2px 0 #FFD700, 2px -2px 0 #FFD700, -2px 2px 0 #FFD700, 2px 2px 0 #FFD700;)
+- For text on colored background (CTA button): wrap in div with background-color, border-radius, padding
+- ONLY use system-safe fonts: Arial, Helvetica, Impact, Georgia, Verdana, "Trebuchet MS", "Courier New", "Times New Roman"
+
+DECORATIVE ELEMENTS:
+- Wavy lines: use inline SVG <svg> with <path> elements for curves, positioned absolutely
+- Circles/badges: div with border-radius:50%, background-color, centered text
+- Gradients: background:linear-gradient(direction, color1, color2)
+- Patterns: repeating-linear-gradient or SVG patterns
+- Shapes: clip-path:polygon(...) or border-radius or inline SVG
+- Shadows: box-shadow for elements, filter:drop-shadow() for irregular shapes
+
+CRITICAL RULES:
+1. ALL styles must be INLINE (style="...") — no <style> blocks, no <link> tags, no CSS classes
+2. No <script> tags, no event handlers (onclick, onload, etc.), no JavaScript
+3. No external resources — everything self-contained
+4. FAITHFULLY reproduce ALL elements from the blueprint — do not simplify or omit anything
+5. Coordinates in PIXELS relative to the ${canvasWidth}×${canvasHeight} canvas
+6. Match colors EXACTLY as specified in the blueprint
+7. Maintain proper z-ordering with z-index
+8. Every element must be absolutely positioned within the root div
+9. Use the blueprint's exact measurements and positions
+
+OUTPUT — strict JSON, no markdown fences:
+{"name":"AI Generated - [brief description]","htmlTemplate":"<div style='position:relative;width:${canvasWidth}px;height:${canvasHeight}px;overflow:hidden;...'>...</div>"}`;
+}
+
+// ── Validation ──
+function validateHtmlTemplate(raw: any, formatId: string, cw: number, ch: number, ar: string) {
+  const errors: string[] = [];
+  if (!raw || typeof raw !== "object") return { valid: false, errors: ["Not an object"], template: null as any };
+
+  const html = raw.htmlTemplate;
+  if (!html || typeof html !== "string") return { valid: false, errors: ["No htmlTemplate string"], template: null as any };
+  if (!html.includes("<div")) return { valid: false, errors: ["htmlTemplate does not contain <div> tag"], template: null as any };
+
+  // Sanitize dangerous content
+  let finalHtml = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/javascript\s*:/gi, "blocked:")
+    .replace(/<link[^>]*>/gi, "");
+
+  const template = {
+    id: raw.id || "ai-generated",
+    name: raw.name || "AI Generated",
+    formatId,
+    aspectRatio: ar,
+    canvasWidth: cw,
+    canvasHeight: ch,
+    category: "ai-generated" as const,
+    layers: [] as any[],
+    source: "ai-generated" as const,
+    htmlTemplate: finalHtml,
+  };
+
+  return { valid: true, errors, template };
+}
+
+// Keep SVG validation for backward compatibility
+function validateSvgTemplate(raw: any, formatId: string, cw: number, ch: number, ar: string) {
+  const errors: string[] = [];
+  if (!raw || typeof raw !== "object") return { valid: false, errors: ["Not an object"], template: null as any };
+  const svg = raw.svgTemplate;
+  if (!svg || typeof svg !== "string") return { valid: false, errors: ["No svgTemplate string"], template: null as any };
+  if (!svg.includes("<svg")) return { valid: false, errors: ["svgTemplate does not contain <svg tag"], template: null as any };
+  let finalSvg = svg;
+  if (!svg.includes("viewBox")) finalSvg = svg.replace("<svg", `<svg viewBox="0 0 ${cw} ${ch}"`);
+  if (!finalSvg.includes("xmlns")) finalSvg = finalSvg.replace("<svg", `<svg xmlns="http://www.w3.org/2000/svg"`);
+  return { valid: true, errors, template: {
+    id: raw.id || "ai-generated", name: raw.name || "AI Generated", formatId, aspectRatio: ar,
+    canvasWidth: cw, canvasHeight: ch, category: "ai-generated" as const, layers: [] as any[],
+    source: "ai-generated" as const, svgTemplate: finalSvg,
+  }};
+}
+
+// POST /vault/template/from-visual — Two-pass AI template generation
+// Pass 1: Design analysis (structured JSON blueprint)
+// Pass 2: HTML/CSS generation from blueprint
+app.post("/vault/template/from-visual", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: any;
+    let formatId = "";
+    let canvasWidth = 1080;
+    let canvasHeight = 1080;
+    let aspectRatio = "1:1";
+    let imageDataUri = "";
+
+    const contentType = c.req.header("content-type") || "";
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await c.req.formData();
+      const formToken = formData.get("_token") as string || "";
+      const jwt = decodeJwtPayload(formToken);
+      if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+      user = { id: jwt.sub, email: jwt.email || "" };
+
+      const file = formData.get("file") as File | null;
+      if (!file) return c.json({ success: false, error: "No file provided" }, 400);
+      formatId = (formData.get("formatId") as string) || "instagram-post";
+      canvasWidth = parseInt(formData.get("canvasWidth") as string) || 1080;
+      canvasHeight = parseInt(formData.get("canvasHeight") as string) || 1080;
+      aspectRatio = (formData.get("aspectRatio") as string) || "1:1";
+
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      imageDataUri = `data:${file.type || "image/jpeg"};base64,${btoa(binary)}`;
+      console.log(`[template-from-visual] FormData file: ${file.name} (${bytes.length} bytes)`);
+    } else {
+      user = await requireAuth(c);
+      const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+      formatId = body.formatId || "instagram-post";
+      canvasWidth = body.canvasWidth || 1080;
+      canvasHeight = body.canvasHeight || 1080;
+      aspectRatio = body.aspectRatio || "1:1";
+      if (body.imageBase64) imageDataUri = body.imageBase64;
+      else if (body.imageUrl) imageDataUri = body.imageUrl;
+    }
+
+    if (!imageDataUri) return c.json({ success: false, error: "No image provided" }, 400);
+    if (!formatId) return c.json({ success: false, error: "formatId required" }, 400);
+
+    const imageContent = { type: "image_url", image_url: { url: imageDataUri, detail: "high" as const } };
+    const cw = canvasWidth || 1080;
+    const ch = canvasHeight || 1080;
+    const ar = aspectRatio || "1:1";
+
+    // ═══════════ PASS 1: Design Analysis ═══════════
+    console.log(`[template-from-visual] Pass 1: Analyzing design...`);
+    const analysisRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: DESIGN_ANALYSIS_PROMPT(cw, ch, ar, formatId) },
+          { role: "user", content: [
+            { type: "text", text: "Analyze this reference visual and return a structured design analysis as JSON. Be exhaustive — list every visual element. Output ONLY valid JSON, no markdown fences." },
+            imageContent,
+          ]},
+        ],
+        max_tokens: 2000,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!analysisRes.ok) {
+      const errText = await analysisRes.text().catch(() => "unknown");
+      console.log(`[template-from-visual] Pass 1 failed: ${analysisRes.status} ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Design analysis failed: ${analysisRes.status}` }, 502);
+    }
+
+    const analysisData = await analysisRes.json();
+    const analysisContent = analysisData.choices?.[0]?.message?.content || "";
+    console.log(`[template-from-visual] Pass 1 response: ${analysisContent.length} chars`);
+
+    // Parse the design analysis
+    let designAnalysis: string;
+    try {
+      const cleaned = analysisContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      designAnalysis = JSON.stringify(parsed, null, 2);
+      console.log(`[template-from-visual] Pass 1 OK: ${Object.keys(parsed.designAnalysis || parsed).length} analysis sections`);
+    } catch {
+      console.log(`[template-from-visual] Pass 1 parse warning: using raw content as blueprint`);
+      designAnalysis = analysisContent;
+    }
+
+    // ═══════════ PASS 2: HTML/CSS Generation ═══════════
+    console.log(`[template-from-visual] Pass 2: Generating HTML/CSS template...`);
+    const htmlRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: HTML_TEMPLATE_GENERATION_PROMPT(cw, ch, ar, formatId, designAnalysis) },
+          { role: "user", content: [
+            { type: "text", text: "Using the design analysis blueprint provided in the system prompt, generate self-contained HTML/CSS that faithfully reproduces this reference visual with placeholders for dynamic content. Output ONLY valid JSON with an htmlTemplate field, no markdown fences." },
+            imageContent,
+          ]},
+        ],
+        max_tokens: 8000,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+
+    if (!htmlRes.ok) {
+      const errText = await htmlRes.text().catch(() => "unknown");
+      console.log(`[template-from-visual] Pass 2 failed: ${htmlRes.status} ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `HTML generation failed: ${htmlRes.status}` }, 502);
+    }
+
+    const htmlData = await htmlRes.json();
+    const rawContent = htmlData.choices?.[0]?.message?.content || "";
+    console.log(`[template-from-visual] Pass 2 response: ${rawContent.length} chars`);
+
+    // Parse response — handle multiple formats
+    let templateDef;
+    try {
+      const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "")
+                                 .replace(/```html\n?/g, "").replace(/```css\n?/g, "").trim();
+      if (cleaned.startsWith("<div")) {
+        templateDef = { name: "AI Generated", htmlTemplate: cleaned };
+      } else {
+        templateDef = JSON.parse(cleaned);
+      }
+    } catch {
+      // Try extracting HTML from raw content
+      const divMatch = rawContent.match(/<div[\s\S]*<\/div>/);
+      if (divMatch) {
+        templateDef = { name: "AI Generated", htmlTemplate: divMatch[0] };
+      } else {
+        // Last fallback: try SVG extraction
+        const svgMatch = rawContent.match(/<svg[\s\S]*<\/svg>/);
+        if (svgMatch) {
+          templateDef = { name: "AI Generated", svgTemplate: svgMatch[0] };
+        } else {
+          console.log(`[template-from-visual] Parse failed: ${rawContent.slice(0, 500)}`);
+          return c.json({ success: false, error: "Failed to parse AI response", rawContent: rawContent.slice(0, 2000) }, 422);
+        }
+      }
+    }
+
+    // Validate — prefer HTML, fall back to SVG
+    let validated;
+    if (templateDef.htmlTemplate) {
+      validated = validateHtmlTemplate(templateDef, formatId, cw, ch, ar);
+    } else if (templateDef.svgTemplate) {
+      validated = validateSvgTemplate(templateDef, formatId, cw, ch, ar);
+    } else {
+      return c.json({ success: false, error: "No htmlTemplate or svgTemplate in response" }, 422);
+    }
+
+    if (!validated.template) {
+      return c.json({ success: false, error: `Validation failed: ${validated.errors.join("; ")}` }, 422);
+    }
+
+    validated.template.id = `ai-${formatId}-${Date.now()}`;
+    validated.template.source = "ai-generated";
+    validated.template.createdAt = new Date().toISOString();
+
+    const kvKey = `ai-template:${user.id}:${validated.template.id}`;
+    await kv.set(kvKey, validated.template);
+
+    const templateLen = validated.template.htmlTemplate?.length || validated.template.svgTemplate?.length || 0;
+    const templateType = validated.template.htmlTemplate ? "HTML" : "SVG";
+    console.log(`[template-from-visual] OK in ${Date.now() - t0}ms: ${templateType} ${templateLen} chars, id=${validated.template.id}`);
+    return c.json({ success: true, template: validated.template, latencyMs: Date.now() - t0 });
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    console.log(`[template-from-visual] ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Template generation failed: ${msg}` }, 500);
+  }
+});
+
+// POST /vault/template/list — List user's AI-generated templates
+app.post("/vault/template/list", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const all = await kv.getByPrefix(`ai-template:${user.id}:`);
+    const templates = Array.isArray(all) ? all : Object.values(all || {});
+    return c.json({ success: true, templates });
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: msg }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // CAMPAIGNS
 // ══════════════════════════════════════════════════════════════
 
@@ -8759,16 +9232,20 @@ app.get("/generate/image-via-get", async (c) => {
     const prompt = c.req.query("prompt") || "";
     const modelsRaw = c.req.query("models") || "";
     const aspectRatio = c.req.query("aspectRatio") || "";
+    const formatId = c.req.query("formatId") || "";
     const models = modelsRaw.split(",").filter(Boolean);
     if (!prompt || !models.length) {
       return c.json({ error: "prompt and models query params required" }, 400);
     }
-    console.log(`[image-via-get] raw prompt="${prompt.slice(0, 60)}", models=${models.join(",")}, aspectRatio=${aspectRatio || "default"}`);
-    // Enhance/translate prompt to English for better image generation
-    const enhancedPrompt = await enhanceImagePrompt(prompt);
-    console.log(`[image-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}"`);
+    console.log(`[image-via-get] raw prompt="${prompt.slice(0, 60)}", models=${models.join(",")}, aspectRatio=${aspectRatio || "default"}, formatId=${formatId || "none"}`);
+    // Build brand context for prompt enrichment
     let user: AuthUser | null = null;
     try { user = await getUser(c); } catch {}
+    let brandCtx: BrandContext | null = null;
+    if (user) { try { brandCtx = await buildBrandContext(user.id); } catch {} }
+    // Enhance/translate prompt to English for better image generation
+    const enhancedPrompt = await enhanceImagePrompt(prompt, false, formatId || undefined, brandCtx);
+    console.log(`[image-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}"`);
     const MODEL_TIMEOUT = 120_000;
     const HANDLER_TIMEOUT = 170_000;
     const CONCURRENCY = 4;
@@ -8981,16 +9458,20 @@ app.get("/generate/image-ref-via-get", async (c) => {
     const mode = c.req.query("mode") || "style"; // "content" = high-fidelity preserve, "style" = style reference (default)
     const preserveContent = mode === "content";
     const aspectRatio = c.req.query("aspectRatio") || "";
+    const formatId = c.req.query("formatId") || "";
     const models = modelsRaw.split(",").filter(Boolean);
     if (!prompt || !imageRefUrl || !models.length) {
       return c.json({ error: "prompt, imageRefUrl, and models query params required" }, 400);
     }
-    console.log(`[image-ref-via-get] raw prompt="${prompt.slice(0, 60)}", ref=${imageRefUrl.slice(0, 80)}, models=${models.join(",")}, strength=${strength}, mode=${mode}, ar=${aspectRatio || "default"}`);
-    // Enhance/translate prompt — preserveBrandName=true when ref image exists (character_ref needs brand identity in prompt)
-    const enhancedPrompt = await enhanceImagePrompt(prompt, preserveContent);
-    console.log(`[image-ref-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${preserveContent})`);
+    console.log(`[image-ref-via-get] raw prompt="${prompt.slice(0, 60)}", ref=${imageRefUrl.slice(0, 80)}, models=${models.join(",")}, strength=${strength}, mode=${mode}, ar=${aspectRatio || "default"}, formatId=${formatId || "none"}`);
+    // Build brand context for prompt enrichment
     let user: AuthUser | null = null;
     try { user = await getUser(c); } catch {}
+    let brandCtx: BrandContext | null = null;
+    if (user) { try { brandCtx = await buildBrandContext(user.id); } catch {} }
+    // Enhance/translate prompt — preserveBrandName=true when ref image exists (character_ref needs brand identity in prompt)
+    const enhancedPrompt = await enhanceImagePrompt(prompt, preserveContent, formatId || undefined, brandCtx);
+    console.log(`[image-ref-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${preserveContent})`);
     const MODEL_TIMEOUT = 95_000;
     const CONCURRENCY = 2;
     const HANDLER_TIMEOUT = 140_000;
@@ -9032,6 +9513,75 @@ app.get("/generate/image-ref-via-get", async (c) => {
   } catch (err) {
     console.log(`[image-ref-via-get] error (${Date.now() - t0}ms):`, err);
     return c.json({ success: false, error: `Image ref generation error: ${err}` }, 500);
+  }
+});
+
+// ── IMAGE UPSCALE via GET — AI-powered upscaling with FAL fallback chain ──
+app.get("/generate/upscale", async (c) => {
+  const t0 = Date.now();
+  console.log(`[upscale] ENTERED at ${new Date().toISOString()}`);
+  try {
+    const imageUrl = c.req.query("imageUrl") || "";
+    const scale = parseInt(c.req.query("scale") || "2");
+    if (!imageUrl) return c.json({ error: "imageUrl query param required" }, 400);
+    console.log(`[upscale] imageUrl="${imageUrl.slice(0, 80)}", scale=${scale}`);
+
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    if (user) deductCredit(user.id, CREDIT_COST.upscale).catch(() => {});
+
+    const falKey = Deno.env.get("FAL_API_KEY");
+    if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
+
+    // Strategy 1: FAL Aura-SR (fast, high quality)
+    try {
+      console.log(`[upscale] trying fal-ai/aura-sr...`);
+      const falRes = await fetch("https://fal.run/fal-ai/aura-sr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({ image_url: imageUrl, upscaling_factor: scale, overlapping_tiles: true }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (falRes.ok) {
+        const data = await falRes.json();
+        const upscaledUrl = data.image?.url;
+        if (upscaledUrl) {
+          console.log(`[upscale] aura-sr OK (${Date.now() - t0}ms)`);
+          if (user) logCost({ type: "upscale", model: "aura-sr", provider: "fal/aura-sr", costUsd: 0.002, revenueEur: 0.01, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
+          return c.json({ success: true, imageUrl: upscaledUrl, provider: "fal/aura-sr", scale, latencyMs: Date.now() - t0 });
+        }
+      } else {
+        console.log(`[upscale] aura-sr ${falRes.status}: ${(await falRes.text()).slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[upscale] aura-sr error: ${err}`); }
+
+    // Strategy 2: FAL Creative Upscaler (fallback, slightly slower)
+    try {
+      console.log(`[upscale] trying fal-ai/creative-upscaler...`);
+      const falRes = await fetch("https://fal.run/fal-ai/creative-upscaler", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({ image_url: imageUrl, scale, creativity: 0.2 }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (falRes.ok) {
+        const data = await falRes.json();
+        const upscaledUrl = data.image?.url;
+        if (upscaledUrl) {
+          console.log(`[upscale] creative-upscaler OK (${Date.now() - t0}ms)`);
+          if (user) logCost({ type: "upscale", model: "creative-upscaler", provider: "fal/creative-upscaler", costUsd: 0.005, revenueEur: 0.01, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
+          return c.json({ success: true, imageUrl: upscaledUrl, provider: "fal/creative-upscaler", scale, latencyMs: Date.now() - t0 });
+        }
+      } else {
+        console.log(`[upscale] creative-upscaler ${falRes.status}: ${(await falRes.text()).slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[upscale] creative-upscaler error: ${err}`); }
+
+    console.log(`[upscale] ALL PROVIDERS FAILED (${Date.now() - t0}ms)`);
+    return c.json({ success: false, error: "All upscale providers failed" }, 500);
+  } catch (err) {
+    console.log(`[upscale] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: `Upscale error: ${err}` }, 500);
   }
 });
 
