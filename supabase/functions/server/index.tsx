@@ -7725,141 +7725,253 @@ app.post("/vault/images/analyze-batch", async (c) => {
 
 // ── Pass 1: Design Analysis Prompt ──
 function DESIGN_ANALYSIS_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string): string {
-  return `You are a graphic design analyst. Analyze the reference visual and extract a structured design blueprint.
+  return `You are an expert graphic design analyst with pixel-perfect precision. Your job is to reverse-engineer a reference visual into an exhaustive structural blueprint that another AI can use to reproduce it at 95% fidelity.
 
 CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
 
-Analyze the image and return a JSON object with this exact structure:
+Analyze the image meticulously and return a JSON object. ALL positions and sizes MUST be in PIXELS relative to the ${canvasWidth}×${canvasHeight} canvas.
+
 {
   "designAnalysis": {
     "colorPalette": [
-      { "hex": "#RRGGBB", "role": "primary|secondary|accent|background|text", "usage": "what this color is used for" }
+      { "hex": "#RRGGBB", "role": "primary|secondary|accent|background|text|border", "usage": "exactly where this color appears", "approximateArea": "percentage of canvas this color covers" }
     ],
-    "layout": {
-      "type": "full-bleed|split-horizontal|split-vertical|split-diagonal|collage|grid|centered|asymmetric",
-      "description": "brief description of the spatial arrangement",
-      "background": "solid color|gradient|image|texture|pattern"
+
+    "background": {
+      "type": "solid|gradient|image|pattern",
+      "color": "#RRGGBB",
+      "gradient": "if gradient: direction and stops, e.g. 'linear 180deg, #FFF5E1 0%, #FFF8EC 100%'",
+      "pattern": "if patterned: describe pattern (e.g. 'horizontal wavy lines', 'dots grid')"
     },
-    "photoTreatments": [
+
+    "layout": {
+      "type": "full-bleed|split-horizontal|split-vertical|split-diagonal|overlapping-photos|collage|grid|centered|asymmetric|z-stack",
+      "description": "detailed description of the spatial arrangement and visual hierarchy",
+      "mainAxis": "which direction does the eye travel: top-to-bottom|left-to-right|center-outward|diagonal",
+      "gridStructure": "describe invisible grid (e.g. 'photos centered with 60% width, text below photos')"
+    },
+
+    "photos": [
       {
         "id": "photo1",
-        "position": "describe position as percentage from top-left (e.g. 'left:5% top:10% width:45% height:80%')",
+        "semanticRole": "what the photo shows and its purpose (e.g. 'woman in casual clothes in city environment - represents daily life')",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
         "rotation": 0,
-        "border": "none|white 4px|colored 2px",
-        "clipShape": "rectangle|rounded-rectangle|circle|ellipse|diagonal-cut|custom",
-        "clipDetails": "describe any custom clipping (e.g. diagonal cut at 30 degrees)",
-        "shadow": "none|soft drop shadow|hard shadow",
-        "zIndex": 1
+        "border": { "color": "#FFFFFF", "width": 0 },
+        "clipShape": "rectangle|rounded-rect|circle|ellipse|polygon|diagonal-cut",
+        "clipDetails": "exact clip description (e.g. 'rounded corners 8px', 'diagonal cut from top-right to bottom-left at 15deg')",
+        "shadow": { "type": "none|drop|inset", "color": "#000000", "blur": 0, "offsetX": 0, "offsetY": 0, "opacity": 0.3 },
+        "objectFit": "cover|contain",
+        "objectPosition": "center|top|bottom|left|right (which part of the photo is visible)",
+        "zIndex": 1,
+        "overlapsWith": "id of another photo it overlaps with, if any",
+        "visualRelationship": "describe how this photo relates to others (e.g. 'top half of person, continues into photo2')"
       }
     ],
+
     "decorativeElements": [
       {
-        "type": "wavy-line|straight-line|circle|badge|rectangle|triangle|gradient-overlay|pattern|dots|stripes|speech-bubble|arrow|star|custom-shape",
-        "description": "detailed description of the element",
+        "id": "deco1",
+        "type": "wavy-line|straight-line|arc|circle|filled-circle|ring|badge-circle|rectangle|rounded-rect|triangle|gradient-overlay|dots-pattern|stripes|speech-bubble|arrow|star|custom-svg-shape",
+        "description": "detailed visual description of exactly what this element looks like",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
         "color": "#RRGGBB",
-        "position": "describe position",
-        "size": "describe relative size",
+        "fillOrStroke": "fill|stroke|both",
+        "strokeWidth": 0,
+        "opacity": 1.0,
+        "rotation": 0,
+        "zIndex": 0,
         "count": 1,
-        "style": "solid|dashed|dotted|filled|outlined"
+        "spacing": "if repeated: pixels between repetitions",
+        "svgHint": "if complex shape: describe the SVG path logic (e.g. 'sine wave with amplitude 15px, wavelength 60px, spanning full width')",
+        "cssHint": "if achievable with pure CSS: describe how (e.g. 'border-radius:50% on a 120x120 div with yellow background')",
+        "containsText": "if this element contains text, what text (e.g. 'rejoins')",
+        "textStyle": "if contains text: font details (e.g. 'white, 14px, bold, centered')"
       }
     ],
-    "typography": {
-      "headline": {
-        "content": "exact text visible in the image for this role (or empty if none)",
-        "fontFamily": "closest system font: Arial|Helvetica|Impact|Georgia|Verdana|Trebuchet MS|Courier New|Times New Roman",
-        "weight": "400|700|900",
-        "style": "normal|italic|uppercase",
+
+    "textElements": [
+      {
+        "id": "text1",
+        "role": "headline|subheadline|cta|tagline|hashtag|label|info|badge-text",
+        "content": "EXACT text visible in the image, preserving line breaks with \\n",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+        "fontFamily": "closest match: Impact|Arial Black|Arial|Helvetica|Georgia|Verdana|Trebuchet MS|Courier New|Times New Roman|cursive",
+        "fontSize": 0,
+        "fontWeight": "400|700|800|900",
+        "fontStyle": "normal|italic",
+        "textTransform": "none|uppercase|lowercase|capitalize",
         "color": "#RRGGBB",
-        "outline": "#RRGGBB or none",
-        "outlineWidth": 0,
-        "size": "relative to canvas: tiny|small|medium|large|xlarge|xxlarge",
-        "sizePixels": 48,
-        "position": "describe position",
-        "alignment": "left|center|right",
-        "maxWidth": "percentage of canvas width this text spans"
-      },
-      "subheadline": { "...same fields..." },
-      "cta": { "...same fields...", "background": "#RRGGBB or none", "borderRadius": 0, "padding": "8px 16px" },
-      "additionalTexts": [{ "text": "...", "role": "tagline|hashtag|info|label", "...same fields..." }]
+        "textAlign": "left|center|right",
+        "lineHeight": 1.1,
+        "letterSpacing": 0,
+        "outline": { "color": "#RRGGBB", "width": 0 },
+        "shadow": { "color": "#000000", "blur": 0, "offsetX": 0, "offsetY": 0 },
+        "backgroundColor": "none or #RRGGBB",
+        "backgroundPadding": "if has background: padding in px (e.g. '12px 24px')",
+        "backgroundBorderRadius": 0,
+        "rotation": 0,
+        "zIndex": 10,
+        "specialEffect": "none|gradient-text|stroke-only|embossed|3d-shadow",
+        "writingMode": "horizontal|vertical"
+      }
+    ],
+
+    "logoPlacement": {
+      "present": true,
+      "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+      "zIndex": 20
     },
-    "overallStyle": "bold|minimal|editorial|playful|corporate|luxury|grunge|retro|modern",
-    "mood": "energetic|calm|professional|fun|serious|inspiring"
+
+    "overallStyle": "bold|minimal|editorial|playful|corporate|luxury|grunge|retro|modern|youth-oriented",
+    "mood": "energetic|calm|professional|fun|serious|inspiring|rebellious",
+    "designTechniques": ["list", "of", "notable", "techniques", "used"]
   }
 }
 
-RULES:
-1. Be EXHAUSTIVE — list every single visual element, even small decorative details
-2. Colors must be exact hex values extracted from the image
-3. Positions must be precise (use percentages relative to canvas)
-4. Font sizes in pixels relative to ${canvasWidth}×${canvasHeight}
-5. Include ALL decorative elements — wavy lines, dots, circles, badges, patterns, overlays
-6. Count multiple similar elements (e.g. "3 parallel wavy lines")
-7. Describe clip shapes and photo treatments in detail
-8. Output ONLY valid JSON, no markdown fences, no explanations`;
+CRITICAL RULES:
+1. Be EXHAUSTIVE — every single visual element must be catalogued, no matter how small
+2. ALL boundingBox coordinates MUST be in PIXELS relative to ${canvasWidth}×${canvasHeight}
+3. Estimate bounding boxes by analyzing the image proportions carefully: if an element is at 30% from top and 10% from left of a ${canvasWidth}×${canvasHeight} canvas, that's x:${Math.round(canvasWidth*0.1)}, y:${Math.round(canvasHeight*0.3)}
+4. Colors MUST be exact hex values sampled from the image
+5. Count ALL repeated elements — if there are 8 wavy lines, say count:8 and describe spacing
+6. For wavy/curved lines: describe amplitude (height of wave), wavelength (distance between peaks), thickness, and direction
+7. For overlapping photos: describe EXACTLY how they overlap, which parts are visible, and the visual continuity between them
+8. For text with outline/stroke effect: specify both fill color AND outline color + width
+9. Describe the EXACT clipping of photos (what part is cut off, at what angle)
+10. zIndex: background elements start at 0, photos at 5-10, text at 10-20, overlays at 20+
+11. Output ONLY valid JSON — no markdown fences, no explanations, no comments
+12. Include decorative elements that are partially visible (extending beyond canvas edges)
+13. For circle badges with text inside: list as BOTH a decorativeElement AND a textElement`;
 }
 
 // ── Pass 2: HTML/CSS Template Generation Prompt ──
 function HTML_TEMPLATE_GENERATION_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string, designAnalysis: string): string {
-  return `You are a front-end developer specializing in pixel-perfect HTML/CSS reproduction of graphic designs.
+  return `You are a world-class front-end developer specializing in pixel-perfect HTML/CSS reproduction of graphic designs. Your goal is 95% visual fidelity to the reference image.
 
 CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
 
-DESIGN BLUEPRINT (from analysis phase):
+DESIGN BLUEPRINT (from structural analysis):
 ${designAnalysis}
 
-Using this blueprint AND the reference image, generate self-contained HTML/CSS that faithfully reproduces the design.
+Using this blueprint AND the reference image, generate self-contained HTML/CSS that reproduces every detail.
 
-STRUCTURE:
-- Root: <div style="position:relative; width:${canvasWidth}px; height:${canvasHeight}px; overflow:hidden; ...">
-- All children use position:absolute with top/left/width/height in pixels
-- Use z-index for layering (higher = on top)
+═══ STRUCTURE ═══
+Root div: <div style="position:relative; width:${canvasWidth}px; height:${canvasHeight}px; overflow:hidden; background:BACKGROUND_COLOR_HERE;">
+All children: position:absolute with top/left/width/height in PIXELS.
+z-index layering: background(0-4) → decorative(5-9) → photos(10-14) → text(15-19) → logo/badges(20+)
 
-PLACEHOLDERS — use these exact tokens (they will be replaced with real content at render time):
-- {{PHOTO_1}} — primary photo URL → use as src in <img> tags
-- {{PHOTO_2}} — secondary photo URL (use {{PHOTO_1}} if only one photo in design)
-- {{HEADLINE}} — main headline text
-- {{SUBHEADLINE}} — subtitle or body text
-- {{CTA}} — call-to-action text
-- {{LOGO_URL}} — brand logo URL → use as src in <img> tag
-- {{PRIMARY_COLOR}} — brand primary color (use in background, border, etc.)
-- {{SECONDARY_COLOR}} — brand secondary color
-- {{ACCENT_COLOR}} — brand accent color
-- {{BACKGROUND_COLOR}} — background color
+═══ PLACEHOLDERS (will be replaced at render time) ═══
+{{PHOTO_1}} → primary photo URL (use as <img src>)
+{{PHOTO_2}} → secondary photo URL
+{{HEADLINE}} → main headline text
+{{SUBHEADLINE}} → subtitle/body text
+{{CTA}} → call-to-action text
+{{LOGO_URL}} → brand logo (use as <img src>)
+{{PRIMARY_COLOR}} → brand primary color
+{{SECONDARY_COLOR}} → brand secondary color
+{{ACCENT_COLOR}} → brand accent color
+{{BACKGROUND_COLOR}} → background color
 
-IMAGES:
-- <img src="{{PHOTO_1}}" style="position:absolute; top:Ypx; left:Xpx; width:Wpx; height:Hpx; object-fit:cover;" />
-- For shaped clips: add clip-path (e.g. clip-path:circle(50%); or clip-path:polygon(...); or border-radius:50%;)
-- For rotated photos: transform:rotate(Ndeg); with transform-origin
-- For photo borders: add a div behind the image with white/colored background, slightly larger, matching rotation
-- For diagonal cuts: clip-path:polygon(...)
+═══ PHOTOS — Pixel-Perfect Techniques ═══
 
-TEXT:
-- <div style="position:absolute; top:Ypx; left:Xpx; width:Wpx; font-family:Arial,sans-serif; font-size:Npx; font-weight:900; color:#fff; text-transform:uppercase; line-height:1.1; ...">{{HEADLINE}}</div>
-- For text with outline/stroke: use text-shadow with multiple offsets (e.g. text-shadow: -2px -2px 0 #FFD700, 2px -2px 0 #FFD700, -2px 2px 0 #FFD700, 2px 2px 0 #FFD700;)
-- For text on colored background (CTA button): wrap in div with background-color, border-radius, padding
-- ONLY use system-safe fonts: Arial, Helvetica, Impact, Georgia, Verdana, "Trebuchet MS", "Courier New", "Times New Roman"
+Basic photo:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; object-position:center top;" />
 
-DECORATIVE ELEMENTS:
-- Wavy lines: use inline SVG <svg> with <path> elements for curves, positioned absolutely
-- Circles/badges: div with border-radius:50%, background-color, centered text
-- Gradients: background:linear-gradient(direction, color1, color2)
-- Patterns: repeating-linear-gradient or SVG patterns
-- Shapes: clip-path:polygon(...) or border-radius or inline SVG
-- Shadows: box-shadow for elements, filter:drop-shadow() for irregular shapes
+Photo with white border (use a wrapper div):
+<div style="position:absolute; top:98px; left:48px; width:404px; height:504px; background:#fff; transform:rotate(-3deg); transform-origin:center; box-shadow:0 4px 20px rgba(0,0,0,0.15); z-index:10;">
+  <img src="{{PHOTO_1}}" style="position:absolute; top:2px; left:2px; width:400px; height:500px; object-fit:cover;" />
+</div>
 
-CRITICAL RULES:
-1. ALL styles must be INLINE (style="...") — no <style> blocks, no <link> tags, no CSS classes
-2. No <script> tags, no event handlers (onclick, onload, etc.), no JavaScript
-3. No external resources — everything self-contained
-4. FAITHFULLY reproduce ALL elements from the blueprint — do not simplify or omit anything
-5. Coordinates in PIXELS relative to the ${canvasWidth}×${canvasHeight} canvas
-6. Match colors EXACTLY as specified in the blueprint
-7. Maintain proper z-ordering with z-index
-8. Every element must be absolutely positioned within the root div
-9. Use the blueprint's exact measurements and positions
+Photo clipped (show only top portion — "cut under shoulders"):
+<div style="position:absolute; top:80px; left:200px; width:350px; height:280px; overflow:hidden; transform:rotate(-5deg); z-index:10;">
+  <img src="{{PHOTO_1}}" style="width:100%; height:auto; object-fit:cover; object-position:center top;" />
+</div>
 
-OUTPUT — strict JSON, no markdown fences:
-{"name":"AI Generated - [brief description]","htmlTemplate":"<div style='position:relative;width:${canvasWidth}px;height:${canvasHeight}px;overflow:hidden;...'>...</div>"}`;
+Photo with diagonal cut:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; clip-path:polygon(0 0, 100% 0, 100% 85%, 0 100%);" />
+
+Photo with rounded corners:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; border-radius:12px;" />
+
+Circular photo:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:100px; width:300px; height:300px; object-fit:cover; border-radius:50%;" />
+
+═══ OVERLAPPING PHOTOS ═══
+When two photos overlap and show the same person (daily life + work life):
+- Photo 1: positioned higher, shows upper body, clipped at bottom, slightly rotated
+- Photo 2: positioned lower, overlapping photo 1, shows full body, different rotation
+- Use z-index to control which one is on top
+- Both wrapped in border divs if the reference shows white borders
+
+═══ TEXT — Advanced Techniques ═══
+
+Bold headline:
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,Arial Black,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; letter-spacing:-1px; z-index:15;">{{HEADLINE}}</div>
+
+Text with colored outline/stroke (e.g. dark text with gold outline):
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; -webkit-text-stroke:3px #FFD700; paint-order:stroke fill; z-index:15;">{{HEADLINE}}</div>
+
+Alternative outline with text-shadow (more compatible):
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; text-shadow:-3px -3px 0 #FFD700, 3px -3px 0 #FFD700, -3px 3px 0 #FFD700, 3px 3px 0 #FFD700, 0 -3px 0 #FFD700, 0 3px 0 #FFD700, -3px 0 0 #FFD700, 3px 0 0 #FFD700; z-index:15;">{{HEADLINE}}</div>
+
+Script/cursive text:
+<div style="position:absolute; top:700px; left:100px; font-family:Georgia,'Times New Roman',serif; font-size:48px; font-style:italic; font-weight:700; color:#FFD700; z-index:15;">{{SUBHEADLINE}}</div>
+
+Hashtag text:
+<div style="position:absolute; top:150px; left:60px; font-family:Impact,Arial Black,sans-serif; font-size:80px; font-weight:900; color:#000; line-height:0.9; text-transform:uppercase; z-index:15;">#JEUNES<br>DETER</div>
+
+Text on colored badge/button:
+<div style="position:absolute; top:800px; left:600px; background:#FFD700; border-radius:50%; width:200px; height:200px; display:flex; align-items:center; justify-content:center; text-align:center; z-index:20;">
+  <span style="font-family:Arial,sans-serif; font-size:18px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:1.2;">ALTERNANCES<br>STAGES<br>EMPLOIS</span>
+</div>
+
+Small label in circle badge:
+<div style="position:absolute; top:50px; left:120px; background:#FFD700; border-radius:50%; width:80px; height:80px; display:flex; align-items:center; justify-content:center; z-index:20;">
+  <span style="font-family:Arial,sans-serif; font-size:14px; font-weight:700; color:#fff;">rejoins</span>
+</div>
+
+═══ DECORATIVE ELEMENTS ═══
+
+Wavy lines (horizontal, repeated) — use inline SVG:
+<svg style="position:absolute; top:350px; left:0; z-index:3;" width="${canvasWidth}" height="180" viewBox="0 0 ${canvasWidth} 180" fill="none">
+  <path d="M0,15 Q${Math.round(canvasWidth*0.05)},0 ${Math.round(canvasWidth*0.1)},15 Q${Math.round(canvasWidth*0.15)},30 ${Math.round(canvasWidth*0.2)},15 Q${Math.round(canvasWidth*0.25)},0 ${Math.round(canvasWidth*0.3)},15 Q${Math.round(canvasWidth*0.35)},30 ${Math.round(canvasWidth*0.4)},15 Q${Math.round(canvasWidth*0.45)},0 ${Math.round(canvasWidth*0.5)},15 Q${Math.round(canvasWidth*0.55)},30 ${Math.round(canvasWidth*0.6)},15 Q${Math.round(canvasWidth*0.65)},0 ${Math.round(canvasWidth*0.7)},15 Q${Math.round(canvasWidth*0.75)},30 ${Math.round(canvasWidth*0.8)},15 Q${Math.round(canvasWidth*0.85)},0 ${Math.round(canvasWidth*0.9)},15 Q${Math.round(canvasWidth*0.95)},30 ${canvasWidth},15" stroke="#FFD700" stroke-width="3" fill="none"/>
+  <!-- Repeat <path> for each wavy line, increment y by spacing (e.g. +20px per line) -->
+</svg>
+
+Large arc/partial circle:
+<div style="position:absolute; top:-100px; left:-150px; width:500px; height:500px; border:25px solid #FFD700; border-radius:50%; z-index:2;"></div>
+
+Filled circle:
+<div style="position:absolute; top:400px; left:700px; width:200px; height:200px; background:#FFD700; border-radius:50%; z-index:4;"></div>
+
+Gradient overlay on photo:
+<div style="position:absolute; top:0; left:0; width:100%; height:100%; background:linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.7) 100%); z-index:12;"></div>
+
+═══ LOGO ═══
+<img src="{{LOGO_URL}}" style="position:absolute; top:30px; right:30px; width:120px; height:auto; object-fit:contain; z-index:25;" />
+(For right-positioned: use right instead of left)
+
+═══ CRITICAL RULES ═══
+1. ALL styles INLINE (style="...") — NO <style> blocks, NO CSS classes, NO <link> tags
+2. NO <script>, NO event handlers (onclick, onload), NO JavaScript
+3. NO external resources — everything self-contained
+4. Reproduce EVERY element from the blueprint — do NOT simplify, skip, or omit ANYTHING
+5. Use EXACT pixel coordinates from the blueprint
+6. Match colors EXACTLY from the blueprint
+7. Proper z-ordering: background → decorations → photos → text → logo/badges
+8. Every element position:absolute inside the root div
+9. For wavy/curved lines: ALWAYS use inline SVG with <path> — never try to simulate with CSS borders
+10. For overlapping photos: ensure proper z-index and rotation matching the reference
+11. For text with outlines: use -webkit-text-stroke or multi-directional text-shadow (8 directions for smooth outline)
+12. Match font sizes to the blueprint's pixel values — be generous with size, headlines should be LARGE
+13. Recreate partial elements (arcs, circles extending beyond canvas) — overflow:hidden on root will clip them
+14. For photo borders: use a wrapper div with background color slightly larger than the image
+
+OUTPUT — valid JSON only, no markdown fences, no backticks:
+{"name":"AI Generated - [brief style description]","htmlTemplate":"<div style='position:relative;width:${canvasWidth}px;height:${canvasHeight}px;overflow:hidden;...'>...ALL ELEMENTS HERE...</div>"}
+
+The htmlTemplate value must be a single line of HTML (no literal newlines in the JSON string value — use spaces instead).`;
 }
 
 // ── Validation ──
@@ -7975,14 +8087,14 @@ app.post("/vault/template/from-visual", async (c) => {
         messages: [
           { role: "system", content: DESIGN_ANALYSIS_PROMPT(cw, ch, ar, formatId) },
           { role: "user", content: [
-            { type: "text", text: "Analyze this reference visual and return a structured design analysis as JSON. Be exhaustive — list every visual element. Output ONLY valid JSON, no markdown fences." },
+            { type: "text", text: "Analyze this reference visual with extreme precision. Extract EVERY element: exact colors (hex), exact positions (as pixel coordinates for the canvas), every photo with its clipping/rotation/borders, every decorative element (wavy lines count+spacing, arcs, circles, badges), every text block with exact font sizes in pixels and styling. Miss NOTHING. Output ONLY valid JSON, no markdown fences." },
             imageContent,
           ]},
         ],
-        max_tokens: 2000,
-        temperature: 0.2,
+        max_tokens: 4000,
+        temperature: 0.1,
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(45_000),
     });
 
     if (!analysisRes.ok) {
@@ -8017,14 +8129,14 @@ app.post("/vault/template/from-visual", async (c) => {
         messages: [
           { role: "system", content: HTML_TEMPLATE_GENERATION_PROMPT(cw, ch, ar, formatId, designAnalysis) },
           { role: "user", content: [
-            { type: "text", text: "Using the design analysis blueprint provided in the system prompt, generate self-contained HTML/CSS that faithfully reproduces this reference visual with placeholders for dynamic content. Output ONLY valid JSON with an htmlTemplate field, no markdown fences." },
+            { type: "text", text: "LOOK CAREFULLY at this reference image. Using the design analysis blueprint AND this image, generate pixel-perfect HTML/CSS that reproduces EVERY element: every photo (with exact position, rotation, clipping, borders), every decorative shape (wavy lines, arcs, circles, badges), every text block (with exact font size, weight, color, effects), and the logo placement. Do NOT simplify or omit any element. Output ONLY valid JSON with name and htmlTemplate fields — no markdown fences." },
             imageContent,
           ]},
         ],
-        max_tokens: 8000,
-        temperature: 0.2,
+        max_tokens: 16000,
+        temperature: 0.1,
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!htmlRes.ok) {
