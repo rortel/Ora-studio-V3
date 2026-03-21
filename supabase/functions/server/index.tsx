@@ -7974,6 +7974,252 @@ OUTPUT — valid JSON only, no markdown fences, no backticks:
 The htmlTemplate value must be a single line of HTML (no literal newlines in the JSON string value — use spaces instead).`;
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// ── CODE-BASED HTML GENERATOR (replaces unreliable GPT-4o Pass 2) ──
+// ══════════════════════════════════════════════════════════════════════
+
+function wavySvgPath(totalWidth: number, amplitude: number, wavelength: number, yCenter: number): string {
+  let d = `M0,${yCenter}`;
+  const halfWL = wavelength / 2;
+  for (let x = 0; x < totalWidth; x += halfWL) {
+    const isUp = ((x / halfWL) % 2) === 0;
+    const cpY = isUp ? yCenter - amplitude : yCenter + amplitude;
+    const endX = Math.min(x + halfWL, totalWidth);
+    d += ` Q${x + halfWL / 2},${cpY} ${endX},${yCenter}`;
+  }
+  return d;
+}
+
+function generateHtmlFromBlueprint(raw: any, cw: number, ch: number): string {
+  const da = raw.designAnalysis || raw;
+  const parts: { html: string; z: number }[] = [];
+
+  // ── Background ──
+  const bg = da.background?.color
+    || da.colorPalette?.find((c: any) => c.role === "background")?.hex
+    || "#FFF5E1";
+
+  // ── Decorative Elements ──
+  for (const el of (da.decorativeElements || [])) {
+    const box = el.boundingBox || { x: 0, y: 0, width: cw, height: ch };
+    const z = el.zIndex ?? 3;
+    const color = el.color || "#FFD700";
+    const sw = el.strokeWidth || 3;
+    const rot = el.rotation ? `transform:rotate(${el.rotation}deg);` : "";
+    const opacity = el.opacity != null && el.opacity < 1 ? `opacity:${el.opacity};` : "";
+
+    const elType = (el.type || "").toLowerCase();
+
+    if (elType.includes("wavy")) {
+      // ── Wavy lines SVG ──
+      const count = el.count || 6;
+      const totalH = box.height || (count * 25);
+      const spacing = totalH / Math.max(count, 1);
+      const amp = Math.min(spacing * 0.4, 15);
+      const wl = 80;
+      let paths = "";
+      for (let i = 0; i < count; i++) {
+        const yC = spacing * i + amp + 5;
+        paths += `<path d="${wavySvgPath(box.width || cw, amp, wl, yC)}" stroke="${color}" stroke-width="${sw}" fill="none"/>`;
+      }
+      parts.push({
+        html: `<svg style="position:absolute;top:${box.y}px;left:${box.x}px;z-index:${z};pointer-events:none;${opacity}" width="${box.width || cw}" height="${totalH}" viewBox="0 0 ${box.width || cw} ${totalH}" fill="none">${paths}</svg>`,
+        z,
+      });
+
+    } else if (elType === "arc" || elType === "ring" || (elType === "circle" && (el.fillOrStroke === "stroke"))) {
+      // ── Arc / Ring ──
+      const bw = sw > 5 ? sw : 20;
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height}px;border:${bw}px solid ${color};border-radius:50%;z-index:${z};pointer-events:none;${rot}${opacity}"></div>`,
+        z,
+      });
+
+    } else if (elType.includes("badge") || elType === "filled-circle" || (elType === "circle" && el.fillOrStroke !== "stroke")) {
+      // ── Badge / filled circle — may contain text ──
+      let inner = "";
+      if (el.containsText) {
+        // Parse simple text style: "white, 14px, bold, centered" or similar
+        const ts = el.textStyle || "";
+        const tColor = ts.match(/#[0-9A-Fa-f]{3,8}/)?.[0] || (ts.includes("white") ? "#fff" : (ts.includes("dark") ? "#1a1a5e" : "#000"));
+        const tSize = ts.match(/(\d+)px/)?.[1] || "14";
+        const tWeight = ts.includes("bold") || ts.includes("900") ? "900" : "700";
+        inner = `<span style="font-family:Arial,Helvetica,sans-serif;font-size:${tSize}px;font-weight:${tWeight};color:${tColor};text-transform:uppercase;line-height:1.2;text-align:center;">${el.containsText.replace(/\n/g, "<br>")}</span>`;
+      }
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height}px;background:${color};border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:${z};${rot}${opacity}">${inner}</div>`,
+        z,
+      });
+
+    } else if (elType.includes("line") && !elType.includes("wavy")) {
+      // ── Straight line ──
+      const h = box.height || 4;
+      parts.push({
+        html: `<svg style="position:absolute;top:${box.y}px;left:${box.x}px;z-index:${z};pointer-events:none;" width="${box.width}" height="${h}" viewBox="0 0 ${box.width} ${h}"><line x1="0" y1="${h/2}" x2="${box.width}" y2="${h/2}" stroke="${color}" stroke-width="${sw}"/></svg>`,
+        z,
+      });
+
+    } else if (elType.includes("gradient")) {
+      // ── Gradient overlay ──
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height}px;background:linear-gradient(to bottom,transparent 0%,${color} 100%);z-index:${z};pointer-events:none;${opacity}"></div>`,
+        z,
+      });
+
+    } else {
+      // ── Generic shape (rect, custom, etc.) ──
+      const isFill = el.fillOrStroke !== "stroke";
+      const bgC = isFill ? color : "transparent";
+      const bdr = el.fillOrStroke === "stroke" || el.fillOrStroke === "both" ? `border:${sw}px solid ${color};` : "";
+      const br = elType.includes("rounded") ? "border-radius:12px;" : "";
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height}px;background:${bgC};${bdr}${br}z-index:${z};${rot}${opacity}"></div>`,
+        z,
+      });
+    }
+  }
+
+  // ── Photos ──
+  const photos = da.photos || da.photoTreatments || [];
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    const box = p.boundingBox || { x: 100, y: 100, width: 400, height: 500 };
+    const z = p.zIndex ?? (10 + i);
+    const rotation = p.rotation || 0;
+    const placeholder = i === 0 ? "{{PHOTO_1}}" : "{{PHOTO_2}}";
+    const objPos = p.objectPosition || "center";
+    const clipShape = (p.clipShape || "rectangle").toLowerCase();
+    const borderRadius = clipShape === "circle" ? "50%" : (clipShape.includes("rounded") ? "12px" : "0");
+
+    // Shadow
+    let shadowCss = "";
+    if (p.shadow && p.shadow.type && p.shadow.type !== "none") {
+      const s = p.shadow;
+      shadowCss = `box-shadow:${s.offsetX||0}px ${s.offsetY||4}px ${s.blur||20}px ${s.color||"rgba(0,0,0,0.15)"};`;
+    }
+
+    // Border
+    const borderW = typeof p.border === "object" ? (p.border.width || 0) : (typeof p.border === "string" && p.border.includes("px") ? parseInt(p.border) : 0);
+    const borderColor = typeof p.border === "object" ? (p.border.color || "#fff") : "#fff";
+
+    if (borderW > 0) {
+      // Wrapper div creates the border effect
+      const wW = box.width + borderW * 2;
+      const wH = box.height + borderW * 2;
+      const rotCss = rotation ? `transform:rotate(${rotation}deg);transform-origin:center;` : "";
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y - borderW}px;left:${box.x - borderW}px;width:${wW}px;height:${wH}px;background:${borderColor};border-radius:${borderRadius};${shadowCss}${rotCss}z-index:${z};overflow:hidden;"><img src="${placeholder}" style="position:absolute;top:${borderW}px;left:${borderW}px;width:${box.width}px;height:${box.height}px;object-fit:cover;object-position:${objPos};border-radius:${borderRadius};" /></div>`,
+        z,
+      });
+    } else {
+      // Direct image
+      const rotCss = rotation ? `transform:rotate(${rotation}deg);transform-origin:center;` : "";
+      let clipPath = "";
+      if (clipShape.includes("diagonal")) clipPath = "clip-path:polygon(0 0,100% 0,100% 85%,0 100%);";
+      parts.push({
+        html: `<img src="${placeholder}" style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height}px;object-fit:cover;object-position:${objPos};border-radius:${borderRadius};${clipPath}${shadowCss}${rotCss}z-index:${z};" />`,
+        z,
+      });
+    }
+  }
+
+  // ── Text Elements ──
+  for (const t of (da.textElements || [])) {
+    const box = t.boundingBox || { x: 50, y: 50, width: 400, height: 100 };
+    const z = t.zIndex ?? 15;
+    const ff = t.fontFamily || "Arial";
+    const fs = t.fontSize || 48;
+    const fw = t.fontWeight || "700";
+    const col = t.color || "#000";
+    const ta = t.textAlign || "left";
+    const lh = t.lineHeight || 1.1;
+    const ls = t.letterSpacing ? `letter-spacing:${t.letterSpacing}px;` : "";
+    const tt = t.textTransform && t.textTransform !== "none" ? `text-transform:${t.textTransform};` : "";
+    const fi = t.fontStyle === "italic" ? "font-style:italic;" : "";
+    const rot = t.rotation ? `transform:rotate(${t.rotation}deg);` : "";
+
+    // Outline / stroke
+    let outlineCss = "";
+    if (t.outline && typeof t.outline === "object" && t.outline.color && t.outline.width > 0) {
+      const ow = t.outline.width;
+      const oc = t.outline.color;
+      // Use text-shadow for 8-directional outline (better cross-browser)
+      outlineCss = `text-shadow:${-ow}px ${-ow}px 0 ${oc},${ow}px ${-ow}px 0 ${oc},${-ow}px ${ow}px 0 ${oc},${ow}px ${ow}px 0 ${oc},0 ${-ow}px 0 ${oc},0 ${ow}px 0 ${oc},${-ow}px 0 0 ${oc},${ow}px 0 0 ${oc};`;
+    }
+
+    // Shadow
+    let shadowCss = "";
+    if (!outlineCss && t.shadow && typeof t.shadow === "object" && t.shadow.blur > 0) {
+      shadowCss = `text-shadow:${t.shadow.offsetX||0}px ${t.shadow.offsetY||2}px ${t.shadow.blur}px ${t.shadow.color||"rgba(0,0,0,0.3)"};`;
+    }
+
+    // Background (for CTA badges)
+    let bgCss = "";
+    if (t.backgroundColor && t.backgroundColor !== "none") {
+      const pad = t.backgroundPadding || "8px 16px";
+      const br = t.backgroundBorderRadius || 0;
+      bgCss = `background:${t.backgroundColor};padding:${pad};border-radius:${br}px;display:inline-block;`;
+    }
+
+    // Content — map role to placeholder or use static
+    const role = (t.role || "").toLowerCase();
+    let content: string;
+    if (role === "headline" || role === "title") {
+      content = "{{HEADLINE}}";
+    } else if (role === "subheadline" || role === "subtitle" || role === "body") {
+      content = "{{SUBHEADLINE}}";
+    } else if (role === "cta" || role === "call-to-action") {
+      content = "{{CTA}}";
+    } else {
+      // Static text: hashtags, labels, info, badge-text, tagline
+      content = (t.content || "").replace(/\\n/g, "<br>").replace(/\n/g, "<br>");
+    }
+
+    parts.push({
+      html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;font-family:'${ff}',sans-serif;font-size:${fs}px;font-weight:${fw};color:${col};text-align:${ta};line-height:${lh};${ls}${tt}${fi}${outlineCss}${shadowCss}${bgCss}${rot}z-index:${z};">${content}</div>`,
+      z,
+    });
+  }
+
+  // ── Legacy typography mapping (if textElements is missing) ──
+  if (!da.textElements?.length && da.typography) {
+    const typo = da.typography;
+    const mapTypo = (t: any, placeholder: string, fallbackZ: number) => {
+      if (!t || (!t.content && !t.sizePixels)) return;
+      const box = { x: 50, y: fallbackZ * 40, width: cw * 0.8, height: 100 };
+      if (t.position) {
+        // Try parse "left:X% top:Y%" format
+        const leftM = t.position.match(/left[:\s]*(\d+)/i);
+        const topM = t.position.match(/top[:\s]*(\d+)/i);
+        if (leftM) box.x = Math.round(cw * parseInt(leftM[1]) / 100);
+        if (topM) box.y = Math.round(ch * parseInt(topM[1]) / 100);
+      }
+      parts.push({
+        html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;font-family:'${t.fontFamily||"Arial"}',sans-serif;font-size:${t.sizePixels||48}px;font-weight:${t.weight||"700"};color:${t.color||"#000"};text-align:${t.alignment||"left"};line-height:1.1;${t.style==="uppercase"?"text-transform:uppercase;":""}z-index:${fallbackZ};">${placeholder}</div>`,
+        z: fallbackZ,
+      });
+    };
+    mapTypo(typo.headline, "{{HEADLINE}}", 15);
+    mapTypo(typo.subheadline, "{{SUBHEADLINE}}", 16);
+    mapTypo(typo.cta, "{{CTA}}", 17);
+  }
+
+  // ── Logo ──
+  if (da.logoPlacement?.present !== false) {
+    const lp = da.logoPlacement || {};
+    const box = lp.boundingBox || { x: cw - 150, y: 30, width: 120, height: 60 };
+    const z = lp.zIndex ?? 25;
+    parts.push({
+      html: `<img src="{{LOGO_URL}}" style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;height:${box.height || box.width}px;object-fit:contain;z-index:${z};" />`,
+      z,
+    });
+  }
+
+  // ── Sort by z-index and assemble ──
+  parts.sort((a, b) => a.z - b.z);
+  return `<div style="position:relative;width:${cw}px;height:${ch}px;overflow:hidden;background:${bg};">${parts.map(p => p.html).join("")}</div>`;
+}
+
 // ── Validation ──
 function validateHtmlTemplate(raw: any, formatId: string, cw: number, ch: number, ar: string) {
   const errors: string[] = [];
@@ -8119,72 +8365,30 @@ app.post("/vault/template/from-visual", async (c) => {
       designAnalysis = analysisContent;
     }
 
-    // ═══════════ PASS 2: HTML/CSS Generation ═══════════
-    console.log(`[template-from-visual] Pass 2: Generating HTML/CSS template...`);
-    const htmlRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
-      method: "POST",
-      headers: apipodHeaders(),
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: HTML_TEMPLATE_GENERATION_PROMPT(cw, ch, ar, formatId, designAnalysis) },
-          { role: "user", content: [
-            { type: "text", text: "LOOK CAREFULLY at this reference image. Using the design analysis blueprint AND this image, generate pixel-perfect HTML/CSS that reproduces EVERY element: every photo (with exact position, rotation, clipping, borders), every decorative shape (wavy lines, arcs, circles, badges), every text block (with exact font size, weight, color, effects), and the logo placement. Do NOT simplify or omit any element. Output ONLY valid JSON with name and htmlTemplate fields — no markdown fences." },
-            imageContent,
-          ]},
-        ],
-        max_tokens: 16000,
-        temperature: 0.1,
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
+    // ═══════════ PASS 2: Code-based HTML generation from blueprint ═══════════
+    console.log(`[template-from-visual] Pass 2: Generating HTML from blueprint (code-based)...`);
 
-    if (!htmlRes.ok) {
-      const errText = await htmlRes.text().catch(() => "unknown");
-      console.log(`[template-from-visual] Pass 2 failed: ${htmlRes.status} ${errText.slice(0, 200)}`);
-      return c.json({ success: false, error: `HTML generation failed: ${htmlRes.status}` }, 502);
-    }
-
-    const htmlData = await htmlRes.json();
-    const rawContent = htmlData.choices?.[0]?.message?.content || "";
-    console.log(`[template-from-visual] Pass 2 response: ${rawContent.length} chars`);
-
-    // Parse response — handle multiple formats
-    let templateDef;
+    let parsedBlueprint: any;
     try {
-      const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "")
-                                 .replace(/```html\n?/g, "").replace(/```css\n?/g, "").trim();
-      if (cleaned.startsWith("<div")) {
-        templateDef = { name: "AI Generated", htmlTemplate: cleaned };
-      } else {
-        templateDef = JSON.parse(cleaned);
-      }
+      const cleaned2 = designAnalysis.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      parsedBlueprint = JSON.parse(cleaned2);
     } catch {
-      // Try extracting HTML from raw content
-      const divMatch = rawContent.match(/<div[\s\S]*<\/div>/);
-      if (divMatch) {
-        templateDef = { name: "AI Generated", htmlTemplate: divMatch[0] };
-      } else {
-        // Last fallback: try SVG extraction
-        const svgMatch = rawContent.match(/<svg[\s\S]*<\/svg>/);
-        if (svgMatch) {
-          templateDef = { name: "AI Generated", svgTemplate: svgMatch[0] };
-        } else {
-          console.log(`[template-from-visual] Parse failed: ${rawContent.slice(0, 500)}`);
-          return c.json({ success: false, error: "Failed to parse AI response", rawContent: rawContent.slice(0, 2000) }, 422);
-        }
-      }
+      parsedBlueprint = JSON.parse(designAnalysis);
     }
 
-    // Validate — prefer HTML, fall back to SVG
-    let validated;
-    if (templateDef.htmlTemplate) {
-      validated = validateHtmlTemplate(templateDef, formatId, cw, ch, ar);
-    } else if (templateDef.svgTemplate) {
-      validated = validateSvgTemplate(templateDef, formatId, cw, ch, ar);
-    } else {
-      return c.json({ success: false, error: "No htmlTemplate or svgTemplate in response" }, 422);
-    }
+    const generatedHtml = generateHtmlFromBlueprint(parsedBlueprint, cw, ch);
+    console.log(`[template-from-visual] Pass 2 code-gen: ${generatedHtml.length} chars HTML`);
+
+    // Count elements for logging
+    const da = parsedBlueprint.designAnalysis || parsedBlueprint;
+    const decoCount = (da.decorativeElements || []).length;
+    const photoCount = (da.photos || da.photoTreatments || []).length;
+    const textCount = (da.textElements || []).length;
+    console.log(`[template-from-visual] Blueprint: ${decoCount} decorative, ${photoCount} photos, ${textCount} texts`);
+
+    const templateDef = { name: da.overallStyle ? `AI Generated - ${da.overallStyle}` : "AI Generated", htmlTemplate: generatedHtml };
+
+    const validated = validateHtmlTemplate(templateDef, formatId, cw, ch, ar);
 
     if (!validated.template) {
       return c.json({ success: false, error: `Validation failed: ${validated.errors.join("; ")}` }, 422);
