@@ -87,6 +87,7 @@ export function HTMLTemplateEngine({ template, asset, vault, brandLogoUrl, width
         "{{PHOTO_1}}": asset?.imageUrl || "",
         "{{PHOTO_2}}": asset?.imageUrl2 || asset?.imageUrl || "",
         "{{LOGO_URL}}": brandLogoUrl || vault?.logo_url || "",
+        "{{REFERENCE_IMAGE}}": template.referenceImageUrl || "",
       };
 
       // Replace text and color placeholders
