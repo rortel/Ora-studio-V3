@@ -1,0 +1,7 @@
+[functions.server]
+entrypoint = "functions/server/index.tsx"
+verify_jwt = false
+
+[functions.make-server-cad57f79]
+entrypoint = "functions/server/index.tsx"
+verify_jwt = false

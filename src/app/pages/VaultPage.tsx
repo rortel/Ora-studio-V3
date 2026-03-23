@@ -561,6 +561,23 @@ function VaultPageContent() {
             </p>
           </div>
           {hasData && (
+            <div className="flex items-center gap-2.5">
+              <Link to="/hub/vault/products">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer transition-all shrink-0"
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    color: "#E8E4DF",
+                  }}>
+                  <ShoppingBag size={14} />
+                  Products
+                </motion.button>
+              </Link>
             <motion.button
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -586,6 +603,7 @@ function VaultPageContent() {
               )}
               {saving ? "Saving..." : saveOk ? "Saved" : "Save"}
             </motion.button>
+            </div>
           )}
         </div>
       </motion.div>
