@@ -280,8 +280,16 @@ function VaultPageContent() {
       });
       const data = await res.json();
       if (data.success && data.dna) {
-        const updated = { ...vault, ...data.dna, source_url: url, updatedAt: new Date().toISOString() };
-        setVault(updated);
+        // Smart merge: scan enriches but doesn't overwrite non-empty manual fields with null/empty
+        const merged: Record<string, any> = { ...vault };
+        for (const [key, val] of Object.entries(data.dna)) {
+          if (val === null || val === undefined) continue;
+          if (Array.isArray(val) && val.length === 0 && Array.isArray((vault as any)[key]) && (vault as any)[key].length > 0) continue;
+          if (typeof val === "string" && !val.trim() && (vault as any)[key] && typeof (vault as any)[key] === "string" && (vault as any)[key].trim()) continue;
+          merged[key] = val;
+        }
+        const updated = { ...merged, source_url: url, updatedAt: new Date().toISOString() };
+        setVault(updated as VaultData);
         setAnalyzeProgress("Saving to vault...");
         await saveVault(updated);
         setAnalyzeProgress("Saved!");

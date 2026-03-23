@@ -5168,6 +5168,8 @@ OTHER RULES:
 - Extract 4-6 distinct key messages.
 - Identify 8-15 approved brand terms and 5-10 forbidden terms from vocabulary patterns.
 - For photo_style, infer from industry, positioning, and descriptions.
+- EXTRACT mission, vision, values, personality, USP from About/Mission pages or infer from content.
+- IDENTIFY competitors from the same industry if mentioned or clearly implied.
 - confidence_score: 50-70 sparse data, 70-85 moderate, 85-100 rich.
 - RESPOND IN THE SAME LANGUAGE as the source content.
 
@@ -5176,6 +5178,11 @@ JSON:
   "company_name": "string",
   "industry": "string (specific, e.g. 'Luxury Hospitality')",
   "tagline": "string or null",
+  "mission": "string or null (brand mission statement — why does this brand exist?)",
+  "vision": "string or null (brand vision — where is the brand going?)",
+  "values": ["string (3-6 core values)"],
+  "personality": "string or null (brand personality in 3-5 adjectives, e.g. 'Bold, innovative, approachable')",
+  "usp": "string or null (unique selling proposition — what makes this brand different)",
   "products_services": ["string (4-6 items)"],
   "target_audiences": [{ "name": "string", "description": "string (2-3 sentences)" }],
   "colors": [{ "hex": "#XXXXXX", "name": "string", "role": "primary|secondary|accent|background|text" }],
@@ -5187,6 +5194,7 @@ JSON:
   "approved_terms": ["string (8-15)"],
   "forbidden_terms": ["string (5-10)"],
   "fonts": ["string"],
+  "competitors": ["string (2-5 direct competitors if identifiable)"],
   "confidence_score": 0-100
 }`,
           },
@@ -5280,7 +5288,15 @@ ${truncated}` },
     }
 
     const existing = await kv.get(`vault:${user.id}`) || {};
-    const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
+    // Smart merge: scan data enriches but does NOT overwrite non-empty manual fields with null/empty
+    const smartMerge: Record<string, any> = { ...existing };
+    for (const [key, val] of Object.entries(dna)) {
+      if (val === null || val === undefined) continue; // Don't overwrite with null
+      if (Array.isArray(val) && val.length === 0 && Array.isArray(existing[key]) && existing[key].length > 0) continue; // Don't overwrite non-empty array with empty
+      if (typeof val === "string" && !val.trim() && existing[key] && typeof existing[key] === "string" && existing[key].trim()) continue; // Don't overwrite non-empty string with empty
+      smartMerge[key] = val;
+    }
+    const merged = { ...smartMerge, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
     await kv.set(`vault:${user.id}`, merged);
 
     console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${deep ? "deep" : "std"})`);
