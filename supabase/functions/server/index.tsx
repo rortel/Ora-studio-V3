@@ -649,7 +649,7 @@ RULES:
 - Keep it between 80 and 180 words.
 - Preserve the user's creative intent EXACTLY — do not change the subject or concept.
 - If the user's request is in another language, translate it faithfully to English first.
-- ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt (e.g. "MAN eTGX", "Nike Air Max 90"). The brand name helps the AI match the reference image identity. Do NOT remove or replace brand names with generic descriptions. However, do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
+- ${preserveBrandName ? `CRITICAL PRODUCT FIDELITY: The user's prompt contains a detailed product description from a reference photo. You MUST preserve EVERY physical detail of the product (colors, shape, materials, textures, distinctive features, proportions). KEEP any brand names or model names from the prompt — they help the AI match the reference image. Do NOT simplify, generalize, or remove product details. The generated image must show this EXACT product, not a generic version. Do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
 - CRITICAL TEMPORAL: Vehicles, machines, technology MUST be described as MODERN, CONTEMPORARY, CURRENT-GENERATION (2024-era). NEVER vintage, retro, classic, old, antique. Always add "modern, latest generation" for vehicles.
 - NEVER reference competing brands or any brand at all.
 ${presetBlock}${brandVisualBlock}
@@ -1494,14 +1494,14 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // Map client aspect ratio to FAL image_size
   const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
   const falImageSize = falSizeMap[req.aspectRatio || ""] || "landscape_4_3";
-  // For preserveContent: strength=0.80 — 80% new scene from prompt, 20% product seed from ref.
-  // The prompt now includes the brand+model name for correct product identity.
-  const strength = preserveContent ? 0.80 : rawStrength;
+  // For preserveContent: use client-specified strength (typically 0.65) to preserve product identity.
+  // Lower strength = more of the original product preserved in the generated image.
+  const strength = preserveContent ? Math.min(rawStrength, 0.70) : rawStrength;
   const negativePrompt = preserveContent
-    ? "wrong brand, wrong logo, competitor brand, different product, altered product, wrong product, text overlay, watermark, visible letters, visible words, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime"
+    ? "wrong brand, wrong logo, competitor brand, different product, altered product, wrong product, modified product, distorted product, wrong color product, wrong shape, text overlay, watermark, visible letters, visible words, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime"
     : "";
   const realisticSuffix = preserveContent
-    ? ". Photorealistic commercial photography, natural lighting, shallow depth of field"
+    ? ". Photorealistic commercial photography, the exact same product must be clearly visible and identical to the reference, natural lighting, shallow depth of field"
     : "";
   const finalPrompt = req.prompt + realisticSuffix;
   console.log(`[img2img] model=${req.model}, strength=${strength} (raw=${rawStrength}, preserve=${preserveContent}), ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
@@ -1565,8 +1565,8 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
             image_size: falImageSize,
             num_images: 1,
             enable_safety_checker: true,
-            num_inference_steps: 30,
-            guidance_scale: 10,
+            num_inference_steps: 35,
+            guidance_scale: 12,
           };
           if (negativePrompt) falBody.negative_prompt = negativePrompt;
           const res = await fetch(`https://fal.run/${falModel}`, {
@@ -2058,15 +2058,17 @@ app.get("/user/init", async (c) => {
   const t0 = Date.now();
   try {
     const user = await requireAuth(c);
-    const [vault, libraryItems] = await Promise.all([
+    const [vault, libraryItems, products] = await Promise.all([
       kv.get(`vault:${user.id}`).catch(() => null),
       kv.getByPrefix(`lib:${user.id}:`).catch(() => []),
+      kv.getByPrefix(`product:${user.id}:`).catch(() => []),
     ]);
-    console.log(`[user/init GET] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
+    console.log(`[user/init GET] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} products=${(products || []).length} (${Date.now() - t0}ms)`);
     return c.json({
       success: true,
       vault: vault || null,
       library: libraryItems || [],
+      products: products || [],
       latencyMs: Date.now() - t0,
     });
   } catch (err: any) {
@@ -2079,15 +2081,17 @@ app.post("/user/init", async (c) => {
   const t0 = Date.now();
   try {
     const user = await requireAuth(c);
-    const [vault, libraryItems] = await Promise.all([
+    const [vault, libraryItems, products] = await Promise.all([
       kv.get(`vault:${user.id}`).catch(() => null),
       kv.getByPrefix(`lib:${user.id}:`).catch(() => []),
+      kv.getByPrefix(`product:${user.id}:`).catch(() => []),
     ]);
-    console.log(`[user/init] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
+    console.log(`[user/init] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} products=${(products || []).length} (${Date.now() - t0}ms)`);
     return c.json({
       success: true,
       vault: vault || null,
       library: libraryItems || [],
+      products: products || [],
       latencyMs: Date.now() - t0,
     });
   } catch (err: any) {
@@ -2933,6 +2937,368 @@ ${fmtDesc}`;
     return c.json({ success: true, copyMap, provider: usedProvider, formatCount: fmtCount, latencyMs: Date.now() - t0 });
   } catch (err) {
     console.log(`[campaign-texts] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — TEXT GENERATION V2 (retry + validation + variants)
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/generate-texts-v2", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    console.log(`[texts-v2] user=${user?.id || "guest"}`);
+
+    const body = await c.req.json().catch(() => ({}));
+    const brief = ((body.brief || "") as string).slice(0, 2000);
+    const targetAudience = ((body.targetAudience || "") as string).slice(0, 300);
+    const productUrls = ((body.productUrls || "") as string).slice(0, 500);
+    const formatIds = ((body.formats || "") as string).split(",").filter(Boolean);
+    const campaignObjective = ((body.campaignObjective || "") as string).slice(0, 300);
+    const toneOfVoice = ((body.toneOfVoice || "") as string).slice(0, 300);
+    const contentAngle = ((body.contentAngle || "") as string).slice(0, 500);
+    const keyMessages = ((body.keyMessages || "") as string).slice(0, 800);
+    const callToAction = ((body.callToAction || "") as string).slice(0, 300);
+    const explicitLanguage = ((body.language || "") as string).slice(0, 20);
+    const campaignStartDate = ((body.campaignStartDate || "") as string).slice(0, 30);
+    const campaignDuration = ((body.campaignDuration || "") as string).slice(0, 50);
+    console.log(`[texts-v2] brief="${brief.slice(0,120)}", fmts=[${formatIds.join(",")}]`);
+    if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
+    if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
+
+    // ── BRAND VAULT ──
+    let brandVault: any = null;
+    if (user) { try { brandVault = await kv.get(`vault:${user.id}`); } catch {} }
+    const brandCtx: string[] = [];
+    if (brandVault) {
+      if (brandVault.brandName) brandCtx.push(`BRAND NAME: ${brandVault.brandName}`);
+      if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
+      if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
+      if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
+      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
+      if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
+      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
+      if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
+      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY: ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
+      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS: ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
+      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
+      if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE: ${brandVault.targetAudience}`);
+      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
+      if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
+      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
+      if (brandVault.sections) { for (const s of brandVault.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
+    }
+
+    // ── PRODUCT INJECTION ──
+    const productId = ((body.productId || "") as string).trim();
+    if (productId && user) {
+      try {
+        const product = await kv.get(`product:${user.id}:${productId}`);
+        if (product) {
+          brandCtx.push(`\n══ FEATURED PRODUCT (MANDATORY — all copy must feature this product) ══`);
+          if (product.name) brandCtx.push(`PRODUCT NAME: ${product.name}`);
+          if (product.description) brandCtx.push(`PRODUCT DESCRIPTION: ${product.description}`);
+          if (product.url) brandCtx.push(`PRODUCT URL: ${product.url}`);
+          if (product.features?.length) brandCtx.push(`KEY FEATURES:\n${product.features.map((f: string) => `- ${f}`).join("\n")}`);
+          if (product.price) brandCtx.push(`PRICE: ${product.price} ${product.currency || ""}`);
+          if (product.category) brandCtx.push(`PRODUCT CATEGORY: ${product.category}`);
+          console.log(`[texts-v2] Product injected: ${product.name} (${productId})`);
+        }
+      } catch (e) { console.log(`[texts-v2] Product load failed: ${e}`); }
+    }
+
+    const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
+
+    const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
+      "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
+      "linkedin-carousel": { label: "LinkedIn Carousel", platform: "LinkedIn", type: "image" },
+      "linkedin-video": { label: "LinkedIn Video", platform: "LinkedIn", type: "video" },
+      "linkedin-text": { label: "LinkedIn Text Post", platform: "LinkedIn", type: "text" },
+      "instagram-post": { label: "Instagram Post", platform: "Instagram", type: "image" },
+      "instagram-carousel": { label: "Instagram Carousel", platform: "Instagram", type: "image" },
+      "instagram-story": { label: "Instagram Story", platform: "Instagram", type: "image" },
+      "instagram-reel": { label: "Instagram Reel", platform: "Instagram", type: "video" },
+      "facebook-post": { label: "Facebook Post", platform: "Facebook", type: "image" },
+      "facebook-story": { label: "Facebook Story", platform: "Facebook", type: "image" },
+      "facebook-video": { label: "Facebook Video", platform: "Facebook", type: "video" },
+      "facebook-ad": { label: "Facebook Ad", platform: "Facebook", type: "image" },
+      "tiktok-video": { label: "TikTok Video", platform: "TikTok", type: "video" },
+      "tiktok-image": { label: "TikTok Photo", platform: "TikTok", type: "image" },
+      "twitter-post": { label: "X Post", platform: "Twitter/X", type: "image" },
+      "twitter-text": { label: "X Thread", platform: "Twitter/X", type: "text" },
+      "youtube-thumbnail": { label: "YouTube Thumbnail", platform: "YouTube", type: "image" },
+      "youtube-short": { label: "YouTube Short", platform: "YouTube", type: "video" },
+      "pinterest-pin": { label: "Pinterest Pin", platform: "Pinterest", type: "image" },
+      "email-campaign": { label: "Email Campaign", platform: "Email", type: "text" },
+      "newsletter": { label: "Newsletter", platform: "Email", type: "text" },
+      "landing-hero": { label: "Landing Page Hero", platform: "Web", type: "image" },
+      "blog-header": { label: "Blog Header", platform: "Web", type: "image" },
+      "landing-page": { label: "Landing Page", platform: "Web", type: "text" },
+      "ad-banner": { label: "Display Ad", platform: "Ads", type: "image" },
+      "google-ad-text": { label: "Google Ad Copy", platform: "Ads", type: "text" },
+    };
+    const formats = formatIds.map(id => ({ id, ...(FORMAT_META[id] || { label: id, platform: "Other", type: "text" }) }));
+    const fmtDesc = formats.map((f: any) => `- ${f.id}: ${f.label} (${f.platform}, ${f.type})`).join("\n");
+
+    const frPattern = /\b(le|la|les|du|des|un|une|pour|avec|dans|sur|est|sont|nous|notre|votre|cette|ces|qui|que|mais)\b/i;
+    const lang = explicitLanguage && explicitLanguage !== "auto" ? explicitLanguage : (frPattern.test(brief) ? "fr" : "en");
+    const langLabel = lang === "fr" ? "FRENCH" : lang === "en" ? "ENGLISH" : lang.toUpperCase();
+
+    // Build CAMPAIGN DIRECTIVES block
+    const directives: string[] = [];
+    if (campaignObjective) directives.push(`CAMPAIGN OBJECTIVE: ${campaignObjective}`);
+    if (contentAngle) directives.push(`CONTENT ANGLE / EVENT CONTEXT: ${contentAngle}`);
+    if (keyMessages) directives.push(`KEY MESSAGES TO INTEGRATE:\n${keyMessages}`);
+    if (callToAction) directives.push(`EXACT CTA TO USE: ${callToAction}`);
+    if (toneOfVoice) directives.push(`TONE OF VOICE: ${toneOfVoice}`);
+    if (targetAudience) directives.push(`TARGET AUDIENCE: ${targetAudience}`);
+    if (campaignStartDate) directives.push(`CAMPAIGN START DATE: ${campaignStartDate}`);
+    if (campaignDuration) directives.push(`CAMPAIGN DURATION: ${campaignDuration}`);
+    if (productUrls) directives.push(`PRODUCT URLs: ${productUrls}`);
+    const directivesBlock = directives.length > 0 ? directives.join("\n") : "";
+
+    // ── V2 SYSTEM PROMPT — includes 3 variants per format ──
+    const sysPrompt =
+      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 3000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context.\n12. IMAGE PROMPTS: Each imagePrompt MUST NAME the exact brand and product model. Add key visual characteristics. Describe a COMPLETELY NEW SCENE from the brief. Always MODERN. Every imagePrompt must be unique per format. End with: No visible text, no logos, no letters, no watermarks.\n13. VIDEO PROMPTS: Name exact brand/product model. Describe NEW motion scene from the brief. End with: No visible text, no logos.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars.\n- youtube-thumbnail: Title overlay text 3-6 words.\n- youtube-short: Hook + script 30-60 words.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n\n═══ CRITICAL: 3 VARIANTS PER FORMAT ═══\nFor EACH format, you MUST generate exactly 3 creative variants with DIFFERENT angles/hooks.\nThe output JSON must have this structure:\n\n{ "formatId": { "variant_1": { ...fields... }, "variant_2": { ...fields... }, "variant_3": { ...fields... } } }\n\nEach variant object MUST include ALL these fields:\n{"subject":"","headline":"NEVER EMPTY - compelling hook","caption":"MAIN COPY min 80w social / 250w email. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","features":[],"imagePrompt":"MANDATORY: 40-80 word scene. START with exact brand+model name. End with: No visible text, no logos.","videoPrompt":"30-50 word motion scene."}\n\nEach variant must have a DIFFERENT creative angle:\n- variant_1: Direct/professional angle\n- variant_2: Storytelling/emotional angle\n- variant_3: Bold/provocative angle\n\nFORMATS:\n${fmtDesc}`;
+
+    const userPrompt = brief || `Create campaign for: ${productUrls}`;
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    const apipodModels = APIPOD_KEY ? ["gpt-4o", "gpt-5"] : [];
+
+    // ── V2: JSON parse helper ──
+    function parseJsonSafe(text: string): Record<string, any> {
+      const strats = [
+        () => JSON.parse(text.trim()),
+        () => { const m = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/); if (!m) throw 0; return JSON.parse(m[1]); },
+        () => { const m = text.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1]); },
+        () => { const m = text.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1].replace(/,\s*([}\]])/g,"$1")); },
+      ];
+      for (const s of strats) { try { const r = s(); if (r && typeof r === "object" && Object.keys(r).length > 0) return r; } catch {} }
+      return {};
+    }
+
+    // ── V2: Call LLM helper (APIPod → OpenAI fallback) ──
+    async function callLLM(temperature: number): Promise<{ text: string; provider: string }> {
+      for (const mdl of apipodModels) {
+        try {
+          console.log(`[texts-v2] APIPod ${mdl} (temp=${temperature})...`);
+          const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+            body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 8192, temperature }),
+          }).then(async (res) => { if (!res.ok) { const b = await res.text(); throw new Error(`APIPod ${res.status}: ${b.slice(0, 300)}`); } const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
+          const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Timeout 90s")), 90_000));
+          const result = await Promise.race([fetchP, timeoutP]);
+          if (result) return { text: result, provider: `apipod/${mdl}` };
+        } catch (err) { console.log(`[texts-v2] ${mdl} FAILED: ${err}`); }
+      }
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          console.log(`[texts-v2] OpenAI direct (temp=${temperature})...`);
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 8192, temperature }),
+          });
+          if (!res.ok) { const b = await res.text(); throw new Error(`OpenAI ${res.status}: ${b.slice(0, 300)}`); }
+          const result = (await res.json()).choices?.[0]?.message?.content || "";
+          if (result) return { text: result, provider: "openai-direct" };
+        } catch (e) { console.log(`[texts-v2] OpenAI FAILED: ${e}`); }
+      }
+      return { text: "", provider: "" };
+    }
+
+    // ── V2: Validate copyMap — each format must have variant_1 with headline+caption ──
+    function validateCopyMap(cm: Record<string, any>): boolean {
+      for (const fid of formatIds) {
+        const entry = cm[fid];
+        if (!entry) return false;
+        // Support both flat (v1-compat) and variant structure
+        const v1 = entry.variant_1 || entry;
+        if (!v1.headline || !v1.caption || v1.headline.trim().length < 2 || v1.caption.trim().length < 10) return false;
+      }
+      return true;
+    }
+
+    // ── V2: Retry loop (max 2 attempts) ──
+    let rawCopyMap: Record<string, any> = {};
+    let usedProvider = "";
+    let retries = 0;
+    const MAX_RETRIES = 2;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const temp = 0.7 + attempt * 0.1; // 0.7 first, 0.8 on retry
+      const { text, provider } = await callLLM(temp);
+      if (!text) { console.log(`[texts-v2] attempt ${attempt+1}: no text`); retries++; continue; }
+      console.log(`[texts-v2] attempt ${attempt+1}: ${text.length}c from ${provider}`);
+      const parsed = parseJsonSafe(text);
+      if (Object.keys(parsed).length === 0) { console.log(`[texts-v2] attempt ${attempt+1}: parse failed`); retries++; continue; }
+      rawCopyMap = parsed;
+      usedProvider = provider;
+      if (validateCopyMap(rawCopyMap)) { console.log(`[texts-v2] attempt ${attempt+1}: VALID`); break; }
+      console.log(`[texts-v2] attempt ${attempt+1}: validation failed (missing headline/caption), retrying...`);
+      retries++;
+    }
+
+    if (Object.keys(rawCopyMap).length === 0) {
+      console.log(`[texts-v2] ALL FAILED after ${retries} retries (${Date.now()-t0}ms)`);
+      return c.json({ success: false, error: "text_generation_failed", copyMap: {}, variants: {} });
+    }
+
+    // ── V2: Extract copyMap (variant_1 as default) + variants ──
+    const copyMap: Record<string, any> = {};
+    const variants: Record<string, any> = {};
+    for (const [fmtId, entry] of Object.entries(rawCopyMap)) {
+      if (entry && typeof entry === "object") {
+        if (entry.variant_1) {
+          // Structured variant response
+          copyMap[fmtId] = entry.variant_1;
+          variants[fmtId] = {
+            variant_1: entry.variant_1,
+            variant_2: entry.variant_2 || entry.variant_1,
+            variant_3: entry.variant_3 || entry.variant_1,
+          };
+        } else {
+          // Flat response (LLM didn't follow variant structure) — use as-is for variant_1
+          copyMap[fmtId] = entry;
+          variants[fmtId] = { variant_1: entry, variant_2: entry, variant_3: entry };
+        }
+      }
+    }
+
+    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    const fmtCount = Object.keys(copyMap).length;
+    console.log(`[texts-v2] DONE: ${fmtCount} fmts, ${usedProvider}, ${retries} retries, ${Date.now()-t0}ms`);
+    return c.json({ success: true, copyMap, variants, provider: usedProvider, formatCount: fmtCount, retries, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[texts-v2] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}`, copyMap: {}, variants: {} }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — CONTENT REPURPOSING (adapt copy to other formats)
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/repurpose", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    console.log(`[repurpose] user=${user?.id || "guest"}`);
+
+    const body = await c.req.json().catch(() => ({}));
+    const sourceFormat = (body.sourceFormat || "") as string;
+    const targetFormats = ((body.targetFormats || []) as string[]).filter(Boolean);
+    const headline = ((body.headline || "") as string).slice(0, 500);
+    const caption = ((body.caption || "") as string).slice(0, 3000);
+    const hashtags = ((body.hashtags || "") as string).slice(0, 500);
+    const ctaText = ((body.ctaText || "") as string).slice(0, 300);
+    const imagePrompt = ((body.imagePrompt || "") as string).slice(0, 500);
+    const explicitLanguage = ((body.language || "") as string).slice(0, 20);
+
+    if (!sourceFormat) return c.json({ success: false, error: "sourceFormat required" }, 400);
+    if (!targetFormats.length) return c.json({ success: false, error: "targetFormats required" }, 400);
+    if (!caption && !headline) return c.json({ success: false, error: "headline or caption required" }, 400);
+
+    // Load brand vault
+    let brandBlock = "No Brand Vault. Keep the same tone.";
+    if (user) {
+      try {
+        const bv: any = await kv.get(`vault:${user.id}`);
+        if (bv) {
+          const parts: string[] = [];
+          if (bv.brandName) parts.push(`BRAND: ${bv.brandName}`);
+          if (bv.tone) parts.push(`TONE: ${bv.tone}`);
+          if (bv.approvedTerms?.length) parts.push(`APPROVED: ${bv.approvedTerms.slice(0, 15).join(", ")}`);
+          if (bv.forbiddenTerms?.length) parts.push(`FORBIDDEN: ${bv.forbiddenTerms.slice(0, 15).join(", ")}`);
+          if (parts.length > 0) brandBlock = parts.join("\n");
+        }
+      } catch {}
+    }
+
+    const frPattern = /\b(le|la|les|du|des|un|une|pour|avec|dans|sur|est|sont|nous|notre)\b/i;
+    const lang = explicitLanguage && explicitLanguage !== "auto" ? explicitLanguage : (frPattern.test(caption || headline) ? "fr" : "en");
+    const langLabel = lang === "fr" ? "FRENCH" : "ENGLISH";
+
+    const FORMAT_RULES: Record<string, string> = {
+      "linkedin-post": "Professional hook. 150-300 words. 3-5 hashtags. CTA.",
+      "instagram-post": "80-150 words. 10-15 hashtags. Visual storytelling.",
+      "instagram-story": "15-30 words hook. Swipe CTA. Urgency.",
+      "instagram-reel": "Hook + voiceover. 20-40 words.",
+      "facebook-post": "Conversational. 100-200 words.",
+      "facebook-ad": "Headline(40c) + primary text(125c) + description(30c) + CTA.",
+      "twitter-post": "Max 280 chars. Punchy. 2-3 hashtags.",
+      "youtube-thumbnail": "Title overlay text 3-6 words. Click-bait hook.",
+      "pinterest-pin": "Title(100c) + description(200-500c). SEO keywords.",
+      "tiktok-video": "Viral hook 5-10 words. Script 30-60 words.",
+      "tiktok-image": "Punchy caption 30-80 words. 5-8 hashtags.",
+      "email-campaign": "Subject(50c) + headline + body(250-400w) + CTA.",
+      "linkedin-video": "Professional. 50-100 words.",
+      "linkedin-text": "Thought leadership. 200-400 words. 3-5 hashtags.",
+    };
+
+    const targetDesc = targetFormats.map(f => `- ${f}: ${FORMAT_RULES[f] || "Adapt length and tone appropriately."}`).join("\n");
+
+    const sysPrompt = `You are a cross-platform content adaptation expert.\n\nBRAND CONTEXT:\n${brandBlock}\n\nSOURCE CONTENT (from ${sourceFormat}):\nHEADLINE: ${headline}\nCAPTION: ${caption}\nHASHTAGS: ${hashtags}\nCTA: ${ctaText}\n\nRULES:\n1. Keep the SAME core message, brand voice, and product references.\n2. Adapt length, tone, and format conventions for each target.\n3. Each target format must feel NATIVE to its platform.\n4. ALL copy in ${langLabel}.\n5. Rewrite — do NOT just shorten the original.\n6. Adapt imagePrompt if provided: same subject, different scene/angle for each format.\n\nTARGET FORMATS:\n${targetDesc}\n\nOUTPUT: ONLY valid JSON. Keys = format IDs.\nEach value: {"headline":"","caption":"NEVER EMPTY","hashtags":"","ctaText":"","imagePrompt":"${imagePrompt ? "adapt the source imagePrompt for this format" : ""}"}`;
+
+    const userPrompt = `Adapt this content to: ${targetFormats.join(", ")}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    let resultText = "";
+    let usedProvider = "";
+
+    // Try APIPod
+    if (APIPOD_KEY) {
+      for (const mdl of ["gpt-4o", "gpt-5"]) {
+        try {
+          const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+            body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.5 }),
+          }).then(async (res) => { if (!res.ok) throw new Error(`${res.status}`); const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
+          const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Timeout")), 60_000));
+          resultText = await Promise.race([fetchP, timeoutP]);
+          if (resultText) { usedProvider = `apipod/${mdl}`; break; }
+        } catch {}
+      }
+    }
+
+    // Fallback OpenAI
+    if (!resultText) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.5 }),
+          });
+          if (res.ok) { resultText = (await res.json()).choices?.[0]?.message?.content || ""; usedProvider = "openai-direct"; }
+        } catch {}
+      }
+    }
+
+    if (!resultText) return c.json({ success: false, error: "All providers failed" });
+
+    // Parse JSON
+    let repurposed: Record<string, any> = {};
+    const strats = [
+      () => JSON.parse(resultText.trim()),
+      () => { const m = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/); if (!m) throw 0; return JSON.parse(m[1]); },
+      () => { const m = resultText.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1]); },
+    ];
+    for (const s of strats) { try { repurposed = s(); if (Object.keys(repurposed).length > 0) break; } catch {} }
+
+    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    console.log(`[repurpose] DONE: ${Object.keys(repurposed).length} formats, ${usedProvider}, ${Date.now()-t0}ms`);
+    return c.json({ success: true, repurposed, provider: usedProvider, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[repurpose] FATAL: ${err}`);
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
@@ -8168,6 +8534,112 @@ function validateSvgTemplate(raw: any, formatId: string, cw: number, ch: number,
 }
 
 // POST /vault/template/from-visual — Two-pass AI template generation
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — ENGAGEMENT PREDICTION
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/predict-engagement", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = await c.req.json().catch(() => ({}));
+    const assets = body.assets as any[];
+    if (!assets || !Array.isArray(assets) || assets.length === 0) {
+      return c.json({ success: false, error: "assets array required" }, 400);
+    }
+
+    // Build prompt for batch scoring
+    const assetDescs = assets.slice(0, 10).map((a: any, i: number) => {
+      return `[${i+1}] Platform: ${a.platform || "unknown"}, Format: ${a.formatId || "unknown"}\nHeadline: ${(a.headline || "").slice(0, 100)}\nCaption: ${(a.caption || "").slice(0, 300)}\nHashtags: ${(a.hashtags || "").slice(0, 100)}\nCTA: ${(a.ctaText || "").slice(0, 50)}`;
+    }).join("\n\n");
+
+    const sysPrompt = `You are a social media engagement expert. Score each content piece for predicted engagement.\n\nFor each piece, return:\n- score: integer 1-100 (realistic — most content is 40-70)\n- label: "Excellent" (80+), "Good" (60-79), "Average" (40-59), "Weak" (<40)\n- tips: 2-3 short actionable tips to improve engagement\n\nScoring criteria:\n- Hook strength (first line grabs attention?)\n- Emotional resonance\n- Platform-native formatting\n- Hashtag strategy\n- CTA clarity\n- Caption length vs platform norms\n- Originality of angle\n\nOUTPUT: ONLY valid JSON array. Each element: {"index":1,"score":65,"label":"Good","tips":["tip1","tip2"]}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    let resultText = "";
+
+    // Try APIPod
+    if (APIPOD_KEY) {
+      try {
+        const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+          body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: `Score these ${assets.length} content pieces:\n\n${assetDescs}` }], max_tokens: 2000, temperature: 0.3 }),
+        });
+        if (res.ok) resultText = (await res.json()).choices?.[0]?.message?.content || "";
+      } catch {}
+    }
+
+    // Fallback OpenAI
+    if (!resultText) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: `Score these ${assets.length} content pieces:\n\n${assetDescs}` }], max_tokens: 2000, temperature: 0.3 }),
+          });
+          if (res.ok) resultText = (await res.json()).choices?.[0]?.message?.content || "";
+        } catch {}
+      }
+    }
+
+    if (!resultText) return c.json({ success: false, error: "All providers failed" });
+
+    // Parse
+    let predictions: any[] = [];
+    try {
+      const cleaned = resultText.replace(/```(?:json)?\s*/g, "").replace(/\s*```/g, "").trim();
+      predictions = JSON.parse(cleaned);
+      if (!Array.isArray(predictions)) {
+        const m = resultText.match(/\[[\s\S]*\]/);
+        if (m) predictions = JSON.parse(m[0]);
+      }
+    } catch {
+      try {
+        const m = resultText.match(/\[[\s\S]*\]/);
+        if (m) predictions = JSON.parse(m[0]);
+      } catch {}
+    }
+
+    console.log(`[predict] DONE: ${predictions.length} predictions, ${Date.now()-t0}ms`);
+    return c.json({ success: true, predictions, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[predict] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ── Save custom template to KV ──
+app.post("/vault/template/save", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const template = body.template;
+    if (!template || !template.id || !template.formatId || !template.layers) {
+      return c.json({ success: false, error: "Invalid template (missing id, formatId, or layers)" }, 400);
+    }
+    // Store under user-specific key
+    const key = `template:${user.id}:${template.id}`;
+    await kv.set(key, template);
+    // Also maintain an index of user templates
+    const indexKey = `templates:${user.id}`;
+    const existing: string[] = (await kv.get(indexKey) as string[]) || [];
+    if (!existing.includes(template.id)) {
+      existing.push(template.id);
+      await kv.set(indexKey, existing);
+    }
+    console.log(`[template-save] Saved ${template.id} for user ${user.id}`);
+    return c.json({ success: true, templateId: template.id });
+  } catch (err) {
+    console.log(`[template-save] Error: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
 // Pass 1: Design analysis (structured JSON blueprint)
 // Pass 2: HTML/CSS generation from blueprint
 app.post("/vault/template/from-visual", async (c) => {
@@ -11249,21 +11721,21 @@ app.post("/campaign/analyze-refs", async (c) => {
       image_url: { url, detail: "high" },
     }));
 
-    const systemPrompt = `You are a visual intelligence analyst for brand campaigns. Analyze the provided reference images and extract a VISUAL DNA that will be used to generate NEW images matching these references as closely as possible.
+    const systemPrompt = `You are a visual intelligence analyst specializing in PRODUCT IDENTITY PRESERVATION for brand campaigns. Your mission is to extract a VISUAL DNA so precise that an AI image generator can reproduce this EXACT product in new scenes — the product must be virtually IDENTICAL to the reference.
 
-Extract PRECISELY:
-1. SUBJECT: Main subject (product type, color, material, shape, size, distinctive features). Be HYPER-SPECIFIC.
+Extract with MAXIMUM PRECISION:
+1. SUBJECT: CRITICAL — describe the product with surgical precision. Include: exact type, exact colors (with hex codes), exact materials, exact shape and proportions, exact size relative to the scene, all distinctive features (logos position, buttons, seams, textures, patterns, engravings). Describe it as if writing instructions for a 3D modeler to recreate it perfectly. Example: NOT "a black headphone" but "over-ear wireless headphone, matte black plastic body with brushed aluminum hinges, oval ear cups 9cm x 7cm, quilted protein leather pads, 3cm wide headband with subtle ORA branding embossed on left side, LED indicator light on right cup near the hinge".
 2. ENVIRONMENT: Setting, background, surfaces, props. Name exact materials and colors.
-3. COLOR_PALETTE: List 5-8 dominant colors as hex codes with descriptive names.
-4. LIGHTING: Direction (e.g. "camera-left 45°"), quality (hard/soft/diffused), color temperature (Kelvin), shadow style, fill ratio.
-5. COMPOSITION: Framing (close-up/medium/wide), angle (eye-level/overhead/low/three-quarter), rule of thirds placement, depth of field.
-6. TEXTURE: Surface details visible (grain, reflection, matte, glossy, fabric, metal, skin).
-7. MOOD: Emotional tone with 3-4 descriptors (e.g. "premium, understated, warm, aspirational").
+3. COLOR_PALETTE: List 5-8 dominant colors as hex codes with descriptive names. Prioritize PRODUCT colors first.
+4. LIGHTING: Direction, quality, color temperature (Kelvin), shadow style, fill ratio.
+5. COMPOSITION: Framing, angle, rule of thirds placement, depth of field.
+6. TEXTURE: Surface details of the PRODUCT specifically (grain, reflection, matte, glossy, fabric weave, metal finish, plastic finish).
+7. MOOD: Emotional tone with 3-4 descriptors.
 8. PHOTOGRAPHY_STYLE: Genre and reference (e.g. "commercial product shot, Apple-style hero imagery").
-9. POST_PROCESSING: Contrast level, saturation, grain, color grading (e.g. "low contrast, slightly desaturated, warm color grade, minimal grain").
-10. DISTINCTIVE_ELEMENTS: Anything unique that MUST be reproduced (specific object detail, spatial relationship, gesture, distinctive shape).
+9. POST_PROCESSING: Contrast level, saturation, grain, color grading.
+10. DISTINCTIVE_ELEMENTS: CRITICAL — list every unique visual detail that makes this product recognizable: logo placement, color accents, button positions, distinctive silhouette, unique design features, branding elements. These MUST be reproduced exactly.
 
-Output as JSON with these 10 keys (snake_case). Values should be strings. Be HYPER-SPECIFIC — the output will be used verbatim in image generation prompts.`;
+Output as JSON with these 10 keys (snake_case). Values should be strings. Be EXTREMELY PRECISE on SUBJECT and DISTINCTIVE_ELEMENTS — these are used to ensure the generated images show the EXACT same product, not a generic version.`;
 
     const userPrompt = `Analyze these ${imageUrls.length} reference image(s).${brief ? ` Campaign context: "${brief.slice(0, 500)}"` : ""}${targetAudience ? ` Target audience: "${targetAudience.slice(0, 200)}"` : ""}
 
@@ -13190,6 +13662,277 @@ app.get("/generate/cl-hf-status", async (c) => {
   } catch (err) {
     console.log(`[cl-hf-status] error:`, err);
     return c.json({ success: false, state: "error", error: `Higgsfield status check failed: ${err}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ══ PRODUCT CATALOGUE CRUD ═══════════════════════════════
+// ═══════════════════════════════════════════════════════════
+
+// POST /products — Create a new product
+app.post("/products", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { name, description, url, features, price, currency, category } = body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return c.json({ success: false, error: "Product name is required" }, 400);
+    }
+    const productId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const product = {
+      id: productId,
+      name: name.trim(),
+      description: (description || "").trim(),
+      url: (url || "").trim(),
+      features: Array.isArray(features) ? features.filter((f: string) => f && f.trim()) : [],
+      price: (price || "").toString().trim(),
+      currency: (currency || "EUR").trim(),
+      category: (category || "").trim(),
+      images: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, product);
+    console.log(`[products] Created product ${productId} for user ${user.id.slice(0, 8)}: "${name}"`);
+    return c.json({ success: true, product });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] POST /products ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Create product failed: ${msg}` }, 500);
+  }
+});
+
+// GET /products — List all products for the user
+app.get("/products", async (c) => {
+  try {
+    const token = c.req.query("_token") || c.get?.("userToken") || c.req.header("X-User-Token") || c.req.header("Authorization")?.split(" ")[1];
+    if (!token) return c.json({ success: false, error: "No auth token" }, 401);
+    const payload = decodeJwtPayload(token);
+    if (!payload?.sub) return c.json({ success: false, error: "Invalid token" }, 401);
+    const userId = payload.sub;
+
+    const products = await kv.getByPrefix(`product:${userId}:`).catch(() => []);
+    // Sort by createdAt desc
+    const sorted = (products || []).sort((a: any, b: any) =>
+      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
+
+    // Refresh signed URLs for product images
+    if (sorted.length > 0) {
+      await ensureImageBankBucket();
+      const sb = supabaseAdmin();
+      for (const product of sorted) {
+        if (product.images?.length) {
+          for (const img of product.images) {
+            if (img.storagePath) {
+              try {
+                const { data } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(img.storagePath, 86400);
+                img.signedUrl = data?.signedUrl || null;
+              } catch { img.signedUrl = null; }
+            }
+          }
+        }
+      }
+    }
+
+    console.log(`[products] GET /products: ${sorted.length} products for user ${userId.slice(0, 8)}`);
+    return c.json({ success: true, products: sorted });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] GET /products ERROR: ${msg}`);
+    return c.json({ success: false, error: `List products failed: ${msg}` }, 500);
+  }
+});
+
+// PUT /products/:id — Update a product
+app.put("/products/:id", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const productId = c.req.param("id");
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { name, description, url, features, price, currency, category } = body;
+
+    const kvKey = `product:${user.id}:${productId}`;
+    const existing = await kv.get(kvKey);
+    if (!existing) return c.json({ success: false, error: `Product not found: ${productId}` }, 404);
+
+    if (name !== undefined) existing.name = name.trim();
+    if (description !== undefined) existing.description = description.trim();
+    if (url !== undefined) existing.url = url.trim();
+    if (features !== undefined) existing.features = Array.isArray(features) ? features.filter((f: string) => f && f.trim()) : existing.features;
+    if (price !== undefined) existing.price = price.toString().trim();
+    if (currency !== undefined) existing.currency = currency.trim();
+    if (category !== undefined) existing.category = category.trim();
+    existing.updatedAt = new Date().toISOString();
+
+    await kv.set(kvKey, existing);
+    console.log(`[products] PUT /products/${productId}: updated for user ${user.id.slice(0, 8)}`);
+    return c.json({ success: true, product: existing });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] PUT /products/:id ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Update product failed: ${msg}` }, 500);
+  }
+});
+
+// DELETE /products/:id — Delete a product and its images
+app.delete("/products/:id", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const productId = c.req.param("id");
+
+    const kvKey = `product:${user.id}:${productId}`;
+    const existing = await kv.get(kvKey);
+    if (!existing) return c.json({ success: false, error: `Product not found: ${productId}` }, 404);
+
+    // Delete product images from storage
+    if (existing.images?.length) {
+      await ensureImageBankBucket();
+      const sb = supabaseAdmin();
+      const paths = existing.images.map((img: any) => img.storagePath).filter(Boolean);
+      if (paths.length) {
+        const { error: delErr } = await sb.storage.from(IMAGE_BANK_BUCKET).remove(paths);
+        if (delErr) console.log(`[products] Storage delete warning for ${productId}: ${delErr.message}`);
+      }
+    }
+
+    await kv.del(kvKey);
+    console.log(`[products] DELETE /products/${productId}: removed for user ${user.id.slice(0, 8)}`);
+    return c.json({ success: true, deletedId: productId });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] DELETE /products/:id ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Delete product failed: ${msg}` }, 500);
+  }
+});
+
+// POST /products/:id/images — Upload images for a product (multipart/form-data)
+app.post("/products/:id/images", async (c) => {
+  const t0 = Date.now();
+  try {
+    await ensureImageBankBucket();
+    const sb = supabaseAdmin();
+    const productId = c.req.param("id");
+    const contentType = c.req.header("Content-Type") || "";
+
+    if (!contentType.includes("multipart/form-data")) {
+      return c.json({ success: false, error: "Use multipart/form-data with 'files' field" }, 400);
+    }
+
+    const formData = await c.req.formData();
+    const files = formData.getAll("files") as File[];
+    const formToken = formData.get("_token") as string || "";
+    const jwt = decodeJwtPayload(formToken);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    // Verify product exists
+    const kvKey = `product:${userId}:${productId}`;
+    const product = await kv.get(kvKey);
+    if (!product) return c.json({ success: false, error: `Product not found: ${productId}` }, 404);
+
+    if (!files || files.length === 0) {
+      return c.json({ success: false, error: "No files provided" }, 400);
+    }
+
+    const results: any[] = [];
+    for (const file of files) {
+      const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (!allowed.includes(file.type)) {
+        results.push({ fileName: file.name, success: false, error: `Unsupported type: ${file.type}` });
+        continue;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        results.push({ fileName: file.name, success: false, error: "File exceeds 10MB limit" });
+        continue;
+      }
+
+      const imageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const ext = file.name.split(".").pop() || "jpg";
+      const storagePath = `products/${userId}/${productId}/${imageId}.${ext}`;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const { error: uploadError } = await sb.storage
+        .from(IMAGE_BANK_BUCKET)
+        .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false });
+
+      if (uploadError) {
+        results.push({ fileName: file.name, success: false, error: uploadError.message });
+        continue;
+      }
+
+      const { data: signedData } = await sb.storage
+        .from(IMAGE_BANK_BUCKET)
+        .createSignedUrl(storagePath, 86400);
+
+      const imgMeta = {
+        id: imageId,
+        fileName: file.name,
+        storagePath,
+        fileSize: file.size,
+        mimeType: file.type,
+        signedUrl: signedData?.signedUrl || null,
+        uploadedAt: new Date().toISOString(),
+      };
+
+      // Add to product.images array
+      if (!product.images) product.images = [];
+      product.images.push(imgMeta);
+      results.push({ ...imgMeta, success: true });
+    }
+
+    product.updatedAt = new Date().toISOString();
+    await kv.set(kvKey, product);
+
+    console.log(`[products] Image upload for ${productId}: ${results.filter(r => r.success).length}/${results.length} (${Date.now() - t0}ms)`);
+    return c.json({ success: true, images: results, product });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] POST /products/:id/images ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Image upload failed: ${msg}` }, 500);
+  }
+});
+
+// DELETE /products/:id/images/:imageId — Delete a single product image
+app.delete("/products/:id/images/:imageId", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const productId = c.req.param("id");
+    const imageId = c.req.param("imageId");
+
+    const kvKey = `product:${user.id}:${productId}`;
+    const product = await kv.get(kvKey);
+    if (!product) return c.json({ success: false, error: `Product not found: ${productId}` }, 404);
+
+    const imgIndex = (product.images || []).findIndex((img: any) => img.id === imageId);
+    if (imgIndex === -1) return c.json({ success: false, error: `Image not found: ${imageId}` }, 404);
+
+    const img = product.images[imgIndex];
+
+    // Delete from storage
+    if (img.storagePath) {
+      await ensureImageBankBucket();
+      const sb = supabaseAdmin();
+      const { error: delErr } = await sb.storage.from(IMAGE_BANK_BUCKET).remove([img.storagePath]);
+      if (delErr) console.log(`[products] Storage delete warning for image ${imageId}: ${delErr.message}`);
+    }
+
+    // Remove from product
+    product.images.splice(imgIndex, 1);
+    product.updatedAt = new Date().toISOString();
+    await kv.set(kvKey, product);
+
+    console.log(`[products] DELETE image ${imageId} from product ${productId}`);
+    return c.json({ success: true, deletedImageId: imageId });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[products] DELETE /products/:id/images/:imageId ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Delete image failed: ${msg}` }, 500);
   }
 });
 

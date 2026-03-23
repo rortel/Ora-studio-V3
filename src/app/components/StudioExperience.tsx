@@ -67,9 +67,9 @@ export function StudioExperience() {
               marginBottom: 12,
             }}
           >
-            The studio
+            The <span style={{ color: "#8B6CF7" }}>studio</span>
           </h2>
-          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#5C5856", maxWidth: 440 }}>
+          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#6B6660", maxWidth: 440 }}>
             Type your prompt. Watch results arrive from multiple models simultaneously.
           </p>
         </motion.div>

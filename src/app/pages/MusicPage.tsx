@@ -392,7 +392,7 @@ function MusicPageContent() {
   const playingProgress = totalDuration ? (currentTime / totalDuration) * 100 : 0;
 
   return (
-    <div className="min-h-screen" style={{ background: "#131211", paddingBottom: currentTrack ? 100 : 0 }}>
+    <div className="min-h-screen" style={{ background: "#18171A", paddingBottom: currentTrack ? 100 : 0 }}>
       <div className="max-w-[1400px] mx-auto px-6 py-8 md:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -413,7 +413,7 @@ function MusicPageContent() {
           <Link
             to="/hub"
             className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "#E8E4DF", color: "#131211", fontSize: "14px", fontWeight: 500 }}
+            style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
             Generate new
@@ -524,7 +524,7 @@ function MusicPageContent() {
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search tracks..."
                   className="w-full pl-9 pr-4 py-2.5 rounded-lg border-none outline-none"
-                  style={{ background: "#1a1918", color: "#E8E4DF", fontSize: "13px", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "#201F23", color: "#E8E4DF", fontSize: "13px", border: "1px solid rgba(255,255,255,0.06)" }}
                 />
               </div>
               <div className="flex items-center gap-1">
@@ -560,7 +560,7 @@ function MusicPageContent() {
                   Generate audio from the Hub to start building your music library.
                 </p>
                 <Link to="/hub" className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "#E8E4DF", color: "#131211", fontSize: "14px", fontWeight: 500 }}>
+                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}>
                   <Plus size={14} /> Open AI Hub
                 </Link>
               </div>
@@ -701,7 +701,7 @@ function MusicPageContent() {
             onClick={() => setExtendTrack(null)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="rounded-2xl p-6 w-full max-w-md"
-              style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
+              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
               <h3 style={{ fontSize: "18px", fontWeight: 500, color: "#E8E4DF", marginBottom: "4px" }}>Extend Track</h3>
               <p style={{ fontSize: "13px", color: "#9A9590", marginBottom: "16px" }}>Continue "{extendTrack.title}" from a specific point</p>
@@ -753,7 +753,7 @@ function MusicPageContent() {
             onClick={() => { setLyricsTrack(null); setLyricsContent(""); }}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-auto"
-              style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
+              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <h3 style={{ fontSize: "18px", fontWeight: 500, color: "#E8E4DF" }}>Lyrics</h3>
@@ -787,9 +787,9 @@ function MusicPageContent() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 300, opacity: 0 }}
             className="fixed right-0 top-0 bottom-[80px] w-[320px] z-[90] overflow-auto"
-            style={{ background: "#1a1918", borderLeft: "1px solid rgba(255,255,255,0.06)", boxShadow: "-8px 0 24px rgba(0,0,0,0.3)" }}
+            style={{ background: "#201F23", borderLeft: "1px solid rgba(255,255,255,0.06)", boxShadow: "-8px 0 24px rgba(0,0,0,0.3)" }}
           >
-            <div className="flex items-center justify-between p-4 sticky top-0" style={{ background: "#1a1918", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center justify-between p-4 sticky top-0" style={{ background: "#201F23", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span style={{ fontSize: "14px", fontWeight: 500, color: "#E8E4DF" }}>Queue ({queue.length})</span>
               <button onClick={() => setShowQueue(false)} className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/5">
                 <X size={14} style={{ color: "#9A9590" }} />
@@ -818,8 +818,8 @@ function MusicPageContent() {
 
       {/* Persistent Player Bar */}
       {currentTrack && (
-        <div className="fixed bottom-0 left-0 right-0 z-[80] md:ml-[48px]"
-          style={{ background: "#1a1918", borderTop: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 -4px 24px rgba(0,0,0,0.3)" }}>
+        <div className="fixed bottom-0 left-0 right-0 z-[80] md:ml-[56px]"
+          style={{ background: "#201F23", borderTop: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 -4px 24px rgba(0,0,0,0.3)" }}>
           {/* Progress bar */}
           <div ref={progressRef} className="h-1 w-full cursor-pointer group relative" style={{ background: "rgba(255,255,255,0.06)" }}
             onClick={handleSeek}>
@@ -860,7 +860,7 @@ function MusicPageContent() {
                 onClick={() => { if (audioRef.current) { if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); } else { audioRef.current.play(); setIsPlaying(true); } } }}
                 className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
                 style={{ background: "#E8E4DF" }}>
-                {isPlaying ? <Pause size={18} style={{ color: "#131211" }} /> : <Play size={18} style={{ color: "#131211", marginLeft: 2 }} />}
+                {isPlaying ? <Pause size={18} style={{ color: "#18171A" }} /> : <Play size={18} style={{ color: "#18171A", marginLeft: 2 }} />}
               </button>
               <button onClick={handleNext} className="cursor-pointer" style={{ color: "#9A9590" }}>
                 <SkipForward size={18} />

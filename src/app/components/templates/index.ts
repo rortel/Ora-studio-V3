@@ -1,4 +1,5 @@
 import type { TemplateDefinition } from "./types";
+import { STARTER_PACK_TEMPLATES } from "./starter-pack";
 
 // ── Helper: gradient overlay from bottom ──
 const bottomGradient = (id: string, startY = 50): TemplateDefinition["layers"][0] => ({
@@ -306,6 +307,7 @@ const ALL_TEMPLATES: TemplateDefinition[] = [
   ...youtubeThumbnailTemplates,
   ...pinterestPinTemplates,
   ...xPostTemplates,
+  ...STARTER_PACK_TEMPLATES,
 ];
 
 const TEMPLATE_BY_FORMAT: Record<string, TemplateDefinition[]> = {};

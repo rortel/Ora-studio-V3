@@ -269,9 +269,7 @@ function CalendarPageContent() {
       {/* Header */}
       <div className="border-b border-border bg-card">
         <div className="max-w-[1200px] mx-auto px-6 py-5">
-          <Link to="/hub" className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors mb-4" style={{ fontSize: "13px" }}>
-            <ArrowLeft size={14} /> Back to Hub
-          </Link>
+          {/* Navigation handled by sidebar */}
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-1">

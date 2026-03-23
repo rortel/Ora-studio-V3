@@ -60,7 +60,7 @@ function corsBody(token: string, data?: Record<string, any>): string {
 
 // ── Shared style constants ──
 const C = {
-  bg: "#1a1918",
+  bg: "#201F23",
   bgInner: "rgba(255,255,255,0.03)",
   border: "rgba(255,255,255,0.06)",
   borderStrong: "rgba(255,255,255,0.10)",

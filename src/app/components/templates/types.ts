@@ -84,7 +84,7 @@ export interface TemplateDefinition {
   aspectRatio: string;
   canvasWidth: number;
   canvasHeight: number;
-  category: "minimal" | "bold" | "editorial" | "gradient" | "complex" | "ai-generated";
+  category: "minimal" | "bold" | "editorial" | "gradient" | "complex" | "ai-generated" | "magazine" | "corporate" | "neon" | "vintage" | "playful";
   layers: TemplateLayer[];
   /** Origin of the template */
   source?: "builtin" | "ai-generated";

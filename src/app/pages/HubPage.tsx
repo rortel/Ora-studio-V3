@@ -1311,63 +1311,44 @@ function HubPageContent() {
   ];
 
   return (
-    <div className="flex flex-col bg-background relative h-[calc(100dvh-56px)] md:h-screen">
+    <div className="flex flex-col bg-background relative h-[calc(100dvh-64px)] md:h-screen">
 
       {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between px-5 h-12 border-b bg-card flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Zap size={15} style={{ color: "#E8E4DF" }} />
-            <span style={{ fontSize: "14px", fontWeight: 500, color: "#E8E4DF", letterSpacing: "-0.02em" }}>
-              Hub
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            {tabDef.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    // When switching to Library, auto-select campaign tab if there are campaign items
-                    if (tab.id === "library" && library.some(l => l.source === "campaign")) {
-                      setLibraryTab("campaign");
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${isActive ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
-                  style={{ fontSize: "12px", fontWeight: isActive ? 600 : 400 }}
-                >
-                  <Icon size={13} />
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span
-                      className={`px-1.5 py-0.5 rounded-full ${isActive ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
-                      style={{ fontSize: "9px", fontWeight: 600, minWidth: 18, textAlign: "center", display: "inline-block" }}
-                    >
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+      <div className="flex items-center justify-between px-3 md:px-5 h-12 border-b bg-card flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {tabDef.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === "library" && library.some(l => l.source === "campaign")) {
+                    setLibraryTab("campaign");
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${isActive ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
+                style={{ fontSize: "12px", fontWeight: isActive ? 600 : 400 }}
+              >
+                <Icon size={13} />
+                <span className="hidden sm:inline">{tab.label}</span>
+                {tab.count > 0 && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full ${isActive ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
+                    style={{ fontSize: "9px", fontWeight: 600, minWidth: 18, textAlign: "center", display: "inline-block" }}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            to="/hub/vault"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-            style={{ fontSize: "12px", fontWeight: 400 }}
-          >
-            Brand Vault <ArrowRight size={11} />
-          </Link>
-          <div className="w-px h-4 bg-border" />
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-ora-signal-light">
-            <span className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
-            <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>4 models connected</span>
-          </div>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-ora-signal-light">
+          <span className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
+          <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>4 models</span>
         </div>
       </div>
 
@@ -1471,7 +1452,7 @@ function HubPageContent() {
                   style={{
                     fontSize: "12px", fontWeight: isActive ? 600 : 400,
                     background: isActive ? tc : "transparent",
-                    color: isActive ? "#131211" : "#5C5856",
+                    color: isActive ? "#18171A" : "#5C5856",
                     border: isActive ? "none" : "1px solid rgba(255,255,255,0.06)",
                   }}
                 >
@@ -1981,24 +1962,67 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
   }
   if (generations.length === 0 && !isGenerating) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 px-6">
-        <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-          style={{ background: "linear-gradient(135deg, #D4956B 0%, #C27A98 50%, #5E6AD2 100%)", boxShadow: "0 8px 24px rgba(94,106,210,0.15)" }}>
-          <Sparkles size={28} style={{ color: "#E8E4DF" }} />
-        </div>
-        <h2 className="mb-3" style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "#E8E4DF" }}>
-          Generate anything
+      <div className="flex flex-col items-center justify-center py-20 px-6">
+        <h2 className="mb-2" style={{ fontSize: "clamp(1.5rem, 3vw, 2.2rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "#E8E4DF" }}>
+          What do you want to create?
         </h2>
-        <p className="text-center max-w-[420px] mb-8" style={{ fontSize: "15px", lineHeight: 1.55, color: "#9A9590" }}>
-          Type what you need below. Select models to compare, then hit Enter. ORA generates from <span style={{ fontWeight: 600, color: "#E8E4DF" }}>{activeModels.length} model{activeModels.length > 1 ? "s" : ""}</span> — you pick the best.
+        <p className="text-center max-w-[400px] mb-10" style={{ fontSize: "14px", lineHeight: 1.55, color: "#7A7572" }}>
+          Describe what you need below, or start a full campaign.
         </p>
+
+        {/* Quick action cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-[540px] w-full mb-10">
+          <motion.button
+            whileHover={{ scale: 1.02, y: -3 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setContentType("campaign")}
+            className="flex items-center gap-4 p-5 rounded-2xl cursor-pointer text-left transition-all"
+            style={{
+              background: "linear-gradient(135deg, rgba(124,107,240,0.12) 0%, rgba(212,149,107,0.08) 100%)",
+              border: "1px solid rgba(124,107,240,0.25)",
+              boxShadow: "0 2px 12px rgba(124,107,240,0.08)",
+            }}
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(124,107,240,0.18)" }}>
+              <Rocket size={20} style={{ color: "var(--ora-signal)" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>Create Campaign</div>
+              <div style={{ fontSize: "12px", color: "#9A9590", marginTop: 2 }}>Posts, visuals & copy for every platform</div>
+            </div>
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02, y: -3 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setContentType("image")}
+            className="flex items-center gap-4 p-5 rounded-2xl cursor-pointer text-left transition-all"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.09)",
+            }}
+          >
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(255,255,255,0.06)" }}>
+              <ImageIcon size={20} style={{ color: "#9A9590" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>Create Visual</div>
+              <div style={{ fontSize: "12px", color: "#9A9590", marginTop: 2 }}>Image, video or music with AI models</div>
+            </div>
+          </motion.button>
+        </div>
+
+        {/* Style suggestions */}
         <div className="flex flex-wrap justify-center gap-2 max-w-[500px]">
           {getSuggestions(contentType).map((s) => (
             <motion.span
               key={s}
               whileHover={{ scale: 1.05, y: -2 }}
-              className="px-3.5 py-2 rounded-full cursor-default"
-              style={{ border: "1px solid rgba(255,255,255,0.10)", fontSize: "12px", fontWeight: 700, color: "#9A9590", background: "#222120" }}
+              onClick={() => { setPrompt(s); }}
+              className="px-3.5 py-2 rounded-full cursor-pointer"
+              style={{ border: "1px solid rgba(255,255,255,0.10)", fontSize: "12px", fontWeight: 500, color: "#9A9590", background: "#222120" }}
             >
               {s}
             </motion.span>

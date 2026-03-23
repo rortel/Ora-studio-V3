@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { Link } from "react-router";
 import {
   Globe, Upload, Loader2, Check, X, Plus,
   Palette, Users, Target, Megaphone, Sparkles,
@@ -394,14 +395,11 @@ function VaultPageContent() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="mb-3 uppercase" style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.1em", color: "#5E6AD2" }}>
-              Brand Intelligence
-            </p>
             <h1 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.15, color: "#E8E4DF" }}>
-              Brand Vault
+              Brand Settings
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", lineHeight: 1.55, color: "#9A9590", fontWeight: 400, maxWidth: 460 }}>
-              Your brand DNA, extracted and structured. Drop a URL, a PDF, or an image.
+              Your brand identity. Scan your website or drop a file to auto-configure.
             </p>
           </div>
           {hasData && (
@@ -437,7 +435,7 @@ function VaultPageContent() {
       {/* ── Scanner ── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="rounded-xl p-5 mb-10"
-        style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}
+        style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}>
@@ -521,7 +519,7 @@ function VaultPageContent() {
             <motion.div
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="rounded-xl p-6 mb-6"
-              style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   {/* Logo */}
@@ -662,7 +660,7 @@ function VaultPageContent() {
               <SectionCard icon={ShoppingBag} title="Products & Services" count={vault.products_services.length}
                 open={isOpen("products")} onToggle={() => toggleSection("products")}>
                 {vault.products_services.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 mb-3">
                     {vault.products_services.map((p, i) => (
                       <span key={i} className="px-2.5 py-1 rounded-lg"
                         style={{ fontSize: "12px", fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "#E8E4DF", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -671,6 +669,13 @@ function VaultPageContent() {
                     ))}
                   </div>
                 ) : <EmptyState />}
+                <Link
+                  to="/hub/vault/products"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors hover:bg-white/[0.04] mt-2"
+                  style={{ fontSize: "12px", fontWeight: 600, color: "#5E6AD2" }}>
+                  <ArrowRight size={12} />
+                  Manage Product Catalogue
+                </Link>
               </SectionCard>
 
               {/* Visual Style */}
@@ -847,7 +852,7 @@ function SectionCard({ icon: Icon, title, count, children, open, onToggle }: {
   return (
     <div
       className="rounded-xl overflow-hidden transition-all"
-      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+      style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
       {/* Header */}
       <button
         onClick={onToggle}
