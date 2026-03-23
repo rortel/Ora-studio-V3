@@ -326,11 +326,12 @@ export function Hero() {
         </div>
       </div>
 
-      {/* ━━━ Layer 4: Vignette overlay (focus toward center) ━━━ */}
+      {/* ━━━ Layer 4: Vignette overlay with subtle violet glow ━━━ */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background: `
+            radial-gradient(ellipse 50% 40% at 50% 55%, rgba(139,108,247,0.06) 0%, transparent 70%),
             radial-gradient(ellipse 70% 65% at 50% 50%, transparent 30%, rgba(10,10,9,0.7) 100%)
           `,
         }}
@@ -387,7 +388,7 @@ export function Hero() {
                         fontWeight: 300,
                         lineHeight: 1.05,
                         letterSpacing: "-0.045em",
-                        color: "#5C5856",
+                        color: "#8B6CF7",
                       }}
                     >
                       One creative studio.
@@ -470,29 +471,20 @@ export function Hero() {
               >
                 <Link
                   to="/login?mode=signup"
-                  className="group relative inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl overflow-hidden transition-all"
+                  className="group relative inline-flex items-center gap-2.5 px-8 py-4 rounded-2xl overflow-hidden transition-all hover:scale-[1.03] active:scale-[0.97]"
                   style={{
-                    background: "#E8E4DF",
-                    color: "#0a0a09",
-                    fontSize: "14px",
-                    fontWeight: 500,
+                    background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
+                    color: "#fff",
+                    fontSize: "15px",
+                    fontWeight: 600,
                     letterSpacing: "-0.01em",
+                    boxShadow: "0 4px 20px rgba(139,108,247,0.35), 0 0 60px rgba(139,108,247,0.12)",
                   }}
                 >
-                  {/* Shimmer on hover */}
-                  <span
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                    style={{
-                      background:
-                        "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.4) 50%, transparent 60%)",
-                      backgroundSize: "200% 100%",
-                      animation: "none",
-                    }}
-                  />
                   <span className="relative">Start creating</span>
                   <ArrowRight
-                    size={15}
-                    className="relative group-hover:translate-x-0.5 transition-transform duration-300"
+                    size={16}
+                    className="relative group-hover:translate-x-1 transition-transform duration-300"
                   />
                 </Link>
                 <a

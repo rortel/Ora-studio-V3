@@ -50,7 +50,7 @@ export function RootLayout() {
         <>
           <AppSidebar />
           {/* Desktop: margin-left for sidebar. Mobile: no margin, but padding-bottom for tab bar */}
-          <main className="min-h-screen md:ml-[48px] pb-[56px] md:pb-0">
+          <main className="min-h-screen md:ml-[56px] pb-[64px] md:pb-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}

@@ -333,7 +333,7 @@ function LibraryPageContent() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "#E8E4DF" }}>
-              Library
+              My Content
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", color: "#9A9590", fontWeight: 400 }}>
               {contentItems.length} asset{contentItems.length !== 1 ? "s" : ""}, {campaignItems.length} campaign{campaignItems.length !== 1 ? "s" : ""}
@@ -342,10 +342,10 @@ function LibraryPageContent() {
           <Link
             to="/hub"
             className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "#E8E4DF", color: "#131211", fontSize: "14px", fontWeight: 500 }}
+            style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
-            Generate new
+            Create new
           </Link>
         </div>
 
@@ -357,7 +357,7 @@ function LibraryPageContent() {
             style={{
               fontSize: "13px", fontWeight: 800,
               background: activeTab === "content" ? "#E8E4DF" : "#222120",
-              color: activeTab === "content" ? "#131211" : "#5C5856",
+              color: activeTab === "content" ? "#18171A" : "#5C5856",
               border: activeTab === "content" ? "none" : "1px solid rgba(255,255,255,0.06)",
             }}
           >
@@ -370,7 +370,7 @@ function LibraryPageContent() {
             style={{
               fontSize: "13px", fontWeight: 800,
               background: activeTab === "campaigns" ? "#E8E4DF" : "#222120",
-              color: activeTab === "campaigns" ? "#131211" : "#5C5856",
+              color: activeTab === "campaigns" ? "#18171A" : "#5C5856",
               border: activeTab === "campaigns" ? "none" : "1px solid rgba(255,255,255,0.06)",
             }}
           >
@@ -397,7 +397,7 @@ function LibraryPageContent() {
                 <Link
                   to="/hub"
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "#E8E4DF", color: "#131211", fontSize: "14px", fontWeight: 500 }}
+                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
                 >
                   <Rocket size={14} />
                   Open AI Hub
@@ -629,7 +629,7 @@ function LibraryPageContent() {
                       style={{
                         fontSize: "11px", fontWeight: isActive ? 800 : 600,
                         background: isActive ? (opt.id === "all" ? "#E8E4DF" : pillColor) : "#222120",
-                        color: isActive ? "#131211" : "#5C5856",
+                        color: isActive ? "#18171A" : "#5C5856",
                         border: isActive ? "none" : "1px solid rgba(255,255,255,0.06)",
                       }}
                     >
@@ -729,7 +729,7 @@ function LibraryPageContent() {
                   <Link
                     to="/hub"
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                    style={{ background: "#E8E4DF", color: "#131211", fontSize: "14px", fontWeight: 500 }}
+                    style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
                   >
                     <Rocket size={14} />
                     Open AI Hub
@@ -752,7 +752,7 @@ function LibraryPageContent() {
                       transition={{ delay: Math.min(i * 0.03, 0.3) }}
                       whileHover={{ y: -4, boxShadow: "0 12px 40px rgba(0,0,0,0.12)" }}
                       className="break-inside-avoid rounded-2xl overflow-hidden group cursor-pointer"
-                      style={{ border: "1px solid rgba(255,255,255,0.06)", background: "#1a1918", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+                      style={{ border: "1px solid rgba(255,255,255,0.06)", background: "#201F23", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
                     >
                       {/* Thumbnail */}
                       <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "#222120" }} onClick={() => setPreviewItem(item)}>
@@ -778,12 +778,12 @@ function LibraryPageContent() {
                         {/* Hover overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform scale-75 group-hover:scale-100 transition-transform">
-                            <Eye size={18} style={{ color: "#131211" }} />
+                            <Eye size={18} style={{ color: "#18171A" }} />
                           </div>
                         </div>
                         {/* Type badge */}
                         <div className="absolute top-3 left-3">
-                          <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "10px", fontWeight: 900, background: typeColor, color: "#131211", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "10px", fontWeight: 900, background: typeColor, color: "#18171A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                             {getTypeLabel(item.type)}
                           </span>
                         </div>

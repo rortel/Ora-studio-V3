@@ -9,7 +9,7 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
-  Layers,
+  Layers, Package, Music, Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
@@ -21,6 +21,13 @@ import type { TemplateDefinition } from "./templates/types";
 const LazyTemplateEngine = lazy(() => import("./TemplateEngine").then(m => ({ default: m.TemplateEngine })));
 const LazySVGTemplateEngine = lazy(() => import("./SVGTemplateEngine").then(m => ({ default: m.SVGTemplateEngine })));
 const LazyHTMLTemplateEngine = lazy(() => import("./HTMLTemplateEngine").then(m => ({ default: m.HTMLTemplateEngine })));
+import { CopyVariantPicker } from "./CopyVariantPicker";
+import type { CopyVariant } from "./CopyVariantPicker";
+import { BrandScanInline } from "./BrandScanInline";
+import { RepurposeModal } from "./RepurposeModal";
+import { TemplateGallery } from "./TemplateGallery";
+import { TemplateEditor } from "./TemplateEditor";
+import { EngagementBadge, useEngagementPredictions } from "./EngagementBadge";
 
 /* ═══════════════════════════════════
    TYPES
@@ -67,6 +74,12 @@ interface CarouselSlide {
   status?: "pending" | "generating" | "ready" | "error";
 }
 
+interface ArenaCandidate {
+  imageUrl: string;
+  model: string;
+  selected?: boolean;
+}
+
 interface GeneratedAsset {
   id: string;
   formatId: string;
@@ -76,7 +89,12 @@ interface GeneratedAsset {
   status: "pending" | "generating" | "ready" | "error";
   imageUrl?: string;
   videoUrl?: string;
-  
+  audioUrl?: string;
+  mergedVideoUrl?: string;
+  audioStatus?: "idle" | "generating" | "merging" | "ready" | "error";
+  arenaCandidates?: ArenaCandidate[];
+  arenaResolved?: boolean;
+
   copy?: string;
   caption?: string;
   hashtags?: string;
@@ -248,6 +266,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [selectedFormats, setSelectedFormats] = useState<string[]>(["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"]);
   const [vault, setVault] = useState<BrandVault | null>(null);
   const [vaultLoading, setVaultLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [brandAssets, setBrandAssets] = useState<any[]>([]);
 
   // ── Generation state ──
   const [phase, setPhase] = useState<"input" | "generating" | "results">("input");
@@ -267,6 +288,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [aiTemplateLoading, setAiTemplateLoading] = useState(false);
   const [aiGeneratedTemplates, setAiGeneratedTemplates] = useState<TemplateDefinition[]>([]);
   const aiTemplateInputRef = useRef<HTMLInputElement>(null);
+  const [copyVariants, setCopyVariants] = useState<Record<string, { variant_1: any; variant_2: any; variant_3: any }>>({}); // formatId → variants
+  const [activeVariants, setActiveVariants] = useState<Record<string, string>>({}); // formatId → "variant_1"|"variant_2"|"variant_3"
+  const [repurposeAsset, setRepurposeAsset] = useState<GeneratedAsset | null>(null);
+  const [galleryFormatId, setGalleryFormatId] = useState<string | null>(null);
+  const [editorAsset, setEditorAsset] = useState<GeneratedAsset | null>(null);
 
   // ── Calendar + Deploy state ──
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
@@ -287,6 +313,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const vaultLoadedRef = useRef(false);
+
+  // ── Engagement predictions (fetched once when results are ready) ──
+  const readyAssets = phase === "results" ? assets.filter(a => a.status === "ready") : [];
+  const { predictions: engagementPredictions } = useEngagementPredictions(readyAssets);
 
   // Resolved brand logo URL (only shown if toggle is on)
   const rawLogoUrl = logoUrl || vault?.logoUrl || vault?.logo_url || null;
@@ -323,6 +353,26 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         } else {
           console.log("[CampaignLab] No vault found");
         }
+        // Load products from /user/init response
+        if (data.products && Array.isArray(data.products)) {
+          setProducts(data.products);
+          console.log(`[CampaignLab] ${data.products.length} products loaded`);
+        }
+        // Load brand assets (logos, patterns, graphics)
+        try {
+          const baRes = await fetch(`${API_BASE}/brand-assets?_token=${encodeURIComponent(token || "")}`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+          const baData = await baRes.json();
+          if (baData.success && baData.assets) {
+            setBrandAssets(baData.assets);
+            // Auto-set logo from brand assets if not already set
+            const logoAsset = baData.assets.find((a: any) => a.role === "logo" && a.signedUrl);
+            if (logoAsset && !logoUrl) {
+              setLogoUrl(logoAsset.signedUrl);
+              console.log(`[CampaignLab] Logo from brand assets: ${logoAsset.label}`);
+            }
+            console.log(`[CampaignLab] ${baData.assets.length} brand assets loaded`);
+          }
+        } catch {}
       } catch (err) {
         console.error(`[CampaignLab] Vault fetch error (attempt ${attempt}):`, err);
         if (attempt < 2) {
@@ -531,7 +581,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       const realisticPrompt = prompt + REALISM_SUFFIX;
       const fmtParam = formatId ? `&formatId=${encodeURIComponent(formatId)}` : "";
       if (imageRefUrl && !imageRefUrl.startsWith("data:")) {
-        // ── GET route with image ref — FAL Flux img2img (strength=0.25, preserveContent) ──
+        // ── GET route with image ref — img2img with HIGH product fidelity ──
+        // strength=0.65: 65% new scene, 35% product preserved → product stays recognizable
         const encodedPrompt = encodeURIComponent(realisticPrompt.slice(0, 400));
         const encodedRef = encodeURIComponent(imageRefUrl);
         const url = `${API_BASE}/generate/image-ref-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&imageRefUrl=${encodedRef}&strength=0.80&mode=content&aspectRatio=${encodeURIComponent(aspectRatio)}${fmtParam}`;
@@ -584,61 +635,71 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     } catch { return 0; }
   };
 
-  // ── Generate text copy via POST (no URL length limit) ──
+  // ── Generate text copy — tries V2 (retry+variants) first, falls back to V1 ──
   const generateCopy = async (formats: FormatOption[], briefShort: string, urlsShort: string): Promise<Record<string, any>> => {
-    try {
-      const formatIds = formats.map(f => f.id).join(",");
-      const postBody = {
-        brief: briefShort.slice(0, 2000),
-        targetAudience: targetAudience.slice(0, 300),
-        productUrls: urlsShort.slice(0, 500),
-        formats: formatIds,
-        campaignObjective: campaignObjective || "",
-        toneOfVoice: toneOverride || "",
-        contentAngle: contentAngle.trim().slice(0, 500),
-        keyMessages: keyMessages.trim().slice(0, 800),
-        callToAction: ctaText.trim().slice(0, 300),
-        language: language || "auto",
-        campaignStartDate: campaignStartDate || "",
-        campaignDuration: campaignDuration || "",
-      };
-      const url = `${API_BASE}/campaign/generate-texts`;
-      const token = getAuthToken();
-      const fullBody = { ...postBody, _token: token || undefined };
-      console.log(`[CampaignLab] POST texts: ${formats.length} formats, brief=${briefShort.length}c, body=${JSON.stringify(fullBody).length}c`);
+    const formatIds = formats.map(f => f.id).join(",");
+    const postBody = {
+      brief: briefShort.slice(0, 2000),
+      targetAudience: targetAudience.slice(0, 300),
+      productUrls: urlsShort.slice(0, 500),
+      formats: formatIds,
+      campaignObjective: campaignObjective || "",
+      toneOfVoice: toneOverride || "",
+      contentAngle: contentAngle.trim().slice(0, 500),
+      keyMessages: keyMessages.trim().slice(0, 800),
+      callToAction: ctaText.trim().slice(0, 300),
+      language: language || "auto",
+      campaignStartDate: campaignStartDate || "",
+      campaignDuration: campaignDuration || "",
+      productId: selectedProductId || undefined,
+    };
+    const token = getAuthToken();
+    const fullBody = { ...postBody, _token: token || undefined };
+    const headers = { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" };
+    const bodyStr = JSON.stringify(fullBody);
 
-      // text/plain Content-Type avoids CORS preflight (application/json triggers OPTIONS)
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-          "Content-Type": "text/plain",
-        },
-        body: JSON.stringify(fullBody),
-        signal: AbortSignal.timeout(120_000),
+    // ── Try V2 first (retry + validation + 3 variants) ──
+    try {
+      console.log(`[CampaignLab] POST texts-v2: ${formats.length} formats`);
+      const res = await fetch(`${API_BASE}/campaign/generate-texts-v2`, {
+        method: "POST", headers, body: bodyStr, signal: AbortSignal.timeout(120_000),
       });
       const rawText = await res.text();
-      console.log(`[CampaignLab] Text response: HTTP ${res.status}, ${rawText.length}c, body=${rawText.slice(0, 400)}`);
+      if (res.ok) {
+        const data = JSON.parse(rawText);
+        if (data.success && data.copyMap && Object.keys(data.copyMap).length > 0) {
+          console.log(`[CampaignLab] Text-v2 OK: ${data.formatCount} fmts, ${data.retries} retries, provider=${data.provider}`);
+          // Store variants for CopyVariantPicker
+          if (data.variants && Object.keys(data.variants).length > 0) {
+            setCopyVariants(data.variants);
+            const defaults: Record<string, string> = {};
+            for (const fid of Object.keys(data.variants)) defaults[fid] = "variant_1";
+            setActiveVariants(defaults);
+          }
+          return data.copyMap;
+        }
+      }
+      console.warn("[CampaignLab] Text-v2 empty or failed, falling back to v1...");
+    } catch (err: any) {
+      console.warn("[CampaignLab] Text-v2 error:", err?.message, "— falling back to v1...");
+    }
+
+    // ── Fallback to V1 ──
+    try {
+      console.log(`[CampaignLab] POST texts-v1 (fallback): ${formats.length} formats`);
+      const res = await fetch(`${API_BASE}/campaign/generate-texts`, {
+        method: "POST", headers, body: bodyStr, signal: AbortSignal.timeout(120_000),
+      });
+      const rawText = await res.text();
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${rawText.slice(0, 200)}`);
       const data = JSON.parse(rawText);
       if (data.success && data.copyMap && Object.keys(data.copyMap).length > 0) {
-        console.log(`[CampaignLab] Text OK: ${data.formatCount} formats, provider=${data.provider}, ${data.latencyMs}ms, keys=[${Object.keys(data.copyMap).join(",")}]`);
+        console.log(`[CampaignLab] Text-v1 OK: ${data.formatCount} formats, provider=${data.provider}`);
         return data.copyMap;
       }
-      console.warn("[CampaignLab] Text returned empty copyMap:", data.error || "no keys");
+      console.warn("[CampaignLab] Text-v1 returned empty copyMap:", data.error || "no keys");
     } catch (err: any) {
-      console.error("[CampaignLab] Text FAILED:", err?.name, err?.message, err);
-      // Auto-diagnostic
-      try {
-        const diagRes = await fetch(`${API_BASE}/test-campaign-text`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-          signal: AbortSignal.timeout(15_000),
-        });
-        const diagData = await diagRes.json();
-        console.log("[CampaignLab] DIAGNOSTIC:", JSON.stringify(diagData, null, 2));
-      } catch (de: any) {
-        console.error("[CampaignLab] DIAGNOSTIC failed too:", de?.name, de?.message);
-      }
+      console.error("[CampaignLab] Text-v1 FAILED:", err?.name, err?.message);
     }
 
     console.error("[CampaignLab] Text generation failed — returning empty copyMap");
@@ -703,6 +764,191 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       }
     }
     throw new Error("Video timeout (300s)");
+  };
+
+  // ── Generate soundtrack via Suno and merge with video ──
+  const generateSoundtrackAndMerge = async (asset: GeneratedAsset) => {
+    if (!asset.videoUrl) return;
+    const token = getAuthToken();
+
+    // Step 1: Mark as generating audio
+    setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioStatus: "generating" } : a));
+
+    try {
+      // Build a music prompt from the campaign context
+      const musicStyle = vault?.tone || "professional";
+      const platform = asset.platform || "social";
+      const musicPrompt = `${musicStyle} background music for a ${platform} ${asset.type === "video" ? "video" : "ad"}. ${brief.trim().slice(0, 100)}. Short, energetic, modern, no vocals. 15 seconds.`;
+
+      console.log(`[CampaignLab] Soundtrack START [${asset.formatId}]: "${musicPrompt.slice(0, 80)}..."`);
+
+      // Start Suno generation
+      const startRes = await fetch(`${API_BASE}/generate/audio-start`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          _token: token,
+          prompt: musicPrompt,
+          models: ["suno"],
+          instrumental: true,
+        }),
+      });
+      const startData = await startRes.json();
+      if (!startData.success) throw new Error(startData.error || "Audio start failed");
+
+      const taskId = startData.results?.[0]?.taskId;
+      if (!taskId) throw new Error("No taskId returned from Suno");
+      console.log(`[CampaignLab] Soundtrack taskId: ${taskId}`);
+
+      // Step 2: Poll for audio completion
+      let audioUrl = "";
+      for (let poll = 0; poll < 40; poll++) {
+        await new Promise(r => setTimeout(r, 5_000));
+        try {
+          const pollRes = await fetch(`${API_BASE}/generate/audio-poll?taskId=${encodeURIComponent(taskId)}&_token=${encodeURIComponent(token || "")}`, {
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          const pollData = await pollRes.json();
+          console.log(`[CampaignLab] Soundtrack poll #${poll + 1}: status=${pollData.status}`);
+
+          if (pollData.status === "completed" && pollData.track?.audioUrl) {
+            audioUrl = pollData.track.audioUrl;
+            break;
+          }
+          if (pollData.status === "failed") throw new Error("Audio generation failed");
+        } catch (e: any) {
+          if (e?.message?.includes("failed")) throw e;
+        }
+      }
+      if (!audioUrl) throw new Error("Audio timeout");
+
+      // Update asset with audio
+      setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioUrl, audioStatus: "merging" } : a));
+      console.log(`[CampaignLab] Soundtrack ready, merging with video...`);
+
+      // Step 3: Merge video + audio via FFmpeg endpoint
+      const mergeRes = await fetch(`${API_BASE}/campaign-lab/merge-video-audio`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, videoUrl: asset.videoUrl, audioUrl }),
+      });
+      const mergeData = await mergeRes.json();
+
+      if (mergeData.success && mergeData.url) {
+        console.log(`[CampaignLab] Merge OK: ${mergeData.url.slice(0, 80)}`);
+        setAssets(prev => prev.map(a => a.formatId === asset.formatId
+          ? { ...a, mergedVideoUrl: mergeData.url, audioStatus: "ready" }
+          : a
+        ));
+        toast.success("Soundtrack added!");
+      } else {
+        throw new Error(mergeData.error || "Merge failed");
+      }
+    } catch (err: any) {
+      console.error(`[CampaignLab] Soundtrack error [${asset.formatId}]:`, err?.message);
+      setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioStatus: "error" } : a));
+      toast.error(`Soundtrack failed: ${err?.message || "Unknown error"}`);
+    }
+  };
+
+  // ── AXE 3: Brand Memory — track user choices to learn preferences ──
+  const trackBrandMemory = async (action: string, data: Record<string, any>) => {
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE}/vault`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          _token: token,
+          _brandMemoryEvent: { action, ...data, timestamp: new Date().toISOString() },
+        }),
+      });
+    } catch {} // Fire and forget
+  };
+
+  // ── AXE 2: Deploy campaign to Content Calendar (2-week schedule) ──
+  const handleDeployToCalendar = async () => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const readyAssets = assets.filter(a => a.status === "ready" && (a.imageUrl || a.videoUrl));
+    if (readyAssets.length === 0) { toast.error("No assets ready to deploy"); return; }
+
+    toast("Deploying to calendar...");
+
+    try {
+      // Spread assets across 2 weeks (14 days), 1-2 per day
+      const now = new Date();
+      const schedule: { asset: GeneratedAsset; date: string; time: string }[] = [];
+      const daysSpan = Math.min(14, Math.max(7, readyAssets.length * 2)); // At least 7 days
+      const interval = Math.max(1, Math.floor(daysSpan / readyAssets.length));
+
+      // Best posting times by platform
+      const bestTimes: Record<string, string> = {
+        LinkedIn: "09:00", Instagram: "12:00", Facebook: "10:00",
+        TikTok: "19:00", Twitter: "08:00", YouTube: "14:00",
+        Pinterest: "20:00", Email: "07:00", Web: "10:00", Ads: "11:00",
+      };
+
+      readyAssets.forEach((asset, idx) => {
+        const dayOffset = idx * interval;
+        const date = new Date(now);
+        date.setDate(date.getDate() + dayOffset + 1); // Start tomorrow
+        // Skip weekends for LinkedIn
+        if (asset.platform === "LinkedIn" && (date.getDay() === 0 || date.getDay() === 6)) {
+          date.setDate(date.getDate() + (date.getDay() === 0 ? 1 : 2));
+        }
+        schedule.push({
+          asset,
+          date: date.toISOString().split("T")[0],
+          time: bestTimes[asset.platform] || "10:00",
+        });
+      });
+
+      // Save each scheduled item to the calendar via KV
+      const calendarItems = schedule.map((s, idx) => ({
+        id: `cal-${Date.now()}-${idx}`,
+        title: `${s.asset.platform}: ${s.asset.headline || s.asset.label}`,
+        date: s.date,
+        time: s.time,
+        platform: s.asset.platform,
+        formatId: s.asset.formatId,
+        status: "scheduled",
+        imageUrl: s.asset.imageUrl,
+        videoUrl: s.asset.mergedVideoUrl || s.asset.videoUrl,
+        caption: s.asset.caption || s.asset.copy || "",
+        hashtags: s.asset.hashtags || "",
+      }));
+
+      // Batch save to server
+      const res = await fetch(`${API_BASE}/calendar/batch-schedule`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, items: calendarItems }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success(`${calendarItems.length} posts scheduled over ${daysSpan} days`);
+        // Track for Brand Memory
+        trackBrandMemory("calendar_deploy", { count: calendarItems.length, days: daysSpan, formats: readyAssets.map(a => a.formatId) });
+      } else {
+        // Fallback: save individually via existing endpoint
+        for (const item of calendarItems) {
+          await fetch(`${API_BASE}/calendar/add`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+            body: JSON.stringify({ _token: token, ...item }),
+          }).catch(() => {});
+        }
+        toast.success(`${calendarItems.length} posts scheduled (individual save)`);
+      }
+    } catch (err: any) {
+      console.error("[CampaignLab] Calendar deploy error:", err);
+      toast.error("Calendar deployment failed");
+    }
   };
 
   const handleGenerate = async () => {
@@ -837,7 +1083,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
           parts.push(raw.slice(0, 600));
         }
         if (parts.length > 0) {
-          productDescription = `[PRODUCT REFERENCE — reproduce EXACTLY as described, do NOT alter the product]: ${parts.join(". ")}. `;
+          productDescription = `[MANDATORY PRODUCT IDENTITY — the generated image MUST show this EXACT product, identical to the reference photo. Do NOT substitute with a different or generic product]: ${parts.join(". ")}. `;
           console.log(`[CampaignLab] Product description (${productDescription.length}c): ${productDescription.slice(0, 300)}...`);
         }
       }
@@ -941,7 +1187,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   const slideScene = slide.imagePrompt || `${slide.text.slice(0, 120)}. ${fmt.platform} visual.`;
                   const slideBriefCtx = contentAngle.trim() ? `Campaign context: ${contentAngle.trim().slice(0, 80)}. ` : (brief.trim() ? `Campaign: ${brief.trim().slice(0, 80)}. ` : "");
                   const slidePrompt = useV2Pipeline && refSignedUrls.length > 0
-                    ? `${slideBriefCtx}${slideScene.slice(0, 200)}.${carouselDiversity ? ` ${carouselDiversity}` : ""} Photorealistic, new scene, professional lighting.`
+                    ? `${productDescription}${slideBriefCtx}${slideScene.slice(0, 200)}.${carouselDiversity ? ` ${carouselDiversity}` : ""} Photorealistic, the exact same product from the reference photo must be clearly visible and recognizable, professional lighting.`
                     : productDescription + slideScene + ` ${briefShort.slice(0, 100)}.` + (carouselDiversity ? ` ${carouselDiversity}` : "") + REALISM_SUFFIX;
                   try {
                     if (useV2Pipeline && refSignedUrls.length > 0) {
@@ -983,52 +1229,69 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               return;
             }
 
-            // ── SINGLE IMAGE (non-carousel) ──
+            // ── SINGLE IMAGE (non-carousel) — ARENA: generate 2 candidates ──
             if (useV2Pipeline) {
-              // V2: FAL Flux img2img at strength=0.85 — generates a COMPLETELY NEW scene from the brief.
-              // The prompt must describe a vivid, specific NEW environment/situation so the model
-              // transforms the background while the product's shape/colors guide what stays.
               const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
               const sceneContext = fc.imagePrompt
                 ? fc.imagePrompt.trim().slice(0, 300)
                 : `Product in a scene that illustrates: ${briefShort.slice(0, 200)}. ${fmt.platform} format.`;
               const briefContext = contentAngle.trim() ? `Campaign context: ${contentAngle.trim().slice(0, 100)}. ` : (brief.trim() ? `Campaign: ${brief.trim().slice(0, 100)}. ` : "");
-              const finalPrompt = `${briefContext}${sceneContext}. ${diversitySuffix} Photorealistic commercial photography, new environment, professional lighting.`;
+              const finalPrompt = `${productDescription}${briefContext}${sceneContext}. ${diversitySuffix} Photorealistic commercial photography, the exact same product from the reference photo must be clearly visible and recognizable, professional lighting.`;
 
               const fmtIdx = imageFormats.indexOf(fmt);
               const refUrl = refSignedUrls.length > 0
                 ? refSignedUrls[fmtIdx % refSignedUrls.length]
                 : null;
 
-              console.log(`[CampaignLab] V2 Image [${fmt.id}]: ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}, prompt=${finalPrompt.slice(0, 80)}...`);
+              console.log(`[CampaignLab] V2 Arena [${fmt.id}]: generating 2 candidates...`);
 
-              const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"], fmt.id);
+              // Generate 2 candidates in parallel (different models for variety)
+              const [candidatesA, candidatesB] = await Promise.all([
+                generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"], fmt.id),
+                generateImageViaHub(finalPrompt + " Different creative angle, unique composition.", ar, refUrl, ["photon-1"], fmt.id).catch(() => []),
+              ]);
 
-              if (candidates.length === 0) {
-                console.warn(`[CampaignLab] V2 Hub failed for [${fmt.id}], falling back to classic`);
+              const arenaCandidates: ArenaCandidate[] = [];
+              if (candidatesA.length > 0) arenaCandidates.push({ imageUrl: candidatesA[0].imageUrl, model: "Photon A" });
+              if (candidatesB.length > 0) arenaCandidates.push({ imageUrl: candidatesB[0].imageUrl, model: "Photon B" });
+
+              if (arenaCandidates.length === 0) {
                 const classicUrl = await generateImageClassic(fmt, finalPrompt + REALISM_SUFFIX);
-                setAssets(prev => prev.map(a => a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a));
-                generatedImageUrls[fmt.id] = classicUrl;
-                return;
+                arenaCandidates.push({ imageUrl: classicUrl, model: "Classic" });
               }
 
-              const bestUrl = candidates[0].imageUrl;
-
-              setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: bestUrl, model: "photon-1-v2" } : a
-              ));
+              const bestUrl = arenaCandidates[0].imageUrl;
+              setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
+                ...a, status: "ready", imageUrl: bestUrl, model: "photon-1-v2",
+                arenaCandidates: arenaCandidates.length > 1 ? arenaCandidates : undefined,
+                arenaResolved: arenaCandidates.length <= 1,
+              } : a));
               generatedImageUrls[fmt.id] = bestUrl;
-              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK:`, bestUrl.slice(0, 60));
+              console.log(`[CampaignLab] Arena [${fmt.id}]: ${arenaCandidates.length} candidates ready`);
 
             } else {
               const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
               const imgPrompt = (fc.imagePrompt || `Professional ${fmt.platform} post. ${briefShort.slice(0, 120)}. Cinematic brand photography, no text.`) + (diversitySuffix ? ` ${diversitySuffix}` : "") + REALISM_SUFFIX;
-              const classicUrl = await generateImageClassic(fmt, imgPrompt);
-              setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a
-              ));
-              generatedImageUrls[fmt.id] = classicUrl;
-              console.log(`[CampaignLab] Classic Image [${fmt.id}] OK:`, classicUrl.slice(0, 60));
+
+              // ARENA: generate 2 candidates with classic pipeline too
+              console.log(`[CampaignLab] Classic Arena [${fmt.id}]: generating 2 candidates...`);
+              const [urlA, urlB] = await Promise.all([
+                generateImageClassic(fmt, imgPrompt),
+                generateImageClassic(fmt, imgPrompt + " Alternative creative angle, different composition and lighting.").catch(() => ""),
+              ]);
+
+              const arenaCandidates: ArenaCandidate[] = [];
+              if (urlA) arenaCandidates.push({ imageUrl: urlA, model: "Option A" });
+              if (urlB) arenaCandidates.push({ imageUrl: urlB, model: "Option B" });
+
+              const bestUrl = arenaCandidates[0]?.imageUrl || urlA;
+              setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
+                ...a, status: "ready", imageUrl: bestUrl, model: "photon-1",
+                arenaCandidates: arenaCandidates.length > 1 ? arenaCandidates : undefined,
+                arenaResolved: arenaCandidates.length <= 1,
+              } : a));
+              generatedImageUrls[fmt.id] = bestUrl;
+              console.log(`[CampaignLab] Classic Arena [${fmt.id}]: ${arenaCandidates.length} candidates ready`);
             }
           } catch (err: any) {
             const isTimeout = err?.name === "AbortError" || err?.name === "TimeoutError";
@@ -1089,9 +1352,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
             }
 
             const videoUrl = await generateVideoWithKeyframe(fmt, vidPrompt, keyframeUrl);
+            const updatedAsset: GeneratedAsset = { ...placeholders.find(p => p.formatId === fmt.id)!, status: "ready", videoUrl, model: "ray-flash-2", audioStatus: "idle" };
             setAssets(prev => prev.map(a =>
-              a.formatId === fmt.id ? { ...a, status: "ready", videoUrl, model: "ray-flash-2" } : a
+              a.formatId === fmt.id ? { ...a, status: "ready", videoUrl, model: "ray-flash-2", audioStatus: "idle" } : a
             ));
+            // Auto-generate soundtrack for video assets
+            generateSoundtrackAndMerge(updatedAsset).catch(() => {});
           } catch (err: any) {
             console.error(`[CampaignLab] Video [${fmt.id}] error:`, err?.message);
             setAssets(prev => prev.map(a =>
@@ -1115,7 +1381,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       id: asset.id,
       type: asset.type,
       imageUrl: asset.imageUrl,
-      videoUrl: asset.videoUrl,
+      videoUrl: asset.mergedVideoUrl || asset.videoUrl,
+      audioUrl: asset.audioUrl,
       prompt: asset.copy || brief,
       model: asset.model || "gpt-4o",
       campaignTheme: brief,
@@ -1215,7 +1482,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   }, [aiTemplateFile, selectedFormats, getAuthToken]);
 
   const handleDownload = async (asset: GeneratedAsset) => {
-    const url = asset.imageUrl || asset.videoUrl;
+    const url = asset.imageUrl || asset.mergedVideoUrl || asset.videoUrl;
     if (url) {
       // External CDN URLs (Luma, FAL, etc.) don't support CORS fetch — open in new tab
       // For Supabase-hosted URLs, try blob download first
@@ -1795,7 +2062,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
      ═══════════════════════════════════ */
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#131211" }}>
+    <div className="flex flex-col h-full" style={{ background: "#18171A" }}>
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3">
@@ -1823,6 +2090,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               {savingCampaign ? "Saving..." : "Save Campaign"}
             </button>
             <button
+              onClick={handleDeployToCalendar}
+              disabled={assets.filter(a => a.status === "ready").length === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
+                color: "#fff", fontSize: "13px", fontWeight: 600,
+                boxShadow: "0 2px 8px rgba(139,108,247,0.25)",
+              }}
+            >
+              <Calendar size={13} />
+              Deploy to Calendar
+            </button>
+            <button
               onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", fontWeight: 500 }}
@@ -1843,7 +2123,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               className="max-w-3xl mx-auto px-6 py-8 space-y-8">
 
               {/* ── Brief Completeness Score ── */}
-              <div className="rounded-xl px-5 py-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="rounded-xl px-5 py-4" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Target size={14} style={{ color: briefScoreColor }} />
@@ -1893,6 +2173,91 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 )}
               </div>
 
+              {/* Brand Auto-Scan — first thing, extracts brand identity from any URL */}
+              <BrandScanInline
+                currentVault={vault}
+                onApply={(mergedVault) => {
+                  setVault(mergedVault as any);
+                  if (mergedVault.logoUrl && !logoUrl) setLogoUrl(mergedVault.logoUrl);
+                  // Also populate productUrls for generation context
+                  if (mergedVault._scannedUrl) setProductUrls(mergedVault._scannedUrl);
+                }}
+              />
+
+              {/* Product Selector */}
+              {products.length > 0 && (
+                <div className="rounded-xl px-5 py-4" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Package size={14} style={{ color: "var(--ora-signal)" }} />
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
+                        Product
+                      </span>
+                    </div>
+                    {selectedProductId && (
+                      <button
+                        onClick={() => { setSelectedProductId(""); }}
+                        className="px-2 py-0.5 rounded cursor-pointer hover:bg-white/[0.04]"
+                        style={{ fontSize: "10px", color: "#9A9590" }}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <p className="mb-3" style={{ fontSize: "11px", color: "#7A7572", lineHeight: 1.4 }}>
+                    Select a product to pre-fill your campaign brief with its details.
+                  </p>
+                  <select
+                    value={selectedProductId}
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setSelectedProductId(pid);
+                      if (!pid) return;
+                      const product = products.find((p: any) => p.id === pid);
+                      if (!product) return;
+                      // Pre-fill brief fields from product data
+                      if (product.url) setProductUrls(product.url);
+                      if (product.description && !brief.trim()) {
+                        setBrief(`Promote ${product.name}: ${product.description}`);
+                      }
+                      if (product.features?.length && !keyMessages.trim()) {
+                        setKeyMessages(product.features.join("\n"));
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 rounded-lg cursor-pointer transition-all"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: selectedProductId ? "1px solid rgba(59,79,196,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                      color: "#E8E4DF",
+                      fontSize: "13px",
+                      outline: "none",
+                      appearance: "none",
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239A9590' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 12px center",
+                    }}
+                  >
+                    <option value="">No specific product (general campaign)</option>
+                    {products.map((p: any) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}{p.price ? ` — ${p.price} ${p.currency || ""}` : ""}{p.category ? ` (${p.category})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedProductId && (() => {
+                    const p = products.find((pr: any) => pr.id === selectedProductId);
+                    return p ? (
+                      <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(59,79,196,0.06)", border: "1px solid rgba(59,79,196,0.12)" }}>
+                        <Check size={11} style={{ color: "var(--ora-signal)" }} />
+                        <span style={{ fontSize: "11px", color: "#C4BEB8" }}>
+                          Campaign will feature <strong style={{ color: "#E8E4DF" }}>{p.name}</strong>
+                          {p.features?.length ? ` (${p.features.length} features)` : ""}
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
               {/* Reference Photos */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -1940,28 +2305,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
               </div>
 
-              {/* Product / Service URLs */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Link2 size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Product / Service URLs
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                </div>
-                <input
-                  value={productUrls}
-                  onChange={e => setProductUrls(e.target.value)}
-                  placeholder="https://yoursite.com/product-page"
-                  className="w-full rounded-xl px-4 py-3 transition-all"
-                  style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                    fontSize: "14px", outline: "none",
-                  }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                />
-              </div>
+              {/* Product / Service URLs — removed: merged into BrandScanInline */}
 
               {/* Campaign Brief */}
               <div>
@@ -1977,7 +2321,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   placeholder={"Describe your campaign...\ne.g. Launch our new summer collection -- luxury, minimalist, target 25-45 professionals."}
                   className="w-full rounded-xl px-5 py-4 resize-none transition-all"
                   style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                    background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", lineHeight: 1.6, minHeight: 100, outline: "none",
                   }}
                   onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
@@ -1999,7 +2343,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     onChange={e => setCampaignObjective(e.target.value)}
                     className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: campaignObjective ? "#E8E4DF" : "#5C5856",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: campaignObjective ? "#E8E4DF" : "#5C5856",
                       fontSize: "14px", outline: "none", appearance: "none",
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                       backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
@@ -2031,7 +2375,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     onChange={e => setLanguage(e.target.value)}
                     className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                       fontSize: "14px", outline: "none", appearance: "none",
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                       backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
@@ -2113,7 +2457,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     onChange={e => setCampaignStartDate(e.target.value)}
                     className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)",
                       color: campaignStartDate ? "#E8E4DF" : "#5C5856",
                       fontSize: "14px", outline: "none",
                       colorScheme: "dark",
@@ -2135,7 +2479,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     onChange={e => setCampaignDuration(e.target.value)}
                     className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)",
                       color: campaignDuration ? "#E8E4DF" : "#5C5856",
                       fontSize: "14px", outline: "none", appearance: "none",
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
@@ -2206,7 +2550,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   placeholder='e.g. "3 reasons why...", customer success story, behind-the-scenes, data-driven insight'
                   className="w-full rounded-xl px-4 py-3 transition-all"
                   style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                    background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", outline: "none",
                   }}
                   onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
@@ -2229,7 +2573,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   placeholder={"- Our product saves 10 hours/week\n- Used by 500+ companies\n- SOC 2 certified\n- Free trial, no credit card"}
                   className="w-full rounded-xl px-5 py-4 resize-none transition-all"
                   style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                    background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", lineHeight: 1.6, minHeight: 80, outline: "none",
                   }}
                   onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
@@ -2253,7 +2597,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     placeholder="e.g. Tech professionals 25-45"
                     className="w-full rounded-xl px-4 py-3 transition-all"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                       fontSize: "14px", outline: "none",
                     }}
                     onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
@@ -2274,7 +2618,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     placeholder='e.g. "Start free trial", "Book a demo"'
                     className="w-full rounded-xl px-4 py-3 transition-all"
                     style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                      background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                       fontSize: "14px", outline: "none",
                     }}
                     onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
@@ -2476,7 +2820,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="rounded-xl px-5 py-4"
-                  style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <FileText size={13} style={{ color: "#7A7572" }} />
@@ -2657,7 +3001,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               </div>
 
               {/* Social Accounts — transparent integration */}
-              <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,79,196,0.12)" }}>
                     <Send size={11} style={{ color: "var(--ora-signal)" }} />
@@ -2719,7 +3063,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   return (
                     <motion.div key={asset.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }} className="rounded-xl overflow-hidden group"
-                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                       {/* Preview area */}
                       <div className="relative cursor-pointer"
                         style={{ aspectRatio: asset.type === "text" ? "3/2" : (fmt?.aspectRatio || "1/1"), background: "#0e0d0c", maxHeight: 280 }}
@@ -2765,6 +3109,45 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                   />
                                 )}
                               </Suspense>
+                            ) : asset.arenaCandidates && asset.arenaCandidates.length > 1 && !asset.arenaResolved ? (
+                              /* ═══ ARENA: side-by-side candidates ═══ */
+                              <div className="relative w-full h-full flex">
+                                {asset.arenaCandidates.map((cand, ci) => (
+                                  <button
+                                    key={ci}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Select this candidate
+                                      setAssets(prev => prev.map(a => a.formatId === asset.formatId
+                                        ? { ...a, imageUrl: cand.imageUrl, model: cand.model, arenaResolved: true }
+                                        : a
+                                      ));
+                                      // Track choice for Brand Memory
+                                      trackBrandMemory("arena_pick", { formatId: asset.formatId, chosen: ci, model: cand.model });
+                                      toast.success(`${cand.model} selected`);
+                                    }}
+                                    className="relative flex-1 cursor-pointer group/arena overflow-hidden"
+                                    style={{ borderRight: ci < asset.arenaCandidates!.length - 1 ? "2px solid rgba(139,108,247,0.4)" : "none" }}
+                                  >
+                                    <img src={cand.imageUrl} alt={cand.model} className="w-full h-full object-cover transition-transform group-hover/arena:scale-105" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover/arena:bg-black/20 transition-all" />
+                                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full transition-all"
+                                      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", fontSize: "9px", fontWeight: 600, color: "#fff" }}>
+                                      {cand.model}
+                                    </div>
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/arena:opacity-100 transition-opacity">
+                                      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(139,108,247,0.9)" }}>
+                                        <Check size={14} style={{ color: "#fff" }} />
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                                {/* Arena badge */}
+                                <div className="absolute top-1.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full z-10"
+                                  style={{ background: "rgba(139,108,247,0.9)", fontSize: "9px", fontWeight: 700, color: "#fff", letterSpacing: "0.05em" }}>
+                                  PICK THE BEST
+                                </div>
+                              </div>
                             ) : (
                               <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
                             )}
@@ -2789,9 +3172,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         ) : asset.status === "ready" && asset.videoUrl ? (
                           <div className="relative w-full h-full">
                             <video
-                              src={asset.videoUrl}
+                              src={asset.mergedVideoUrl || asset.videoUrl}
                               className="w-full h-full object-cover"
-                              muted
+                              muted={!asset.mergedVideoUrl}
                               playsInline
                               data-asset-id={asset.id}
                               onMouseEnter={e => {
@@ -2802,6 +3185,33 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                 const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0;
                               }}
                             />
+                            {/* Soundtrack status badge */}
+                            {asset.audioStatus && asset.audioStatus !== "idle" && (
+                              <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full"
+                                style={{
+                                  background: asset.audioStatus === "ready" ? "rgba(95,191,106,0.85)" : asset.audioStatus === "error" ? "rgba(224,90,79,0.85)" : "rgba(139,108,247,0.85)",
+                                  backdropFilter: "blur(8px)",
+                                  fontSize: "10px", fontWeight: 600, color: "#fff",
+                                }}>
+                                {asset.audioStatus === "generating" && <><Loader2 size={10} className="animate-spin" /> Audio...</>}
+                                {asset.audioStatus === "merging" && <><Loader2 size={10} className="animate-spin" /> Merging...</>}
+                                {asset.audioStatus === "ready" && <><Volume2 size={10} /> With sound</>}
+                                {asset.audioStatus === "error" && <><Music size={10} /> No audio</>}
+                              </div>
+                            )}
+                            {/* Manual add soundtrack button (when no audio yet) */}
+                            {(!asset.audioStatus || asset.audioStatus === "idle" || asset.audioStatus === "error") && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); generateSoundtrackAndMerge(asset); }}
+                                className="absolute bottom-2 left-2 flex items-center gap-1 px-2.5 py-1.5 rounded-full cursor-pointer transition-all hover:scale-105"
+                                style={{
+                                  background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+                                  border: "1px solid rgba(255,255,255,0.15)",
+                                  fontSize: "10px", fontWeight: 500, color: "#E8E4DF",
+                                }}>
+                                <Music size={10} /> Add soundtrack
+                              </button>
+                            )}
                             {/* Brand logo overlay on video */}
                             {brandLogoUrl && (
                               <img src={brandLogoUrl} alt="Brand logo" className="absolute"
@@ -2874,7 +3284,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         </div>
                       </div>
 
-                      {/* Info */}
+                      {/* Info — simplified: label + caption + 2 clear actions */}
                       <div className="p-4">
                         <div className="flex items-center justify-between mb-2">
                           <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{asset.label}</span>
@@ -2913,7 +3323,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           )}
                         </div>
                         {asset.headline && (
-                          <p className="line-clamp-1 mb-1" style={{ fontSize: "12px", fontWeight: 600, color: "#C4BEB8", lineHeight: 1.4 }}>{asset.headline}</p>
+                          <p className="line-clamp-1 mt-1" style={{ fontSize: "12px", fontWeight: 600, color: "#C4BEB8", lineHeight: 1.4 }}>{asset.headline}</p>
                         )}
                         {/* Template selector */}
                         {asset.type === "image" && asset.imageUrl && (
@@ -2978,25 +3388,125 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           </div>
                         )}
                         {(asset.caption || asset.copy) && (
-                          <p className="line-clamp-3" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
+                          <p className="line-clamp-3 mt-1" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
                         )}
                         {asset.hashtags && (
                           <p className="line-clamp-1 mt-1" style={{ fontSize: "11px", color: "var(--ora-signal)", lineHeight: 1.4 }}>{asset.hashtags}</p>
                         )}
-                        {asset.status === "ready" && (
-                          <div className="flex items-center gap-1 mt-2">
-                            <Check size={11} style={{ color: "#10b981" }} />
-                            <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 600 }}>Brand-compliant</span>
+
+                        {/* Copy Variant Picker (A/B/C) */}
+                        {copyVariants[asset.formatId] && (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <CopyVariantPicker
+                              variants={copyVariants[asset.formatId]}
+                              activeVariant={activeVariants[asset.formatId] || "variant_1"}
+                              onSelect={(variantKey, variant) => {
+                                setActiveVariants(prev => ({ ...prev, [asset.formatId]: variantKey }));
+                                setAssets(prev => prev.map(a => {
+                                  if (a.formatId !== asset.formatId) return a;
+                                  return {
+                                    ...a,
+                                    headline: variant.headline || a.headline,
+                                    caption: variant.caption || a.caption,
+                                    copy: variant.caption || a.copy,
+                                    hashtags: typeof variant.hashtags === "string" ? variant.hashtags : a.hashtags,
+                                    ctaText: variant.ctaText || a.ctaText,
+                                    subject: variant.subject || a.subject,
+                                    features: variant.features || a.features,
+                                    imagePrompt: variant.imagePrompt || a.imagePrompt,
+                                    videoPrompt: variant.videoPrompt || a.videoPrompt,
+                                  };
+                                }));
+                              }}
+                            />
                           </div>
                         )}
 
-                        {deployingAssets[asset.formatId] && (
-                          <div className="flex items-center gap-1 mt-1">
-                            {deployingAssets[asset.formatId] === "deployed" && <><Send size={9} style={{ color: "#10b981" }} /><span style={{ fontSize: "9px", color: "#10b981", fontWeight: 600 }}>Published</span></>}
-                            {deployingAssets[asset.formatId] === "scheduled" && <><Clock size={9} style={{ color: "var(--ora-signal)" }} /><span style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600 }}>Scheduled</span></>}
-                            {deployingAssets[asset.formatId] === "deploying" && <><Loader2 size={9} className="animate-spin" style={{ color: "#7A7572" }} /><span style={{ fontSize: "9px", color: "#7A7572", fontWeight: 600 }}>Deploying...</span></>}
-                            {deployingAssets[asset.formatId] === "skipped" && <><Check size={9} style={{ color: "#7A7572" }} /><span style={{ fontSize: "9px", color: "#7A7572", fontWeight: 600 }}>Skipped (not supported)</span></>}
-                            {deployingAssets[asset.formatId] === "error" && <><AlertCircle size={9} style={{ color: "#d4183d" }} /><span style={{ fontSize: "9px", color: "#d4183d", fontWeight: 600 }}>Deploy failed</span></>}
+                        {/* ── Two clear actions: Publish / Edit ── */}
+                        {asset.status === "ready" && (
+                          <div className="mt-3 space-y-2">
+                            {/* Primary actions row */}
+                            <div className="flex items-center gap-2">
+                              {/* PUBLISH button */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeployAsset(asset); }}
+                                disabled={deployingAssets[asset.formatId] === "deploying" || deployingAssets[asset.formatId] === "deployed"}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg cursor-pointer transition-all"
+                                style={{
+                                  background: deployingAssets[asset.formatId] === "deployed" ? "rgba(16,185,129,0.1)" : "var(--ora-signal)",
+                                  color: deployingAssets[asset.formatId] === "deployed" ? "#10b981" : "#fff",
+                                  fontSize: "12px", fontWeight: 600,
+                                  border: deployingAssets[asset.formatId] === "deployed" ? "1px solid rgba(16,185,129,0.2)" : "none",
+                                }}
+                              >
+                                {deployingAssets[asset.formatId] === "deploying" ? <><Loader2 size={12} className="animate-spin" /> Publishing...</>
+                                  : deployingAssets[asset.formatId] === "deployed" ? <><Check size={12} /> Published</>
+                                  : deployingAssets[asset.formatId] === "scheduled" ? <><Clock size={12} /> Scheduled</>
+                                  : <><Send size={12} /> Publish</>}
+                              </button>
+
+                              {/* EDIT button — opens Gallery to pick template, then editor */}
+                              {asset.type === "image" && asset.imageUrl && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // If a template is already applied, open editor directly
+                                    if (assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId])) {
+                                      setEditorAsset(asset);
+                                    } else {
+                                      // Otherwise open Gallery to pick a template first
+                                      setGalleryFormatId(asset.formatId);
+                                    }
+                                  }}
+                                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg cursor-pointer transition-all"
+                                  style={{
+                                    background: "rgba(255,255,255,0.04)",
+                                    color: "#E8E4DF",
+                                    fontSize: "12px", fontWeight: 600,
+                                    border: "1px solid rgba(255,255,255,0.08)",
+                                  }}
+                                >
+                                  <Layers size={12} />
+                                  {assetTemplates[asset.formatId] ? "Edit" : "Edit with template"}
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Secondary actions — small icon row */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <EngagementBadge prediction={engagementPredictions[asset.formatId]} />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button onClick={(e) => { e.stopPropagation(); handleSaveAsset(asset); }} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" title="Save to library" style={{ background: "rgba(255,255,255,0.04)" }}>
+                                  <Save size={11} style={{ color: "#7A7572" }} />
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDownload(asset); }} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" title="Download" style={{ background: "rgba(255,255,255,0.04)" }}>
+                                  <Download size={11} style={{ color: "#7A7572" }} />
+                                </button>
+                                {asset.type === "image" && asset.imageUrl && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleUpscaleAsset(asset); }}
+                                    disabled={upscalingAsset === asset.formatId}
+                                    className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                    title="Enhance resolution (2x)"
+                                    style={{ background: upscalingAsset === asset.formatId ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}
+                                  >
+                                    {upscalingAsset === asset.formatId
+                                      ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
+                                      : <Zap size={11} style={{ color: "#7A7572" }} />}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setRepurposeAsset(asset); }}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  title="Adapt to other formats"
+                                  style={{ background: "rgba(255,255,255,0.04)" }}
+                                >
+                                  <RefreshCw size={11} style={{ color: "#7A7572" }} />
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -3113,7 +3623,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="overflow-hidden"
                       >
-                        <div className="rounded-xl overflow-hidden" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div className="rounded-xl overflow-hidden" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                           {/* Header */}
                           <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                             <div className="flex items-center gap-3">
@@ -3252,7 +3762,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
             style={{ background: "rgba(0,0,0,0.85)" }} onClick={() => setSelectedAsset(null)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()} className="max-w-4xl w-full max-h-[90vh] overflow-auto rounded-xl"
-              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.1)" }}>
+              style={{ background: "#18171A", border: "1px solid rgba(255,255,255,0.1)" }}>
               <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center gap-3">
                   <span style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>{selectedAsset.label}</span>
@@ -3314,7 +3824,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           {slide.imageUrl ? (
                             <img src={slide.imageUrl} alt={`Slide ${idx + 1}`} className="w-full" style={{ aspectRatio: "1/1", objectFit: "cover" }} />
                           ) : (
-                            <div className="flex items-center justify-center" style={{ aspectRatio: "1/1", background: "#131211" }}>
+                            <div className="flex items-center justify-center" style={{ aspectRatio: "1/1", background: "#18171A" }}>
                               {slide.status === "generating" ? <Loader2 size={16} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
                                 : <AlertCircle size={16} style={{ color: "#5C5856" }} />}
                             </div>
@@ -3413,7 +3923,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Subject line (email) */}
                 {selectedAsset.subject && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Subject Line
                     </span>
@@ -3425,7 +3935,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Headline */}
                 {selectedAsset.headline && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Headline
                     </span>
@@ -3437,7 +3947,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Main copy / caption */}
                 {(selectedAsset.caption || selectedAsset.copy) && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       {selectedAsset.type === "text" ? "Body Copy" : "Caption"}
                     </span>
@@ -3449,7 +3959,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Hashtags */}
                 {selectedAsset.hashtags && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Hashtags
                     </span>
@@ -3459,7 +3969,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Features (landing page) */}
                 {selectedAsset.features && selectedAsset.features.length > 0 && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Key Features
                     </span>
@@ -3476,7 +3986,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* CTA */}
                 {selectedAsset.ctaText && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Call to Action
                     </span>
@@ -3488,7 +3998,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
                 {/* Re-prompt / Regenerate */}
                 {selectedAsset.type !== "text" && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Re-prompt & Regenerate
                     </span>
@@ -3498,7 +4008,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         onChange={e => setRepromptText(e.target.value)}
                         placeholder={`Describe what you want instead... (current: ${selectedAsset.imagePrompt?.slice(0, 60) || selectedAsset.videoPrompt?.slice(0, 60) || "auto-generated"})`}
                         className="flex-1 rounded-lg px-4 py-2.5 transition-all"
-                        style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
+                        style={{ background: "#18171A", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
                         onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
                         onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                         onKeyDown={e => { if (e.key === "Enter" && repromptText.trim()) handleRegenerateAsset(selectedAsset, repromptText); }}
@@ -3541,6 +4051,84 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         )}
       </AnimatePresence>
 
+      {/* Template Editor Modal */}
+      {editorAsset && assetTemplates[editorAsset.formatId] && getTemplateById(assetTemplates[editorAsset.formatId]) && (
+        <TemplateEditor
+          open={!!editorAsset}
+          onOpenChange={(open) => { if (!open) setEditorAsset(null); }}
+          template={getTemplateById(assetTemplates[editorAsset.formatId])!}
+          asset={editorAsset}
+          vault={vault}
+          brandLogoUrl={rawLogoUrl}
+          onSave={(customTemplate) => {
+            setAssetTemplates(prev => ({ ...prev, [editorAsset.formatId]: customTemplate.id }));
+            toast.success("Custom template saved");
+          }}
+        />
+      )}
+
+      {/* Template Gallery Modal */}
+      <TemplateGallery
+        open={!!galleryFormatId}
+        onOpenChange={(open) => { if (!open) setGalleryFormatId(null); }}
+        formatId={galleryFormatId || ""}
+        currentTemplateId={galleryFormatId ? assetTemplates[galleryFormatId] : undefined}
+        onSelect={(templateId) => {
+          if (galleryFormatId) {
+            if (templateId) {
+              setAssetTemplates(prev => ({ ...prev, [galleryFormatId]: templateId }));
+              // After selecting a template, open the editor directly
+              const targetAsset = assets.find(a => a.formatId === galleryFormatId);
+              if (targetAsset) {
+                setTimeout(() => setEditorAsset(targetAsset), 150);
+              }
+            } else {
+              setAssetTemplates(prev => { const n = { ...prev }; delete n[galleryFormatId]; return n; });
+            }
+          }
+        }}
+      />
+
+      {/* Repurpose Modal */}
+      <RepurposeModal
+        open={!!repurposeAsset}
+        onOpenChange={(open) => { if (!open) setRepurposeAsset(null); }}
+        asset={repurposeAsset || { formatId: "" }}
+        currentFormats={assets.map(a => a.formatId)}
+        allFormats={FORMAT_OPTIONS.map(f => ({ id: f.id, label: f.label, platform: f.platform, type: f.type, aspectRatio: f.aspectRatio }))}
+        language={language}
+        onRepurposed={(repurposed) => {
+          // Add repurposed assets to the list
+          const newAssets: GeneratedAsset[] = [];
+          for (const [fmtId, copy] of Object.entries(repurposed)) {
+            const fmt = FORMAT_OPTIONS.find(f => f.id === fmtId);
+            if (!fmt) continue;
+            const captionText = (copy as any).caption || (copy as any).text || "";
+            newAssets.push({
+              id: `${fmtId}-repurposed-${Date.now()}`,
+              formatId: fmtId,
+              label: fmt.label,
+              platform: fmt.platform,
+              type: fmt.type,
+              status: repurposeAsset?.imageUrl ? "ready" : "ready",
+              imageUrl: repurposeAsset?.imageUrl, // reuse the source image
+              headline: (copy as any).headline || "",
+              caption: captionText,
+              copy: captionText,
+              hashtags: typeof (copy as any).hashtags === "string" ? (copy as any).hashtags : "",
+              ctaText: (copy as any).ctaText || "",
+              imagePrompt: (copy as any).imagePrompt || repurposeAsset?.imagePrompt || "",
+            });
+            // Assign first template for this format
+            const tmplsForFmt = getTemplatesForFormat(fmtId);
+            if (tmplsForFmt.length > 0) {
+              setAssetTemplates(prev => ({ ...prev, [fmtId]: tmplsForFmt[0].id }));
+            }
+          }
+          setAssets(prev => [...prev, ...newAssets]);
+          toast.success(`${newAssets.length} format${newAssets.length > 1 ? "s" : ""} added`);
+        }}
+      />
 
     </div>
   );

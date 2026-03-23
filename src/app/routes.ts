@@ -14,6 +14,7 @@ import { SubscribePage } from "./pages/SubscribePage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { MusicPage } from "./pages/MusicPage";
+import { ProductsPage } from "./pages/ProductsPage";
 
 /*
   ROUTE ACCESS MATRIX
@@ -57,6 +58,7 @@ export const router = createBrowserRouter([
       { path: "hub", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },
       { path: "hub/vault", Component: VaultPage },
+      { path: "hub/vault/products", Component: ProductsPage },
       { path: "hub/analytics", Component: AnalyticsPage },
       { path: "hub/calendar", Component: CalendarPage },
       { path: "hub/music", Component: MusicPage },

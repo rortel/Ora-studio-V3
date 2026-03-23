@@ -97,21 +97,24 @@ export function Pricing() {
               transition={{ delay: i * 0.06 }}
               className="rounded-xl p-6 flex flex-col relative"
               style={{
-                background: p.highlighted ? "#222120" : "#1a1918",
+                background: p.highlighted
+                  ? "linear-gradient(180deg, rgba(139,108,247,0.08) 0%, #201F23 100%)"
+                  : "#201F23",
                 border: p.highlighted
-                  ? "1px solid rgba(255,255,255,0.16)"
-                  : "1px solid rgba(255,255,255,0.06)",
+                  ? "1px solid rgba(139,108,247,0.3)"
+                  : "1px solid rgba(255,255,255,0.07)",
+                boxShadow: p.highlighted ? "0 4px 24px rgba(139,108,247,0.1)" : "none",
                 minHeight: 400,
               }}
             >
               {p.highlighted && (
                 <span
-                  className="absolute top-4 right-4 px-2 py-0.5 rounded"
+                  className="absolute top-4 right-4 px-2.5 py-1 rounded-full"
                   style={{
-                    background: "rgba(255,255,255,0.10)",
+                    background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
                     fontSize: "10px",
-                    fontWeight: 500,
-                    color: "#E8E4DF",
+                    fontWeight: 600,
+                    color: "#fff",
                     letterSpacing: "0.04em",
                   }}
                 >

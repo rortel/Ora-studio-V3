@@ -53,9 +53,9 @@ export function ThreeSteps() {
               marginBottom: 12,
             }}
           >
-            One prompt. All models.
+            One prompt. <span style={{ color: "#8B6CF7" }}>All models.</span>
           </h2>
-          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#5C5856", maxWidth: 440 }}>
+          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#6B6660", maxWidth: 440 }}>
             The aggregator pattern: your brief goes everywhere at once.
           </p>
         </motion.div>

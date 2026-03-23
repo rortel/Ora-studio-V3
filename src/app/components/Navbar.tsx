@@ -119,7 +119,7 @@ export function Navbar() {
                         exit={{ opacity: 0, y: 4, scale: 0.96 }}
                         className="absolute right-0 top-11 w-44 rounded-xl py-1.5 z-50"
                         style={{
-                          background: "#1a1918",
+                          background: "#201F23",
                           border: "1px solid rgba(255,255,255,0.10)",
                           boxShadow: "0 8px 28px rgba(0,0,0,0.4)",
                         }}
@@ -150,7 +150,7 @@ export function Navbar() {
                 className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
                 style={{
                   background: "#E8E4DF",
-                  color: "#131211",
+                  color: "#18171A",
                   fontSize: "13px",
                   fontWeight: 500,
                 }}
@@ -170,8 +170,8 @@ export function Navbar() {
                   to="/login?mode=signup"
                   className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
                   style={{
-                    background: "#E8E4DF",
-                    color: "#131211",
+                    background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
+                    color: "#fff",
                     fontSize: "13px",
                     fontWeight: 500,
                   }}
@@ -197,7 +197,7 @@ export function Navbar() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] flex flex-col"
-            style={{ background: "#131211" }}
+            style={{ background: "#18171A" }}
           >
             <div className="flex items-center justify-between px-6 h-14">
               <OraLogo size={28} animate={false} color="#E8E4DF" />
@@ -241,7 +241,7 @@ export function Navbar() {
                   to="/hub"
                   onClick={() => setMobileOpen(false)}
                   className="px-8 py-4 rounded-lg"
-                  style={{ background: "#E8E4DF", color: "#131211", fontSize: "16px", fontWeight: 500 }}
+                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "16px", fontWeight: 500 }}
                 >
                   Dashboard
                 </Link>
@@ -251,7 +251,7 @@ export function Navbar() {
                     to="/login?mode=signup"
                     onClick={() => setMobileOpen(false)}
                     className="px-8 py-4 rounded-lg"
-                    style={{ background: "#E8E4DF", color: "#131211", fontSize: "16px", fontWeight: 500 }}
+                    style={{ background: "#E8E4DF", color: "#18171A", fontSize: "16px", fontWeight: 500 }}
                   >
                     Start free
                   </Link>
