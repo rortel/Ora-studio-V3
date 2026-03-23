@@ -410,6 +410,7 @@ interface BrandContext {
   imageBankLighting: string[];
   visualDirective: string;
   topRefImages: BrandRefImage[];
+  layoutRules: { grid?: string; spacing?: string; alignment?: string; text_width?: string; image_ratios?: string; density?: string } | null;
 }
 
 async function buildBrandContext(userId: string): Promise<BrandContext | null> {
@@ -443,6 +444,7 @@ async function buildBrandContext(userId: string): Promise<BrandContext | null> {
       imageBankLighting: [],
       visualDirective: "",
       topRefImages: [],
+      layoutRules: vaultData.layout_rules || null,
     };
     const analyzed = (brandImages || []).filter((img: any) => img?.analysis && !img.analysis._parseError);
     analyzed.sort((a: any, b: any) => (b.analysis?.brand_alignment?.score || 0) - (a.analysis?.brand_alignment?.score || 0));
@@ -3058,6 +3060,19 @@ app.post("/campaign/generate-texts-v2", async (c) => {
       // ── Guidelines (full charter text) ──
       if (v.guidelines) brandCtx.push(`BRAND GUIDELINES:\n${v.guidelines.slice(0, 1500)}`);
 
+      // ── Layout & composition rules ──
+      if (v.layout_rules) {
+        const lr = v.layout_rules;
+        const layoutParts: string[] = [];
+        if (lr.grid) layoutParts.push(`Grid: ${lr.grid}`);
+        if (lr.spacing) layoutParts.push(`Spacing: ${lr.spacing}`);
+        if (lr.alignment) layoutParts.push(`Alignment: ${lr.alignment}`);
+        if (lr.text_width) layoutParts.push(`Text width: ${lr.text_width}`);
+        if (lr.image_ratios) layoutParts.push(`Image ratios: ${lr.image_ratios}`);
+        if (lr.density) layoutParts.push(`Density: ${lr.density}`);
+        if (layoutParts.length) brandCtx.push(`LAYOUT & COMPOSITION RULES:\n${layoutParts.join("\n")}`);
+      }
+
       // ── Custom sections from charter ──
       if (v.sections) { for (const s of v.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
 
@@ -5194,7 +5209,16 @@ JSON:
   "approved_terms": ["string (8-15)"],
   "forbidden_terms": ["string (5-10)"],
   "fonts": ["string"],
+  "font_rules": "string or null (e.g. 'Poppins Bold for headings, Inter Regular for body, minimum 16px body')",
   "competitors": ["string (2-5 direct competitors if identifiable)"],
+  "layout_rules": {
+    "grid": "string or null (e.g. '12-column grid, 24px margins, 16px gutters')",
+    "spacing": "string or null (e.g. 'Section spacing 64px, element spacing 24px, paragraph spacing 16px')",
+    "alignment": "string or null (e.g. 'Left-aligned body text, centered headings')",
+    "text_width": "string or null (e.g. 'Max 65 characters per line, 600px max content width')",
+    "image_ratios": "string or null (e.g. 'Hero 16:9, thumbnails 1:1, stories 9:16')",
+    "density": "string or null (e.g. 'Airy with generous whitespace, 40% content / 60% whitespace')"
+  },
   "confidence_score": 0-100
 }`,
           },
@@ -5346,20 +5370,23 @@ app.post("/vault/analyze-file", async (c) => {
       const dataUri = `data:${mimeType};base64,${imageBase64}`;
 
       const visionPrompt = isPDF
-        ? `This is a brand charter / brand guidelines PDF document. Extract EVERYTHING relevant for a creative agency:
+        ? `This is a brand charter / brand guidelines PDF document. Extract EVERYTHING relevant for a creative agency to produce pixel-perfect brand-compliant content:
+
 1. BRAND IDENTITY: Company name, tagline, mission statement, vision, values, personality traits, USP
-2. VISUAL IDENTITY: ALL color hex codes with their roles (primary, secondary, accent), color usage ratios if specified
-3. TYPOGRAPHY: ALL font names with their specific usage rules (headings, body, captions), weights, sizes
-4. TONE OF VOICE: Communication style, formality level, adjectives describing the tone, approved and forbidden vocabulary
-5. PHOTOGRAPHY STYLE: Framing, mood, lighting, subjects, compositions guidelines
-6. LOGO: Description, usage rules, clear space requirements
+2. VISUAL IDENTITY: ALL color hex codes with their roles (primary, secondary, accent, background, text), color usage ratios/proportions if specified (e.g. "70% primary, 20% secondary, 10% accent")
+3. TYPOGRAPHY: ALL font names with specific usage rules — which font for headings vs body vs captions, exact weights (Bold, SemiBold, Regular, Light), sizes if specified (H1=48px, H2=32px, body=16px), line-heights, letter-spacing
+4. TONE OF VOICE: Communication style, formality level, adjectives describing the tone, approved and forbidden vocabulary, writing rules
+5. PHOTOGRAPHY STYLE: Framing, mood, lighting, subjects, composition guidelines, filters, retouching rules
+6. LOGO: Description, usage rules, clear space/safe zone requirements (e.g. "2x logo height"), minimum sizes, what NOT to do with the logo
 7. MESSAGING: Key messages, taglines, value propositions, elevator pitch
 8. TARGET AUDIENCE: Personas, demographics, psychographics
 9. COMPETITIVE POSITIONING: Named competitors, differentiation points
 10. DO'S AND DON'TS: Any explicit rules about what to do or avoid
+11. LAYOUT & COMPOSITION RULES: Grid system (columns, margins, gutters), spacing rules between elements, alignment rules (left/center/justified), text width limits (e.g. max 60 chars/line), section spacing, content density, hierarchy of visual elements, image-to-text ratios, whitespace rules, any explicit composition grids or templates shown
+12. IMAGE FORMAT GUIDELINES: Preferred image ratios (hero, thumbnail, social), cropping rules, overlay rules (text on image, gradient overlays), border radius preferences
 
-Be EXHAUSTIVE. Extract exact hex codes, exact font names, exact wording. This data will be used to configure an AI creative studio.`
-        : "Describe this brand document/image in detail. Extract: company name, colors (hex codes), logo description, fonts, tone, visual style, photo framing/mood, mission, vision, values, personality, any text content. Be thorough and factual.";
+Be EXHAUSTIVE. Extract exact hex codes, exact font names with weights, exact spacing values, exact wording. This data will be used to configure an AI creative studio that must produce content indistinguishable from agency work.`
+        : "Describe this brand document/image in detail. Extract: company name, colors (hex codes with roles), logo description, fonts with weights, tone, visual style, photo framing/mood, mission, vision, values, personality, layout rules, spacing, any text content. Be thorough and factual.";
 
       try {
         const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
