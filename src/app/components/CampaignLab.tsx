@@ -1014,7 +1014,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
             duration: 30,
             sceneCount: 5,
             productIds: vault!.product_anchors!.map((p: any) => p.id),
-          });
+          }, 20_000);
           if (sbRes.success && sbRes.storyBible) {
             storyBible = sbRes.storyBible;
             console.log("[CampaignLab] Story Bible generated:", storyBible.concept?.pitch);
