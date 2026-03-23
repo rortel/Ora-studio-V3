@@ -5330,17 +5330,36 @@ app.post("/vault/analyze-file", async (c) => {
 
     const arrayBuffer = await file.arrayBuffer();
     const isImage = fileType.startsWith("image/");
+    const isPDF = fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+    const isVisual = isImage || isPDF; // Both need vision API
 
     let extractedText = "";
 
-    if (isImage) {
-      // Vision analysis via APIPod (GPT-4o vision)
-      console.log(`[vault/analyze-file] Image → GPT-4o vision...`);
+    if (isVisual) {
+      // Vision analysis via APIPod (GPT-4o vision) — works for images AND PDFs
+      console.log(`[vault/analyze-file] ${isPDF ? "PDF" : "Image"} → GPT-4o vision...`);
       const bytes = new Uint8Array(arrayBuffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
       const imageBase64 = btoa(binary);
-      const dataUri = `data:${fileType};base64,${imageBase64}`;
+      const mimeType = isPDF ? "application/pdf" : fileType;
+      const dataUri = `data:${mimeType};base64,${imageBase64}`;
+
+      const visionPrompt = isPDF
+        ? `This is a brand charter / brand guidelines PDF document. Extract EVERYTHING relevant for a creative agency:
+1. BRAND IDENTITY: Company name, tagline, mission statement, vision, values, personality traits, USP
+2. VISUAL IDENTITY: ALL color hex codes with their roles (primary, secondary, accent), color usage ratios if specified
+3. TYPOGRAPHY: ALL font names with their specific usage rules (headings, body, captions), weights, sizes
+4. TONE OF VOICE: Communication style, formality level, adjectives describing the tone, approved and forbidden vocabulary
+5. PHOTOGRAPHY STYLE: Framing, mood, lighting, subjects, compositions guidelines
+6. LOGO: Description, usage rules, clear space requirements
+7. MESSAGING: Key messages, taglines, value propositions, elevator pitch
+8. TARGET AUDIENCE: Personas, demographics, psychographics
+9. COMPETITIVE POSITIONING: Named competitors, differentiation points
+10. DO'S AND DON'TS: Any explicit rules about what to do or avoid
+
+Be EXHAUSTIVE. Extract exact hex codes, exact font names, exact wording. This data will be used to configure an AI creative studio.`
+        : "Describe this brand document/image in detail. Extract: company name, colors (hex codes), logo description, fonts, tone, visual style, photo framing/mood, mission, vision, values, personality, any text content. Be thorough and factual.";
 
       try {
         const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
@@ -5351,11 +5370,11 @@ app.post("/vault/analyze-file", async (c) => {
             messages: [{
               role: "user",
               content: [
-                { type: "text", text: "Describe this brand document/image in detail. Extract: company name, colors (hex codes), logo description, fonts, tone, visual style, photo framing/mood, any text content. Be thorough and factual." },
-                { type: "image_url", image_url: { url: dataUri } },
+                { type: "text", text: visionPrompt },
+                { type: "image_url", image_url: { url: dataUri, detail: "high" } },
               ],
             }],
-            max_tokens: 2000,
+            max_tokens: 4000,
           }),
         });
         if (vRes.ok) {
