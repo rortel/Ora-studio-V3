@@ -423,6 +423,65 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   }, [layers, pushHistory]);
 
   /* ───────────────────────────────────────────────────────────────────────
+     VAULT ASSET HELPERS
+     ─────────────────────────────────────────────────────────────────────── */
+  const addVaultLogo = useCallback(() => {
+    const logoSrc = brandLogoUrl || vault?.logo_url || vault?.logoUrl;
+    if (!logoSrc) return;
+    const newId = `vault-logo-${Date.now()}`;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      setLoadedImages(prev => ({ ...prev, [newId]: img }));
+      const newLayer: TemplateLayer = {
+        id: newId,
+        type: "logo",
+        x: 5, y: 5, width: 15, height: 15,
+        dataBinding: { source: "vault", field: "logoUrl" },
+        style: { objectFit: "contain", opacity: 0.95 },
+        zIndex: layers.length + 1,
+      };
+      setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+      setSelectedId(newId);
+    };
+    img.onerror = () => {};
+    // Try CORS fetch first for CDN images
+    fetch(logoSrc, { mode: "cors" })
+      .then(r => r.blob())
+      .then(blob => { img.src = URL.createObjectURL(blob); })
+      .catch(() => { img.src = logoSrc; });
+  }, [brandLogoUrl, vault, layers, pushHistory]);
+
+  const addVaultText = useCallback((text: string, fontSize = 3.5) => {
+    const newLayer: TemplateLayer = {
+      id: `vtext-${Date.now()}`,
+      type: "text",
+      x: 10, y: 40, width: 50, height: 12,
+      dataBinding: { source: "static", field: text },
+      style: {
+        fontSize, fontWeight: 600, color: "#FFFFFF", textAlign: "left",
+        fontFamily: (vault?.fonts as string[])?.[0] ? `'${(vault.fonts as string[])[0]}', sans-serif` : "Inter, Helvetica, Arial, sans-serif",
+        lineHeight: 1.3, letterSpacing: 0, maxLines: 3,
+      },
+      zIndex: layers.length + 1,
+    };
+    setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+    setSelectedId(newLayer.id);
+  }, [vault, layers, pushHistory]);
+
+  const addColorBlock = useCallback((hex: string) => {
+    const newLayer: TemplateLayer = {
+      id: `cblock-${Date.now()}`,
+      type: "shape",
+      x: 0, y: 75, width: 100, height: 25,
+      style: { fill: hex, opacity: 0.9, cornerRadius: 0 },
+      zIndex: layers.length + 1,
+    };
+    setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+    setSelectedId(newLayer.id);
+  }, [layers, pushHistory]);
+
+  /* ───────────────────────────────────────────────────────────────────────
      KEYBOARD SHORTCUTS
      ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -1017,6 +1076,99 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               </div>
               <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
             </div>
+
+            {/* Brand Assets from Vault */}
+            {vault && (
+              <div className="mb-4">
+                <p style={sectionTitleStyle}>Brand Vault</p>
+                <div className="space-y-2">
+                  {/* Logo */}
+                  {(brandLogoUrl || vault?.logo_url || vault?.logoUrl) && (
+                    <button
+                      onClick={addVaultLogo}
+                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      title="Add brand logo to canvas"
+                    >
+                      <img
+                        src={brandLogoUrl || vault?.logo_url || vault?.logoUrl}
+                        alt="Logo"
+                        className="w-7 h-7 rounded object-contain"
+                        style={{ background: "#222" }}
+                      />
+                      <span style={{ fontSize: 10, color: "#9A9590", fontWeight: 500 }}>Add Logo</span>
+                    </button>
+                  )}
+
+                  {/* Colors */}
+                  {vaultColors.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>Colors — click to add block</span>
+                      <div className="flex flex-wrap gap-1">
+                        {vaultColors.map((c, i) => (
+                          <button
+                            key={i}
+                            onClick={() => addColorBlock(c.hex)}
+                            title={`${c.name || c.role}: ${c.hex}`}
+                            style={{
+                              width: 22, height: 22, borderRadius: 4, background: c.hex,
+                              border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick text from vault */}
+                  {(vault?.company_name || vault?.brandName) && (
+                    <button
+                      onClick={() => addVaultText(vault?.company_name || vault?.brandName || "", 5)}
+                      className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: "#9A9590" }}
+                    >
+                      + Brand name: <strong style={{ color: "#C4BEB8" }}>{(vault?.company_name || vault?.brandName || "").slice(0, 20)}</strong>
+                    </button>
+                  )}
+                  {vault?.tagline && (
+                    <button
+                      onClick={() => addVaultText(vault.tagline, 3)}
+                      className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: "#9A9590" }}
+                    >
+                      + Tagline: <em style={{ color: "#7A7572" }}>{(vault.tagline as string).slice(0, 25)}</em>
+                    </button>
+                  )}
+
+                  {/* Vault fonts as quick-apply */}
+                  {(vault?.fonts as string[])?.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>Brand Fonts</span>
+                      <div className="space-y-0.5">
+                        {(vault.fonts as string[]).slice(0, 4).map((f, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              if (selectedId) {
+                                const layer = layers.find(l => l.id === selectedId);
+                                if (layer?.type === "text") {
+                                  updateLayerStyle(selectedId, { fontFamily: `'${f}', sans-serif` });
+                                }
+                              }
+                            }}
+                            className="w-full text-left px-2 py-1 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
+                            style={{ fontSize: 10, color: "#7A7572", fontFamily: `'${f}', sans-serif` }}
+                            title={selectedId ? `Apply "${f}" to selected text` : `Font: ${f}`}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Layer list */}
             <div>
