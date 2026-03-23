@@ -13,6 +13,7 @@ import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { ImageBank } from "../components/ImageBank";
+import { BrandAssets } from "../components/BrandAssets";
 
 // ── Helpers ──
 
@@ -939,7 +940,10 @@ function VaultPageContent() {
               </p>
             )}
 
-            {/* Image Bank */}
+            {/* Brand Assets — permanent brand elements */}
+            <BrandAssets accessToken={accessToken} />
+
+            {/* Image Bank — style reference photos */}
             <div className="mt-8">
               <ImageBank accessToken={accessToken} />
             </div>

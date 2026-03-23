@@ -256,6 +256,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [vaultLoading, setVaultLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [brandAssets, setBrandAssets] = useState<any[]>([]);
 
   // ── Generation state ──
   const [phase, setPhase] = useState<"input" | "generating" | "results">("input");
@@ -345,6 +346,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
           setProducts(data.products);
           console.log(`[CampaignLab] ${data.products.length} products loaded`);
         }
+        // Load brand assets (logos, patterns, graphics)
+        try {
+          const baRes = await fetch(`${API_BASE}/brand-assets?_token=${encodeURIComponent(token || "")}`, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+          const baData = await baRes.json();
+          if (baData.success && baData.assets) {
+            setBrandAssets(baData.assets);
+            // Auto-set logo from brand assets if not already set
+            const logoAsset = baData.assets.find((a: any) => a.role === "logo" && a.signedUrl);
+            if (logoAsset && !logoUrl) {
+              setLogoUrl(logoAsset.signedUrl);
+              console.log(`[CampaignLab] Logo from brand assets: ${logoAsset.label}`);
+            }
+            console.log(`[CampaignLab] ${baData.assets.length} brand assets loaded`);
+          }
+        } catch {}
       } catch (err) {
         console.error(`[CampaignLab] Vault fetch error (attempt ${attempt}):`, err);
         if (attempt < 2) {

@@ -411,14 +411,16 @@ interface BrandContext {
   visualDirective: string;
   topRefImages: BrandRefImage[];
   layoutRules: { grid?: string; spacing?: string; alignment?: string; text_width?: string; image_ratios?: string; density?: string } | null;
+  brandAssets: { id: string; role: string; usage: string; signedUrl: string | null; label: string }[];
 }
 
 async function buildBrandContext(userId: string): Promise<BrandContext | null> {
   const t0 = Date.now();
   try {
-    const [vaultData, brandImages] = await Promise.all([
+    const [vaultData, brandImages, brandAssets] = await Promise.all([
       withTimeout(kv.get(`vault:${userId}`), 3_000, "kv.get vault"),
       withTimeout(kv.getByPrefix(`brand-image:${userId}:`), 3_000, "kv.getByPrefix brand-images").catch(() => [] as any[]),
+      withTimeout(kv.getByPrefix(`brand-asset:${userId}:`), 3_000, "kv.getByPrefix brand-assets").catch(() => [] as any[]),
     ]);
     if (!vaultData) {
       console.log(`[buildBrandContext] No vault data for ${userId} (${Date.now() - t0}ms)`);
@@ -445,7 +447,22 @@ async function buildBrandContext(userId: string): Promise<BrandContext | null> {
       visualDirective: "",
       topRefImages: [],
       layoutRules: vaultData.layout_rules || null,
+      brandAssets: [],
     };
+
+    // ── Brand Assets: resolve signed URLs for logo/overlay/graphic assets ──
+    if (brandAssets && brandAssets.length > 0) {
+      const sb = supabaseAdmin();
+      for (const a of brandAssets) {
+        if (a.storagePath) {
+          try {
+            const { data } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(a.storagePath, 3600);
+            ctx.brandAssets.push({ id: a.id, role: a.role, usage: a.usage, signedUrl: data?.signedUrl || null, label: a.label || "" });
+          } catch {}
+        }
+      }
+      console.log(`[buildBrandContext] ${ctx.brandAssets.length} brand assets loaded (${brandAssets.filter((a: any) => a.usage === "always_overlay").length} overlays, ${brandAssets.filter((a: any) => a.usage === "img2img_source").length} img2img sources)`);
+    }
     const analyzed = (brandImages || []).filter((img: any) => img?.analysis && !img.analysis._parseError);
     analyzed.sort((a: any, b: any) => (b.analysis?.brand_alignment?.score || 0) - (a.analysis?.brand_alignment?.score || 0));
     const topImages = analyzed.slice(0, 10);
@@ -14178,6 +14195,91 @@ app.delete("/products/:id/images/:imageId", async (c) => {
     if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
     return c.json({ success: false, error: `Delete image failed: ${msg}` }, 500);
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ══ BRAND ASSETS — Permanent brand elements (logos, patterns, graphics)
+// ═══════════════════════════════════════════════════════════
+
+app.post("/brand-assets", async (c) => {
+  const t0 = Date.now();
+  try {
+    await ensureImageBankBucket();
+    const sb = supabaseAdmin();
+    const ct = c.req.header("Content-Type") || "";
+    if (!ct.includes("multipart/form-data")) return c.json({ success: false, error: "Use multipart/form-data" }, 400);
+    const fd = await c.req.formData();
+    const file = fd.get("file") as File;
+    const formToken = fd.get("_token") as string || "";
+    const role = (fd.get("role") as string) || "graphic";
+    const label = (fd.get("label") as string) || file?.name || "Untitled";
+    const usage = (fd.get("usage") as string) || "reference";
+    const jwt = decodeJwtPayload(formToken);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+    if (!file) return c.json({ success: false, error: "No file" }, 400);
+    if (!["image/png","image/jpeg","image/webp","image/svg+xml","image/gif"].includes(file.type)) return c.json({ success: false, error: `Unsupported: ${file.type}` }, 400);
+    if (file.size > 10*1024*1024) return c.json({ success: false, error: "Max 10MB" }, 400);
+    const assetId = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+    const ext = file.name.split(".").pop() || "png";
+    const storagePath = `brand-assets/${userId}/${assetId}.${ext}`;
+    const buf = await file.arrayBuffer();
+    const { error: upErr } = await sb.storage.from(IMAGE_BANK_BUCKET).upload(storagePath, buf, { contentType: file.type, upsert: false });
+    if (upErr) return c.json({ success: false, error: upErr.message }, 500);
+    const { data: signed } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(storagePath, 86400*7);
+    const asset = { id: assetId, role, label, usage, fileName: file.name, storagePath, fileSize: file.size, mimeType: file.type, signedUrl: signed?.signedUrl || null, createdAt: new Date().toISOString() };
+    await kv.set(`brand-asset:${userId}:${assetId}`, asset);
+    console.log(`[brand-assets] Created ${role}/${usage}: "${label}" (${Date.now()-t0}ms)`);
+    return c.json({ success: true, asset });
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: msg }, 500);
+  }
+});
+
+app.get("/brand-assets", async (c) => {
+  try {
+    const token = c.req.query("_token") || c.get?.("userToken") || c.req.header("X-User-Token") || c.req.header("Authorization")?.split(" ")[1];
+    if (!token) return c.json({ success: false, error: "No auth" }, 401);
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Invalid token" }, 401);
+    await ensureImageBankBucket();
+    const sb = supabaseAdmin();
+    const assets = await kv.getByPrefix(`brand-asset:${jwt.sub}:`).catch(() => []);
+    for (const a of (assets || [])) {
+      if (a.storagePath) { try { const { data } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(a.storagePath, 86400*7); a.signedUrl = data?.signedUrl || null; } catch { a.signedUrl = null; } }
+    }
+    return c.json({ success: true, assets: assets || [] });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
+app.put("/brand-assets/:id", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const k = `brand-asset:${user.id}:${c.req.param("id")}`;
+    const ex = await kv.get(k);
+    if (!ex) return c.json({ success: false, error: "Not found" }, 404);
+    if (body.role !== undefined) ex.role = body.role;
+    if (body.label !== undefined) ex.label = body.label;
+    if (body.usage !== undefined) ex.usage = body.usage;
+    ex.updatedAt = new Date().toISOString();
+    await kv.set(k, ex);
+    return c.json({ success: true, asset: ex });
+  } catch (err: any) { return c.json({ success: false, error: String(err) }, String(err).includes("Unauthorized") ? 401 : 500); }
+});
+
+app.delete("/brand-assets/:id", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const k = `brand-asset:${user.id}:${c.req.param("id")}`;
+    const ex = await kv.get(k);
+    if (!ex) return c.json({ success: false, error: "Not found" }, 404);
+    if (ex.storagePath) { await ensureImageBankBucket(); const sb = supabaseAdmin(); await sb.storage.from(IMAGE_BANK_BUCKET).remove([ex.storagePath]).catch(() => {}); }
+    await kv.del(k);
+    return c.json({ success: true, deletedId: c.req.param("id") });
+  } catch (err: any) { return c.json({ success: false, error: String(err) }, String(err).includes("Unauthorized") ? 401 : 500); }
 });
 
 // (end of legacy dead code block)
