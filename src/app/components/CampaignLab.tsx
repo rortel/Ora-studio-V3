@@ -9,11 +9,19 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
+import { getTemplatesForFormat, getTemplateById, registerTemplate } from "./templates";
+import type { TemplateDefinition } from "./templates/types";
+import { TemplateEngine } from "./TemplateEngine";
+import { SVGTemplateEngine } from "./SVGTemplateEngine";
+import { HTMLTemplateEngine } from "./HTMLTemplateEngine";
+import { TemplateEditor } from "./TemplateEditor";
+import { TemplateGallery } from "./TemplateGallery";
 
 /* ═══════════════════════════════════
    TYPES
@@ -242,6 +250,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [repromptText, setRepromptText] = useState("");
   const [regeneratingAsset, setRegeneratingAsset] = useState<string | null>(null);
   const [savingCampaign, setSavingCampaign] = useState(false);
+
+  // ── Template state ──
+  const [assetTemplates, setAssetTemplates] = useState<Record<string, string>>({});
+  const [editorAsset, setEditorAsset] = useState<GeneratedAsset | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryFormatId, setGalleryFormatId] = useState("");
 
   // ── Calendar + Deploy state ──
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
@@ -968,6 +982,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       // Switch to results — images + text done. Videos update live.
       setGenerationProgress(100);
       setPhase("results");
+
+      // Auto-assign first available template per image format
+      const autoTemplates: Record<string, string> = {};
+      for (const fmt of formats.filter(f => f.type === "image")) {
+        const tmplsForFmt = getTemplatesForFormat(fmt.id);
+        if (tmplsForFmt.length > 0) {
+          autoTemplates[fmt.id] = tmplsForFmt[0].id;
+        }
+      }
+      if (Object.keys(autoTemplates).length > 0) {
+        setAssetTemplates(prev => ({ ...prev, ...autoTemplates }));
+      }
+
       toast.success(`Campaign generated: ${formats.length} assets${videoFormats.length > 0 ? ` (${videoFormats.length} videos still rendering...)` : ""}`);
 
       if (videoFormats.length > 0) {
@@ -2522,25 +2549,50 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                   </span>
                                 </div>
                               </div>
+                            ) : assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId]) ? (
+                              /* Template-based rendering */
+                              <div className="w-full h-full">
+                                {getTemplateById(assetTemplates[asset.formatId])!.htmlTemplate ? (
+                                  <HTMLTemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                                    width={380}
+                                  />
+                                ) : getTemplateById(assetTemplates[asset.formatId])!.svgTemplate ? (
+                                  <SVGTemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                                    width={380}
+                                  />
+                                ) : (
+                                  <TemplateEngine
+                                    template={getTemplateById(assetTemplates[asset.formatId])!}
+                                    asset={asset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                                    width={380}
+                                  />
+                                )}
+                              </div>
                             ) : (
-                              <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
-                            )}
-                            {/* Brand logo overlay */}
-                            {brandLogoUrl && (
-                              <img
-                                src={brandLogoUrl}
-                                alt="Brand logo"
-                                className="absolute"
-                                style={{
-                                  bottom: 10, right: 10,
-                                  width: "14%", maxWidth: 56, minWidth: 24,
-                                  height: "auto",
-                                  objectFit: "contain",
-                                  filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))",
-                                  opacity: 0.9,
-                                  borderRadius: 3,
-                                }}
-                              />
+                              <>
+                                <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
+                                {/* Brand logo overlay (raw mode) */}
+                                {brandLogoUrl && (
+                                  <img
+                                    src={brandLogoUrl}
+                                    alt="Brand logo"
+                                    className="absolute"
+                                    style={{
+                                      bottom: 10, right: 10,
+                                      width: "14%", maxWidth: 56, minWidth: 24,
+                                      height: "auto",
+                                      objectFit: "contain",
+                                      filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))",
+                                      opacity: 0.9,
+                                      borderRadius: 3,
+                                    }}
+                                  />
+                                )}
+                              </>
                             )}
                           </div>
                         ) : asset.status === "ready" && asset.videoUrl ? (
@@ -2637,6 +2689,25 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{asset.label}</span>
                           {asset.status === "ready" && (
                             <div className="flex items-center gap-1">
+                              {/* Edit template button */}
+                              {asset.type === "image" && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId])) {
+                                      setEditorAsset(asset);
+                                    } else {
+                                      setGalleryFormatId(asset.formatId);
+                                      setGalleryOpen(true);
+                                    }
+                                  }}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  title={assetTemplates[asset.formatId] ? "Edit template" : "Choose template"}
+                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}
+                                >
+                                  <Pencil size={12} style={{ color: assetTemplates[asset.formatId] ? "var(--ora-signal)" : "#7A7572" }} />
+                                </button>
+                              )}
                               <button onClick={() => handleDeployAsset(asset)}
                                 disabled={deployingAssets[asset.formatId] === "deploying" || deployingAssets[asset.formatId] === "deployed"}
                                 className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
@@ -2957,6 +3028,30 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       : deployingAssets[selectedAsset.formatId] === "deployed" ? <><Check size={12} /> Deployed</>
                       : <><Send size={12} /> Deploy to {selectedAsset.platform}</>}
                   </button>
+                  {/* Edit / Template buttons */}
+                  {selectedAsset.type === "image" && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setGalleryFormatId(selectedAsset.formatId);
+                          setGalleryOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                        style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}
+                      >
+                        <LayoutGrid size={12} /> Templates
+                      </button>
+                      {assetTemplates[selectedAsset.formatId] && getTemplateById(assetTemplates[selectedAsset.formatId]) && (
+                        <button
+                          onClick={() => { setEditorAsset(selectedAsset); setSelectedAsset(null); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                          style={{ background: "rgba(59,79,196,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(59,79,196,0.3)" }}
+                        >
+                          <Pencil size={12} /> Edit
+                        </button>
+                      )}
+                    </>
+                  )}
                   <button onClick={() => handleSaveAsset(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
                     <Save size={12} /> Save to Library
                   </button>
@@ -3004,9 +3099,44 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 {/* Single image (non-carousel) */}
                 {selectedAsset.imageUrl && (!selectedAsset.carouselSlides || selectedAsset.carouselSlides.length <= 1) && (
                   <div className="relative inline-block w-full">
-                    <img src={selectedAsset.imageUrl} alt={selectedAsset.label} className="w-full rounded-xl max-h-[50vh] object-contain" style={{ background: "#0e0d0c" }} />
-                    {brandLogoUrl && (
-                      <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                    {assetTemplates[selectedAsset.formatId] && getTemplateById(assetTemplates[selectedAsset.formatId]) ? (
+                      <div className="rounded-xl overflow-hidden" style={{ background: "#0e0d0c" }}>
+                        {getTemplateById(assetTemplates[selectedAsset.formatId])!.htmlTemplate ? (
+                          <HTMLTemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                            width={700} showExport onExport={(url) => {
+                              const a = document.createElement("a"); a.href = url;
+                              a.download = `${selectedAsset.label || "asset"}.png`; a.click();
+                            }}
+                          />
+                        ) : getTemplateById(assetTemplates[selectedAsset.formatId])!.svgTemplate ? (
+                          <SVGTemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                            width={700} showExport onExport={(url) => {
+                              const a = document.createElement("a"); a.href = url;
+                              a.download = `${selectedAsset.label || "asset"}.png`; a.click();
+                            }}
+                          />
+                        ) : (
+                          <TemplateEngine
+                            template={getTemplateById(assetTemplates[selectedAsset.formatId])!}
+                            asset={selectedAsset as any} vault={vault as any} brandLogoUrl={brandLogoUrl}
+                            width={700} showExport onExport={(url) => {
+                              const a = document.createElement("a"); a.href = url;
+                              a.download = `${selectedAsset.label || "asset"}.png`; a.click();
+                            }}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <img src={selectedAsset.imageUrl} alt={selectedAsset.label} className="w-full rounded-xl max-h-[50vh] object-contain" style={{ background: "#0e0d0c" }} />
+                        {brandLogoUrl && (
+                          <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -3147,6 +3277,40 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   </div>
                 )}
 
+                {/* Template selector chips */}
+                {selectedAsset.type === "image" && getTemplatesForFormat(selectedAsset.formatId).length > 0 && (
+                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                      Layout Template
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setAssetTemplates(prev => { const next = { ...prev }; delete next[selectedAsset.formatId]; return next; })}
+                        className="px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{
+                          background: !assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
+                          color: !assetTemplates[selectedAsset.formatId] ? "#fff" : "#7A7572",
+                          fontSize: "11px", fontWeight: 600,
+                          border: `1px solid ${!assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(255,255,255,0.08)"}`,
+                        }}
+                      >Raw</button>
+                      {getTemplatesForFormat(selectedAsset.formatId).map(tmpl => (
+                        <button
+                          key={tmpl.id}
+                          onClick={() => setAssetTemplates(prev => ({ ...prev, [selectedAsset.formatId]: tmpl.id }))}
+                          className="px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                          style={{
+                            background: assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
+                            color: assetTemplates[selectedAsset.formatId] === tmpl.id ? "#fff" : "#9A9590",
+                            fontSize: "11px", fontWeight: 600,
+                            border: `1px solid ${assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(255,255,255,0.08)"}`,
+                          }}
+                        >{tmpl.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}>
                   <Shield size={14} style={{ color: "#10b981" }} />
                   <span style={{ fontSize: "12px", fontWeight: 600, color: "#10b981" }}>Brand-compliant</span>
@@ -3158,6 +3322,37 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         )}
       </AnimatePresence>
 
+      {/* ═══ TEMPLATE GALLERY DIALOG ═══ */}
+      <TemplateGallery
+        open={galleryOpen}
+        onOpenChange={setGalleryOpen}
+        formatId={galleryFormatId}
+        currentTemplateId={assetTemplates[galleryFormatId]}
+        onSelect={(tmplId) => {
+          if (tmplId) {
+            setAssetTemplates(prev => ({ ...prev, [galleryFormatId]: tmplId }));
+          } else {
+            setAssetTemplates(prev => { const next = { ...prev }; delete next[galleryFormatId]; return next; });
+          }
+        }}
+      />
+
+      {/* ═══ TEMPLATE EDITOR DIALOG ═══ */}
+      {editorAsset && assetTemplates[editorAsset.formatId] && getTemplateById(assetTemplates[editorAsset.formatId]) && (
+        <TemplateEditor
+          open={!!editorAsset}
+          onOpenChange={(open) => { if (!open) setEditorAsset(null); }}
+          template={getTemplateById(assetTemplates[editorAsset.formatId])!}
+          asset={editorAsset as any}
+          vault={vault as any}
+          brandLogoUrl={brandLogoUrl}
+          onSave={(updatedTemplate) => {
+            registerTemplate(updatedTemplate);
+            setAssetTemplates(prev => ({ ...prev, [editorAsset.formatId]: updatedTemplate.id }));
+            setEditorAsset(null);
+          }}
+        />
+      )}
 
     </div>
   );
