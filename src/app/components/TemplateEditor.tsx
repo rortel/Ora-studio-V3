@@ -14,6 +14,24 @@ import {
 } from "lucide-react";
 import type { TemplateDefinition, TemplateLayer } from "./templates/types";
 import { registerTemplate } from "./templates";
+import { API_BASE, publicAnonKey } from "../lib/supabase";
+import { useAuth } from "../lib/auth-context";
+
+interface VaultBrandAsset {
+  id: string;
+  role: string;
+  label: string;
+  usage: string;
+  signedUrl: string | null;
+}
+
+interface VaultBrandImage {
+  id: string;
+  fileName: string;
+  signedUrl: string | null;
+  category: string;
+  tags: string[];
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PROPS
@@ -80,6 +98,12 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   const [history, setHistory] = useState<TemplateLayer[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+
+  // ── Brand assets from vault ──
+  const [brandAssets, setBrandAssets] = useState<VaultBrandAsset[]>([]);
+  const [brandImages, setBrandImages] = useState<VaultBrandImage[]>([]);
+  const [vaultAssetsLoading, setVaultAssetsLoading] = useState(false);
+  const { getAuthToken } = useAuth();
 
   // ── Refs ──
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,6 +173,36 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       setEditingTextId(null);
     }
   }, [template, open]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     FETCH VAULT BRAND ASSETS + IMAGE BANK
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!open) return;
+    const token = getAuthToken();
+    if (!token) return;
+    setVaultAssetsLoading(true);
+
+    // Fetch brand assets
+    const fetchAssets = fetch(`${API_BASE}/brand-assets?_token=${encodeURIComponent(token)}`, {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+      signal: AbortSignal.timeout(10_000),
+    }).then(r => r.json()).then(data => {
+      if (data.success && data.assets) setBrandAssets(data.assets);
+    }).catch(() => {});
+
+    // Fetch image bank (first 20 images)
+    const fetchImages = fetch(`${API_BASE}/vault/images/list`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+      body: JSON.stringify({ _token: token }),
+      signal: AbortSignal.timeout(10_000),
+    }).then(r => r.json()).then(data => {
+      if (data.success && data.images) setBrandImages(data.images.slice(0, 20));
+    }).catch(() => {});
+
+    Promise.allSettled([fetchAssets, fetchImages]).finally(() => setVaultAssetsLoading(false));
+  }, [open, getAuthToken]);
 
   /* ───────────────────────────────────────────────────────────────────────
      PRELOAD IMAGES (ported from TemplateEngine)
@@ -468,6 +522,31 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
     setSelectedId(newLayer.id);
   }, [vault, layers, pushHistory]);
+
+  const addVaultAssetImage = useCallback((url: string, label: string, isLogo = false) => {
+    if (!url) return;
+    const newId = `vasset-${Date.now()}`;
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      setLoadedImages(prev => ({ ...prev, [newId]: img }));
+      const newLayer: TemplateLayer = {
+        id: newId,
+        type: isLogo ? "logo" : "image",
+        x: 10, y: 10, width: isLogo ? 15 : 25, height: isLogo ? 15 : 25,
+        dataBinding: { source: "static", field: url },
+        style: { objectFit: isLogo ? "contain" : "cover", opacity: 1 },
+        zIndex: layers.length + 1,
+      };
+      setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+      setSelectedId(newId);
+    };
+    img.onerror = () => {};
+    fetch(url, { mode: "cors" })
+      .then(r => r.blob())
+      .then(blob => { img.src = URL.createObjectURL(blob); })
+      .catch(() => { img.src = url; });
+  }, [layers, pushHistory]);
 
   const addColorBlock = useCallback((hex: string) => {
     const newLayer: TemplateLayer = {
@@ -1165,6 +1244,58 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {/* Brand Assets (logos, patterns, graphics, packshots, overlays) */}
+                  {brandAssets.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>
+                        Brand Assets ({brandAssets.length})
+                      </span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {brandAssets.filter(a => a.signedUrl).map(asset => (
+                          <button
+                            key={asset.id}
+                            onClick={() => addVaultAssetImage(asset.signedUrl!, asset.label, asset.role === "logo")}
+                            className="relative rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
+                            style={{ aspectRatio: "1/1", background: "#1a1918" }}
+                            title={`Add ${asset.label} (${asset.role})`}
+                          >
+                            <img src={asset.signedUrl!} alt={asset.label} className="w-full h-full object-contain p-0.5" />
+                            <span className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-center truncate"
+                              style={{ fontSize: 7, color: "#9A9590", background: "rgba(0,0,0,0.7)" }}>
+                              {asset.role}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Image Bank photos */}
+                  {brandImages.length > 0 && (
+                    <div>
+                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>
+                        Image Bank ({brandImages.length})
+                      </span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {brandImages.filter(img => img.signedUrl).slice(0, 9).map(img => (
+                          <button
+                            key={img.id}
+                            onClick={() => addVaultAssetImage(img.signedUrl!, img.fileName)}
+                            className="rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
+                            style={{ aspectRatio: "1/1", background: "#1a1918" }}
+                            title={`Add ${img.fileName}${img.tags?.length ? ` (${img.tags.join(", ")})` : ""}`}
+                          >
+                            <img src={img.signedUrl!} alt={img.fileName} className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {vaultAssetsLoading && (
+                    <span style={{ fontSize: 9, color: "#5C5856" }}>Loading vault assets...</span>
                   )}
                 </div>
               </div>
