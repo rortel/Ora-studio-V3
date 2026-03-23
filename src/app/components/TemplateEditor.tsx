@@ -10,6 +10,7 @@ import {
   Save, X, Type, Palette, Trash2, Eye, EyeOff, Download, Copy,
   ChevronUp, ChevronDown, Undo2, Redo2, ZoomIn, ZoomOut,
   AlignLeft, AlignCenter, AlignRight, Bold,
+  Circle, Minus, ImagePlus, Layers, GripVertical, Pipette,
 } from "lucide-react";
 import type { TemplateDefinition, TemplateLayer } from "./templates/types";
 import { registerTemplate } from "./templates";
@@ -85,6 +86,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   const trRef = useRef<any>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const cw = template?.canvasWidth || 1200;
   const ch = template?.canvasHeight || 628;
@@ -360,6 +362,116 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     });
     setSelectedId(newLayer.id);
   }, [layers, pushHistory, resolveColor]);
+
+  const addCircleLayer = useCallback(() => {
+    const newLayer: TemplateLayer = {
+      id: `circle-${Date.now()}`,
+      type: "circle",
+      x: 30, y: 30, width: 20, height: 20,
+      style: { fill: resolveColor("vault:primary"), opacity: 0.7, radius: 10 },
+      zIndex: layers.length + 1,
+    };
+    setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+    setSelectedId(newLayer.id);
+  }, [layers, pushHistory, resolveColor]);
+
+  const addGradientLayer = useCallback(() => {
+    const newLayer: TemplateLayer = {
+      id: `grad-${Date.now()}`,
+      type: "gradient-overlay",
+      x: 0, y: 50, width: 100, height: 50,
+      style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.75 }] },
+      zIndex: layers.length + 1,
+    };
+    setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+    setSelectedId(newLayer.id);
+  }, [layers, pushHistory]);
+
+  const addLineLayer = useCallback(() => {
+    const newLayer: TemplateLayer = {
+      id: `line-${Date.now()}`,
+      type: "line",
+      x: 10, y: 50, width: 80, height: 1,
+      style: { stroke: "#FFFFFF", strokeWidth: 2, points: [0, 50, 100, 50], opacity: 0.6 },
+      zIndex: layers.length + 1,
+    };
+    setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+    setSelectedId(newLayer.id);
+  }, [layers, pushHistory]);
+
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      const newId = `img-${Date.now()}`;
+      setLoadedImages(prev => ({ ...prev, [newId]: img }));
+      const newLayer: TemplateLayer = {
+        id: newId,
+        type: "image",
+        x: 10, y: 10, width: 30, height: 30,
+        dataBinding: { source: "static", field: url },
+        style: { objectFit: "cover", opacity: 1 },
+        zIndex: layers.length + 1,
+      };
+      setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
+      setSelectedId(newId);
+    };
+    img.src = url;
+    e.target.value = "";
+  }, [layers, pushHistory]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     KEYBOARD SHORTCUTS
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      // Undo
+      if (isMeta && !e.shiftKey && e.key === "z") { e.preventDefault(); undo(); return; }
+      // Redo
+      if (isMeta && e.shiftKey && e.key === "z") { e.preventDefault(); redo(); return; }
+      // Delete selected
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingTextId) {
+        const layer = layers.find(l => l.id === selectedId);
+        if (layer && layer.type !== "background-image") { e.preventDefault(); deleteLayer(selectedId); }
+        return;
+      }
+      // Duplicate
+      if (isMeta && e.key === "d" && selectedId) { e.preventDefault(); duplicateLayer(selectedId); return; }
+      // Arrow keys — nudge position
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && selectedId && !editingTextId) {
+        e.preventDefault();
+        const step = e.shiftKey ? 5 : 1;
+        const dx = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
+        const dy = e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0;
+        setLayers(prev => prev.map(l => l.id === selectedId ? { ...l, x: l.x + dx * 0.5, y: l.y + dy * 0.5 } : l));
+        return;
+      }
+      // Escape — deselect
+      if (e.key === "Escape") { setSelectedId(null); if (editingTextId) finishTextEdit(); return; }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, selectedId, editingTextId, layers, undo, redo, deleteLayer, duplicateLayer, finishTextEdit]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     MOUSE WHEEL ZOOM
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!open || !containerRef.current) return;
+    const el = containerRef.current;
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.05 : 0.05;
+      setStageScale(s => Math.max(0.15, Math.min(3, s + delta)));
+    };
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [open]);
 
   /* ───────────────────────────────────────────────────────────────────────
      SAVE & EXPORT
@@ -836,6 +948,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
             <span style={{ fontSize: 11, color: "#5C5856" }}>
               {template.name} — {cw}×{ch}
             </span>
+            <span style={{ fontSize: 9, color: "#3C3A38", marginLeft: 8 }}>
+              ⌘Z undo · ⌘⇧Z redo · ⌘D duplicate · ⌫ delete · ← → ↑ ↓ nudge · ⌘+scroll zoom
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -880,14 +995,27 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
             {/* Add elements */}
             <div className="mb-4">
               <p style={sectionTitleStyle}>Add Element</p>
-              <div className="flex gap-1.5">
-                <button onClick={addTextLayer} style={smallBtnStyle}>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={addTextLayer} style={smallBtnStyle} title="Add text (T)">
                   <Type size={10} /> Text
                 </button>
-                <button onClick={addShapeLayer} style={smallBtnStyle}>
-                  <Palette size={10} /> Shape
+                <button onClick={addShapeLayer} style={smallBtnStyle} title="Add rectangle">
+                  <Palette size={10} /> Rect
+                </button>
+                <button onClick={addCircleLayer} style={smallBtnStyle} title="Add circle">
+                  <Circle size={10} /> Circle
+                </button>
+                <button onClick={addGradientLayer} style={smallBtnStyle} title="Add gradient">
+                  <Layers size={10} /> Grad
+                </button>
+                <button onClick={addLineLayer} style={smallBtnStyle} title="Add line">
+                  <Minus size={10} /> Line
+                </button>
+                <button onClick={() => imageInputRef.current?.click()} style={smallBtnStyle} title="Upload image">
+                  <ImagePlus size={10} /> Image
                 </button>
               </div>
+              <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
             </div>
 
             {/* Layer list */}
@@ -909,10 +1037,22 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         {hiddenLayers.has(layer.id) ? <EyeOff size={9} style={{ color: "#3C3A38" }} /> : <Eye size={9} style={{ color: "#5C5856" }} />}
                       </button>
                       <span className="truncate" style={{ fontSize: 11, color: selectedId === layer.id ? "#E8E4DF" : "#7A7572", fontWeight: 500 }}>
-                        {layer.id}
+                        {layer.type === "background-image" ? "Background"
+                          : layer.type === "gradient-overlay" ? "Gradient"
+                          : layer.type === "logo" ? "Logo"
+                          : layer.id === "headline" ? "Headline"
+                          : layer.id === "cta" ? "CTA"
+                          : layer.type === "text" ? (resolveBinding(layer.dataBinding)?.slice(0, 18) || "Text")
+                          : layer.type === "shape" ? (layer.id.includes("bar") ? "Bar" : layer.id.includes("panel") ? "Panel" : "Shape")
+                          : layer.type === "circle" ? "Circle"
+                          : layer.type === "line" ? "Line"
+                          : layer.type === "image" ? "Image"
+                          : layer.id}
                       </span>
                     </div>
-                    <span style={{ fontSize: 9, color: "#5C5856", flexShrink: 0 }}>{layer.type}</span>
+                    <span style={{ fontSize: 9, color: "#5C5856", flexShrink: 0 }}>
+                      {layer.type === "background-image" ? "📷" : layer.type === "text" ? "T" : layer.type === "shape" ? "□" : layer.type === "circle" ? "○" : layer.type === "gradient-overlay" ? "▓" : layer.type === "logo" ? "✦" : layer.type === "line" ? "—" : layer.type === "image" ? "🖼" : layer.type}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1129,12 +1269,22 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         >
                           <option value="Inter, Helvetica, Arial, sans-serif">Inter</option>
                           <option value="Georgia, serif">Georgia</option>
-                          <option value="'Courier New', monospace">Courier New</option>
-                          <option value="Impact, sans-serif">Impact</option>
-                          <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
-                          <option value="Verdana, sans-serif">Verdana</option>
                           <option value="Arial, sans-serif">Arial</option>
+                          <option value="Helvetica, Arial, sans-serif">Helvetica</option>
+                          <option value="Verdana, sans-serif">Verdana</option>
+                          <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                          <option value="Impact, sans-serif">Impact</option>
                           <option value="'Times New Roman', serif">Times New Roman</option>
+                          <option value="'Courier New', monospace">Courier New</option>
+                          <option value="'Playfair Display', Georgia, serif">Playfair Display</option>
+                          <option value="'Montserrat', Helvetica, sans-serif">Montserrat</option>
+                          <option value="'Poppins', sans-serif">Poppins</option>
+                          <option value="'Roboto', Arial, sans-serif">Roboto</option>
+                          <option value="'Oswald', sans-serif">Oswald</option>
+                          <option value="'Raleway', sans-serif">Raleway</option>
+                          <option value="'Lato', sans-serif">Lato</option>
+                          <option value="'Open Sans', sans-serif">Open Sans</option>
+                          <option value="'Bebas Neue', Impact, sans-serif">Bebas Neue</option>
                         </select>
                       </label>
 
@@ -1349,9 +1499,20 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center" style={{ color: "#5C5856" }}>
-                <p style={{ fontSize: 12 }}>Select a layer to edit its properties</p>
-                <p style={{ fontSize: 10, marginTop: 4 }}>Click on elements in the canvas or layer list</p>
+              <div className="flex flex-col items-center justify-center h-full text-center px-4" style={{ color: "#5C5856" }}>
+                <Layers size={24} style={{ color: "#3C3A38", marginBottom: 12 }} />
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#7A7572" }}>Select a layer</p>
+                <p style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>Click elements on the canvas or in the layer list to edit their properties</p>
+                <div className="mt-6 text-left w-full space-y-2" style={{ fontSize: 10, color: "#3C3A38" }}>
+                  <p><strong style={{ color: "#5C5856" }}>Quick Tips:</strong></p>
+                  <p>• Double-click text to edit inline</p>
+                  <p>• Drag elements to reposition</p>
+                  <p>• Use corner handles to resize</p>
+                  <p>• ⌘Z / ⌘⇧Z to undo / redo</p>
+                  <p>• Arrow keys to nudge (⇧ for 5px)</p>
+                  <p>• ⌘D to duplicate selected</p>
+                  <p>• Delete / Backspace to remove</p>
+                </div>
               </div>
             )}
           </div>
