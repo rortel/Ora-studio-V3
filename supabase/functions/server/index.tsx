@@ -259,7 +259,69 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 
 // ── Credit Helpers ───────────────────────────────────────────
 const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 200, generate: 1500, studio: 5000 };
-const CREDIT_COST = { text: 1, image: 5, video: 30, audio: 5, code: 2 } as const;
+const CREDIT_COST = { text: 1, image: 5, video: 30, audio: 5, code: 2, upscale: 3 } as const;
+
+// ── Negative Prompts per photography style ──
+const NEGATIVE_PROMPTS: Record<string, string> = {
+  default: "text overlay, watermark, visible letters, visible words, brand names, logos, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime, low quality, blurry, noisy, pixelated, overexposed, underexposed, deformed, disfigured, duplicate, mutated",
+  product: "wrong brand, competitor brand, altered product, text overlay, watermark, visible letters, 3D render, CGI, illustration, cartoon, low quality, blurry, deformed, cluttered background",
+  lifestyle: "text overlay, watermark, posed, stock photo feeling, artificial, staged, logos, letters, low quality, blurry, overexposed, deformed, plastic skin",
+  editorial: "text overlay, watermark, amateur, snapshot, logos, visible text, low quality, blurry, overexposed, cluttered background, oversaturated",
+  fashion: "text overlay, watermark, amateur lighting, unflattering angles, logos, visible text, low quality, wrinkled, stained, blurry, overexposed",
+  cinematic: "text overlay, watermark, flat lighting, amateur, snapshot, logos, visible text, low quality, blurry, overexposed, video game, 3D render",
+};
+
+// ── Photography Style Presets per platform ──
+const PHOTOGRAPHY_STYLE_PRESETS: Record<string, {
+  prompt_prefix: string;
+  camera: string;
+  lighting: string;
+  negative: string;
+  platforms: string[];
+}> = {
+  editorial: {
+    prompt_prefix: "High-end editorial photography, magazine-quality composition",
+    camera: "Shot on Hasselblad X2D 100C, 90mm f/3.2, medium format sensor",
+    lighting: "Natural directional light with subtle fill, golden ratio composition",
+    negative: NEGATIVE_PROMPTS.editorial,
+    platforms: ["linkedin-post", "linkedin-carousel", "x-post", "youtube-thumbnail", "blog-header"],
+  },
+  product: {
+    prompt_prefix: "Premium product photography, clean commercial shot",
+    camera: "Shot on Phase One IQ4 150MP, 120mm f/4 macro, tethered to Capture One",
+    lighting: "Three-point studio lighting, key light 45deg with softbox, fill bounced, rim light for separation",
+    negative: NEGATIVE_PROMPTS.product,
+    platforms: ["facebook-ad", "pinterest-pin", "instagram-post", "landing-hero"],
+  },
+  lifestyle: {
+    prompt_prefix: "Authentic lifestyle photography, environmental portrait",
+    camera: "Shot on Sony A7IV, 35mm f/1.4 GM, natural ambient exposure",
+    lighting: "Available light, golden hour side-light, natural reflections",
+    negative: NEGATIVE_PROMPTS.lifestyle,
+    platforms: ["instagram-post", "instagram-carousel", "instagram-story", "facebook-post", "facebook-story", "tiktok-image"],
+  },
+  fashion: {
+    prompt_prefix: "High-fashion campaign photography, Vogue-quality",
+    camera: "Shot on Canon EOS R5, 85mm f/1.2L, beauty dish lighting",
+    lighting: "Dramatic Rembrandt lighting, single key with v-flat reflector",
+    negative: NEGATIVE_PROMPTS.fashion,
+    platforms: ["instagram-story", "pinterest-pin"],
+  },
+  cinematic: {
+    prompt_prefix: "Cinematic still frame, film-grade composition",
+    camera: "Anamorphic lens, ARRI Alexa 35, 40mm T2.1 Cooke S7i, 2.39:1 framing",
+    lighting: "Motivated practical lighting, atmospheric haze, volumetric light shafts",
+    negative: NEGATIVE_PROMPTS.cinematic,
+    platforms: ["youtube-thumbnail", "linkedin-video", "facebook-video", "youtube-short", "instagram-reel", "tiktok-video"],
+  },
+};
+
+function getStylePresetForFormat(formatId: string): typeof PHOTOGRAPHY_STYLE_PRESETS[string] | null {
+  for (const [, preset] of Object.entries(PHOTOGRAPHY_STYLE_PRESETS)) {
+    if (preset.platforms.includes(formatId)) return preset;
+  }
+  return PHOTOGRAPHY_STYLE_PRESETS.editorial; // default fallback
+}
 
 // Timeout wrapper for KV operations (prevents hanging on DB issues)
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -557,12 +619,29 @@ const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 const LEONARDO_V2_BASE = "https://cloud.leonardo.ai/api/rest/v2";
 
 // ── PROMPT ENHANCER — translates any language to English + produces cinematic photorealistic prompts ──
-async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false): Promise<string> {
+async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false, formatId?: string, brandCtx?: BrandContext | null): Promise<string> {
   const t0 = Date.now();
   // Always enhance — even English prompts benefit from photorealistic detail injection
   const key = Deno.env.get("APIPOD_API_KEY");
   if (!key) { console.log("[enhancePrompt] No API key, using raw"); return rawPrompt; }
   const enhanceModels = ["gpt-4o", "gpt-5"];
+
+  // Inject photography style preset if formatId is provided
+  const preset = formatId ? getStylePresetForFormat(formatId) : null;
+  const presetBlock = preset
+    ? `\nPHOTOGRAPHY STYLE DIRECTIVE for this platform format (${formatId}):
+- Style: ${preset.prompt_prefix}
+- Camera: ${preset.camera}
+- Lighting: ${preset.lighting}
+Match this style while keeping the user's creative intent.\n`
+    : "";
+
+  // Inject brand visual DNA from image bank analysis
+  const brandVisualBlock = brandCtx?.visualDirective
+    ? `\nBRAND VISUAL DNA (match this aesthetic closely):
+${brandCtx.visualDirective}\n`
+    : "";
+
   const systemPrompt = `You are a world-class image prompt engineer specializing in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
 
 RULES:
@@ -573,7 +652,7 @@ RULES:
 - ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt (e.g. "MAN eTGX", "Nike Air Max 90"). The brand name helps the AI match the reference image identity. Do NOT remove or replace brand names with generic descriptions. However, do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
 - CRITICAL TEMPORAL: Vehicles, machines, technology MUST be described as MODERN, CONTEMPORARY, CURRENT-GENERATION (2024-era). NEVER vintage, retro, classic, old, antique. Always add "modern, latest generation" for vehicles.
 - NEVER reference competing brands or any brand at all.
-
+${presetBlock}${brandVisualBlock}
 ALWAYS ADD these technical details (pick what is relevant):
 - Camera and lens: specific camera model, focal length, aperture (e.g. "shot on Sony A7IV, 85mm f/1.4")
 - Lighting: specific lighting setup (golden hour, studio softbox, overcast diffused, neon-lit, etc.)
@@ -583,6 +662,8 @@ ALWAYS ADD these technical details (pick what is relevant):
 - Composition: rule of thirds, leading lines, shallow depth of field, bokeh quality
 - Resolution keywords: "8K resolution", "ultra-detailed", "photorealistic", "hyperrealistic"
 - Style anchor: "editorial photography", "cinematic still", "commercial product shot", "documentary style"
+
+LUMA PHOTON OPTIMIZATION (power keywords for best results): "photorealistic", "8K", "ultra-detailed", "cinematic color grading", "anamorphic bokeh", "volumetric atmosphere", "film grain texture", "subsurface scattering". Be concrete and visual — avoid abstract descriptions.
 
 NEVER add: text, watermarks, logos, brand names, product names, model numbers, signatures, borders, collages, split screens, any readable writing.
 End the prompt with: "Absolutely no visible text, no letters, no words, no brand names, no logos anywhere in the image. Ultra-detailed, 8K resolution, photorealistic."`;
@@ -894,7 +975,7 @@ async function generateImageDallE(req: { prompt: string; model: string; aspectRa
 }
 
 // ── FLUX PRO IMAGE GENERATION (FAL API) ──
-async function generateImageFluxPro(req: { prompt: string; model: string; aspectRatio?: string }) {
+async function generateImageFluxPro(req: { prompt: string; model: string; aspectRatio?: string; negativePrompt?: string }) {
   const start = Date.now();
   const key = Deno.env.get("FAL_API_KEY");
   if (!key) throw new Error("FAL_API_KEY not configured");
@@ -912,7 +993,7 @@ async function generateImageFluxPro(req: { prompt: string; model: string; aspect
   const submitRes = await fetch("https://queue.fal.run/fal-ai/flux-pro/v1.1", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
-    body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, safety_tolerance: "5" }),
+    body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, safety_tolerance: "5", ...(req.negativePrompt ? { negative_prompt: req.negativePrompt } : {}) }),
   });
   if (!submitRes.ok) {
     const body = await submitRes.text();
@@ -2526,29 +2607,42 @@ app.post("/campaign/generate-texts", async (c) => {
     if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
     if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
 
-    // ── BRAND VAULT ──
-    let brandVault: any = null;
-    if (user) { try { brandVault = await kv.get(`vault:${user.id}`); console.log(`[campaign-texts-POST] vault=${brandVault ? "YES" : "NO"}`); } catch {} }
-    const brandCtx: string[] = [];
-    if (brandVault) {
-      if (brandVault.brandName) brandCtx.push(`BRAND NAME: ${brandVault.brandName}`);
-      if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
-      if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
-      if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
-      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
-      if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
-      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
-      if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
-      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY: ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS: ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
-      if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE: ${brandVault.targetAudience}`);
-      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
-      if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
-      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
-      if (brandVault.sections) { for (const s of brandVault.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
+    // ── BRAND VAULT (modern schema via buildBrandContext) ──
+    let brandBlock = "No Brand Vault. Use professional neutral tone.";
+    if (user) {
+      try {
+        const ctx = await buildBrandContext(user.id);
+        if (ctx) {
+          brandBlock = buildBrandBlock(ctx);
+          console.log(`[campaign-texts-POST] vault=YES (${ctx.brandName}), brandBlock=${brandBlock.length} chars`);
+
+          // Inject Product Anchors
+          const vaultRaw: any = await kv.get(`vault:${user.id}`);
+          if (vaultRaw?.product_anchors?.length) {
+            const anchorLines = vaultRaw.product_anchors.map((p: any) =>
+              `PRODUCT ANCHOR: "${p.name}" — ${p.visual_description || "N/A"}. USP: ${p.usp_primary || "N/A"}. ` +
+              `Must appear in ${p.appearance_rules?.min_scenes || 2}+ scenes. ` +
+              (p.appearance_rules?.must_name_in_voiceover ? "MUST be named in voiceover. " : "") +
+              (p.appearance_rules?.visible_in_final_scene ? "MUST be visible in final scene." : "")
+            );
+            brandBlock += `\n\nPRODUCT ANCHORS (ABSOLUTE REQUIREMENTS):\n- ${anchorLines.join("\n- ")}`;
+          }
+
+          // Inject Compliance Rules
+          if (vaultRaw?.compliance_rules) {
+            const cr = vaultRaw.compliance_rules;
+            const crLines: string[] = [];
+            if (cr.sector_restrictions?.length) crLines.push(`Sector restrictions: ${cr.sector_restrictions.join(", ")}`);
+            if (cr.forbidden_cultural_refs?.length) crLines.push(`Forbidden cultural references: ${cr.forbidden_cultural_refs.join(", ")}`);
+            if (cr.authorized_cultural_refs?.length) crLines.push(`Authorized cultural references: ${cr.authorized_cultural_refs.join(", ")}`);
+            if (cr.mandatory_legal_mentions?.length) crLines.push(`MANDATORY legal mentions (MUST include): ${cr.mandatory_legal_mentions.join(", ")}`);
+            if (crLines.length) brandBlock += `\n\nCOMPLIANCE RULES:\n- ${crLines.join("\n- ")}`;
+          }
+        } else {
+          console.log(`[campaign-texts-POST] vault=NO`);
+        }
+      } catch (e) { console.log(`[campaign-texts-POST] brand context error: ${e}`); }
     }
-    const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
 
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
       // LinkedIn
@@ -2683,40 +2777,39 @@ app.get("/campaign/generate-texts-get", async (c) => {
     if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
     if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
 
-    // ── BRAND VAULT — full load from KV ──
-    let brandVault: any = null;
+    // ── BRAND VAULT (modern schema via buildBrandContext) ──
+    let brandBlock = "No Brand Vault. Use professional neutral tone.";
     if (user) {
       try {
-        brandVault = await kv.get(`vault:${user.id}`);
-        console.log(`[campaign-texts-get] vault: ${brandVault ? "YES (" + (brandVault.brandName || "?") + ")" : "NO"}`);
-      } catch (err) { console.log(`[campaign-texts-get] vault err: ${err}`); }
-    }
+        const ctx = await buildBrandContext(user.id);
+        if (ctx) {
+          brandBlock = buildBrandBlock(ctx);
+          console.log(`[campaign-texts-get] vault=YES (${ctx.brandName}), brandBlock=${brandBlock.length} chars`);
 
-    const brandCtx: string[] = [];
-    if (brandVault) {
-      if (brandVault.brandName) brandCtx.push(`BRAND NAME: ${brandVault.brandName}`);
-      if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
-      if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
-      if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
-      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
-      if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
-      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
-      if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
-      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY (MUST use): ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS (NEVER use): ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
-      if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE (vault): ${brandVault.targetAudience}`);
-      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
-      if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
-      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
-      if (brandVault.sections) {
-        for (const s of brandVault.sections) {
-          const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n");
-          if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`);
+          const vaultRaw: any = await kv.get(`vault:${user.id}`);
+          if (vaultRaw?.product_anchors?.length) {
+            const anchorLines = vaultRaw.product_anchors.map((p: any) =>
+              `PRODUCT ANCHOR: "${p.name}" — ${p.visual_description || "N/A"}. USP: ${p.usp_primary || "N/A"}. ` +
+              `Must appear in ${p.appearance_rules?.min_scenes || 2}+ scenes. ` +
+              (p.appearance_rules?.must_name_in_voiceover ? "MUST be named in voiceover. " : "") +
+              (p.appearance_rules?.visible_in_final_scene ? "MUST be visible in final scene." : "")
+            );
+            brandBlock += `\n\nPRODUCT ANCHORS (ABSOLUTE REQUIREMENTS):\n- ${anchorLines.join("\n- ")}`;
+          }
+          if (vaultRaw?.compliance_rules) {
+            const cr = vaultRaw.compliance_rules;
+            const crLines: string[] = [];
+            if (cr.sector_restrictions?.length) crLines.push(`Sector restrictions: ${cr.sector_restrictions.join(", ")}`);
+            if (cr.forbidden_cultural_refs?.length) crLines.push(`Forbidden cultural references: ${cr.forbidden_cultural_refs.join(", ")}`);
+            if (cr.authorized_cultural_refs?.length) crLines.push(`Authorized cultural references: ${cr.authorized_cultural_refs.join(", ")}`);
+            if (cr.mandatory_legal_mentions?.length) crLines.push(`MANDATORY legal mentions (MUST include): ${cr.mandatory_legal_mentions.join(", ")}`);
+            if (crLines.length) brandBlock += `\n\nCOMPLIANCE RULES:\n- ${crLines.join("\n- ")}`;
+          }
+        } else {
+          console.log(`[campaign-texts-get] vault=NO`);
         }
-      }
+      } catch (e) { console.log(`[campaign-texts-get] brand context error: ${e}`); }
     }
-    const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
 
     const FORMAT_META_GET: Record<string, { label: string; platform: string; type: string }> = {
       "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
@@ -2852,6 +2945,359 @@ ${fmtDesc}`;
     return c.json({ success: true, copyMap, provider: usedProvider, formatCount: fmtCount, latencyMs: Date.now() - t0 });
   } catch (err) {
     console.log(`[campaign-texts] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — TEXT GENERATION V2 (retry + validation + variants)
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/generate-texts-v2", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    console.log(`[texts-v2] user=${user?.id || "guest"}`);
+
+    const body = await c.req.json().catch(() => ({}));
+    const brief = ((body.brief || "") as string).slice(0, 2000);
+    const targetAudience = ((body.targetAudience || "") as string).slice(0, 300);
+    const productUrls = ((body.productUrls || "") as string).slice(0, 500);
+    const formatIds = ((body.formats || "") as string).split(",").filter(Boolean);
+    const campaignObjective = ((body.campaignObjective || "") as string).slice(0, 300);
+    const toneOfVoice = ((body.toneOfVoice || "") as string).slice(0, 300);
+    const contentAngle = ((body.contentAngle || "") as string).slice(0, 500);
+    const keyMessages = ((body.keyMessages || "") as string).slice(0, 800);
+    const callToAction = ((body.callToAction || "") as string).slice(0, 300);
+    const explicitLanguage = ((body.language || "") as string).slice(0, 20);
+    const campaignStartDate = ((body.campaignStartDate || "") as string).slice(0, 30);
+    const campaignDuration = ((body.campaignDuration || "") as string).slice(0, 50);
+    console.log(`[texts-v2] brief="${brief.slice(0,120)}", fmts=[${formatIds.join(",")}]`);
+    if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
+    if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
+
+    // ── BRAND VAULT (modern schema via buildBrandContext) ──
+    let brandBlock = "No Brand Vault. Use professional neutral tone.";
+    if (user) {
+      try {
+        const ctx = await buildBrandContext(user.id);
+        if (ctx) {
+          brandBlock = buildBrandBlock(ctx);
+          console.log(`[texts-v2] vault=YES (${ctx.brandName}), brandBlock=${brandBlock.length} chars`);
+
+          const vaultRaw: any = await kv.get(`vault:${user.id}`);
+          if (vaultRaw?.product_anchors?.length) {
+            const anchorLines = vaultRaw.product_anchors.map((p: any) =>
+              `PRODUCT ANCHOR: "${p.name}" — ${p.visual_description || "N/A"}. USP: ${p.usp_primary || "N/A"}. ` +
+              `Must appear in ${p.appearance_rules?.min_scenes || 2}+ scenes. ` +
+              (p.appearance_rules?.must_name_in_voiceover ? "MUST be named in voiceover. " : "") +
+              (p.appearance_rules?.visible_in_final_scene ? "MUST be visible in final scene." : "")
+            );
+            brandBlock += `\n\nPRODUCT ANCHORS (ABSOLUTE REQUIREMENTS):\n- ${anchorLines.join("\n- ")}`;
+          }
+          if (vaultRaw?.compliance_rules) {
+            const cr = vaultRaw.compliance_rules;
+            const crLines: string[] = [];
+            if (cr.sector_restrictions?.length) crLines.push(`Sector restrictions: ${cr.sector_restrictions.join(", ")}`);
+            if (cr.forbidden_cultural_refs?.length) crLines.push(`Forbidden cultural references: ${cr.forbidden_cultural_refs.join(", ")}`);
+            if (cr.authorized_cultural_refs?.length) crLines.push(`Authorized cultural references: ${cr.authorized_cultural_refs.join(", ")}`);
+            if (cr.mandatory_legal_mentions?.length) crLines.push(`MANDATORY legal mentions (MUST include): ${cr.mandatory_legal_mentions.join(", ")}`);
+            if (crLines.length) brandBlock += `\n\nCOMPLIANCE RULES:\n- ${crLines.join("\n- ")}`;
+          }
+        } else {
+          console.log(`[texts-v2] vault=NO`);
+        }
+      } catch (e) { console.log(`[texts-v2] brand context error: ${e}`); }
+    }
+
+    const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
+      "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
+      "linkedin-carousel": { label: "LinkedIn Carousel", platform: "LinkedIn", type: "image" },
+      "linkedin-video": { label: "LinkedIn Video", platform: "LinkedIn", type: "video" },
+      "linkedin-text": { label: "LinkedIn Text Post", platform: "LinkedIn", type: "text" },
+      "instagram-post": { label: "Instagram Post", platform: "Instagram", type: "image" },
+      "instagram-carousel": { label: "Instagram Carousel", platform: "Instagram", type: "image" },
+      "instagram-story": { label: "Instagram Story", platform: "Instagram", type: "image" },
+      "instagram-reel": { label: "Instagram Reel", platform: "Instagram", type: "video" },
+      "facebook-post": { label: "Facebook Post", platform: "Facebook", type: "image" },
+      "facebook-story": { label: "Facebook Story", platform: "Facebook", type: "image" },
+      "facebook-video": { label: "Facebook Video", platform: "Facebook", type: "video" },
+      "facebook-ad": { label: "Facebook Ad", platform: "Facebook", type: "image" },
+      "tiktok-video": { label: "TikTok Video", platform: "TikTok", type: "video" },
+      "tiktok-image": { label: "TikTok Photo", platform: "TikTok", type: "image" },
+      "twitter-post": { label: "X Post", platform: "Twitter/X", type: "image" },
+      "twitter-text": { label: "X Thread", platform: "Twitter/X", type: "text" },
+      "youtube-thumbnail": { label: "YouTube Thumbnail", platform: "YouTube", type: "image" },
+      "youtube-short": { label: "YouTube Short", platform: "YouTube", type: "video" },
+      "pinterest-pin": { label: "Pinterest Pin", platform: "Pinterest", type: "image" },
+      "email-campaign": { label: "Email Campaign", platform: "Email", type: "text" },
+      "newsletter": { label: "Newsletter", platform: "Email", type: "text" },
+      "landing-hero": { label: "Landing Page Hero", platform: "Web", type: "image" },
+      "blog-header": { label: "Blog Header", platform: "Web", type: "image" },
+      "landing-page": { label: "Landing Page", platform: "Web", type: "text" },
+      "ad-banner": { label: "Display Ad", platform: "Ads", type: "image" },
+      "google-ad-text": { label: "Google Ad Copy", platform: "Ads", type: "text" },
+    };
+    const formats = formatIds.map(id => ({ id, ...(FORMAT_META[id] || { label: id, platform: "Other", type: "text" }) }));
+    const fmtDesc = formats.map((f: any) => `- ${f.id}: ${f.label} (${f.platform}, ${f.type})`).join("\n");
+
+    const frPattern = /\b(le|la|les|du|des|un|une|pour|avec|dans|sur|est|sont|nous|notre|votre|cette|ces|qui|que|mais)\b/i;
+    const lang = explicitLanguage && explicitLanguage !== "auto" ? explicitLanguage : (frPattern.test(brief) ? "fr" : "en");
+    const langLabel = lang === "fr" ? "FRENCH" : lang === "en" ? "ENGLISH" : lang.toUpperCase();
+
+    // Build CAMPAIGN DIRECTIVES block
+    const directives: string[] = [];
+    if (campaignObjective) directives.push(`CAMPAIGN OBJECTIVE: ${campaignObjective}`);
+    if (contentAngle) directives.push(`CONTENT ANGLE / EVENT CONTEXT: ${contentAngle}`);
+    if (keyMessages) directives.push(`KEY MESSAGES TO INTEGRATE:\n${keyMessages}`);
+    if (callToAction) directives.push(`EXACT CTA TO USE: ${callToAction}`);
+    if (toneOfVoice) directives.push(`TONE OF VOICE: ${toneOfVoice}`);
+    if (targetAudience) directives.push(`TARGET AUDIENCE: ${targetAudience}`);
+    if (campaignStartDate) directives.push(`CAMPAIGN START DATE: ${campaignStartDate}`);
+    if (campaignDuration) directives.push(`CAMPAIGN DURATION: ${campaignDuration}`);
+    if (productUrls) directives.push(`PRODUCT URLs: ${productUrls}`);
+    const directivesBlock = directives.length > 0 ? directives.join("\n") : "";
+
+    // ── V2 SYSTEM PROMPT — includes 3 variants per format ──
+    const sysPrompt =
+      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 3000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context.\n12. IMAGE PROMPTS: Each imagePrompt MUST NAME the exact brand and product model. Add key visual characteristics. Describe a COMPLETELY NEW SCENE from the brief. Always MODERN. Every imagePrompt must be unique per format. End with: No visible text, no logos, no letters, no watermarks.\n13. VIDEO PROMPTS: Name exact brand/product model. Describe NEW motion scene from the brief. End with: No visible text, no logos.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars.\n- youtube-thumbnail: Title overlay text 3-6 words.\n- youtube-short: Hook + script 30-60 words.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n\n═══ CRITICAL: 3 VARIANTS PER FORMAT ═══\nFor EACH format, you MUST generate exactly 3 creative variants with DIFFERENT angles/hooks.\nThe output JSON must have this structure:\n\n{ "formatId": { "variant_1": { ...fields... }, "variant_2": { ...fields... }, "variant_3": { ...fields... } } }\n\nEach variant object MUST include ALL these fields:\n{"subject":"","headline":"NEVER EMPTY - compelling hook","caption":"MAIN COPY min 80w social / 250w email. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","features":[],"imagePrompt":"MANDATORY: 40-80 word scene. START with exact brand+model name. End with: No visible text, no logos.","videoPrompt":"30-50 word motion scene."}\n\nEach variant must have a DIFFERENT creative angle:\n- variant_1: Direct/professional angle\n- variant_2: Storytelling/emotional angle\n- variant_3: Bold/provocative angle\n\nFORMATS:\n${fmtDesc}`;
+
+    const userPrompt = brief || `Create campaign for: ${productUrls}`;
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    const apipodModels = APIPOD_KEY ? ["gpt-4o", "gpt-5"] : [];
+
+    // ── V2: JSON parse helper ──
+    function parseJsonSafe(text: string): Record<string, any> {
+      const strats = [
+        () => JSON.parse(text.trim()),
+        () => { const m = text.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/); if (!m) throw 0; return JSON.parse(m[1]); },
+        () => { const m = text.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1]); },
+        () => { const m = text.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1].replace(/,\s*([}\]])/g,"$1")); },
+      ];
+      for (const s of strats) { try { const r = s(); if (r && typeof r === "object" && Object.keys(r).length > 0) return r; } catch {} }
+      return {};
+    }
+
+    // ── V2: Call LLM helper (APIPod → OpenAI fallback) ──
+    async function callLLM(temperature: number): Promise<{ text: string; provider: string }> {
+      for (const mdl of apipodModels) {
+        try {
+          console.log(`[texts-v2] APIPod ${mdl} (temp=${temperature})...`);
+          const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+            body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 8192, temperature }),
+          }).then(async (res) => { if (!res.ok) { const b = await res.text(); throw new Error(`APIPod ${res.status}: ${b.slice(0, 300)}`); } const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
+          const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Timeout 90s")), 90_000));
+          const result = await Promise.race([fetchP, timeoutP]);
+          if (result) return { text: result, provider: `apipod/${mdl}` };
+        } catch (err) { console.log(`[texts-v2] ${mdl} FAILED: ${err}`); }
+      }
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          console.log(`[texts-v2] OpenAI direct (temp=${temperature})...`);
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 8192, temperature }),
+          });
+          if (!res.ok) { const b = await res.text(); throw new Error(`OpenAI ${res.status}: ${b.slice(0, 300)}`); }
+          const result = (await res.json()).choices?.[0]?.message?.content || "";
+          if (result) return { text: result, provider: "openai-direct" };
+        } catch (e) { console.log(`[texts-v2] OpenAI FAILED: ${e}`); }
+      }
+      return { text: "", provider: "" };
+    }
+
+    // ── V2: Validate copyMap — each format must have variant_1 with headline+caption ──
+    function validateCopyMap(cm: Record<string, any>): boolean {
+      for (const fid of formatIds) {
+        const entry = cm[fid];
+        if (!entry) return false;
+        // Support both flat (v1-compat) and variant structure
+        const v1 = entry.variant_1 || entry;
+        if (!v1.headline || !v1.caption || v1.headline.trim().length < 2 || v1.caption.trim().length < 10) return false;
+      }
+      return true;
+    }
+
+    // ── V2: Retry loop (max 2 attempts) ──
+    let rawCopyMap: Record<string, any> = {};
+    let usedProvider = "";
+    let retries = 0;
+    const MAX_RETRIES = 2;
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const temp = 0.7 + attempt * 0.1; // 0.7 first, 0.8 on retry
+      const { text, provider } = await callLLM(temp);
+      if (!text) { console.log(`[texts-v2] attempt ${attempt+1}: no text`); retries++; continue; }
+      console.log(`[texts-v2] attempt ${attempt+1}: ${text.length}c from ${provider}`);
+      const parsed = parseJsonSafe(text);
+      if (Object.keys(parsed).length === 0) { console.log(`[texts-v2] attempt ${attempt+1}: parse failed`); retries++; continue; }
+      rawCopyMap = parsed;
+      usedProvider = provider;
+      if (validateCopyMap(rawCopyMap)) { console.log(`[texts-v2] attempt ${attempt+1}: VALID`); break; }
+      console.log(`[texts-v2] attempt ${attempt+1}: validation failed (missing headline/caption), retrying...`);
+      retries++;
+    }
+
+    if (Object.keys(rawCopyMap).length === 0) {
+      console.log(`[texts-v2] ALL FAILED after ${retries} retries (${Date.now()-t0}ms)`);
+      return c.json({ success: false, error: "text_generation_failed", copyMap: {}, variants: {} });
+    }
+
+    // ── V2: Extract copyMap (variant_1 as default) + variants ──
+    const copyMap: Record<string, any> = {};
+    const variants: Record<string, any> = {};
+    for (const [fmtId, entry] of Object.entries(rawCopyMap)) {
+      if (entry && typeof entry === "object") {
+        if (entry.variant_1) {
+          // Structured variant response
+          copyMap[fmtId] = entry.variant_1;
+          variants[fmtId] = {
+            variant_1: entry.variant_1,
+            variant_2: entry.variant_2 || entry.variant_1,
+            variant_3: entry.variant_3 || entry.variant_1,
+          };
+        } else {
+          // Flat response (LLM didn't follow variant structure) — use as-is for variant_1
+          copyMap[fmtId] = entry;
+          variants[fmtId] = { variant_1: entry, variant_2: entry, variant_3: entry };
+        }
+      }
+    }
+
+    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    const fmtCount = Object.keys(copyMap).length;
+    console.log(`[texts-v2] DONE: ${fmtCount} fmts, ${usedProvider}, ${retries} retries, ${Date.now()-t0}ms`);
+    return c.json({ success: true, copyMap, variants, provider: usedProvider, formatCount: fmtCount, retries, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[texts-v2] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}`, copyMap: {}, variants: {} }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — CONTENT REPURPOSING (adapt copy to other formats)
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/repurpose", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    console.log(`[repurpose] user=${user?.id || "guest"}`);
+
+    const body = await c.req.json().catch(() => ({}));
+    const sourceFormat = (body.sourceFormat || "") as string;
+    const targetFormats = ((body.targetFormats || []) as string[]).filter(Boolean);
+    const headline = ((body.headline || "") as string).slice(0, 500);
+    const caption = ((body.caption || "") as string).slice(0, 3000);
+    const hashtags = ((body.hashtags || "") as string).slice(0, 500);
+    const ctaText = ((body.ctaText || "") as string).slice(0, 300);
+    const imagePrompt = ((body.imagePrompt || "") as string).slice(0, 500);
+    const explicitLanguage = ((body.language || "") as string).slice(0, 20);
+
+    if (!sourceFormat) return c.json({ success: false, error: "sourceFormat required" }, 400);
+    if (!targetFormats.length) return c.json({ success: false, error: "targetFormats required" }, 400);
+    if (!caption && !headline) return c.json({ success: false, error: "headline or caption required" }, 400);
+
+    // Load brand vault
+    let brandBlock = "No Brand Vault. Keep the same tone.";
+    if (user) {
+      try {
+        const bv: any = await kv.get(`vault:${user.id}`);
+        if (bv) {
+          const parts: string[] = [];
+          if (bv.brandName) parts.push(`BRAND: ${bv.brandName}`);
+          if (bv.tone) parts.push(`TONE: ${bv.tone}`);
+          if (bv.approvedTerms?.length) parts.push(`APPROVED: ${bv.approvedTerms.slice(0, 15).join(", ")}`);
+          if (bv.forbiddenTerms?.length) parts.push(`FORBIDDEN: ${bv.forbiddenTerms.slice(0, 15).join(", ")}`);
+          if (parts.length > 0) brandBlock = parts.join("\n");
+        }
+      } catch {}
+    }
+
+    const frPattern = /\b(le|la|les|du|des|un|une|pour|avec|dans|sur|est|sont|nous|notre)\b/i;
+    const lang = explicitLanguage && explicitLanguage !== "auto" ? explicitLanguage : (frPattern.test(caption || headline) ? "fr" : "en");
+    const langLabel = lang === "fr" ? "FRENCH" : "ENGLISH";
+
+    const FORMAT_RULES: Record<string, string> = {
+      "linkedin-post": "Professional hook. 150-300 words. 3-5 hashtags. CTA.",
+      "instagram-post": "80-150 words. 10-15 hashtags. Visual storytelling.",
+      "instagram-story": "15-30 words hook. Swipe CTA. Urgency.",
+      "instagram-reel": "Hook + voiceover. 20-40 words.",
+      "facebook-post": "Conversational. 100-200 words.",
+      "facebook-ad": "Headline(40c) + primary text(125c) + description(30c) + CTA.",
+      "twitter-post": "Max 280 chars. Punchy. 2-3 hashtags.",
+      "youtube-thumbnail": "Title overlay text 3-6 words. Click-bait hook.",
+      "pinterest-pin": "Title(100c) + description(200-500c). SEO keywords.",
+      "tiktok-video": "Viral hook 5-10 words. Script 30-60 words.",
+      "tiktok-image": "Punchy caption 30-80 words. 5-8 hashtags.",
+      "email-campaign": "Subject(50c) + headline + body(250-400w) + CTA.",
+      "linkedin-video": "Professional. 50-100 words.",
+      "linkedin-text": "Thought leadership. 200-400 words. 3-5 hashtags.",
+    };
+
+    const targetDesc = targetFormats.map(f => `- ${f}: ${FORMAT_RULES[f] || "Adapt length and tone appropriately."}`).join("\n");
+
+    const sysPrompt = `You are a cross-platform content adaptation expert.\n\nBRAND CONTEXT:\n${brandBlock}\n\nSOURCE CONTENT (from ${sourceFormat}):\nHEADLINE: ${headline}\nCAPTION: ${caption}\nHASHTAGS: ${hashtags}\nCTA: ${ctaText}\n\nRULES:\n1. Keep the SAME core message, brand voice, and product references.\n2. Adapt length, tone, and format conventions for each target.\n3. Each target format must feel NATIVE to its platform.\n4. ALL copy in ${langLabel}.\n5. Rewrite — do NOT just shorten the original.\n6. Adapt imagePrompt if provided: same subject, different scene/angle for each format.\n\nTARGET FORMATS:\n${targetDesc}\n\nOUTPUT: ONLY valid JSON. Keys = format IDs.\nEach value: {"headline":"","caption":"NEVER EMPTY","hashtags":"","ctaText":"","imagePrompt":"${imagePrompt ? "adapt the source imagePrompt for this format" : ""}"}`;
+
+    const userPrompt = `Adapt this content to: ${targetFormats.join(", ")}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    let resultText = "";
+    let usedProvider = "";
+
+    // Try APIPod
+    if (APIPOD_KEY) {
+      for (const mdl of ["gpt-4o", "gpt-5"]) {
+        try {
+          const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+            body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.5 }),
+          }).then(async (res) => { if (!res.ok) throw new Error(`${res.status}`); const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
+          const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("Timeout")), 60_000));
+          resultText = await Promise.race([fetchP, timeoutP]);
+          if (resultText) { usedProvider = `apipod/${mdl}`; break; }
+        } catch {}
+      }
+    }
+
+    // Fallback OpenAI
+    if (!resultText) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.5 }),
+          });
+          if (res.ok) { resultText = (await res.json()).choices?.[0]?.message?.content || ""; usedProvider = "openai-direct"; }
+        } catch {}
+      }
+    }
+
+    if (!resultText) return c.json({ success: false, error: "All providers failed" });
+
+    // Parse JSON
+    let repurposed: Record<string, any> = {};
+    const strats = [
+      () => JSON.parse(resultText.trim()),
+      () => { const m = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/); if (!m) throw 0; return JSON.parse(m[1]); },
+      () => { const m = resultText.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1]); },
+    ];
+    for (const s of strats) { try { repurposed = s(); if (Object.keys(repurposed).length > 0) break; } catch {} }
+
+    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    console.log(`[repurpose] DONE: ${Object.keys(repurposed).length} formats, ${usedProvider}, ${Date.now()-t0}ms`);
+    return c.json({ success: true, repurposed, provider: usedProvider, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[repurpose] FATAL: ${err}`);
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
@@ -7639,6 +8085,1006 @@ app.post("/vault/images/analyze-batch", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// VISION AI → TEMPLATE GENERATION
+// ══════════════════════════════════════════════════════════════
+
+// ── Pass 1: Design Analysis Prompt ──
+function DESIGN_ANALYSIS_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string): string {
+  return `You are an expert graphic design analyst with pixel-perfect precision. Your job is to reverse-engineer a reference visual into an exhaustive structural blueprint that another AI can use to reproduce it at 95% fidelity.
+
+CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
+
+Analyze the image meticulously and return a JSON object. ALL positions and sizes MUST be in PIXELS relative to the ${canvasWidth}×${canvasHeight} canvas.
+
+{
+  "designAnalysis": {
+    "colorPalette": [
+      { "hex": "#RRGGBB", "role": "primary|secondary|accent|background|text|border", "usage": "exactly where this color appears", "approximateArea": "percentage of canvas this color covers" }
+    ],
+
+    "background": {
+      "type": "solid|gradient|image|pattern",
+      "color": "#RRGGBB",
+      "gradient": "if gradient: direction and stops, e.g. 'linear 180deg, #FFF5E1 0%, #FFF8EC 100%'",
+      "pattern": "if patterned: describe pattern (e.g. 'horizontal wavy lines', 'dots grid')"
+    },
+
+    "layout": {
+      "type": "full-bleed|split-horizontal|split-vertical|split-diagonal|overlapping-photos|collage|grid|centered|asymmetric|z-stack",
+      "description": "detailed description of the spatial arrangement and visual hierarchy",
+      "mainAxis": "which direction does the eye travel: top-to-bottom|left-to-right|center-outward|diagonal",
+      "gridStructure": "describe invisible grid (e.g. 'photos centered with 60% width, text below photos')"
+    },
+
+    "photos": [
+      {
+        "id": "photo1",
+        "semanticRole": "what the photo shows and its purpose (e.g. 'woman in casual clothes in city environment - represents daily life')",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+        "rotation": 0,
+        "border": { "color": "#FFFFFF", "width": 0 },
+        "clipShape": "rectangle|rounded-rect|circle|ellipse|polygon|diagonal-cut",
+        "clipDetails": "exact clip description (e.g. 'rounded corners 8px', 'diagonal cut from top-right to bottom-left at 15deg')",
+        "shadow": { "type": "none|drop|inset", "color": "#000000", "blur": 0, "offsetX": 0, "offsetY": 0, "opacity": 0.3 },
+        "objectFit": "cover|contain",
+        "objectPosition": "center|top|bottom|left|right (which part of the photo is visible)",
+        "zIndex": 1,
+        "overlapsWith": "id of another photo it overlaps with, if any",
+        "visualRelationship": "describe how this photo relates to others (e.g. 'top half of person, continues into photo2')"
+      }
+    ],
+
+    "decorativeElements": [
+      {
+        "id": "deco1",
+        "type": "wavy-line|straight-line|arc|circle|filled-circle|ring|badge-circle|rectangle|rounded-rect|triangle|gradient-overlay|dots-pattern|stripes|speech-bubble|arrow|star|custom-svg-shape",
+        "description": "detailed visual description of exactly what this element looks like",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+        "color": "#RRGGBB",
+        "fillOrStroke": "fill|stroke|both",
+        "strokeWidth": 0,
+        "opacity": 1.0,
+        "rotation": 0,
+        "zIndex": 0,
+        "count": 1,
+        "spacing": "if repeated: pixels between repetitions",
+        "svgHint": "if complex shape: describe the SVG path logic (e.g. 'sine wave with amplitude 15px, wavelength 60px, spanning full width')",
+        "cssHint": "if achievable with pure CSS: describe how (e.g. 'border-radius:50% on a 120x120 div with yellow background')",
+        "containsText": "if this element contains text, what text (e.g. 'rejoins')",
+        "textStyle": "if contains text: font details (e.g. 'white, 14px, bold, centered')"
+      }
+    ],
+
+    "textElements": [
+      {
+        "id": "text1",
+        "role": "headline|subheadline|cta|tagline|hashtag|label|info|badge-text",
+        "content": "EXACT text visible in the image, preserving line breaks with \\n",
+        "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+        "fontFamily": "closest match: Impact|Arial Black|Arial|Helvetica|Georgia|Verdana|Trebuchet MS|Courier New|Times New Roman|cursive",
+        "fontSize": 0,
+        "fontWeight": "400|700|800|900",
+        "fontStyle": "normal|italic",
+        "textTransform": "none|uppercase|lowercase|capitalize",
+        "color": "#RRGGBB",
+        "textAlign": "left|center|right",
+        "lineHeight": 1.1,
+        "letterSpacing": 0,
+        "outline": { "color": "#RRGGBB", "width": 0 },
+        "shadow": { "color": "#000000", "blur": 0, "offsetX": 0, "offsetY": 0 },
+        "backgroundColor": "none or #RRGGBB",
+        "backgroundPadding": "if has background: padding in px (e.g. '12px 24px')",
+        "backgroundBorderRadius": 0,
+        "rotation": 0,
+        "zIndex": 10,
+        "specialEffect": "none|gradient-text|stroke-only|embossed|3d-shadow",
+        "writingMode": "horizontal|vertical"
+      }
+    ],
+
+    "logoPlacement": {
+      "present": true,
+      "boundingBox": { "x": 0, "y": 0, "width": 0, "height": 0 },
+      "zIndex": 20
+    },
+
+    "overallStyle": "bold|minimal|editorial|playful|corporate|luxury|grunge|retro|modern|youth-oriented",
+    "mood": "energetic|calm|professional|fun|serious|inspiring|rebellious",
+    "designTechniques": ["list", "of", "notable", "techniques", "used"]
+  }
+}
+
+CRITICAL RULES:
+1. Be EXHAUSTIVE — every single visual element must be catalogued, no matter how small
+2. ALL boundingBox coordinates MUST be in PIXELS relative to ${canvasWidth}×${canvasHeight}
+3. Estimate bounding boxes by analyzing the image proportions carefully: if an element is at 30% from top and 10% from left of a ${canvasWidth}×${canvasHeight} canvas, that's x:${Math.round(canvasWidth*0.1)}, y:${Math.round(canvasHeight*0.3)}
+4. Colors MUST be exact hex values sampled from the image
+5. Count ALL repeated elements — if there are 8 wavy lines, say count:8 and describe spacing
+6. For wavy/curved lines: describe amplitude (height of wave), wavelength (distance between peaks), thickness, and direction
+7. For overlapping photos: describe EXACTLY how they overlap, which parts are visible, and the visual continuity between them
+8. For text with outline/stroke effect: specify both fill color AND outline color + width
+9. Describe the EXACT clipping of photos (what part is cut off, at what angle)
+10. zIndex: background elements start at 0, photos at 5-10, text at 10-20, overlays at 20+
+11. Output ONLY valid JSON — no markdown fences, no explanations, no comments
+12. Include decorative elements that are partially visible (extending beyond canvas edges)
+13. For circle badges with text inside: list as BOTH a decorativeElement AND a textElement`;
+}
+
+// ── Pass 2: HTML/CSS Template Generation Prompt ──
+function HTML_TEMPLATE_GENERATION_PROMPT(canvasWidth: number, canvasHeight: number, aspectRatio: string, formatId: string, designAnalysis: string): string {
+  return `You are a world-class front-end developer specializing in pixel-perfect HTML/CSS reproduction of graphic designs. Your goal is 95% visual fidelity to the reference image.
+
+CANVAS: ${canvasWidth}×${canvasHeight} pixels, aspect ratio ${aspectRatio}, format "${formatId}"
+
+DESIGN BLUEPRINT (from structural analysis):
+${designAnalysis}
+
+Using this blueprint AND the reference image, generate self-contained HTML/CSS that reproduces every detail.
+
+═══ STRUCTURE ═══
+Root div: <div style="position:relative; width:${canvasWidth}px; height:${canvasHeight}px; overflow:hidden; background:BACKGROUND_COLOR_HERE;">
+All children: position:absolute with top/left/width/height in PIXELS.
+z-index layering: background(0-4) → decorative(5-9) → photos(10-14) → text(15-19) → logo/badges(20+)
+
+═══ PLACEHOLDERS (will be replaced at render time) ═══
+{{PHOTO_1}} → primary photo URL (use as <img src>)
+{{PHOTO_2}} → secondary photo URL
+{{HEADLINE}} → main headline text
+{{SUBHEADLINE}} → subtitle/body text
+{{CTA}} → call-to-action text
+{{LOGO_URL}} → brand logo (use as <img src>)
+{{PRIMARY_COLOR}} → brand primary color
+{{SECONDARY_COLOR}} → brand secondary color
+{{ACCENT_COLOR}} → brand accent color
+{{BACKGROUND_COLOR}} → background color
+
+═══ PHOTOS — Pixel-Perfect Techniques ═══
+
+Basic photo:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; object-position:center top;" />
+
+Photo with white border (use a wrapper div):
+<div style="position:absolute; top:98px; left:48px; width:404px; height:504px; background:#fff; transform:rotate(-3deg); transform-origin:center; box-shadow:0 4px 20px rgba(0,0,0,0.15); z-index:10;">
+  <img src="{{PHOTO_1}}" style="position:absolute; top:2px; left:2px; width:400px; height:500px; object-fit:cover;" />
+</div>
+
+Photo clipped (show only top portion — "cut under shoulders"):
+<div style="position:absolute; top:80px; left:200px; width:350px; height:280px; overflow:hidden; transform:rotate(-5deg); z-index:10;">
+  <img src="{{PHOTO_1}}" style="width:100%; height:auto; object-fit:cover; object-position:center top;" />
+</div>
+
+Photo with diagonal cut:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; clip-path:polygon(0 0, 100% 0, 100% 85%, 0 100%);" />
+
+Photo with rounded corners:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:50px; width:400px; height:500px; object-fit:cover; border-radius:12px;" />
+
+Circular photo:
+<img src="{{PHOTO_1}}" style="position:absolute; top:100px; left:100px; width:300px; height:300px; object-fit:cover; border-radius:50%;" />
+
+═══ OVERLAPPING PHOTOS ═══
+When two photos overlap and show the same person (daily life + work life):
+- Photo 1: positioned higher, shows upper body, clipped at bottom, slightly rotated
+- Photo 2: positioned lower, overlapping photo 1, shows full body, different rotation
+- Use z-index to control which one is on top
+- Both wrapped in border divs if the reference shows white borders
+
+═══ TEXT — Advanced Techniques ═══
+
+Bold headline:
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,Arial Black,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; letter-spacing:-1px; z-index:15;">{{HEADLINE}}</div>
+
+Text with colored outline/stroke (e.g. dark text with gold outline):
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; -webkit-text-stroke:3px #FFD700; paint-order:stroke fill; z-index:15;">{{HEADLINE}}</div>
+
+Alternative outline with text-shadow (more compatible):
+<div style="position:absolute; top:500px; left:60px; width:500px; font-family:Impact,sans-serif; font-size:72px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:0.95; text-shadow:-3px -3px 0 #FFD700, 3px -3px 0 #FFD700, -3px 3px 0 #FFD700, 3px 3px 0 #FFD700, 0 -3px 0 #FFD700, 0 3px 0 #FFD700, -3px 0 0 #FFD700, 3px 0 0 #FFD700; z-index:15;">{{HEADLINE}}</div>
+
+Script/cursive text:
+<div style="position:absolute; top:700px; left:100px; font-family:Georgia,'Times New Roman',serif; font-size:48px; font-style:italic; font-weight:700; color:#FFD700; z-index:15;">{{SUBHEADLINE}}</div>
+
+Hashtag text:
+<div style="position:absolute; top:150px; left:60px; font-family:Impact,Arial Black,sans-serif; font-size:80px; font-weight:900; color:#000; line-height:0.9; text-transform:uppercase; z-index:15;">#JEUNES<br>DETER</div>
+
+Text on colored badge/button:
+<div style="position:absolute; top:800px; left:600px; background:#FFD700; border-radius:50%; width:200px; height:200px; display:flex; align-items:center; justify-content:center; text-align:center; z-index:20;">
+  <span style="font-family:Arial,sans-serif; font-size:18px; font-weight:900; color:#1a1a5e; text-transform:uppercase; line-height:1.2;">ALTERNANCES<br>STAGES<br>EMPLOIS</span>
+</div>
+
+Small label in circle badge:
+<div style="position:absolute; top:50px; left:120px; background:#FFD700; border-radius:50%; width:80px; height:80px; display:flex; align-items:center; justify-content:center; z-index:20;">
+  <span style="font-family:Arial,sans-serif; font-size:14px; font-weight:700; color:#fff;">rejoins</span>
+</div>
+
+═══ DECORATIVE ELEMENTS ═══
+
+Wavy lines (horizontal, repeated) — use inline SVG:
+<svg style="position:absolute; top:350px; left:0; z-index:3;" width="${canvasWidth}" height="180" viewBox="0 0 ${canvasWidth} 180" fill="none">
+  <path d="M0,15 Q${Math.round(canvasWidth*0.05)},0 ${Math.round(canvasWidth*0.1)},15 Q${Math.round(canvasWidth*0.15)},30 ${Math.round(canvasWidth*0.2)},15 Q${Math.round(canvasWidth*0.25)},0 ${Math.round(canvasWidth*0.3)},15 Q${Math.round(canvasWidth*0.35)},30 ${Math.round(canvasWidth*0.4)},15 Q${Math.round(canvasWidth*0.45)},0 ${Math.round(canvasWidth*0.5)},15 Q${Math.round(canvasWidth*0.55)},30 ${Math.round(canvasWidth*0.6)},15 Q${Math.round(canvasWidth*0.65)},0 ${Math.round(canvasWidth*0.7)},15 Q${Math.round(canvasWidth*0.75)},30 ${Math.round(canvasWidth*0.8)},15 Q${Math.round(canvasWidth*0.85)},0 ${Math.round(canvasWidth*0.9)},15 Q${Math.round(canvasWidth*0.95)},30 ${canvasWidth},15" stroke="#FFD700" stroke-width="3" fill="none"/>
+  <!-- Repeat <path> for each wavy line, increment y by spacing (e.g. +20px per line) -->
+</svg>
+
+Large arc/partial circle:
+<div style="position:absolute; top:-100px; left:-150px; width:500px; height:500px; border:25px solid #FFD700; border-radius:50%; z-index:2;"></div>
+
+Filled circle:
+<div style="position:absolute; top:400px; left:700px; width:200px; height:200px; background:#FFD700; border-radius:50%; z-index:4;"></div>
+
+Gradient overlay on photo:
+<div style="position:absolute; top:0; left:0; width:100%; height:100%; background:linear-gradient(to bottom, transparent 50%, rgba(0,0,0,0.7) 100%); z-index:12;"></div>
+
+═══ LOGO ═══
+<img src="{{LOGO_URL}}" style="position:absolute; top:30px; right:30px; width:120px; height:auto; object-fit:contain; z-index:25;" />
+(For right-positioned: use right instead of left)
+
+═══ CRITICAL RULES ═══
+1. ALL styles INLINE (style="...") — NO <style> blocks, NO CSS classes, NO <link> tags
+2. NO <script>, NO event handlers (onclick, onload), NO JavaScript
+3. NO external resources — everything self-contained
+4. Reproduce EVERY element from the blueprint — do NOT simplify, skip, or omit ANYTHING
+5. Use EXACT pixel coordinates from the blueprint
+6. Match colors EXACTLY from the blueprint
+7. Proper z-ordering: background → decorations → photos → text → logo/badges
+8. Every element position:absolute inside the root div
+9. For wavy/curved lines: ALWAYS use inline SVG with <path> — never try to simulate with CSS borders
+10. For overlapping photos: ensure proper z-index and rotation matching the reference
+11. For text with outlines: use -webkit-text-stroke or multi-directional text-shadow (8 directions for smooth outline)
+12. Match font sizes to the blueprint's pixel values — be generous with size, headlines should be LARGE
+13. Recreate partial elements (arcs, circles extending beyond canvas) — overflow:hidden on root will clip them
+14. For photo borders: use a wrapper div with background color slightly larger than the image
+
+OUTPUT — valid JSON only, no markdown fences, no backticks:
+{"name":"AI Generated - [brief style description]","htmlTemplate":"<div style='position:relative;width:${canvasWidth}px;height:${canvasHeight}px;overflow:hidden;...'>...ALL ELEMENTS HERE...</div>"}
+
+The htmlTemplate value must be a single line of HTML (no literal newlines in the JSON string value — use spaces instead).`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── LAYER-BASED HTML GENERATOR (Photoshop-style calque approach)           ──
+// ── Reference image = background, overlay new photos + text on top         ──
+// ══════════════════════════════════════════════════════════════════════════════
+
+function generateHtmlFromBlueprint(raw: any, cw: number, ch: number): string {
+  const da = raw.designAnalysis || raw;
+  const parts: { html: string; z: number }[] = [];
+
+  // Detect background color (used for text masking areas)
+  const bg = da.background?.color
+    || da.colorPalette?.find((c: any) => c.role === "background")?.hex
+    || "#FFF5E1";
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  CALQUE 0 — Image de référence (fond complet)              ║
+  // ║  Contient: décorations, lignes, arcs, badges, logo, etc.   ║
+  // ║  Tout ce qui est graphique vient de l'image originale.      ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  parts.push({
+    html: `<img src="{{REFERENCE_IMAGE}}" style="position:absolute;top:0;left:0;width:${cw}px;height:${ch}px;object-fit:cover;z-index:0;" />`,
+    z: 0,
+  });
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  CALQUE 1 — Nouvelles photos (remplacent les anciennes)    ║
+  // ║  Positionnées exactement aux mêmes emplacements que les    ║
+  // ║  photos de la référence. Les cadres/bordures de la ref     ║
+  // ║  restent visibles autour car on inset par borderWidth.     ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const photos = da.photos || da.photoTreatments || [];
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    const box = p.boundingBox || { x: 100, y: 100, width: 400, height: 500 };
+    const rotation = p.rotation || 0;
+    const placeholder = i === 0 ? "{{PHOTO_1}}" : "{{PHOTO_2}}";
+    const objPos = p.objectPosition || "center";
+    const clipShape = (p.clipShape || "rectangle").toLowerCase();
+    const borderRadius = clipShape === "circle" ? "50%" : (clipShape.includes("rounded") ? "12px" : "0");
+    const rotCss = rotation ? `transform:rotate(${rotation}deg);transform-origin:center;` : "";
+
+    // Inset by border width: the border frame from the reference image stays visible
+    const borderW = typeof p.border === "object" ? (p.border.width || 0)
+      : (typeof p.border === "string" && p.border.match(/\d+/) ? parseInt(p.border.match(/\d+/)![0]) : 0);
+    const innerX = box.x + borderW;
+    const innerY = box.y + borderW;
+    const innerW = Math.max(box.width - borderW * 2, 50);
+    const innerH = Math.max(box.height - borderW * 2, 50);
+
+    parts.push({
+      html: `<div style="position:absolute;top:${innerY}px;left:${innerX}px;width:${innerW}px;height:${innerH}px;overflow:hidden;border-radius:${borderRadius};${rotCss}z-index:1;"><img src="${placeholder}" style="width:100%;height:100%;object-fit:cover;object-position:${objPos};" /></div>`,
+      z: 1,
+    });
+  }
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  CALQUE 2 — Masques texte (couvrir les anciens textes)     ║
+  // ║  Seulement pour headline/subheadline/cta (textes remplacés)║
+  // ║  Les textes statiques (hashtags, labels, badges) restent   ║
+  // ║  visibles depuis l'image de référence.                      ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  const textElements = da.textElements || [];
+  const dynamicRoles = ["headline", "title", "subheadline", "subtitle", "body", "cta", "call-to-action"];
+
+  for (const t of textElements) {
+    const role = (t.role || "").toLowerCase();
+    if (!dynamicRoles.includes(role)) continue;
+
+    const box = t.boundingBox || { x: 50, y: 50, width: 400, height: 80 };
+    const rot = t.rotation ? `transform:rotate(${t.rotation}deg);` : "";
+    const maskPad = 8;
+    parts.push({
+      html: `<div style="position:absolute;top:${box.y - maskPad}px;left:${box.x - maskPad}px;width:${box.width + maskPad * 2}px;height:${(box.height || 80) + maskPad * 2}px;background:${bg};${rot}z-index:2;"></div>`,
+      z: 2,
+    });
+  }
+
+  // ╔══════════════════════════════════════════════════════════════╗
+  // ║  CALQUE 3 — Nouveaux textes (headline, subheadline, CTA)   ║
+  // ║  Mêmes positions et styles visuels que les originaux,      ║
+  // ║  mais avec le contenu du nouveau brief.                     ║
+  // ╚══════════════════════════════════════════════════════════════╝
+  for (const t of textElements) {
+    const role = (t.role || "").toLowerCase();
+    if (!dynamicRoles.includes(role)) continue;
+
+    const box = t.boundingBox || { x: 50, y: 50, width: 400, height: 80 };
+    const ff = t.fontFamily || "Arial";
+    const fs = t.fontSize || 48;
+    const fw = t.fontWeight || "700";
+    const col = t.color || "#000";
+    const ta = t.textAlign || "left";
+    const lh = t.lineHeight || 1.1;
+    const ls = t.letterSpacing ? `letter-spacing:${t.letterSpacing}px;` : "";
+    const tt = t.textTransform && t.textTransform !== "none" ? `text-transform:${t.textTransform};` : "";
+    const fi = t.fontStyle === "italic" ? "font-style:italic;" : "";
+    const rot = t.rotation ? `transform:rotate(${t.rotation}deg);` : "";
+
+    // Outline (8-direction text-shadow for smooth effect)
+    let outlineCss = "";
+    if (t.outline && typeof t.outline === "object" && t.outline.color && t.outline.width > 0) {
+      const ow = t.outline.width;
+      const oc = t.outline.color;
+      outlineCss = `text-shadow:${-ow}px ${-ow}px 0 ${oc},${ow}px ${-ow}px 0 ${oc},${-ow}px ${ow}px 0 ${oc},${ow}px ${ow}px 0 ${oc},0 ${-ow}px 0 ${oc},0 ${ow}px 0 ${oc},${-ow}px 0 0 ${oc},${ow}px 0 0 ${oc};`;
+    }
+
+    // Map role to placeholder
+    let content: string;
+    if (role === "headline" || role === "title") content = "{{HEADLINE}}";
+    else if (role === "subheadline" || role === "subtitle" || role === "body") content = "{{SUBHEADLINE}}";
+    else content = "{{CTA}}";
+
+    parts.push({
+      html: `<div style="position:absolute;top:${box.y}px;left:${box.x}px;width:${box.width}px;font-family:'${ff}',sans-serif;font-size:${fs}px;font-weight:${fw};color:${col};text-align:${ta};line-height:${lh};${ls}${tt}${fi}${outlineCss}${rot}z-index:3;">${content}</div>`,
+      z: 3,
+    });
+  }
+
+  // ── Legacy typography fallback (old blueprint format) ──
+  if (!textElements.length && da.typography) {
+    const typo = da.typography;
+    const mapTypo = (t: any, placeholder: string, yFallback: number) => {
+      if (!t || !t.sizePixels) return;
+      const bx = Math.round(cw * 0.05);
+      let by = yFallback;
+      if (t.position) {
+        const topM = t.position.match(/top[:\s]*(\d+)/i);
+        if (topM) by = Math.round(ch * parseInt(topM[1]) / 100);
+      }
+      // Mask + text
+      parts.push({ html: `<div style="position:absolute;top:${by - 5}px;left:${bx - 5}px;width:${Math.round(cw * 0.9) + 10}px;height:${(t.sizePixels || 48) * 2 + 10}px;background:${bg};z-index:2;"></div>`, z: 2 });
+      parts.push({ html: `<div style="position:absolute;top:${by}px;left:${bx}px;width:${Math.round(cw * 0.9)}px;font-family:'${t.fontFamily || "Arial"}',sans-serif;font-size:${t.sizePixels || 48}px;font-weight:${t.weight || "700"};color:${t.color || "#000"};text-align:${t.alignment || "left"};line-height:1.1;${t.style === "uppercase" ? "text-transform:uppercase;" : ""}z-index:3;">${placeholder}</div>`, z: 3 });
+    };
+    mapTypo(typo.headline, "{{HEADLINE}}", Math.round(ch * 0.5));
+    mapTypo(typo.subheadline, "{{SUBHEADLINE}}", Math.round(ch * 0.65));
+    mapTypo(typo.cta, "{{CTA}}", Math.round(ch * 0.8));
+  }
+
+  // ── Sort by z-index and assemble ──
+  parts.sort((a, b) => a.z - b.z);
+  return `<div style="position:relative;width:${cw}px;height:${ch}px;overflow:hidden;">${parts.map(p => p.html).join("")}</div>`;
+}
+
+// ── Validation ──
+function validateHtmlTemplate(raw: any, formatId: string, cw: number, ch: number, ar: string) {
+  const errors: string[] = [];
+  if (!raw || typeof raw !== "object") return { valid: false, errors: ["Not an object"], template: null as any };
+
+  const html = raw.htmlTemplate;
+  if (!html || typeof html !== "string") return { valid: false, errors: ["No htmlTemplate string"], template: null as any };
+  if (!html.includes("<div")) return { valid: false, errors: ["htmlTemplate does not contain <div> tag"], template: null as any };
+
+  // Sanitize dangerous content
+  let finalHtml = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/javascript\s*:/gi, "blocked:")
+    .replace(/<link[^>]*>/gi, "");
+
+  const template = {
+    id: raw.id || "ai-generated",
+    name: raw.name || "AI Generated",
+    formatId,
+    aspectRatio: ar,
+    canvasWidth: cw,
+    canvasHeight: ch,
+    category: "ai-generated" as const,
+    layers: [] as any[],
+    source: "ai-generated" as const,
+    htmlTemplate: finalHtml,
+  };
+
+  return { valid: true, errors, template };
+}
+
+// Keep SVG validation for backward compatibility
+function validateSvgTemplate(raw: any, formatId: string, cw: number, ch: number, ar: string) {
+  const errors: string[] = [];
+  if (!raw || typeof raw !== "object") return { valid: false, errors: ["Not an object"], template: null as any };
+  const svg = raw.svgTemplate;
+  if (!svg || typeof svg !== "string") return { valid: false, errors: ["No svgTemplate string"], template: null as any };
+  if (!svg.includes("<svg")) return { valid: false, errors: ["svgTemplate does not contain <svg tag"], template: null as any };
+  let finalSvg = svg;
+  if (!svg.includes("viewBox")) finalSvg = svg.replace("<svg", `<svg viewBox="0 0 ${cw} ${ch}"`);
+  if (!finalSvg.includes("xmlns")) finalSvg = finalSvg.replace("<svg", `<svg xmlns="http://www.w3.org/2000/svg"`);
+  return { valid: true, errors, template: {
+    id: raw.id || "ai-generated", name: raw.name || "AI Generated", formatId, aspectRatio: ar,
+    canvasWidth: cw, canvasHeight: ch, category: "ai-generated" as const, layers: [] as any[],
+    source: "ai-generated" as const, svgTemplate: finalSvg,
+  }};
+}
+
+// POST /vault/template/from-visual — Two-pass AI template generation
+
+// ══════════════════════════════════════════════════════════════
+// STORY BIBLE GENERATION
+// ══════════════════════════════════════════════════════════════
+
+app.post("/vault/story-bible", async (c) => {
+  const t0 = Date.now();
+  console.log("[story-bible] Handler entered");
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { brief, mood, duration, sceneCount, productIds, storyBible: existingBible } = body;
+
+    if (!brief) return c.json({ success: false, error: "brief required" }, 400);
+
+    // Load vault
+    const vault: any = await kv.get(`vault:${user.id}`);
+    if (!vault) return c.json({ success: false, error: "No vault data. Configure your Brand Vault first." }, 400);
+
+    // Deduct credits
+    const canDeduct = await deductCredit(user.id, 3);
+    if (!canDeduct) return c.json({ success: false, error: "Insufficient credits" }, 403);
+
+    // Build brand context
+    const ctx = await buildBrandContext(user.id);
+    const brandBlock = ctx ? buildBrandBlock(ctx) : "";
+
+    // Build product anchor block
+    const anchors = (vault.product_anchors || [])
+      .filter((p: any) => !productIds?.length || productIds.includes(p.id));
+    const anchorBlock = anchors.length > 0
+      ? anchors.map((p: any) =>
+          `PRODUCT: "${p.name}"\n  Visual: ${p.visual_description || "N/A"}\n  USP: ${p.usp_primary || "N/A"}\n  Usage: ${p.usage_moment || "N/A"}\n  Rules: min ${p.appearance_rules?.min_scenes || 2} scenes, ${p.appearance_rules?.must_name_in_voiceover ? "must name in voiceover" : ""}, ${p.appearance_rules?.visible_in_final_scene ? "visible in final scene" : ""}`
+        ).join("\n\n")
+      : "No product anchors defined.";
+
+    // Compliance context
+    const cr = vault.compliance_rules;
+    const complianceBlock = cr ? [
+      cr.sector_restrictions?.length ? `Sector restrictions: ${cr.sector_restrictions.join(", ")}` : "",
+      cr.forbidden_cultural_refs?.length ? `Forbidden cultural refs: ${cr.forbidden_cultural_refs.join(", ")}` : "",
+      cr.authorized_cultural_refs?.length ? `Authorized cultural refs: ${cr.authorized_cultural_refs.join(", ")}` : "",
+      cr.mandatory_legal_mentions?.length ? `Mandatory legal mentions: ${cr.mandatory_legal_mentions.join(", ")}` : "",
+    ].filter(Boolean).join("\n") : "";
+
+    const numScenes = sceneCount || 5;
+    const durationSec = duration || 30;
+
+    const sysPrompt = `You are an elite creative director generating a Story Bible for a brand video campaign.
+The Story Bible is the LOCKED reference document that constrains every scene, every visual prompt, every voiceover.
+
+${brandBlock}
+
+PRODUCT ANCHORS:
+${anchorBlock}
+
+${complianceBlock ? `COMPLIANCE RULES:\n${complianceBlock}` : ""}
+
+IMPORTANT RULES:
+- The Story Bible visual identity elements (subject, environment, palette, style, lighting) are CONSTANT across ALL scenes
+- Product anchors MUST appear in the required number of scenes
+- Forbidden terms and cultural references MUST be avoided
+- Mandatory legal mentions MUST appear in at least one voiceover
+
+Output STRICT JSON (no markdown, no backticks) with this exact structure:
+{
+  "concept": {
+    "reference": "cultural reference + 1 line justification",
+    "pitch": "1 sentence film pitch"
+  },
+  "visual_identity": {
+    "subject": "locked physical description of main subject",
+    "environment": "locked environment description",
+    "palette": ["hex1", "hex2", ...],
+    "cine_style": "e.g. anamorphic 2.39:1, warm grade",
+    "lighting": "e.g. golden hour, backlit"
+  },
+  "product_anchors_plan": [
+    {
+      "product_name": "exact name",
+      "scenes_featured": [1, 3, 5],
+      "voiceover_mentions": [3, 5],
+      "final_scene_visible": true
+    }
+  ],
+  "narrative_arc": [
+    { "act": 1, "scenes": [1, 2], "description": "tension / problem" },
+    { "act": 2, "scenes": [3, 4], "description": "product as solution" },
+    { "act": 3, "scenes": [5], "description": "resolution + branding" }
+  ],
+  "emotional_progression": [
+    { "scene": 1, "emotion": "curiosity" },
+    { "scene": 2, "emotion": "tension" }
+  ],
+  "scenes": [
+    {
+      "number": 1,
+      "title": "short title",
+      "action": "2 lines — what happens",
+      "voiceover": "10-20 words",
+      "product_presence": "foreground|background|named|none",
+      "emotion": "from arc",
+      "duration_seconds": 6,
+      "video_prompt": "complete prompt with locked visual identity + scene-specific action + camera movement",
+      "transition": "cut|fade|zoom"
+    }
+  ]
+}`;
+
+    const userPrompt = `Generate a Story Bible for this campaign:
+
+BRIEF: ${brief}
+MOOD: ${mood || "Epic"}
+DURATION: ${durationSec}s
+SCENES: ${numScenes}
+
+Create a compelling narrative with cinematic coherence. Every scene must use the same visual identity anchors.`;
+
+    // Call OpenAI
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey) return c.json({ success: false, error: "OpenAI not configured" }, 500);
+
+    const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }],
+        max_tokens: 4096,
+        temperature: 0.8,
+      }),
+    });
+
+    if (!oaiRes.ok) {
+      const errBody = await oaiRes.text();
+      console.log(`[story-bible] OpenAI error ${oaiRes.status}: ${errBody.slice(0, 300)}`);
+      return c.json({ success: false, error: `AI provider error: ${oaiRes.status}` }, 500);
+    }
+
+    const oaiData = await oaiRes.json();
+    let resultText = oaiData.choices?.[0]?.message?.content || "";
+
+    // Clean and parse JSON
+    resultText = resultText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    let storyBible: any;
+    try {
+      storyBible = JSON.parse(resultText);
+    } catch (parseErr) {
+      console.log(`[story-bible] JSON parse error: ${parseErr}. Raw: ${resultText.slice(0, 200)}`);
+      return c.json({ success: false, error: "Failed to parse Story Bible response" }, 500);
+    }
+
+    // Cache in KV
+    const cacheKey = `story_bible:${user.id}:${Date.now()}`;
+    try { await kv.set(cacheKey, storyBible, 86400 * 7); } catch {}
+
+    console.log(`[story-bible] OK: ${storyBible.scenes?.length || 0} scenes, concept="${(storyBible.concept?.pitch || "").slice(0, 80)}" (${Date.now() - t0}ms)`);
+    return c.json({ success: true, storyBible, cacheKey });
+  } catch (err) {
+    console.log(`[story-bible] FAILED: ${err} (${Date.now() - t0}ms)`);
+    return c.json({ success: false, error: `Story Bible generation failed: ${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// COMPLIANCE SCORING
+// ══════════════════════════════════════════════════════════════
+
+app.post("/vault/compliance-score", async (c) => {
+  const t0 = Date.now();
+  console.log("[compliance-score] Handler entered");
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { content } = body;
+    // content: { formatId, caption, voiceover, imagePrompt, videoPrompt }[]
+
+    if (!content || !Array.isArray(content)) return c.json({ success: false, error: "content array required" }, 400);
+
+    const vault: any = await kv.get(`vault:${user.id}`);
+    if (!vault) return c.json({ success: true, score: 100, threshold: 85, passed: true, checks: [] });
+
+    const checks: { type: string; severity: "error" | "warning" | "info"; formatId?: string; message: string }[] = [];
+    let totalScore = 100;
+
+    // 1. Forbidden terms check (exact word boundary regex)
+    const forbiddenTerms: string[] = vault.forbidden_terms || [];
+    for (const item of content) {
+      const text = `${item.caption || ""} ${item.voiceover || ""}`.toLowerCase();
+      for (const term of forbiddenTerms) {
+        try {
+          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const regex = new RegExp(`\\b${escaped}\\b`, "gi");
+          if (regex.test(text)) {
+            checks.push({
+              type: "forbidden_term",
+              severity: "error",
+              formatId: item.formatId,
+              message: `Forbidden term "${term}" found in ${item.formatId || "content"}`,
+            });
+            totalScore -= 10;
+          }
+        } catch {}
+      }
+    }
+
+    // 2. Product appearance count vs threshold
+    const productAnchors: any[] = vault.product_anchors || [];
+    for (const anchor of productAnchors) {
+      if (!anchor.name) continue;
+      const minScenes = anchor.appearance_rules?.min_scenes || 2;
+      const nameLower = anchor.name.toLowerCase();
+      const appearances = content.filter((item: any) => {
+        const allText = `${item.caption || ""} ${item.voiceover || ""} ${item.imagePrompt || ""} ${item.videoPrompt || ""}`.toLowerCase();
+        return allText.includes(nameLower);
+      }).length;
+      if (appearances < minScenes) {
+        checks.push({
+          type: "product_appearance",
+          severity: "warning",
+          message: `Product "${anchor.name}" appears in ${appearances} formats (minimum: ${minScenes})`,
+        });
+        totalScore -= 5 * (minScenes - appearances);
+      }
+
+      // Check voiceover naming
+      if (anchor.appearance_rules?.must_name_in_voiceover) {
+        const namedInVo = content.some((item: any) => (item.voiceover || "").toLowerCase().includes(nameLower));
+        if (!namedInVo) {
+          checks.push({
+            type: "product_voiceover",
+            severity: "warning",
+            message: `Product "${anchor.name}" not named in any voiceover (required)`,
+          });
+          totalScore -= 5;
+        }
+      }
+    }
+
+    // 3. Mandatory legal mentions check
+    const legalMentions: string[] = vault.compliance_rules?.mandatory_legal_mentions || [];
+    for (const mention of legalMentions) {
+      const mentionLower = mention.toLowerCase();
+      const found = content.some((item: any) => {
+        const text = `${item.caption || ""} ${item.voiceover || ""}`.toLowerCase();
+        return text.includes(mentionLower);
+      });
+      if (!found) {
+        checks.push({
+          type: "legal_mention_missing",
+          severity: "warning",
+          message: `Mandatory legal mention "${mention}" not found in any content`,
+        });
+        totalScore -= 5;
+      }
+    }
+
+    // 4. Forbidden cultural references check
+    const forbiddenRefs: string[] = vault.compliance_rules?.forbidden_cultural_refs || [];
+    for (const ref of forbiddenRefs) {
+      const refLower = ref.toLowerCase();
+      const found = content.some((item: any) => {
+        const allText = `${item.caption || ""} ${item.voiceover || ""} ${item.imagePrompt || ""} ${item.videoPrompt || ""}`.toLowerCase();
+        return allText.includes(refLower);
+      });
+      if (found) {
+        checks.push({
+          type: "forbidden_cultural_ref",
+          severity: "error",
+          message: `Forbidden cultural reference "${ref}" detected in content`,
+        });
+        totalScore -= 10;
+      }
+    }
+
+    totalScore = Math.max(0, Math.min(100, totalScore));
+    const threshold = vault.compliance_rules?.compliance_threshold || 85;
+    const passed = totalScore >= threshold;
+
+    console.log(`[compliance-score] score=${totalScore}, threshold=${threshold}, passed=${passed}, checks=${checks.length} (${Date.now() - t0}ms)`);
+    return c.json({ success: true, score: totalScore, threshold, passed, checks });
+  } catch (err) {
+    console.log(`[compliance-score] FAILED: ${err} (${Date.now() - t0}ms)`);
+    return c.json({ success: false, error: `Compliance scoring failed: ${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// CAMPAIGN LAB — ENGAGEMENT PREDICTION
+// ══════════════════════════════════════════════════════════════
+
+app.post("/campaign/predict-engagement", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = await c.req.json().catch(() => ({}));
+    const assets = body.assets as any[];
+    if (!assets || !Array.isArray(assets) || assets.length === 0) {
+      return c.json({ success: false, error: "assets array required" }, 400);
+    }
+
+    // Build prompt for batch scoring
+    const assetDescs = assets.slice(0, 10).map((a: any, i: number) => {
+      return `[${i+1}] Platform: ${a.platform || "unknown"}, Format: ${a.formatId || "unknown"}\nHeadline: ${(a.headline || "").slice(0, 100)}\nCaption: ${(a.caption || "").slice(0, 300)}\nHashtags: ${(a.hashtags || "").slice(0, 100)}\nCTA: ${(a.ctaText || "").slice(0, 50)}`;
+    }).join("\n\n");
+
+    const sysPrompt = `You are a social media engagement expert. Score each content piece for predicted engagement.\n\nFor each piece, return:\n- score: integer 1-100 (realistic — most content is 40-70)\n- label: "Excellent" (80+), "Good" (60-79), "Average" (40-59), "Weak" (<40)\n- tips: 2-3 short actionable tips to improve engagement\n\nScoring criteria:\n- Hook strength (first line grabs attention?)\n- Emotional resonance\n- Platform-native formatting\n- Hashtag strategy\n- CTA clarity\n- Caption length vs platform norms\n- Originality of angle\n\nOUTPUT: ONLY valid JSON array. Each element: {"index":1,"score":65,"label":"Good","tips":["tip1","tip2"]}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    let resultText = "";
+
+    // Try APIPod
+    if (APIPOD_KEY) {
+      try {
+        const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+          body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: `Score these ${assets.length} content pieces:\n\n${assetDescs}` }], max_tokens: 2000, temperature: 0.3 }),
+        });
+        if (res.ok) resultText = (await res.json()).choices?.[0]?.message?.content || "";
+      } catch {}
+    }
+
+    // Fallback OpenAI
+    if (!resultText) {
+      const openaiKey = Deno.env.get("OPENAI_API_KEY");
+      if (openaiKey) {
+        try {
+          const res = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+            body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: `Score these ${assets.length} content pieces:\n\n${assetDescs}` }], max_tokens: 2000, temperature: 0.3 }),
+          });
+          if (res.ok) resultText = (await res.json()).choices?.[0]?.message?.content || "";
+        } catch {}
+      }
+    }
+
+    if (!resultText) return c.json({ success: false, error: "All providers failed" });
+
+    // Parse
+    let predictions: any[] = [];
+    try {
+      const cleaned = resultText.replace(/```(?:json)?\s*/g, "").replace(/\s*```/g, "").trim();
+      predictions = JSON.parse(cleaned);
+      if (!Array.isArray(predictions)) {
+        const m = resultText.match(/\[[\s\S]*\]/);
+        if (m) predictions = JSON.parse(m[0]);
+      }
+    } catch {
+      try {
+        const m = resultText.match(/\[[\s\S]*\]/);
+        if (m) predictions = JSON.parse(m[0]);
+      } catch {}
+    }
+
+    console.log(`[predict] DONE: ${predictions.length} predictions, ${Date.now()-t0}ms`);
+    return c.json({ success: true, predictions, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[predict] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ── Save custom template to KV ──
+app.post("/vault/template/save", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const template = body.template;
+    if (!template || !template.id || !template.formatId || !template.layers) {
+      return c.json({ success: false, error: "Invalid template (missing id, formatId, or layers)" }, 400);
+    }
+    // Store under user-specific key
+    const key = `template:${user.id}:${template.id}`;
+    await kv.set(key, template);
+    // Also maintain an index of user templates
+    const indexKey = `templates:${user.id}`;
+    const existing: string[] = (await kv.get(indexKey) as string[]) || [];
+    if (!existing.includes(template.id)) {
+      existing.push(template.id);
+      await kv.set(indexKey, existing);
+    }
+    console.log(`[template-save] Saved ${template.id} for user ${user.id}`);
+    return c.json({ success: true, templateId: template.id });
+  } catch (err) {
+    console.log(`[template-save] Error: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// Pass 1: Design analysis (structured JSON blueprint)
+// Pass 2: HTML/CSS generation from blueprint
+app.post("/vault/template/from-visual", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: any;
+    let formatId = "";
+    let canvasWidth = 1080;
+    let canvasHeight = 1080;
+    let aspectRatio = "1:1";
+    let imageDataUri = "";
+
+    const contentType = c.req.header("content-type") || "";
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await c.req.formData();
+      const formToken = formData.get("_token") as string || "";
+      const jwt = decodeJwtPayload(formToken);
+      if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+      user = { id: jwt.sub, email: jwt.email || "" };
+
+      const file = formData.get("file") as File | null;
+      if (!file) return c.json({ success: false, error: "No file provided" }, 400);
+      formatId = (formData.get("formatId") as string) || "instagram-post";
+      canvasWidth = parseInt(formData.get("canvasWidth") as string) || 1080;
+      canvasHeight = parseInt(formData.get("canvasHeight") as string) || 1080;
+      aspectRatio = (formData.get("aspectRatio") as string) || "1:1";
+
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      imageDataUri = `data:${file.type || "image/jpeg"};base64,${btoa(binary)}`;
+      console.log(`[template-from-visual] FormData file: ${file.name} (${bytes.length} bytes)`);
+    } else {
+      user = await requireAuth(c);
+      const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+      formatId = body.formatId || "instagram-post";
+      canvasWidth = body.canvasWidth || 1080;
+      canvasHeight = body.canvasHeight || 1080;
+      aspectRatio = body.aspectRatio || "1:1";
+      if (body.imageBase64) imageDataUri = body.imageBase64;
+      else if (body.imageUrl) imageDataUri = body.imageUrl;
+    }
+
+    if (!imageDataUri) return c.json({ success: false, error: "No image provided" }, 400);
+    if (!formatId) return c.json({ success: false, error: "formatId required" }, 400);
+
+    const imageContent = { type: "image_url", image_url: { url: imageDataUri, detail: "high" as const } };
+    const cw = canvasWidth || 1080;
+    const ch = canvasHeight || 1080;
+    const ar = aspectRatio || "1:1";
+
+    // ═══════════ PASS 1: Design Analysis ═══════════
+    console.log(`[template-from-visual] Pass 1: Analyzing design...`);
+    const analysisRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: DESIGN_ANALYSIS_PROMPT(cw, ch, ar, formatId) },
+          { role: "user", content: [
+            { type: "text", text: "Analyze this reference visual with extreme precision. Extract EVERY element: exact colors (hex), exact positions (as pixel coordinates for the canvas), every photo with its clipping/rotation/borders, every decorative element (wavy lines count+spacing, arcs, circles, badges), every text block with exact font sizes in pixels and styling. Miss NOTHING. Output ONLY valid JSON, no markdown fences." },
+            imageContent,
+          ]},
+        ],
+        max_tokens: 4000,
+        temperature: 0.1,
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+
+    if (!analysisRes.ok) {
+      const errText = await analysisRes.text().catch(() => "unknown");
+      console.log(`[template-from-visual] Pass 1 failed: ${analysisRes.status} ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Design analysis failed: ${analysisRes.status}` }, 502);
+    }
+
+    const analysisData = await analysisRes.json();
+    const analysisContent = analysisData.choices?.[0]?.message?.content || "";
+    console.log(`[template-from-visual] Pass 1 response: ${analysisContent.length} chars`);
+
+    // Parse the design analysis
+    let designAnalysis: string;
+    try {
+      const cleaned = analysisContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      designAnalysis = JSON.stringify(parsed, null, 2);
+      console.log(`[template-from-visual] Pass 1 OK: ${Object.keys(parsed.designAnalysis || parsed).length} analysis sections`);
+    } catch {
+      console.log(`[template-from-visual] Pass 1 parse warning: using raw content as blueprint`);
+      designAnalysis = analysisContent;
+    }
+
+    // ═══════════ PASS 2: Code-based HTML generation from blueprint ═══════════
+    console.log(`[template-from-visual] Pass 2: Generating HTML from blueprint (code-based)...`);
+
+    let parsedBlueprint: any;
+    try {
+      const cleaned2 = designAnalysis.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      parsedBlueprint = JSON.parse(cleaned2);
+    } catch {
+      parsedBlueprint = JSON.parse(designAnalysis);
+    }
+
+    const generatedHtml = generateHtmlFromBlueprint(parsedBlueprint, cw, ch);
+    console.log(`[template-from-visual] Pass 2 code-gen: ${generatedHtml.length} chars HTML`);
+
+    // Count elements for logging
+    const da = parsedBlueprint.designAnalysis || parsedBlueprint;
+    const decoCount = (da.decorativeElements || []).length;
+    const photoCount = (da.photos || da.photoTreatments || []).length;
+    const textCount = (da.textElements || []).length;
+    console.log(`[template-from-visual] Blueprint: ${decoCount} decorative, ${photoCount} photos, ${textCount} texts`);
+
+    const templateDef = { name: da.overallStyle ? `AI Generated - ${da.overallStyle}` : "AI Generated", htmlTemplate: generatedHtml };
+
+    const validated = validateHtmlTemplate(templateDef, formatId, cw, ch, ar);
+
+    if (!validated.template) {
+      return c.json({ success: false, error: `Validation failed: ${validated.errors.join("; ")}` }, 422);
+    }
+
+    validated.template.id = `ai-${formatId}-${Date.now()}`;
+    validated.template.source = "ai-generated";
+    validated.template.createdAt = new Date().toISOString();
+    // Store the reference image so the layer-based template can use it as background
+    validated.template.referenceImageUrl = imageDataUri;
+
+    const kvKey = `ai-template:${user.id}:${validated.template.id}`;
+    await kv.set(kvKey, validated.template);
+
+    const templateLen = validated.template.htmlTemplate?.length || validated.template.svgTemplate?.length || 0;
+    const templateType = validated.template.htmlTemplate ? "HTML" : "SVG";
+    console.log(`[template-from-visual] OK in ${Date.now() - t0}ms: ${templateType} ${templateLen} chars, id=${validated.template.id}`);
+    return c.json({ success: true, template: validated.template, latencyMs: Date.now() - t0 });
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    console.log(`[template-from-visual] ERROR: ${msg}`);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: `Template generation failed: ${msg}` }, 500);
+  }
+});
+
+// POST /vault/template/list — List user's AI-generated templates
+app.post("/vault/template/list", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const all = await kv.getByPrefix(`ai-template:${user.id}:`);
+    const templates = Array.isArray(all) ? all : Object.values(all || {});
+    return c.json({ success: true, templates });
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
+    return c.json({ success: false, error: msg }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // CAMPAIGNS
 // ══════════════════════════════════════════════════════════════
 
@@ -8759,16 +10205,20 @@ app.get("/generate/image-via-get", async (c) => {
     const prompt = c.req.query("prompt") || "";
     const modelsRaw = c.req.query("models") || "";
     const aspectRatio = c.req.query("aspectRatio") || "";
+    const formatId = c.req.query("formatId") || "";
     const models = modelsRaw.split(",").filter(Boolean);
     if (!prompt || !models.length) {
       return c.json({ error: "prompt and models query params required" }, 400);
     }
-    console.log(`[image-via-get] raw prompt="${prompt.slice(0, 60)}", models=${models.join(",")}, aspectRatio=${aspectRatio || "default"}`);
-    // Enhance/translate prompt to English for better image generation
-    const enhancedPrompt = await enhanceImagePrompt(prompt);
-    console.log(`[image-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}"`);
+    console.log(`[image-via-get] raw prompt="${prompt.slice(0, 60)}", models=${models.join(",")}, aspectRatio=${aspectRatio || "default"}, formatId=${formatId || "none"}`);
+    // Build brand context for prompt enrichment
     let user: AuthUser | null = null;
     try { user = await getUser(c); } catch {}
+    let brandCtx: BrandContext | null = null;
+    if (user) { try { brandCtx = await buildBrandContext(user.id); } catch {} }
+    // Enhance/translate prompt to English for better image generation
+    const enhancedPrompt = await enhanceImagePrompt(prompt, false, formatId || undefined, brandCtx);
+    console.log(`[image-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}"`);
     const MODEL_TIMEOUT = 120_000;
     const HANDLER_TIMEOUT = 170_000;
     const CONCURRENCY = 4;
@@ -8981,16 +10431,20 @@ app.get("/generate/image-ref-via-get", async (c) => {
     const mode = c.req.query("mode") || "style"; // "content" = high-fidelity preserve, "style" = style reference (default)
     const preserveContent = mode === "content";
     const aspectRatio = c.req.query("aspectRatio") || "";
+    const formatId = c.req.query("formatId") || "";
     const models = modelsRaw.split(",").filter(Boolean);
     if (!prompt || !imageRefUrl || !models.length) {
       return c.json({ error: "prompt, imageRefUrl, and models query params required" }, 400);
     }
-    console.log(`[image-ref-via-get] raw prompt="${prompt.slice(0, 60)}", ref=${imageRefUrl.slice(0, 80)}, models=${models.join(",")}, strength=${strength}, mode=${mode}, ar=${aspectRatio || "default"}`);
-    // Enhance/translate prompt — preserveBrandName=true when ref image exists (character_ref needs brand identity in prompt)
-    const enhancedPrompt = await enhanceImagePrompt(prompt, preserveContent);
-    console.log(`[image-ref-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${preserveContent})`);
+    console.log(`[image-ref-via-get] raw prompt="${prompt.slice(0, 60)}", ref=${imageRefUrl.slice(0, 80)}, models=${models.join(",")}, strength=${strength}, mode=${mode}, ar=${aspectRatio || "default"}, formatId=${formatId || "none"}`);
+    // Build brand context for prompt enrichment
     let user: AuthUser | null = null;
     try { user = await getUser(c); } catch {}
+    let brandCtx: BrandContext | null = null;
+    if (user) { try { brandCtx = await buildBrandContext(user.id); } catch {} }
+    // Enhance/translate prompt — preserveBrandName=true when ref image exists (character_ref needs brand identity in prompt)
+    const enhancedPrompt = await enhanceImagePrompt(prompt, preserveContent, formatId || undefined, brandCtx);
+    console.log(`[image-ref-via-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${preserveContent})`);
     const MODEL_TIMEOUT = 95_000;
     const CONCURRENCY = 2;
     const HANDLER_TIMEOUT = 140_000;
@@ -9032,6 +10486,75 @@ app.get("/generate/image-ref-via-get", async (c) => {
   } catch (err) {
     console.log(`[image-ref-via-get] error (${Date.now() - t0}ms):`, err);
     return c.json({ success: false, error: `Image ref generation error: ${err}` }, 500);
+  }
+});
+
+// ── IMAGE UPSCALE via GET — AI-powered upscaling with FAL fallback chain ──
+app.get("/generate/upscale", async (c) => {
+  const t0 = Date.now();
+  console.log(`[upscale] ENTERED at ${new Date().toISOString()}`);
+  try {
+    const imageUrl = c.req.query("imageUrl") || "";
+    const scale = parseInt(c.req.query("scale") || "2");
+    if (!imageUrl) return c.json({ error: "imageUrl query param required" }, 400);
+    console.log(`[upscale] imageUrl="${imageUrl.slice(0, 80)}", scale=${scale}`);
+
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    if (user) deductCredit(user.id, CREDIT_COST.upscale).catch(() => {});
+
+    const falKey = Deno.env.get("FAL_API_KEY");
+    if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
+
+    // Strategy 1: FAL Aura-SR (fast, high quality)
+    try {
+      console.log(`[upscale] trying fal-ai/aura-sr...`);
+      const falRes = await fetch("https://fal.run/fal-ai/aura-sr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({ image_url: imageUrl, upscaling_factor: scale, overlapping_tiles: true }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (falRes.ok) {
+        const data = await falRes.json();
+        const upscaledUrl = data.image?.url;
+        if (upscaledUrl) {
+          console.log(`[upscale] aura-sr OK (${Date.now() - t0}ms)`);
+          if (user) logCost({ type: "upscale", model: "aura-sr", provider: "fal/aura-sr", costUsd: 0.002, revenueEur: 0.01, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
+          return c.json({ success: true, imageUrl: upscaledUrl, provider: "fal/aura-sr", scale, latencyMs: Date.now() - t0 });
+        }
+      } else {
+        console.log(`[upscale] aura-sr ${falRes.status}: ${(await falRes.text()).slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[upscale] aura-sr error: ${err}`); }
+
+    // Strategy 2: FAL Creative Upscaler (fallback, slightly slower)
+    try {
+      console.log(`[upscale] trying fal-ai/creative-upscaler...`);
+      const falRes = await fetch("https://fal.run/fal-ai/creative-upscaler", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({ image_url: imageUrl, scale, creativity: 0.2 }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (falRes.ok) {
+        const data = await falRes.json();
+        const upscaledUrl = data.image?.url;
+        if (upscaledUrl) {
+          console.log(`[upscale] creative-upscaler OK (${Date.now() - t0}ms)`);
+          if (user) logCost({ type: "upscale", model: "creative-upscaler", provider: "fal/creative-upscaler", costUsd: 0.005, revenueEur: 0.01, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
+          return c.json({ success: true, imageUrl: upscaledUrl, provider: "fal/creative-upscaler", scale, latencyMs: Date.now() - t0 });
+        }
+      } else {
+        console.log(`[upscale] creative-upscaler ${falRes.status}: ${(await falRes.text()).slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[upscale] creative-upscaler error: ${err}`); }
+
+    console.log(`[upscale] ALL PROVIDERS FAILED (${Date.now() - t0}ms)`);
+    return c.json({ success: false, error: "All upscale providers failed" }, 500);
+  } catch (err) {
+    console.log(`[upscale] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: `Upscale error: ${err}` }, 500);
   }
 });
 
