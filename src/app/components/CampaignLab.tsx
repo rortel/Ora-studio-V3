@@ -62,6 +62,12 @@ interface CarouselSlide {
   status?: "pending" | "generating" | "ready" | "error";
 }
 
+interface ArenaCandidate {
+  imageUrl: string;
+  model: string;
+  selected?: boolean;
+}
+
 interface GeneratedAsset {
   id: string;
   formatId: string;
@@ -74,6 +80,8 @@ interface GeneratedAsset {
   audioUrl?: string;
   mergedVideoUrl?: string;
   audioStatus?: "idle" | "generating" | "merging" | "ready" | "error";
+  arenaCandidates?: ArenaCandidate[];
+  arenaResolved?: boolean;
 
   copy?: string;
   caption?: string;
@@ -816,6 +824,105 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     }
   };
 
+  // ── AXE 3: Brand Memory — track user choices to learn preferences ──
+  const trackBrandMemory = async (action: string, data: Record<string, any>) => {
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE}/vault`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          _token: token,
+          _brandMemoryEvent: { action, ...data, timestamp: new Date().toISOString() },
+        }),
+      });
+    } catch {} // Fire and forget
+  };
+
+  // ── AXE 2: Deploy campaign to Content Calendar (2-week schedule) ──
+  const handleDeployToCalendar = async () => {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const readyAssets = assets.filter(a => a.status === "ready" && (a.imageUrl || a.videoUrl));
+    if (readyAssets.length === 0) { toast.error("No assets ready to deploy"); return; }
+
+    toast("Deploying to calendar...");
+
+    try {
+      // Spread assets across 2 weeks (14 days), 1-2 per day
+      const now = new Date();
+      const schedule: { asset: GeneratedAsset; date: string; time: string }[] = [];
+      const daysSpan = Math.min(14, Math.max(7, readyAssets.length * 2)); // At least 7 days
+      const interval = Math.max(1, Math.floor(daysSpan / readyAssets.length));
+
+      // Best posting times by platform
+      const bestTimes: Record<string, string> = {
+        LinkedIn: "09:00", Instagram: "12:00", Facebook: "10:00",
+        TikTok: "19:00", Twitter: "08:00", YouTube: "14:00",
+        Pinterest: "20:00", Email: "07:00", Web: "10:00", Ads: "11:00",
+      };
+
+      readyAssets.forEach((asset, idx) => {
+        const dayOffset = idx * interval;
+        const date = new Date(now);
+        date.setDate(date.getDate() + dayOffset + 1); // Start tomorrow
+        // Skip weekends for LinkedIn
+        if (asset.platform === "LinkedIn" && (date.getDay() === 0 || date.getDay() === 6)) {
+          date.setDate(date.getDate() + (date.getDay() === 0 ? 1 : 2));
+        }
+        schedule.push({
+          asset,
+          date: date.toISOString().split("T")[0],
+          time: bestTimes[asset.platform] || "10:00",
+        });
+      });
+
+      // Save each scheduled item to the calendar via KV
+      const calendarItems = schedule.map((s, idx) => ({
+        id: `cal-${Date.now()}-${idx}`,
+        title: `${s.asset.platform}: ${s.asset.headline || s.asset.label}`,
+        date: s.date,
+        time: s.time,
+        platform: s.asset.platform,
+        formatId: s.asset.formatId,
+        status: "scheduled",
+        imageUrl: s.asset.imageUrl,
+        videoUrl: s.asset.mergedVideoUrl || s.asset.videoUrl,
+        caption: s.asset.caption || s.asset.copy || "",
+        hashtags: s.asset.hashtags || "",
+      }));
+
+      // Batch save to server
+      const res = await fetch(`${API_BASE}/calendar/batch-schedule`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, items: calendarItems }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success(`${calendarItems.length} posts scheduled over ${daysSpan} days`);
+        // Track for Brand Memory
+        trackBrandMemory("calendar_deploy", { count: calendarItems.length, days: daysSpan, formats: readyAssets.map(a => a.formatId) });
+      } else {
+        // Fallback: save individually via existing endpoint
+        for (const item of calendarItems) {
+          await fetch(`${API_BASE}/calendar/add`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+            body: JSON.stringify({ _token: token, ...item }),
+          }).catch(() => {});
+        }
+        toast.success(`${calendarItems.length} posts scheduled (individual save)`);
+      }
+    } catch (err: any) {
+      console.error("[CampaignLab] Calendar deploy error:", err);
+      toast.error("Calendar deployment failed");
+    }
+  };
+
   const handleGenerate = async () => {
     if (!brief.trim() && !productUrls.trim()) {
       toast.error("Add a brief or product URL to start");
@@ -1048,11 +1155,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               return;
             }
 
-            // ── SINGLE IMAGE (non-carousel) ──
+            // ── SINGLE IMAGE (non-carousel) — ARENA: generate 2 candidates ──
             if (useV2Pipeline) {
-              // V2: img2img — generates scene preserving product identity from ref image.
-              // productDescription contains Visual DNA extracted from ref photos — MUST be injected
-              // so the model knows exactly what the product looks like.
               const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
               const sceneContext = fc.imagePrompt
                 ? fc.imagePrompt.trim().slice(0, 300)
@@ -1065,35 +1169,55 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 ? refSignedUrls[fmtIdx % refSignedUrls.length]
                 : null;
 
-              console.log(`[CampaignLab] V2 Image [${fmt.id}]: ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}, prompt=${finalPrompt.slice(0, 80)}...`);
+              console.log(`[CampaignLab] V2 Arena [${fmt.id}]: generating 2 candidates...`);
 
-              const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"], fmt.id);
+              // Generate 2 candidates in parallel (different models for variety)
+              const [candidatesA, candidatesB] = await Promise.all([
+                generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"], fmt.id),
+                generateImageViaHub(finalPrompt + " Different creative angle, unique composition.", ar, refUrl, ["photon-1"], fmt.id).catch(() => []),
+              ]);
 
-              if (candidates.length === 0) {
-                console.warn(`[CampaignLab] V2 Hub failed for [${fmt.id}], falling back to classic`);
+              const arenaCandidates: ArenaCandidate[] = [];
+              if (candidatesA.length > 0) arenaCandidates.push({ imageUrl: candidatesA[0].imageUrl, model: "Photon A" });
+              if (candidatesB.length > 0) arenaCandidates.push({ imageUrl: candidatesB[0].imageUrl, model: "Photon B" });
+
+              if (arenaCandidates.length === 0) {
                 const classicUrl = await generateImageClassic(fmt, finalPrompt + REALISM_SUFFIX);
-                setAssets(prev => prev.map(a => a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a));
-                generatedImageUrls[fmt.id] = classicUrl;
-                return;
+                arenaCandidates.push({ imageUrl: classicUrl, model: "Classic" });
               }
 
-              const bestUrl = candidates[0].imageUrl;
-
-              setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: bestUrl, model: "photon-1-v2" } : a
-              ));
+              const bestUrl = arenaCandidates[0].imageUrl;
+              setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
+                ...a, status: "ready", imageUrl: bestUrl, model: "photon-1-v2",
+                arenaCandidates: arenaCandidates.length > 1 ? arenaCandidates : undefined,
+                arenaResolved: arenaCandidates.length <= 1,
+              } : a));
               generatedImageUrls[fmt.id] = bestUrl;
-              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK:`, bestUrl.slice(0, 60));
+              console.log(`[CampaignLab] Arena [${fmt.id}]: ${arenaCandidates.length} candidates ready`);
 
             } else {
               const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
               const imgPrompt = (fc.imagePrompt || `Professional ${fmt.platform} post. ${briefShort.slice(0, 120)}. Cinematic brand photography, no text.`) + (diversitySuffix ? ` ${diversitySuffix}` : "") + REALISM_SUFFIX;
-              const classicUrl = await generateImageClassic(fmt, imgPrompt);
-              setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a
-              ));
-              generatedImageUrls[fmt.id] = classicUrl;
-              console.log(`[CampaignLab] Classic Image [${fmt.id}] OK:`, classicUrl.slice(0, 60));
+
+              // ARENA: generate 2 candidates with classic pipeline too
+              console.log(`[CampaignLab] Classic Arena [${fmt.id}]: generating 2 candidates...`);
+              const [urlA, urlB] = await Promise.all([
+                generateImageClassic(fmt, imgPrompt),
+                generateImageClassic(fmt, imgPrompt + " Alternative creative angle, different composition and lighting.").catch(() => ""),
+              ]);
+
+              const arenaCandidates: ArenaCandidate[] = [];
+              if (urlA) arenaCandidates.push({ imageUrl: urlA, model: "Option A" });
+              if (urlB) arenaCandidates.push({ imageUrl: urlB, model: "Option B" });
+
+              const bestUrl = arenaCandidates[0]?.imageUrl || urlA;
+              setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
+                ...a, status: "ready", imageUrl: bestUrl, model: "photon-1",
+                arenaCandidates: arenaCandidates.length > 1 ? arenaCandidates : undefined,
+                arenaResolved: arenaCandidates.length <= 1,
+              } : a));
+              generatedImageUrls[fmt.id] = bestUrl;
+              console.log(`[CampaignLab] Classic Arena [${fmt.id}]: ${arenaCandidates.length} candidates ready`);
             }
           } catch (err: any) {
             const isTimeout = err?.name === "AbortError" || err?.name === "TimeoutError";
@@ -1890,6 +2014,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
             >
               {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               {savingCampaign ? "Saving..." : "Save Campaign"}
+            </button>
+            <button
+              onClick={handleDeployToCalendar}
+              disabled={assets.filter(a => a.status === "ready").length === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
+                color: "#fff", fontSize: "13px", fontWeight: 600,
+                boxShadow: "0 2px 8px rgba(139,108,247,0.25)",
+              }}
+            >
+              <Calendar size={13} />
+              Deploy to Calendar
             </button>
             <button
               onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); }}
@@ -2842,6 +2979,45 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                   />
                                 )}
                               </Suspense>
+                            ) : asset.arenaCandidates && asset.arenaCandidates.length > 1 && !asset.arenaResolved ? (
+                              /* ═══ ARENA: side-by-side candidates ═══ */
+                              <div className="relative w-full h-full flex">
+                                {asset.arenaCandidates.map((cand, ci) => (
+                                  <button
+                                    key={ci}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      // Select this candidate
+                                      setAssets(prev => prev.map(a => a.formatId === asset.formatId
+                                        ? { ...a, imageUrl: cand.imageUrl, model: cand.model, arenaResolved: true }
+                                        : a
+                                      ));
+                                      // Track choice for Brand Memory
+                                      trackBrandMemory("arena_pick", { formatId: asset.formatId, chosen: ci, model: cand.model });
+                                      toast.success(`${cand.model} selected`);
+                                    }}
+                                    className="relative flex-1 cursor-pointer group/arena overflow-hidden"
+                                    style={{ borderRight: ci < asset.arenaCandidates!.length - 1 ? "2px solid rgba(139,108,247,0.4)" : "none" }}
+                                  >
+                                    <img src={cand.imageUrl} alt={cand.model} className="w-full h-full object-cover transition-transform group-hover/arena:scale-105" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover/arena:bg-black/20 transition-all" />
+                                    <div className="absolute bottom-1 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full transition-all"
+                                      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", fontSize: "9px", fontWeight: 600, color: "#fff" }}>
+                                      {cand.model}
+                                    </div>
+                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/arena:opacity-100 transition-opacity">
+                                      <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(139,108,247,0.9)" }}>
+                                        <Check size={14} style={{ color: "#fff" }} />
+                                      </div>
+                                    </div>
+                                  </button>
+                                ))}
+                                {/* Arena badge */}
+                                <div className="absolute top-1.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full z-10"
+                                  style={{ background: "rgba(139,108,247,0.9)", fontSize: "9px", fontWeight: 700, color: "#fff", letterSpacing: "0.05em" }}>
+                                  PICK THE BEST
+                                </div>
+                              </div>
                             ) : (
                               <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
                             )}

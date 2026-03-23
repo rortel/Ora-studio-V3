@@ -3010,6 +3010,26 @@ app.post("/campaign/generate-texts-v2", async (c) => {
       } catch (e) { console.log(`[texts-v2] Product load failed: ${e}`); }
     }
 
+    // ── BRAND MEMORY INJECTION ──
+    if (user) {
+      try {
+        const memory = await kv.get(`brand-memory:${user.id}`);
+        if (memory?.preferences) {
+          const prefs = memory.preferences;
+          const memoryHints: string[] = [];
+          if (prefs.totalDeploys > 3) memoryHints.push("This user actively publishes content — write READY-TO-PUBLISH copy.");
+          if (prefs.totalEdits > 5) memoryHints.push("This user often edits copy — be extra precise with tone and vocabulary.");
+          if (prefs.lastDeployFormats?.length) {
+            memoryHints.push(`User's preferred formats: ${prefs.lastDeployFormats.slice(0, 5).join(", ")}.`);
+          }
+          if (memoryHints.length > 0) {
+            brandCtx.push(`\n══ BRAND MEMORY (learned from past campaigns) ══\n${memoryHints.join("\n")}`);
+            console.log(`[texts-v2] Brand memory injected: ${memoryHints.length} hints`);
+          }
+        }
+      } catch {} // Silent
+    }
+
     const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
 
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
@@ -4608,6 +4628,38 @@ app.post("/vault", async (c) => {
       const vault = await kv.get(`vault:${user.id}`);
       return c.json({ success: true, vault: vault || null });
     }
+    // Brand Memory event tracking (fire & forget)
+    if (data._brandMemoryEvent) {
+      const user = await requireAuth(c);
+      const memoryKey = `brand-memory:${user.id}`;
+      const existing = await kv.get(memoryKey) || { events: [], preferences: {} };
+      const events = existing.events || [];
+      events.push(data._brandMemoryEvent);
+      // Keep only last 100 events
+      if (events.length > 100) events.splice(0, events.length - 100);
+
+      // Learn preferences from events
+      const prefs = existing.preferences || {};
+      const evt = data._brandMemoryEvent;
+      if (evt.action === "arena_pick") {
+        // Track preferred models
+        if (!prefs.preferredModels) prefs.preferredModels = {};
+        prefs.preferredModels[evt.model] = (prefs.preferredModels[evt.model] || 0) + 1;
+        prefs.totalArenaPicks = (prefs.totalArenaPicks || 0) + 1;
+      }
+      if (evt.action === "calendar_deploy") {
+        prefs.totalDeploys = (prefs.totalDeploys || 0) + 1;
+        prefs.lastDeployFormats = evt.formats;
+      }
+      if (evt.action === "edit_copy") {
+        prefs.totalEdits = (prefs.totalEdits || 0) + 1;
+      }
+
+      await kv.set(memoryKey, { events, preferences: prefs, updatedAt: new Date().toISOString() });
+      console.log(`[brand-memory] ${user.id.slice(0, 8)}: ${evt.action} (${events.length} events total)`);
+      return c.json({ success: true, tracked: true });
+    }
+
     // Otherwise it's a write
     const user = await requireAuth(c);
     const existing = await kv.get(`vault:${user.id}`) || {};
@@ -8864,6 +8916,45 @@ app.delete("/calendar/:id", async (c) => {
     if (found) await kv.del(found.id);
     return c.json({ success: true });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
+// POST /calendar/batch-schedule — Deploy multiple campaign assets to calendar at once
+app.post("/calendar/batch-schedule", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { items } = body;
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return c.json({ success: false, error: "No items to schedule" }, 400);
+    }
+    const saved: any[] = [];
+    for (const item of items) {
+      const id = `calendar:${user.id}:${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const event = {
+        id,
+        title: item.title || "Scheduled post",
+        date: item.date,
+        time: item.time || "10:00",
+        platform: item.platform || "General",
+        formatId: item.formatId,
+        status: item.status || "scheduled",
+        imageUrl: item.imageUrl || null,
+        videoUrl: item.videoUrl || null,
+        caption: (item.caption || "").slice(0, 2000),
+        hashtags: (item.hashtags || "").slice(0, 500),
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+        source: "campaign-deploy",
+      };
+      await kv.set(id, event);
+      saved.push(event);
+    }
+    console.log(`[calendar/batch] ${user.id.slice(0, 8)}: scheduled ${saved.length} posts`);
+    return c.json({ success: true, count: saved.length, events: saved });
+  } catch (err) {
+    console.log(`[calendar/batch] ERROR: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
 });
 
 // ── CALENDAR GENERATE — AI creates editorial schedule from campaign assets ──
