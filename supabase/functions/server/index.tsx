@@ -5372,38 +5372,101 @@ app.post("/vault/analyze-file", async (c) => {
     const arrayBuffer = await file.arrayBuffer();
     const isImage = fileType.startsWith("image/");
     const isPDF = fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
-    const isVisual = isImage || isPDF; // Both need vision API
+    const isPPTX = fileName.toLowerCase().endsWith(".pptx") || fileName.toLowerCase().endsWith(".ppt");
+    const isDOCX = fileName.toLowerCase().endsWith(".docx") || fileName.toLowerCase().endsWith(".doc");
 
     let extractedText = "";
 
-    if (isVisual) {
-      // Vision analysis via APIPod (GPT-4o vision) — works for images AND PDFs
-      console.log(`[vault/analyze-file] ${isPDF ? "PDF" : "Image"} → GPT-4o vision...`);
+    // ── PDF: upload to storage → Jina Reader for text extraction ──
+    if (isPDF) {
+      console.log(`[vault/analyze-file] PDF → upload to storage + Jina extraction...`);
+      try {
+        await ensureImageBankBucket();
+        const sb = supabaseAdmin();
+        const tmpPath = `tmp-pdf/${userId}/${Date.now()}.pdf`;
+        const { error: upErr } = await sb.storage.from(IMAGE_BANK_BUCKET).upload(tmpPath, arrayBuffer, { contentType: "application/pdf", upsert: true });
+        if (upErr) throw new Error(`Storage upload: ${upErr.message}`);
+
+        const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(tmpPath, 600);
+        const pdfUrl = signedData?.signedUrl;
+        if (!pdfUrl) throw new Error("Could not get signed URL for PDF");
+
+        console.log(`[vault/analyze-file] PDF uploaded, signed URL ready. Extracting with Jina...`);
+        const jinaKey = Deno.env.get("JINA_API_KEY");
+        const jinaRes = await fetch(`https://r.jina.ai/${pdfUrl}`, {
+          headers: {
+            ...(jinaKey ? { "Authorization": `Bearer ${jinaKey}` } : {}),
+            "Accept": "text/markdown",
+            "X-No-Cache": "true",
+            "X-Token-Budget": "100000",
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+
+        if (jinaRes.ok) {
+          extractedText = await jinaRes.text();
+          console.log(`[vault/analyze-file] Jina PDF extraction OK: ${extractedText.length} chars`);
+        } else {
+          console.log(`[vault/analyze-file] Jina failed ${jinaRes.status}, falling back to vision per-page...`);
+        }
+
+        // Cleanup temp PDF
+        sb.storage.from(IMAGE_BANK_BUCKET).remove([tmpPath]).catch(() => {});
+
+        // If Jina failed, try vision on first page as fallback
+        if (!extractedText || extractedText.length < 50) {
+          console.log(`[vault/analyze-file] Jina text too short, trying GPT-4o on PDF URL...`);
+          try {
+            const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+              method: "POST", headers: apipodHeaders(),
+              body: JSON.stringify({
+                model: "gpt-4o",
+                messages: [{
+                  role: "user",
+                  content: `Read this brand charter PDF and extract EVERYTHING: brand identity (name, mission, vision, values, personality, USP), visual identity (all color hex codes with roles, fonts with rules), tone of voice, photography style, layout rules, approved/forbidden vocabulary, target audience, competitors. Be EXHAUSTIVE.\n\nPDF URL: ${pdfUrl}`,
+                }],
+                max_tokens: 4000,
+              }),
+            });
+            if (vRes.ok) {
+              const vData = await vRes.json();
+              extractedText = vData.choices?.[0]?.message?.content || "";
+              console.log(`[vault/analyze-file] GPT-4o PDF fallback: ${extractedText.length} chars`);
+            }
+          } catch (e) { console.log(`[vault/analyze-file] GPT-4o PDF fallback error: ${e}`); }
+        }
+      } catch (e) {
+        console.log(`[vault/analyze-file] PDF extraction error: ${e}`);
+        // Last resort: try to decode as text (some PDFs have readable text)
+        try {
+          const decoder = new TextDecoder("utf-8", { fatal: false });
+          const rawText = decoder.decode(arrayBuffer);
+          // Extract readable portions between PDF markers
+          const textParts = rawText.match(/\(([^)]+)\)/g)?.map(s => s.slice(1, -1)).join(" ") || "";
+          if (textParts.length > 100) extractedText = textParts.slice(0, 15000);
+        } catch {}
+      }
+    }
+    // ── Images: GPT-4o Vision (base64) ──
+    else if (isImage) {
+      console.log(`[vault/analyze-file] Image → GPT-4o vision...`);
       const bytes = new Uint8Array(arrayBuffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
       const imageBase64 = btoa(binary);
-      const mimeType = isPDF ? "application/pdf" : fileType;
-      const dataUri = `data:${mimeType};base64,${imageBase64}`;
+      const dataUri = `data:${fileType};base64,${imageBase64}`;
 
-      const visionPrompt = isPDF
-        ? `This is a brand charter / brand guidelines PDF document. Extract EVERYTHING relevant for a creative agency to produce pixel-perfect brand-compliant content:
-
-1. BRAND IDENTITY: Company name, tagline, mission statement, vision, values, personality traits, USP
-2. VISUAL IDENTITY: ALL color hex codes with their roles (primary, secondary, accent, background, text), color usage ratios/proportions if specified (e.g. "70% primary, 20% secondary, 10% accent")
-3. TYPOGRAPHY: ALL font names with specific usage rules — which font for headings vs body vs captions, exact weights (Bold, SemiBold, Regular, Light), sizes if specified (H1=48px, H2=32px, body=16px), line-heights, letter-spacing
-4. TONE OF VOICE: Communication style, formality level, adjectives describing the tone, approved and forbidden vocabulary, writing rules
-5. PHOTOGRAPHY STYLE: Framing, mood, lighting, subjects, composition guidelines, filters, retouching rules
-6. LOGO: Description, usage rules, clear space/safe zone requirements (e.g. "2x logo height"), minimum sizes, what NOT to do with the logo
-7. MESSAGING: Key messages, taglines, value propositions, elevator pitch
-8. TARGET AUDIENCE: Personas, demographics, psychographics
-9. COMPETITIVE POSITIONING: Named competitors, differentiation points
-10. DO'S AND DON'TS: Any explicit rules about what to do or avoid
-11. LAYOUT & COMPOSITION RULES: Grid system (columns, margins, gutters), spacing rules between elements, alignment rules (left/center/justified), text width limits (e.g. max 60 chars/line), section spacing, content density, hierarchy of visual elements, image-to-text ratios, whitespace rules, any explicit composition grids or templates shown
-12. IMAGE FORMAT GUIDELINES: Preferred image ratios (hero, thumbnail, social), cropping rules, overlay rules (text on image, gradient overlays), border radius preferences
-
-Be EXHAUSTIVE. Extract exact hex codes, exact font names with weights, exact spacing values, exact wording. This data will be used to configure an AI creative studio that must produce content indistinguishable from agency work.`
-        : "Describe this brand document/image in detail. Extract: company name, colors (hex codes with roles), logo description, fonts with weights, tone, visual style, photo framing/mood, mission, vision, values, personality, layout rules, spacing, any text content. Be thorough and factual.";
+      const visionPrompt = `Analyze this brand image/document. Extract ALL brand information you can see:
+- Company name, tagline, mission, vision, values, personality, USP
+- ALL color hex codes with their roles (primary, secondary, accent)
+- ALL font names with usage rules and weights
+- Tone of voice, communication style
+- Photography/visual style (framing, mood, lighting)
+- Logo description and usage rules
+- Layout rules (grids, spacing, alignment) if visible
+- Key messages, approved/forbidden vocabulary
+- Target audience if mentioned
+Be EXHAUSTIVE. Extract exact hex codes, exact font names. This data configures an AI creative studio.`;
 
       try {
         const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
