@@ -9,7 +9,7 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
-  Layers, Package,
+  Layers, Package, Music, Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
@@ -71,7 +71,10 @@ interface GeneratedAsset {
   status: "pending" | "generating" | "ready" | "error";
   imageUrl?: string;
   videoUrl?: string;
-  
+  audioUrl?: string;
+  mergedVideoUrl?: string;
+  audioStatus?: "idle" | "generating" | "merging" | "ready" | "error";
+
   copy?: string;
   caption?: string;
   hashtags?: string;
@@ -727,6 +730,92 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     throw new Error("Video timeout (300s)");
   };
 
+  // ── Generate soundtrack via Suno and merge with video ──
+  const generateSoundtrackAndMerge = async (asset: GeneratedAsset) => {
+    if (!asset.videoUrl) return;
+    const token = getAuthToken();
+
+    // Step 1: Mark as generating audio
+    setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioStatus: "generating" } : a));
+
+    try {
+      // Build a music prompt from the campaign context
+      const musicStyle = vault?.tone || "professional";
+      const platform = asset.platform || "social";
+      const musicPrompt = `${musicStyle} background music for a ${platform} ${asset.type === "video" ? "video" : "ad"}. ${brief.trim().slice(0, 100)}. Short, energetic, modern, no vocals. 15 seconds.`;
+
+      console.log(`[CampaignLab] Soundtrack START [${asset.formatId}]: "${musicPrompt.slice(0, 80)}..."`);
+
+      // Start Suno generation
+      const startRes = await fetch(`${API_BASE}/generate/audio-start`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          _token: token,
+          prompt: musicPrompt,
+          models: ["suno"],
+          instrumental: true,
+        }),
+      });
+      const startData = await startRes.json();
+      if (!startData.success) throw new Error(startData.error || "Audio start failed");
+
+      const taskId = startData.results?.[0]?.taskId;
+      if (!taskId) throw new Error("No taskId returned from Suno");
+      console.log(`[CampaignLab] Soundtrack taskId: ${taskId}`);
+
+      // Step 2: Poll for audio completion
+      let audioUrl = "";
+      for (let poll = 0; poll < 40; poll++) {
+        await new Promise(r => setTimeout(r, 5_000));
+        try {
+          const pollRes = await fetch(`${API_BASE}/generate/audio-poll?taskId=${encodeURIComponent(taskId)}&_token=${encodeURIComponent(token || "")}`, {
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          const pollData = await pollRes.json();
+          console.log(`[CampaignLab] Soundtrack poll #${poll + 1}: status=${pollData.status}`);
+
+          if (pollData.status === "completed" && pollData.track?.audioUrl) {
+            audioUrl = pollData.track.audioUrl;
+            break;
+          }
+          if (pollData.status === "failed") throw new Error("Audio generation failed");
+        } catch (e: any) {
+          if (e?.message?.includes("failed")) throw e;
+        }
+      }
+      if (!audioUrl) throw new Error("Audio timeout");
+
+      // Update asset with audio
+      setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioUrl, audioStatus: "merging" } : a));
+      console.log(`[CampaignLab] Soundtrack ready, merging with video...`);
+
+      // Step 3: Merge video + audio via FFmpeg endpoint
+      const mergeRes = await fetch(`${API_BASE}/campaign-lab/merge-video-audio`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, videoUrl: asset.videoUrl, audioUrl }),
+      });
+      const mergeData = await mergeRes.json();
+
+      if (mergeData.success && mergeData.url) {
+        console.log(`[CampaignLab] Merge OK: ${mergeData.url.slice(0, 80)}`);
+        setAssets(prev => prev.map(a => a.formatId === asset.formatId
+          ? { ...a, mergedVideoUrl: mergeData.url, audioStatus: "ready" }
+          : a
+        ));
+        toast.success("Soundtrack added!");
+      } else {
+        throw new Error(mergeData.error || "Merge failed");
+      }
+    } catch (err: any) {
+      console.error(`[CampaignLab] Soundtrack error [${asset.formatId}]:`, err?.message);
+      setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, audioStatus: "error" } : a));
+      toast.error(`Soundtrack failed: ${err?.message || "Unknown error"}`);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!brief.trim() && !productUrls.trim()) {
       toast.error("Add a brief or product URL to start");
@@ -1065,9 +1154,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
             }
 
             const videoUrl = await generateVideoWithKeyframe(fmt, vidPrompt, keyframeUrl);
+            const updatedAsset: GeneratedAsset = { ...placeholders.find(p => p.formatId === fmt.id)!, status: "ready", videoUrl, model: "ray-flash-2", audioStatus: "idle" };
             setAssets(prev => prev.map(a =>
-              a.formatId === fmt.id ? { ...a, status: "ready", videoUrl, model: "ray-flash-2" } : a
+              a.formatId === fmt.id ? { ...a, status: "ready", videoUrl, model: "ray-flash-2", audioStatus: "idle" } : a
             ));
+            // Auto-generate soundtrack for video assets
+            generateSoundtrackAndMerge(updatedAsset).catch(() => {});
           } catch (err: any) {
             console.error(`[CampaignLab] Video [${fmt.id}] error:`, err?.message);
             setAssets(prev => prev.map(a =>
@@ -1091,7 +1183,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       id: asset.id,
       type: asset.type,
       imageUrl: asset.imageUrl,
-      videoUrl: asset.videoUrl,
+      videoUrl: asset.mergedVideoUrl || asset.videoUrl,
+      audioUrl: asset.audioUrl,
       prompt: asset.copy || brief,
       model: asset.model || "gpt-4o",
       campaignTheme: brief,
@@ -1191,7 +1284,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   }, [aiTemplateFile, selectedFormats, getAuthToken]);
 
   const handleDownload = async (asset: GeneratedAsset) => {
-    const url = asset.imageUrl || asset.videoUrl;
+    const url = asset.imageUrl || asset.mergedVideoUrl || asset.videoUrl;
     if (url) {
       // External CDN URLs (Luma, FAL, etc.) don't support CORS fetch — open in new tab
       // For Supabase-hosted URLs, try blob download first
@@ -2773,9 +2866,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         ) : asset.status === "ready" && asset.videoUrl ? (
                           <div className="relative w-full h-full">
                             <video
-                              src={asset.videoUrl}
+                              src={asset.mergedVideoUrl || asset.videoUrl}
                               className="w-full h-full object-cover"
-                              muted
+                              muted={!asset.mergedVideoUrl}
                               playsInline
                               data-asset-id={asset.id}
                               onMouseEnter={e => {
@@ -2786,6 +2879,33 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                 const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0;
                               }}
                             />
+                            {/* Soundtrack status badge */}
+                            {asset.audioStatus && asset.audioStatus !== "idle" && (
+                              <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-1 rounded-full"
+                                style={{
+                                  background: asset.audioStatus === "ready" ? "rgba(95,191,106,0.85)" : asset.audioStatus === "error" ? "rgba(224,90,79,0.85)" : "rgba(139,108,247,0.85)",
+                                  backdropFilter: "blur(8px)",
+                                  fontSize: "10px", fontWeight: 600, color: "#fff",
+                                }}>
+                                {asset.audioStatus === "generating" && <><Loader2 size={10} className="animate-spin" /> Audio...</>}
+                                {asset.audioStatus === "merging" && <><Loader2 size={10} className="animate-spin" /> Merging...</>}
+                                {asset.audioStatus === "ready" && <><Volume2 size={10} /> With sound</>}
+                                {asset.audioStatus === "error" && <><Music size={10} /> No audio</>}
+                              </div>
+                            )}
+                            {/* Manual add soundtrack button (when no audio yet) */}
+                            {(!asset.audioStatus || asset.audioStatus === "idle" || asset.audioStatus === "error") && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); generateSoundtrackAndMerge(asset); }}
+                                className="absolute bottom-2 left-2 flex items-center gap-1 px-2.5 py-1.5 rounded-full cursor-pointer transition-all hover:scale-105"
+                                style={{
+                                  background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+                                  border: "1px solid rgba(255,255,255,0.15)",
+                                  fontSize: "10px", fontWeight: 500, color: "#E8E4DF",
+                                }}>
+                                <Music size={10} /> Add soundtrack
+                              </button>
+                            )}
                             {/* Brand logo overlay on video */}
                             {brandLogoUrl && (
                               <img src={brandLogoUrl} alt="Brand logo" className="absolute"
