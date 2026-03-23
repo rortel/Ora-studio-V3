@@ -38,16 +38,26 @@ interface VaultData {
   approved_terms: string[];
   forbidden_terms: string[];
   fonts: string[];
+  font_rules: string | null;
   confidence_score: number;
   source_url: string | null;
   updatedAt: string | null;
+  // Charter fields
+  mission: string | null;
+  vision: string | null;
+  values: string[];
+  personality: string | null;
+  guidelines: string | null;
+  usp: string | null;
+  competitors: string[];
 }
 
 const EMPTY_VAULT: VaultData = {
   company_name: "", industry: "", tagline: null, products_services: [], target_audiences: [],
   colors: [], logo_url: null, logo_description: null, tone: null, photo_style: null,
   social_presence: [], key_messages: [], approved_terms: [], forbidden_terms: [],
-  fonts: [], confidence_score: 0, source_url: null, updatedAt: null,
+  fonts: [], font_rules: null, confidence_score: 0, source_url: null, updatedAt: null,
+  mission: null, vision: null, values: [], personality: null, guidelines: null, usp: null, competitors: [],
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -755,6 +765,115 @@ function VaultPageContent() {
                   </div>
                 ) : <EmptyState />}
               </SectionCard>
+
+              {/* Brand Charter — editable fields that enrich AI generation */}
+              <div className="md:col-span-2">
+                <SectionCard icon={FileText} title="Brand Charter" count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.guidelines].filter(Boolean).length + (Array.isArray(vault.values) ? vault.values.length : 0)}
+                  open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
+                  <div className="space-y-4">
+                    <p style={{ fontSize: "11px", color: "#6B6660", lineHeight: 1.5, marginBottom: 8 }}>
+                      These fields directly feed into AI generation. The more precise you are, the better the output.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Mission</label>
+                        <textarea
+                          value={vault.mission || ""}
+                          onChange={e => setVault(prev => ({ ...prev, mission: e.target.value || null }))}
+                          placeholder="Why does your brand exist? e.g. 'To make sustainable transport accessible to all'"
+                          rows={2}
+                          className="w-full px-3 py-2 rounded-lg resize-none"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Vision</label>
+                        <textarea
+                          value={vault.vision || ""}
+                          onChange={e => setVault(prev => ({ ...prev, vision: e.target.value || null }))}
+                          placeholder="Where is your brand going? e.g. 'A world where every fleet is zero-emission'"
+                          rows={2}
+                          className="w-full px-3 py-2 rounded-lg resize-none"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Personality</label>
+                        <input
+                          type="text"
+                          value={vault.personality || ""}
+                          onChange={e => setVault(prev => ({ ...prev, personality: e.target.value || null }))}
+                          placeholder="e.g. Bold, approachable, technically expert"
+                          className="w-full px-3 py-2 rounded-lg"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>USP (Unique Selling Proposition)</label>
+                        <input
+                          type="text"
+                          value={vault.usp || ""}
+                          onChange={e => setVault(prev => ({ ...prev, usp: e.target.value || null }))}
+                          placeholder="e.g. The only 100% electric long-haul truck with 500km range"
+                          className="w-full px-3 py-2 rounded-lg"
+                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Values (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={Array.isArray(vault.values) ? vault.values.join(", ") : (vault.values || "")}
+                        onChange={e => setVault(prev => ({ ...prev, values: e.target.value.split(",").map(v => v.trim()).filter(Boolean) }))}
+                        placeholder="e.g. Innovation, Sustainability, Reliability, Performance"
+                        className="w-full px-3 py-2 rounded-lg"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Font usage rules</label>
+                      <input
+                        type="text"
+                        value={vault.font_rules || ""}
+                        onChange={e => setVault(prev => ({ ...prev, font_rules: e.target.value || null }))}
+                        placeholder="e.g. Poppins Bold for headings only, Inter Regular for body text, never use serif"
+                        className="w-full px-3 py-2 rounded-lg"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Competitors (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={Array.isArray(vault.competitors) ? vault.competitors.map((c: any) => typeof c === "string" ? c : c?.name || String(c)).join(", ") : (typeof vault.competitors === "string" ? vault.competitors : "")}
+                        onChange={e => setVault(prev => ({ ...prev, competitors: e.target.value.split(",").map(v => v.trim()).filter(Boolean) }))}
+                        placeholder="e.g. Volvo Trucks, Scania, DAF"
+                        className="w-full px-3 py-2 rounded-lg"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        Brand guidelines (free text — pasted from your charter)
+                      </label>
+                      <textarea
+                        value={vault.guidelines || ""}
+                        onChange={e => setVault(prev => ({ ...prev, guidelines: e.target.value || null }))}
+                        placeholder="Paste your brand guidelines here. Be as specific as possible: tone rules, do's and don'ts, visual directions, messaging framework..."
+                        rows={5}
+                        className="w-full px-3 py-2 rounded-lg resize-none"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none", lineHeight: 1.5 }}
+                      />
+                      <p style={{ fontSize: "10px", color: "#6B6660", marginTop: 4 }}>
+                        This text is injected directly into AI prompts. Up to 1500 characters are used.
+                      </p>
+                    </div>
+                  </div>
+                </SectionCard>
+              </div>
 
               {/* Vocabulary -- full width */}
               <div className="md:col-span-2">

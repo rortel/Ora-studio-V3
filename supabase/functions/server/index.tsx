@@ -2969,27 +2969,118 @@ app.post("/campaign/generate-texts-v2", async (c) => {
     if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
     if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
 
-    // ── BRAND VAULT ──
+    // ── BRAND VAULT (reads BOTH camelCase from scan AND snake_case from VaultPage) ──
     let brandVault: any = null;
     if (user) { try { brandVault = await kv.get(`vault:${user.id}`); } catch {} }
     const brandCtx: string[] = [];
     if (brandVault) {
-      if (brandVault.brandName) brandCtx.push(`BRAND NAME: ${brandVault.brandName}`);
-      if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
-      if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
-      if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
-      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
-      if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
-      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
-      if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
-      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY: ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS: ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
-      if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE: ${brandVault.targetAudience}`);
-      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
-      if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
-      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
-      if (brandVault.sections) { for (const s of brandVault.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
+      const v = brandVault; // shorthand
+
+      // ── Identity ──
+      const name = v.brandName || v.company_name || "";
+      if (name) brandCtx.push(`BRAND NAME: ${name}`);
+      if (v.industry) brandCtx.push(`INDUSTRY: ${v.industry}`);
+      if (v.tagline) brandCtx.push(`TAGLINE: ${v.tagline}`);
+
+      // ── Charter: Mission / Vision / Values ──
+      if (v.mission) brandCtx.push(`MISSION: ${v.mission}`);
+      if (v.vision) brandCtx.push(`VISION: ${v.vision}`);
+      if (v.values?.length) brandCtx.push(`VALUES: ${v.values.join(", ")}`);
+      if (v.usp) brandCtx.push(`USP: ${v.usp}`);
+      if (v.personality) brandCtx.push(`BRAND PERSONALITY: ${v.personality}`);
+
+      // ── Tone of voice (handle structured object OR string) ──
+      if (v.tone) {
+        if (typeof v.tone === "object") {
+          const t = v.tone;
+          const parts = [];
+          if (t.primary_tone) parts.push(`Primary: ${t.primary_tone}`);
+          if (t.formality) parts.push(`Formality: ${t.formality}/10`);
+          if (t.confidence) parts.push(`Confidence: ${t.confidence}/10`);
+          if (t.warmth) parts.push(`Warmth: ${t.warmth}/10`);
+          if (t.humor) parts.push(`Humor: ${t.humor}/10`);
+          if (t.adjectives?.length) parts.push(`Style: ${t.adjectives.join(", ")}`);
+          if (parts.length) brandCtx.push(`TONE OF VOICE: ${parts.join(". ")}`);
+        } else {
+          brandCtx.push(`TONE OF VOICE: ${v.tone}`);
+        }
+      }
+      if (v.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${v.toneAttributes.join(", ")}`);
+
+      // ── Visual identity: Colors with roles ──
+      const colors = v.colors || [];
+      if (colors.length > 0) {
+        const colorLines = colors.map((c: any) => {
+          const role = c.role ? ` (${c.role})` : "";
+          const cname = c.name ? ` ${c.name}` : "";
+          return `  ${c.hex}${cname}${role}`;
+        });
+        brandCtx.push(`COLOR PALETTE (use these exact colors in visual descriptions):\n${colorLines.join("\n")}`);
+      }
+
+      // ── Fonts with rules ──
+      const fonts = v.fonts || [];
+      if (fonts.length > 0) {
+        brandCtx.push(`BRAND FONTS: ${fonts.join(", ")}. Reference these fonts in copy when mentioning design/visual assets.`);
+      }
+      if (v.font_rules) brandCtx.push(`FONT USAGE RULES: ${v.font_rules}`);
+
+      // ── Photo / visual style ──
+      if (v.photo_style) {
+        const ps = v.photo_style;
+        const parts = [];
+        if (ps.framing) parts.push(`Framing: ${ps.framing}`);
+        if (ps.mood) parts.push(`Mood: ${ps.mood}`);
+        if (ps.lighting) parts.push(`Lighting: ${ps.lighting}`);
+        if (ps.subjects) parts.push(`Subjects: ${ps.subjects}`);
+        if (parts.length) brandCtx.push(`VISUAL STYLE DIRECTIVE (apply to all image prompts): ${parts.join(". ")}`);
+      }
+
+      // ── Vocabulary ──
+      const approved = v.approvedTerms || v.approved_terms || [];
+      const forbidden = v.forbiddenTerms || v.forbidden_terms || [];
+      const keyMsg = v.keyMessages || v.key_messages || [];
+      if (approved.length) brandCtx.push(`APPROVED VOCABULARY: ${approved.slice(0, 30).join(", ")}`);
+      if (forbidden.length) brandCtx.push(`FORBIDDEN WORDS: ${forbidden.slice(0, 30).join(", ")}`);
+      if (keyMsg.length) brandCtx.push(`KEY MESSAGES: ${keyMsg.slice(0, 8).join(" | ")}`);
+
+      // ── Audience (handle structured array OR string) ──
+      const audiences = v.target_audiences || [];
+      if (audiences.length > 0 && typeof audiences[0] === "object") {
+        brandCtx.push(`TARGET AUDIENCES:\n${audiences.slice(0, 5).map((a: any) => `  - ${a.name}: ${a.description || ""}`).join("\n")}`);
+      } else if (v.targetAudience) {
+        brandCtx.push(`TARGET AUDIENCE: ${v.targetAudience}`);
+      }
+
+      // ── Competitive landscape ──
+      if (v.competitors?.length) brandCtx.push(`COMPETITORS: ${v.competitors.slice(0, 5).join(", ")}`);
+
+      // ── Guidelines (full charter text) ──
+      if (v.guidelines) brandCtx.push(`BRAND GUIDELINES:\n${v.guidelines.slice(0, 1500)}`);
+
+      // ── Custom sections from charter ──
+      if (v.sections) { for (const s of v.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
+
+      // ── Image Bank visual DNA (inject analysis into text gen too) ──
+      if (user) {
+        try {
+          const brandImages = await kv.getByPrefix(`brand-image:${user.id}:`).catch(() => []);
+          if (brandImages.length > 0) {
+            const analyzed = brandImages.filter((img: any) => img.analysis);
+            if (analyzed.length > 0) {
+              const moods = analyzed.map((img: any) => img.analysis?.mood?.primary_emotion).filter(Boolean);
+              const styles = analyzed.map((img: any) => img.analysis?.technique?.style_reference).filter(Boolean);
+              const uniqueMoods = [...new Set(moods)].slice(0, 5);
+              const uniqueStyles = [...new Set(styles)].slice(0, 3);
+              if (uniqueMoods.length || uniqueStyles.length) {
+                brandCtx.push(`BRAND VISUAL DNA (from ${analyzed.length} analyzed photos): Moods: ${uniqueMoods.join(", ")}. Styles: ${uniqueStyles.join(", ")}. Align copy tone with this visual identity.`);
+              }
+            }
+          }
+        } catch {}
+      }
+
+      console.log(`[texts-v2] Brand vault loaded: ${brandCtx.length} context lines, name="${name}"`);
     }
 
     // ── PRODUCT INJECTION ──
