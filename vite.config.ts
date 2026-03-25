@@ -19,4 +19,9 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  // Pre-bundle CJS packages to avoid TDZ "cannot access before initialization" errors
+  optimizeDeps: {
+    include: ['konva', 'react-konva'],
+  },
 })
