@@ -259,7 +259,7 @@ export function ProductsPage() {
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90"
-              style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+              style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
             >
               <Plus size={14} />
               New Product
@@ -269,7 +269,7 @@ export function ProductsPage() {
           {/* Loading */}
           {loading && (
             <div className="flex items-center justify-center py-20">
-              <Loader2 size={24} className="animate-spin" style={{ color: "#5E6AD2" }} />
+              <Loader2 size={24} className="animate-spin" style={{ color: "#FFFFFF" }} />
             </div>
           )}
 
@@ -287,7 +287,7 @@ export function ProductsPage() {
               <button
                 onClick={openCreate}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer"
-                style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+                style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
               >
                 <Plus size={14} /> Create Product
               </button>
@@ -334,7 +334,7 @@ export function ProductsPage() {
                           {product.name}
                         </h3>
                         {product.price && (
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--ora-signal, #5E6AD2)" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--ora-signal, #FFFFFF)" }}>
                             {product.price} {product.currency}
                           </span>
                         )}
@@ -539,7 +539,7 @@ export function ProductsPage() {
                         ))}
                         <button onClick={addFeature}
                           className="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:bg-white/[0.04]"
-                          style={{ fontSize: "11px", color: "#5E6AD2" }}>
+                          style={{ fontSize: "11px", color: "#FFFFFF" }}>
                           <Plus size={11} /> Add feature
                         </button>
                       </div>
@@ -594,7 +594,7 @@ export function ProductsPage() {
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploadingImages}
                           className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] disabled:opacity-40"
-                          style={{ fontSize: "11px", color: "#5E6AD2", border: "1px dashed rgba(94,106,210,0.3)" }}>
+                          style={{ fontSize: "11px", color: "#FFFFFF", border: "1px dashed rgba(255,255,255,0.3)" }}>
                           {uploadingImages ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                           {uploadingImages ? "Uploading..." : "Upload Images"}
                         </button>
@@ -613,7 +613,7 @@ export function ProductsPage() {
                     <button onClick={handleSave}
                       disabled={saving || !formName.trim()}
                       className="flex items-center gap-1.5 px-5 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40"
-                      style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
+                      style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
                       {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       {saving ? "Saving..." : (editingProduct ? "Save Changes" : "Create Product")}
                     </button>

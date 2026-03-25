@@ -26,7 +26,8 @@ export function Navbar() {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) setAvatarMenuOpen(false);
+      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node))
+        setAvatarMenuOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -44,27 +45,43 @@ export function Navbar() {
     { label: "Calendar", href: "/hub/calendar" },
   ];
   const links = isHub ? hubLinks : marketingLinks;
-  const userInitial = profile?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U";
+  const userInitial =
+    profile?.displayName?.[0]?.toUpperCase() ||
+    user?.email?.[0]?.toUpperCase() ||
+    "U";
 
-  const handleSignOut = async () => { setAvatarMenuOpen(false); await signOut(); navigate("/"); };
+  const handleSignOut = async () => {
+    setAvatarMenuOpen(false);
+    await signOut();
+    navigate("/");
+  };
+
+  /* ── Colors depend on context ── */
+  const navBg = scrolled
+    ? "rgba(10,10,10,0.92)"
+    : "rgba(10,10,10,0.0)";
+
+  const navBorder = scrolled
+    ? "1px solid rgba(255,255,255,0.07)"
+    : "1px solid transparent";
+
+  const logoColor = "#E8E4DF";
+  const linkColor = "rgba(255,255,255,0.40)";
+  const linkActiveColor = "#E8E4DF";
+  const linkActiveBg = "rgba(255,255,255,0.06)";
+  const signInColor = "rgba(255,255,255,0.40)";
+  const mobileIconColor = "#E8E4DF";
 
   return (
     <>
       <nav
         className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl transition-all duration-500"
-        style={{
-          background: isLanding && !scrolled
-            ? "rgba(19,18,17,0.2)"
-            : "rgba(19,18,17,0.85)",
-          borderBottom: isLanding && !scrolled
-            ? "1px solid transparent"
-            : "1px solid rgba(255,255,255,0.06)",
-        }}
+        style={{ background: navBg, borderBottom: navBorder }}
       >
         <div className="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <OraLogo size={30} animate={false} color="#E8E4DF" />
+            <OraLogo size={30} animate={false} color={logoColor} />
           </Link>
 
           {/* Desktop nav links */}
@@ -79,8 +96,8 @@ export function Navbar() {
                   style={{
                     fontSize: "13px",
                     fontWeight: active ? 500 : 400,
-                    color: active ? "#E8E4DF" : "#5C5856",
-                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                    color: active ? linkActiveColor : linkColor,
+                    background: active ? linkActiveBg : "transparent",
                   }}
                 >
                   {l.label}
@@ -94,7 +111,11 @@ export function Navbar() {
             {isHub && user ? (
               <>
                 {profile?.role === "admin" && (
-                  <Link to="/admin" className="p-2.5 rounded-lg transition-colors" style={{ color: "#9A9590" }}>
+                  <Link
+                    to="/admin"
+                    className="p-2.5 rounded-lg transition-colors"
+                    style={{ color: "#9A9590" }}
+                  >
                     <Shield size={16} />
                   </Link>
                 )}
@@ -149,10 +170,10 @@ export function Navbar() {
                 to="/hub"
                 className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
                 style={{
-                  background: "#E8E4DF",
-                  color: "#18171A",
+                  background: "#FFFFFF",
+                  color: "#0A0A0A",
                   fontSize: "13px",
-                  fontWeight: 500,
+                  fontWeight: 600,
                 }}
               >
                 Dashboard
@@ -162,34 +183,38 @@ export function Navbar() {
                 <Link
                   to="/login"
                   className="transition-colors"
-                  style={{ fontSize: "13px", fontWeight: 400, color: "#5C5856" }}
+                  style={{ fontSize: "13px", fontWeight: 400, color: signInColor }}
                 >
-                  Sign in
+                  Log in
                 </Link>
                 <Link
                   to="/login?mode=signup"
-                  className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
+                  className="px-5 py-2 rounded-lg transition-all hover:scale-[1.03] hover:opacity-90"
                   style={{
-                    background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
-                    color: "#fff",
+                    background: "#FFFFFF",
+                    color: "#0A0A0A",
                     fontSize: "13px",
-                    fontWeight: 500,
+                    fontWeight: 600,
                   }}
                 >
-                  Start free
+                  Get started
                 </Link>
               </>
             )}
           </div>
 
           {/* Mobile hamburger */}
-          <button className="md:hidden" style={{ color: "#E8E4DF" }} onClick={() => setMobileOpen(!mobileOpen)}>
+          <button
+            className="md:hidden"
+            style={{ color: mobileIconColor }}
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
       </nav>
 
-      {/* Mobile overlay */}
+      {/* Mobile overlay — always dark for contrast */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
@@ -197,14 +222,18 @@ export function Navbar() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] flex flex-col"
-            style={{ background: "#18171A" }}
+            style={{ background: "#0A0A0A" }}
           >
             <div className="flex items-center justify-between px-6 h-14">
               <OraLogo size={28} animate={false} color="#E8E4DF" />
-              <button onClick={() => setMobileOpen(false)} style={{ color: "#E8E4DF" }}>
+              <button
+                onClick={() => setMobileOpen(false)}
+                style={{ color: "#E8E4DF" }}
+              >
                 <X size={20} />
               </button>
             </div>
+
             <div className="flex-1 flex flex-col justify-center px-8 gap-3">
               {links.map((l, i) => (
                 <motion.div
@@ -230,6 +259,7 @@ export function Navbar() {
                 </motion.div>
               ))}
             </div>
+
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -240,8 +270,13 @@ export function Navbar() {
                 <Link
                   to="/hub"
                   onClick={() => setMobileOpen(false)}
-                  className="px-8 py-4 rounded-lg"
-                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "16px", fontWeight: 500 }}
+                  className="px-8 py-4 rounded-xl"
+                  style={{
+                    background: "#FFFFFF",
+                    color: "#0A0A0A",
+                    fontSize: "16px",
+                    fontWeight: 600,
+                  }}
                 >
                   Dashboard
                 </Link>
@@ -250,18 +285,28 @@ export function Navbar() {
                   <Link
                     to="/login?mode=signup"
                     onClick={() => setMobileOpen(false)}
-                    className="px-8 py-4 rounded-lg"
-                    style={{ background: "#E8E4DF", color: "#18171A", fontSize: "16px", fontWeight: 500 }}
+                    className="px-8 py-4 rounded-xl"
+                    style={{
+                      background: "#FFFFFF",
+                      color: "#0A0A0A",
+                      fontSize: "16px",
+                      fontWeight: 600,
+                      boxShadow: "none",
+                    }}
                   >
-                    Start free
+                    Get started
                   </Link>
                   <Link
                     to="/login"
                     onClick={() => setMobileOpen(false)}
                     className="px-6 py-4"
-                    style={{ fontSize: "16px", fontWeight: 400, color: "#5C5856" }}
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: 400,
+                      color: "rgba(255,255,255,0.40)",
+                    }}
                   >
-                    Sign in
+                    Log in
                   </Link>
                 </>
               )}

@@ -384,7 +384,7 @@ function MusicPageContent() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "#FFFFFF" }} />
       </div>
     );
   }
@@ -404,7 +404,7 @@ function MusicPageContent() {
               {tracks.length} track{tracks.length !== 1 ? "s" : ""}
               {credits && (
                 <span className="ml-3 px-2 py-0.5 rounded-md" style={{ background: "#222120", fontSize: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <CreditCard size={10} className="inline mr-1" style={{ color: "#5E6AD2" }} />
+                  <CreditCard size={10} className="inline mr-1" style={{ color: "#FFFFFF" }} />
                   {credits.creditsLeft ?? "?"} credits
                 </span>
               )}
@@ -458,7 +458,7 @@ function MusicPageContent() {
                         className="flex-1 bg-transparent border-none outline-none min-w-0"
                         style={{ fontSize: "12px", color: "#E8E4DF" }}
                       />
-                      <button onClick={createPlaylist} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "#5E6AD2" }}><Check size={11} /></button>
+                      <button onClick={createPlaylist} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "#FFFFFF" }}><Check size={11} /></button>
                       <button onClick={() => { setShowNewPlaylist(false); setNewPlaylistName(""); }} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "#9A9590" }}><X size={11} /></button>
                     </div>
                   </motion.div>
@@ -550,7 +550,7 @@ function MusicPageContent() {
             {filteredTracks.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "linear-gradient(135deg, #5E6AD2 0%, #7B84E0 100%)", boxShadow: "0 8px 24px rgba(94,106,210,0.15)" }}>
+                  style={{ background: "linear-gradient(135deg, #FFFFFF 0%, #7B84E0 100%)", boxShadow: "0 8px 24px rgba(255,255,255,0.15)" }}>
                   <Music size={28} style={{ color: "#FFF" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "#E8E4DF", marginBottom: "8px" }}>
@@ -588,20 +588,20 @@ function MusicPageContent() {
                       transition={{ delay: Math.min(i * 0.02, 0.3) }}
                       className="group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
                       style={{
-                        background: isActive ? "rgba(94,106,210,0.08)" : "transparent",
-                        border: isActive ? "1px solid rgba(94,106,210,0.15)" : "1px solid transparent",
+                        background: isActive ? "rgba(255,255,255,0.08)" : "transparent",
+                        border: isActive ? "1px solid rgba(255,255,255,0.15)" : "1px solid transparent",
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = isActive ? "rgba(94,106,210,0.08)" : "rgba(255,255,255,0.02)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = isActive ? "rgba(94,106,210,0.08)" : "transparent")}
+                      onMouseEnter={e => (e.currentTarget.style.background = isActive ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = isActive ? "rgba(255,255,255,0.08)" : "transparent")}
                       onDoubleClick={() => playTrack(track, filteredTracks)}
                     >
                       {/* Play button */}
                       <button
                         onClick={() => playTrack(track, filteredTracks)}
                         className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all flex-shrink-0"
-                        style={{ background: isActive && isPlaying ? "#5E6AD2" : "rgba(255,255,255,0.05)" }}
+                        style={{ background: isActive && isPlaying ? "#FFFFFF" : "rgba(255,255,255,0.05)" }}
                       >
-                        {isActive && isPlaying ? <Pause size={12} style={{ color: "#fff" }} /> : <Play size={12} style={{ color: isActive ? "#5E6AD2" : "#9A9590", marginLeft: 1 }} />}
+                        {isActive && isPlaying ? <Pause size={12} style={{ color: "#fff" }} /> : <Play size={12} style={{ color: isActive ? "#FFFFFF" : "#9A9590", marginLeft: 1 }} />}
                       </button>
 
                       {/* Cover */}
@@ -615,7 +615,7 @@ function MusicPageContent() {
 
                       {/* Title + prompt */}
                       <div className="flex-1 min-w-0">
-                        <div className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: isActive ? "#5E6AD2" : "#E8E4DF" }}>{track.title}</div>
+                        <div className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: isActive ? "#FFFFFF" : "#E8E4DF" }}>{track.title}</div>
                         <div className="truncate" style={{ fontSize: "11px", color: "#5C5856" }}>{track.prompt.slice(0, 60)}</div>
                       </div>
 
@@ -631,7 +631,7 @@ function MusicPageContent() {
                         className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all opacity-0 group-hover:opacity-100"
                         style={{ opacity: isFav ? 1 : undefined }}
                       >
-                        <Heart size={14} fill={isFav ? "#5E6AD2" : "none"} style={{ color: isFav ? "#5E6AD2" : "#5C5856" }} />
+                        <Heart size={14} fill={isFav ? "#FFFFFF" : "none"} style={{ color: isFav ? "#FFFFFF" : "#5C5856" }} />
                       </button>
 
                       {/* More */}
@@ -734,7 +734,7 @@ function MusicPageContent() {
                       setExtendTrack(null);
                     }}
                     className="flex-1 py-2.5 rounded-lg cursor-pointer flex items-center justify-center gap-2"
-                    style={{ background: "#5E6AD2", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
+                    style={{ background: "#FFFFFF", color: "#18171A", fontSize: "13px", fontWeight: 500 }}>
                     {actionLoading === "extend" ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpFromLine size={14} />}
                     Extend
                   </button>
@@ -764,7 +764,7 @@ function MusicPageContent() {
               <p style={{ fontSize: "13px", color: "#9A9590", marginBottom: "12px" }}>{lyricsTrack.title}</p>
               {lyricsLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+                  <Loader2 size={20} className="animate-spin" style={{ color: "#FFFFFF" }} />
                   <span className="ml-2" style={{ fontSize: "13px", color: "#9A9590" }}>Generating lyrics...</span>
                 </div>
               ) : lyricsContent ? (
@@ -800,12 +800,12 @@ function MusicPageContent() {
                 const isQActive = t.id === currentTrack.id;
                 return (
                   <div key={t.id + i} onClick={() => playTrack(t)} className="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all hover:bg-white/3"
-                    style={{ background: isQActive ? "rgba(94,106,210,0.08)" : "transparent" }}>
+                    style={{ background: isQActive ? "rgba(255,255,255,0.08)" : "transparent" }}>
                     <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0" style={{ background: "#222120" }}>
                       {t.imageUrl ? <img src={t.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" /> : <div className="w-full h-full flex items-center justify-center"><Music size={10} style={{ color: "#5C5856" }} /></div>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="truncate" style={{ fontSize: "12px", fontWeight: 500, color: isQActive ? "#5E6AD2" : "#E8E4DF" }}>{t.title}</div>
+                      <div className="truncate" style={{ fontSize: "12px", fontWeight: 500, color: isQActive ? "#FFFFFF" : "#E8E4DF" }}>{t.title}</div>
                       <div className="truncate" style={{ fontSize: "10px", color: "#5C5856" }}>{t.duration}</div>
                     </div>
                   </div>
@@ -823,9 +823,9 @@ function MusicPageContent() {
           {/* Progress bar */}
           <div ref={progressRef} className="h-1 w-full cursor-pointer group relative" style={{ background: "rgba(255,255,255,0.06)" }}
             onClick={handleSeek}>
-            <div className="h-full transition-all" style={{ width: `${playingProgress}%`, background: "#5E6AD2" }} />
+            <div className="h-full transition-all" style={{ width: `${playingProgress}%`, background: "#FFFFFF" }} />
             <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ left: `${playingProgress}%`, transform: `translate(-50%, -50%)`, background: "#5E6AD2" }} />
+              style={{ left: `${playingProgress}%`, transform: `translate(-50%, -50%)`, background: "#FFFFFF" }} />
           </div>
 
           <div className="flex items-center gap-4 px-4 py-3">
@@ -843,14 +843,14 @@ function MusicPageContent() {
                 <div className="truncate" style={{ fontSize: "11px", color: "#5C5856" }}>{currentTrack.model}</div>
               </div>
               <button onClick={() => toggleFavorite(currentTrack.id || currentTrack.libraryId)} className="cursor-pointer flex-shrink-0">
-                <Heart size={16} fill={favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#5E6AD2" : "none"}
-                  style={{ color: favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#5E6AD2" : "#5C5856" }} />
+                <Heart size={16} fill={favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#FFFFFF" : "none"}
+                  style={{ color: favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#FFFFFF" : "#5C5856" }} />
               </button>
             </div>
 
             {/* Controls */}
             <div className="flex-1 flex items-center justify-center gap-4">
-              <button onClick={() => setIsShuffle(!isShuffle)} className="cursor-pointer" style={{ color: isShuffle ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsShuffle(!isShuffle)} className="cursor-pointer" style={{ color: isShuffle ? "#FFFFFF" : "#5C5856" }}>
                 <Shuffle size={16} />
               </button>
               <button onClick={handlePrev} className="cursor-pointer" style={{ color: "#9A9590" }}>
@@ -865,7 +865,7 @@ function MusicPageContent() {
               <button onClick={handleNext} className="cursor-pointer" style={{ color: "#9A9590" }}>
                 <SkipForward size={18} />
               </button>
-              <button onClick={() => setIsRepeat(!isRepeat)} className="cursor-pointer" style={{ color: isRepeat ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsRepeat(!isRepeat)} className="cursor-pointer" style={{ color: isRepeat ? "#FFFFFF" : "#5C5856" }}>
                 <Repeat size={16} />
               </button>
             </div>
@@ -875,16 +875,16 @@ function MusicPageContent() {
               <span style={{ fontSize: "11px", color: "#5C5856", fontVariantNumeric: "tabular-nums" }}>
                 {formatTime(currentTime)} / {formatTime(totalDuration)}
               </span>
-              <button onClick={() => setIsMuted(!isMuted)} className="cursor-pointer" style={{ color: isMuted ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsMuted(!isMuted)} className="cursor-pointer" style={{ color: isMuted ? "#FFFFFF" : "#5C5856" }}>
                 {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
               <input
                 type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
                 onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }}
-                className="w-20 accent-[#5E6AD2]"
+                className="w-20 accent-[#FFFFFF]"
                 style={{ height: 3 }}
               />
-              <button onClick={() => setShowQueue(!showQueue)} className="cursor-pointer" style={{ color: showQueue ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setShowQueue(!showQueue)} className="cursor-pointer" style={{ color: showQueue ? "#FFFFFF" : "#5C5856" }}>
                 <ListMusic size={16} />
               </button>
             </div>
@@ -907,13 +907,13 @@ function SidebarBtn({ icon: Icon, label, count, active, onClick }: {
       onClick={onClick}
       className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-colors cursor-pointer"
       style={{
-        background: active ? "rgba(94,106,210,0.08)" : "transparent",
-        color: active ? "#5E6AD2" : "#9A9590",
+        background: active ? "rgba(255,255,255,0.08)" : "transparent",
+        color: active ? "#FFFFFF" : "#9A9590",
       }}
     >
       <Icon size={14} />
       <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: active ? 500 : 400 }}>{label}</span>
-      <span style={{ fontSize: "10px", color: active ? "#5E6AD2" : "#5C5856" }}>{count}</span>
+      <span style={{ fontSize: "10px", color: active ? "#FFFFFF" : "#5C5856" }}>{count}</span>
     </button>
   );
 }
@@ -927,7 +927,7 @@ function CtxItem({ icon: Icon, label, onClick, loading }: {
       className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-white/5"
       style={{ fontSize: "13px", color: "#E8E4DF" }}
     >
-      {loading ? <Loader2 size={14} className="animate-spin" style={{ color: "#5E6AD2" }} /> : <Icon size={14} style={{ color: "#9A9590" }} />}
+      {loading ? <Loader2 size={14} className="animate-spin" style={{ color: "#FFFFFF" }} /> : <Icon size={14} style={{ color: "#9A9590" }} />}
       {label}
     </button>
   );

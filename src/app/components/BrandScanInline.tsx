@@ -161,7 +161,7 @@ export function BrandScanInline({ onApply, currentVault }: BrandScanInlineProps)
           </span>
         </div>
         {!result && (
-          <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(59,79,196,0.08)", border: "1px solid rgba(59,79,196,0.15)" }}>
+          <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}>
             Recommended
           </span>
         )}
@@ -182,7 +182,7 @@ export function BrandScanInline({ onApply, currentVault }: BrandScanInlineProps)
           onKeyDown={(e) => { if (e.key === "Enter") handleScan(); }}
           className="flex-1 px-3 py-2 rounded-lg text-sm outline-none transition-all"
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px" }}
-          onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+          onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
           onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
           disabled={scanning}
         />

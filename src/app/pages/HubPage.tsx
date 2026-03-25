@@ -1442,7 +1442,7 @@ function HubPageContent() {
             {contentTypes.map((ct) => {
               const Icon = ct.icon;
               const isActive = contentType === ct.id;
-              const typeColorMap: Record<string, string> = { image: "#5E6AD2", text: "#C27A98", film: "#D4956B", sound: "#C9A84C", campaign: "#C27A98" };
+              const typeColorMap: Record<string, string> = { image: "#FFFFFF", text: "#C27A98", film: "#D4956B", sound: "#C9A84C", campaign: "#FFFFFF" };
               const tc = typeColorMap[ct.id] || "#888";
               return (
                 <button
@@ -1962,38 +1962,55 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
   }
   if (generations.length === 0 && !isGenerating) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-6">
-        <h2 className="mb-2" style={{ fontSize: "clamp(1.5rem, 3vw, 2.2rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "#E8E4DF" }}>
+      <div className="flex flex-col items-center justify-center py-16 px-6">
+        <motion.h2
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-2 text-center" style={{ fontSize: "clamp(1.5rem, 3vw, 2.2rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "#E8E4DF" }}>
           What do you want to create?
-        </h2>
-        <p className="text-center max-w-[400px] mb-10" style={{ fontSize: "14px", lineHeight: 1.55, color: "#7A7572" }}>
+        </motion.h2>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.5 }}
+          className="text-center max-w-[400px] mb-10" style={{ fontSize: "14px", lineHeight: 1.55, color: "#7A7572" }}>
           Describe what you need below, or start a full campaign.
-        </p>
+        </motion.p>
 
         {/* Quick action cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-[540px] w-full mb-10">
           <motion.button
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             whileHover={{ scale: 1.02, y: -3 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setContentType("campaign")}
             className="flex items-center gap-4 p-5 rounded-2xl cursor-pointer text-left transition-all"
             style={{
-              background: "linear-gradient(135deg, rgba(124,107,240,0.12) 0%, rgba(212,149,107,0.08) 100%)",
-              border: "1px solid rgba(124,107,240,0.25)",
-              boxShadow: "0 2px 12px rgba(124,107,240,0.08)",
+              background: "linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.06) 100%)",
+              border: "1px solid rgba(255,255,255,0.28)",
+              boxShadow: "0 2px 16px rgba(255,255,255,0.10)",
             }}
           >
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: "rgba(124,107,240,0.18)" }}>
+            <motion.div
+              animate={{ boxShadow: ["0 0 0 0 rgba(255,255,255,0)", "0 0 0 8px rgba(255,255,255,0.12)", "0 0 0 0 rgba(255,255,255,0)"] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+              className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: "rgba(255,255,255,0.18)" }}>
               <Rocket size={20} style={{ color: "var(--ora-signal)" }} />
-            </div>
+            </motion.div>
             <div>
-              <div style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>Create Campaign</div>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>New Campaign</div>
               <div style={{ fontSize: "12px", color: "#9A9590", marginTop: 2 }}>Posts, visuals & copy for every platform</div>
             </div>
           </motion.button>
 
           <motion.button
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             whileHover={{ scale: 1.02, y: -3 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setContentType("image")}
@@ -2222,7 +2239,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <div className="flex items-center justify-center gap-2 px-4 pb-4 pt-1">
             <button onClick={() => onSave(currentItem)}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${currentItem.saved ? "text-white" : "text-white/70 hover:text-white"}`}
-              style={{ background: currentItem.saved ? "rgba(59,79,196,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
+              style={{ background: currentItem.saved ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               {currentItem.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
               {currentItem.saved ? "Saved" : "Save to Library"}
             </button>
@@ -2235,7 +2252,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
             )}
             <button onClick={() => onCompareAll(generations)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
-              style={{ background: generations.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
+              style={{ background: generations.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               <Columns2 size={14} /> Compare All ({generations.length})
             </button>
             {currentItem.type === "image" && currentItem.preview.kind === "image" && (currentItem.preview.imageUrl) && onAnimate && (
@@ -2279,7 +2296,12 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1600px] mx-auto">
           {generations.map((item, i) => (
-            <motion.div key={item.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06, duration: 0.4 }}>
+            <motion.div key={item.id}
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: i * 0.10, duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ y: -4 }}
+            >
               <ResultCard item={item} onSave={() => onSave(item)} onPreview={() => onPreview(item)} onExport={() => onExport(item)} />
             </motion.div>
           ))}
@@ -2348,7 +2370,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); onSave(); }}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#5E6AD2] to-[#4B51A8] text-white shadow-lg" : "bg-[#222120] text-foreground hover:bg-[#2a2928] hover:scale-105"}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#FFFFFF] to-[#c94e1e] text-white shadow-lg" : "bg-[#222120] text-foreground hover:bg-[#2a2928] hover:scale-105"}`}
             style={{ fontSize: "12px", fontWeight: 700 }}
           >
             {item.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
@@ -3012,7 +3034,7 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={onSave}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#5E6AD2] to-[#4B51A8] text-white shadow-lg" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#FFFFFF] to-[#c94e1e] text-white shadow-lg" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
               style={{ fontSize: "15px", fontWeight: 800 }}>
               {item.saved ? <Check size={16} /> : <Heart size={16} />}
               {item.saved ? "Saved" : "Save"}

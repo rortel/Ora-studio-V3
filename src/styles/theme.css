@@ -4,10 +4,7 @@
   --font-size: 16px;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* ━━━ ORA — Warm Dark Studio ━━━
-     A creative studio palette: warm greys lifted from pure black,
-     with a vibrant accent that says "pro + creative".
-  */
+  /* ━━━ ORA — Warm Dark Studio (internal app) ━━━ */
   --background: #18171A;
   --foreground: #EDEDEC;
   --card: #201F23;
@@ -32,20 +29,31 @@
   --ora-brick: #E05A4F;
   --ora-ocre: #E0A84C;
 
-  /* ── Brand accent — vibrant warm violet ── */
-  --ora-signal: #8B6CF7;
-  --ora-signal-light: rgba(139, 108, 247, 0.12);
-  --ora-signal-medium: rgba(139, 108, 247, 0.22);
-  --ora-signal-ring: rgba(139, 108, 247, 0.35);
+  /* ── Brand accent — neutral white signal ── */
+  --ora-signal: #FFFFFF;
+  --ora-signal-light: rgba(255, 255, 255, 0.08);
+  --ora-signal-medium: rgba(255, 255, 255, 0.14);
+  --ora-signal-ring: rgba(255, 255, 255, 0.25);
 
-  /* ── Secondary accent — warm amber (for highlights, badges, secondary CTAs) ── */
-  --ora-amber: #E8A84C;
-  --ora-amber-light: rgba(232, 168, 76, 0.12);
+  /* ── Landing accent — warm amber/gold ── */
+  --ora-amber: #C8921A;
+  --ora-amber-light: rgba(200, 146, 26, 0.10);
+  --ora-amber-medium: rgba(200, 146, 26, 0.22);
+  --ora-amber-ring: rgba(200, 146, 26, 0.35);
+
+  /* ── Landing cream palette ── */
+  --landing-bg: #FAF8F3;
+  --landing-bg-alt: #F2EBD9;
+  --landing-surface: #FFFFFF;
+  --landing-border: rgba(44, 28, 16, 0.09);
+  --landing-border-strong: rgba(44, 28, 16, 0.16);
+  --landing-text: #1C1410;
+  --landing-text-2: #6B5448;
+  --landing-text-3: #A09280;
 
   --destructive: #E05A4F;
   --destructive-foreground: #EDEDEC;
 
-  /* Borders — warm white at low opacity */
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.14);
   --border-accent: rgba(255, 255, 255, 0.22);
@@ -59,7 +67,7 @@
   --ring: rgba(139, 108, 247, 0.3);
 
   --chart-1: #8B6CF7;
-  --chart-2: #E8A84C;
+  --chart-2: #C8921A;
   --chart-3: #5FBF6A;
   --chart-4: #4CC3E0;
   --chart-5: #E05A4F;
@@ -88,19 +96,16 @@
   --sidebar-border: rgba(255, 255, 255, 0.07);
   --sidebar-ring: rgba(139, 108, 247, 0.25);
 
-  /* ── Surface levels — more breathing room between layers ── */
   --surface-0: #18171A;
   --surface-1: #201F23;
   --surface-2: #28272B;
   --surface-3: #302F34;
   --surface-4: #3A393E;
 
-  /* ── Text levels — warmer and more readable ── */
   --text-primary: #EDEDEC;
   --text-secondary: #A09B96;
   --text-tertiary: #6B6660;
 
-  /* ── Color mappings for Tailwind ── */
   --color-ora-olive: var(--ora-olive);
   --color-ora-brick: var(--ora-brick);
   --color-ora-ocre: var(--ora-ocre);
@@ -142,6 +147,9 @@
   --color-ora-signal-light: var(--ora-signal-light);
   --color-ora-signal-medium: var(--ora-signal-medium);
   --color-ora-signal-ring: var(--ora-signal-ring);
+
+  --color-ora-amber: var(--ora-amber);
+  --color-ora-amber-light: var(--ora-amber-light);
 
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
@@ -201,7 +209,6 @@
   @keyframes ora-marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
   @keyframes ora-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
-  /* ── Touch-friendly mobile targets ── */
   @media (max-width: 768px) {
     button, a, [role="button"] {
       min-height: 44px;
@@ -209,7 +216,7 @@
     }
   }
 
-  /* ── Smooth card surface ── */
+  /* ── Internal dark card ── */
   .ora-card {
     background: var(--surface-1);
     border: 1px solid var(--border);
@@ -221,7 +228,7 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   }
 
-  /* ── Accent button ── */
+  /* ── Internal violet accent button ── */
   .ora-btn-accent {
     background: var(--ora-signal);
     color: #fff;
@@ -236,4 +243,34 @@
   }
   .ora-btn-accent:hover { opacity: 0.92; box-shadow: 0 4px 16px rgba(139, 108, 247, 0.35); }
   .ora-btn-accent:active { transform: scale(0.97); }
+
+  /* ── Landing amber CTA button ── */
+  .ora-btn-amber {
+    background: linear-gradient(135deg, #C8921A 0%, #E4B040 100%);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 12px 24px;
+    cursor: pointer;
+    transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+    box-shadow: 0 2px 12px rgba(200, 146, 26, 0.30);
+  }
+  .ora-btn-amber:hover { opacity: 0.92; box-shadow: 0 6px 20px rgba(200, 146, 26, 0.40); transform: translateY(-1px); }
+  .ora-btn-amber:active { transform: scale(0.97); }
+
+  /* ── Landing light card ── */
+  .ora-card-light {
+    background: #FFFFFF;
+    border: 1px solid rgba(44, 28, 16, 0.09);
+    border-radius: var(--radius);
+    box-shadow: 0 2px 12px rgba(44, 28, 16, 0.06);
+    transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  }
+  .ora-card-light:hover {
+    border-color: rgba(44, 28, 16, 0.16);
+    box-shadow: 0 8px 28px rgba(44, 28, 16, 0.10);
+    transform: translateY(-2px);
+  }
 }

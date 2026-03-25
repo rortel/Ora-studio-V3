@@ -18,7 +18,7 @@ interface EngagementBadgeProps {
 
 const SCORE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   Excellent: { bg: "rgba(16,185,129,0.1)", text: "#10b981", border: "rgba(16,185,129,0.2)" },
-  Good: { bg: "rgba(59,79,196,0.1)", text: "var(--ora-signal)", border: "rgba(59,79,196,0.2)" },
+  Good: { bg: "rgba(255,255,255,0.1)", text: "var(--ora-signal)", border: "rgba(255,255,255,0.2)" },
   Average: { bg: "rgba(234,179,8,0.1)", text: "#eab308", border: "rgba(234,179,8,0.2)" },
   Weak: { bg: "rgba(212,24,61,0.1)", text: "#d4183d", border: "rgba(212,24,61,0.2)" },
 };

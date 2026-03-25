@@ -70,9 +70,9 @@ function resolveColorStatic(color: string | undefined, vault: Record<string, any
   if (!color.startsWith("vault:")) return color;
   const role = color.slice(6);
   const colors = vault?.colors as { hex: string; name: string; role: string }[] | undefined;
-  if (!colors?.length) return "#3B4FC4";
+  if (!colors?.length) return "#FFFFFF";
   const match = colors.find(c => c.role?.toLowerCase() === role || c.name?.toLowerCase() === role);
-  return match?.hex || colors[0]?.hex || "#3B4FC4";
+  return match?.hex || colors[0]?.hex || "#FFFFFF";
 }
 
 /** Cover-fit crop (like CSS object-fit:cover) */
@@ -1014,8 +1014,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           textAlign: (editingLayer.style?.textAlign || "left") as any,
           lineHeight: editingLayer.style?.lineHeight || 1.3,
           letterSpacing: editingLayer.style?.letterSpacing || 0,
-          background: "rgba(59,79,196,0.08)",
-          border: "2px solid rgba(59,79,196,0.5)",
+          background: "rgba(255,255,255,0.08)",
+          border: "2px solid rgba(255,255,255,0.5)",
           outline: "none",
           resize: "none",
           padding: "2px 4px",
@@ -1119,7 +1119,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
             </button>
 
             {/* Save */}
-            <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
+            <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
               <Save size={12} /> Save
             </button>
           </div>
@@ -1311,8 +1311,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     onClick={() => setSelectedId(layer.id)}
                     className="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors"
                     style={{
-                      background: selectedId === layer.id ? "rgba(59,79,196,0.15)" : "transparent",
-                      border: `1px solid ${selectedId === layer.id ? "rgba(59,79,196,0.3)" : "transparent"}`,
+                      background: selectedId === layer.id ? "rgba(255,255,255,0.15)" : "transparent",
+                      border: `1px solid ${selectedId === layer.id ? "rgba(255,255,255,0.3)" : "transparent"}`,
                     }}
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -1365,9 +1365,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     boundBoxFunc={(_oldBox: any, newBox: any) => newBox}
                     anchorSize={8}
                     anchorCornerRadius={2}
-                    anchorStroke="#3B4FC4"
+                    anchorStroke="#FFFFFF"
                     anchorFill="#fff"
-                    borderStroke="#3B4FC4"
+                    borderStroke="#FFFFFF"
                     borderStrokeWidth={1.5}
                     padding={2}
                     rotateEnabled={true}
@@ -1485,7 +1485,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={100}
                         value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { opacity: +e.target.value / 100 })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                       />
                     </label>
 
@@ -1497,7 +1497,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={0} max={50}
                           value={selectedLayer.style?.cornerRadius || 0}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { cornerRadius: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                         />
                       </label>
                     )}
@@ -1509,7 +1509,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={-180} max={180}
                         value={selectedLayer.style?.rotation || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { rotation: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                       />
                     </label>
                   </div>
@@ -1538,7 +1538,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={1} max={15} step={0.25}
                           value={selectedLayer.style?.fontSize || 3}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { fontSize: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                         />
                       </label>
 
@@ -1603,8 +1603,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                               onClick={() => updateLayerStyle(selectedLayer.id, { textAlign: value })}
                               style={{
                                 ...smallBtnStyle,
-                                background: (selectedLayer.style?.textAlign || "left") === value ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
-                                borderColor: (selectedLayer.style?.textAlign || "left") === value ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.06)",
+                                background: (selectedLayer.style?.textAlign || "left") === value ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.04)",
+                                borderColor: (selectedLayer.style?.textAlign || "left") === value ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.06)",
                               }}
                             >
                               <Icon size={12} />
@@ -1627,8 +1627,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                               onClick={() => updateLayerStyle(selectedLayer.id, { textTransform: value })}
                               style={{
                                 ...smallBtnStyle,
-                                background: (selectedLayer.style?.textTransform || "none") === value ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
-                                borderColor: (selectedLayer.style?.textTransform || "none") === value ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.06)",
+                                background: (selectedLayer.style?.textTransform || "none") === value ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.04)",
+                                borderColor: (selectedLayer.style?.textTransform || "none") === value ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.06)",
                                 fontWeight: 600,
                                 fontSize: 11,
                               }}
@@ -1646,7 +1646,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={0.8} max={2.5} step={0.1}
                           value={selectedLayer.style?.lineHeight || 1.3}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { lineHeight: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                         />
                       </label>
 
@@ -1657,7 +1657,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={-2} max={10} step={0.5}
                           value={selectedLayer.style?.letterSpacing || 0}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { letterSpacing: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                         />
                       </label>
                     </div>
@@ -1693,7 +1693,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={10} step={0.5}
                         value={selectedLayer.style?.strokeWidth || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { strokeWidth: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                       />
                     </label>
 
@@ -1703,7 +1703,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={40}
                         value={selectedLayer.style?.shadowBlur || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { shadowBlur: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#FFFFFF" }}
                       />
                     </label>
 

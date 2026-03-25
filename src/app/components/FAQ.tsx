@@ -3,36 +3,71 @@ import { motion, AnimatePresence } from "motion/react";
 import { Plus, Minus } from "lucide-react";
 
 const faqs = [
-  { q: "What makes ORA different from ChatGPT or Midjourney?", a: "With ChatGPT you only get GPT. With Midjourney you only get Midjourney. ORA gives you 38+ models in one studio. Plus Arena to compare outputs side by side, Campaign Lab for multi-platform generation, and Brand Vault for automatic compliance." },
-  { q: "Which AI models are supported?", a: "GPT-5, GPT-4o, Claude 4.5, Gemini 2.5, DeepSeek V3, Mistral, Flux Pro 2, DALL-E 3, Photon 1, Leonardo AI, Luma Ray 2, Sora 2, Kling 2.1, Veo 3.1, Seedream V4, and many more. New models added monthly." },
-  { q: "How does Campaign Lab work?", a: "Write a brief. Choose your platforms. Campaign Lab generates images, videos, and copy adapted for each platform - all at once." },
-  { q: "What does one credit get?", a: "Text: 1 credit. Image: 4 credits. Audio: 4 credits. Code: 2 credits. Video (~10s): 100 credits. Credits never expire." },
-  { q: "Do unused credits roll over?", a: "Yes, always. Monthly credits and purchased packs roll over indefinitely." },
-  { q: "Is my content private?", a: "Yes. We don't train on your data. Full GDPR compliance." },
+  {
+    q: "How is ORA different from ChatGPT or Midjourney?",
+    a: "With ChatGPT you only get GPT. With Midjourney you only get Midjourney. ORA gives you 38+ models in one studio — plus the Arena to compare outputs side by side, Campaign Lab for multi-platform generation, and Brand Vault for automatic brand compliance.",
+  },
+  {
+    q: "Which AI models are available?",
+    a: "GPT-5, GPT-4o, Claude 4.5, Gemini 2.5, DeepSeek V3, Mistral, Flux Pro 2, DALL-E 3, Photon 1, Leonardo AI, Luma Ray 2, Sora 2, Kling 2.1, Veo 3.1, Seedream V4, and many more. New models are added every month.",
+  },
+  {
+    q: "How does Campaign Lab work?",
+    a: "Write a brief. Choose your platforms. Campaign Lab generates images, videos and text tailored to each channel — all at the same time.",
+  },
+  {
+    q: "What is a credit?",
+    a: "Text: 1 credit. Image: 4 credits. Audio: 4 credits. Code: 2 credits. Video (~10s): 100 credits. Credits never expire.",
+  },
+  {
+    q: "Do unused credits roll over?",
+    a: "Yes, always. Monthly credits and purchased credit packs roll over indefinitely.",
+  },
+  {
+    q: "Is my content private?",
+    a: "Yes. We never train our models on your data. Full GDPR compliance.",
+  },
 ];
 
 export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="py-20 md:py-28" style={{ background: "#1a1918" }}>
-      <div className="max-w-[720px] mx-auto px-6">
+    <section
+      id="faq"
+      className="py-16 md:py-32"
+      style={{ background: "#111111", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+    >
+      <div className="max-w-[720px] mx-auto px-5 md:px-6">
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-10"
+          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-10 md:mb-12"
         >
-          <h2
+          <p
             style={{
-              fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
-              fontWeight: 500,
-              lineHeight: 1.1,
-              letterSpacing: "-0.03em",
-              color: "#E8E4DF",
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.45)",
+              marginBottom: 16,
             }}
           >
-            FAQ
+            Frequently asked questions
+          </p>
+          <h2
+            style={{
+              fontSize: "clamp(1.8rem, 4vw, 3rem)",
+              fontWeight: 300,
+              lineHeight: 1.1,
+              letterSpacing: "-0.04em",
+              color: "#F0EDE8",
+            }}
+          >
+            Everything you need to know.
           </h2>
         </motion.div>
 
@@ -42,11 +77,11 @@ export function FAQ() {
             return (
               <motion.div
                 key={i}
-                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
                 initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.04 }}
+                transition={{ delay: i * 0.05, duration: 0.5 }}
               >
                 <button
                   onClick={() => setOpen(isOpen ? null : i)}
@@ -56,8 +91,10 @@ export function FAQ() {
                     style={{
                       fontSize: "15px",
                       fontWeight: 500,
-                      color: "#E8E4DF",
-                      paddingRight: "1rem",
+                      color: isOpen ? "#FFFFFF" : "rgba(240,237,232,0.75)",
+                      paddingRight: "1.5rem",
+                      letterSpacing: "-0.01em",
+                      transition: "color 200ms ease",
                     }}
                   >
                     {f.q}
@@ -65,28 +102,34 @@ export function FAQ() {
                   <span
                     className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
                     style={{
-                      background: isOpen ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
+                      background: isOpen ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.06)",
+                      transition: "background 200ms ease",
                     }}
                   >
                     {isOpen ? (
-                      <Minus size={12} style={{ color: "#E8E4DF" }} />
+                      <Minus size={11} style={{ color: "#FFFFFF" }} />
                     ) : (
-                      <Plus size={12} style={{ color: "#5C5856" }} />
+                      <Plus size={11} style={{ color: "rgba(255,255,255,0.40)" }} />
                     )}
                   </span>
                 </button>
+
                 <AnimatePresence initial={false}>
                   {isOpen && (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: "easeInOut" }}
+                      transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
                       className="overflow-hidden"
                     >
                       <p
                         className="pb-5"
-                        style={{ fontSize: "14px", lineHeight: 1.65, color: "#9A9590" }}
+                        style={{
+                          fontSize: "14px",
+                          lineHeight: 1.7,
+                          color: "rgba(240,237,232,0.45)",
+                        }}
                       >
                         {f.a}
                       </p>

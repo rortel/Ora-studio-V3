@@ -67,9 +67,9 @@ const C = {
   text: "#E8E4DF",
   textMuted: "#9A9590",
   textDim: "rgba(255,255,255,0.25)",
-  accent: "#5E6AD2",
-  accentBg: "rgba(94,106,210,0.08)",
-  accentBorder: "rgba(94,106,210,0.15)",
+  accent: "#FFFFFF",
+  accentBg: "rgba(255,255,255,0.08)",
+  accentBorder: "rgba(255,255,255,0.15)",
   shadow: "0 1px 3px rgba(0,0,0,0.08)",
   green: "#10B981",
   red: "#EF4444",
@@ -339,8 +339,8 @@ export function ImageBank({ accessToken }: ImageBankProps) {
         onClick={() => !uploading && fileRef.current?.click()}
         className="flex items-center justify-center gap-2.5 py-4 rounded-xl cursor-pointer transition-all"
         style={{
-          border: `1px dashed ${dragOver ? "rgba(94,106,210,0.5)" : C.border}`,
-          background: dragOver ? "rgba(94,106,210,0.04)" : "transparent",
+          border: `1px dashed ${dragOver ? "rgba(255,255,255,0.5)" : C.border}`,
+          background: dragOver ? "rgba(255,255,255,0.04)" : "transparent",
         }}
       >
         {uploading ? (

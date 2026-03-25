@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 function PageLoader() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+      <Loader2 size={20} className="animate-spin" style={{ color: "#FFFFFF" }} />
     </div>
   );
 }

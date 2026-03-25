@@ -295,7 +295,7 @@ function AnalyticsPageContent() {
                   </div>
                   <span className="text-foreground" style={{ fontSize: "22px", fontWeight: 500 }}>{socialData.summary.totalDeployed}</span>
                 </div>
-                <div className="p-3 rounded-lg" style={{ background: "var(--ora-signal-light)", border: "1px solid rgba(59,79,196,0.12)" }}>
+                <div className="p-3 rounded-lg" style={{ background: "var(--ora-signal-light)", border: "1px solid rgba(255,255,255,0.12)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock size={12} className="text-ora-signal" />
                     <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Scheduled</span>

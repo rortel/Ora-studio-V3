@@ -1,96 +1,121 @@
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
-import { AuraDecoration } from "./OraLogo";
 
 export function CTASection() {
   return (
-    <section className="py-20 md:py-32" style={{ background: "#131211" }}>
-      <div className="max-w-[1200px] mx-auto px-6">
-        <motion.div
+    <section
+      className="py-16 md:py-32"
+      style={{ background: "#0A0A0A", borderTop: "1px solid rgba(255,255,255,0.05)" }}
+    >
+      <div className="max-w-[900px] mx-auto px-5 md:px-6 text-center">
+        <motion.p
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          style={{
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.40)",
+            marginBottom: 24,
+          }}
+        >
+          Start now
+        </motion.p>
+
+        <motion.h2
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
-          className="rounded-2xl p-12 md:p-20 relative overflow-hidden"
+          transition={{ delay: 0.08, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           style={{
-            background: "#1a1918",
-            border: "1px solid rgba(255,255,255,0.06)",
+            fontSize: "clamp(2.5rem, 6vw, 5rem)",
+            fontWeight: 300,
+            lineHeight: 1.05,
+            letterSpacing: "-0.055em",
+            color: "#F0EDE8",
+            marginBottom: 24,
           }}
         >
-          {/* Aura decorations */}
-          <div className="absolute -top-32 -right-32 pointer-events-none opacity-20">
-            <AuraDecoration size={400} color="#E8E4DF" />
-          </div>
+          Create without limits.
+        </motion.h2>
 
-          <div className="relative z-10 max-w-[520px]">
-            <motion.h2
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-              style={{
-                fontSize: "clamp(2rem, 4vw, 3rem)",
-                fontWeight: 500,
-                lineHeight: 1.1,
-                letterSpacing: "-0.03em",
-                color: "#E8E4DF",
-                marginBottom: 16,
-              }}
-            >
-              Start creating.
-            </motion.h2>
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.18 }}
-              className="mb-10"
-              style={{
-                fontSize: "16px",
-                lineHeight: 1.6,
-                color: "#9A9590",
-                fontWeight: 400,
-              }}
-            >
-              50 free credits. No card required.
-              Pick a model, type a prompt, get your first output in under a minute.
-            </motion.p>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.26 }}
-              className="flex flex-wrap items-center gap-3"
-            >
-              <Link
-                to="/login?mode=signup"
-                className="group inline-flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-                style={{
-                  background: "#E8E4DF",
-                  color: "#131211",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                }}
-              >
-                Start free
-                <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg transition-all"
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 400,
-                  color: "#9A9590",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                }}
-              >
-                View pricing
-              </Link>
-            </motion.div>
-          </div>
+        <motion.p
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.16, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          style={{
+            fontSize: "16px",
+            lineHeight: 1.6,
+            color: "rgba(240,237,232,0.40)",
+            maxWidth: 420,
+            margin: "0 auto 44px",
+          }}
+        >
+          50 free credits. No credit card required.
+          <br />
+          Your first creation in under a minute.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.24, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-wrap items-center justify-center gap-3"
+        >
+          <Link
+            to="/login?mode=signup"
+            className="group inline-flex items-center gap-2.5 px-7 py-3.5 rounded-xl transition-all hover:scale-[1.03] active:scale-[0.97]"
+            style={{
+              background: "#FFFFFF",
+              color: "#0A0A0A",
+              fontSize: "15px",
+              fontWeight: 700,
+              boxShadow: "0 4px 28px rgba(255,255,255,0.12)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Start for free
+            <ArrowRight
+              size={16}
+              className="group-hover:translate-x-1 transition-transform duration-300"
+            />
+          </Link>
+
+          <Link
+            to="/#pricing"
+            className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl transition-all hover:bg-white/5"
+            style={{
+              fontSize: "14px",
+              fontWeight: 500,
+              color: "rgba(240,237,232,0.50)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              letterSpacing: "-0.01em",
+            }}
+          >
+            View pricing
+          </Link>
         </motion.div>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.5 }}
+          style={{
+            fontSize: "12px",
+            color: "rgba(255,255,255,0.16)",
+            marginTop: 32,
+            letterSpacing: "0.02em",
+          }}
+        >
+          No commitment · GDPR compliant · Cancel anytime
+        </motion.p>
       </div>
     </section>
   );

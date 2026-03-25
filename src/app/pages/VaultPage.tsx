@@ -537,7 +537,7 @@ function VaultPageContent() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "#FFFFFF" }} />
       </div>
     );
   }
@@ -587,11 +587,11 @@ function VaultPageContent() {
               disabled={saving}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 transition-all shrink-0"
               style={{
-                background: saveOk ? "rgba(16,185,129,0.12)" : "rgba(94,106,210,0.12)",
-                border: saveOk ? "1px solid rgba(16,185,129,0.25)" : "1px solid rgba(94,106,210,0.25)",
+                background: saveOk ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.12)",
+                border: saveOk ? "1px solid rgba(16,185,129,0.25)" : "1px solid rgba(255,255,255,0.25)",
                 fontSize: "13px",
                 fontWeight: 500,
-                color: saveOk ? "#10B981" : "#5E6AD2",
+                color: saveOk ? "#10B981" : "#FFFFFF",
               }}
             >
               {saving ? (
@@ -620,7 +620,7 @@ function VaultPageContent() {
         <div className="flex items-center gap-2.5 mb-3">
           <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <Globe size={15} style={{ color: "#5E6AD2", opacity: 0.7 }} />
+            <Globe size={15} style={{ color: "#FFFFFF", opacity: 0.7 }} />
             <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !analyzing && handleAnalyzeUrl()}
               placeholder="yourcompany.com" disabled={analyzing}
@@ -630,7 +630,7 @@ function VaultPageContent() {
           <button
             onClick={() => handleAnalyzeUrl(false)} disabled={analyzing || !urlInput.trim()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
-            style={{ background: "#5E6AD2", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
+            style={{ background: "#FFFFFF", fontSize: "13px", fontWeight: 500, color: "#18171A" }}>
             {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             Scan
           </button>
@@ -646,8 +646,8 @@ function VaultPageContent() {
         <div onClick={() => !analyzing && fileRef.current?.click()}
           className="flex items-center justify-center gap-2.5 py-3.5 rounded-lg cursor-pointer transition-all"
           style={{
-            border: `1px dashed ${dragOver ? "rgba(94,106,210,0.5)" : "rgba(255,255,255,0.08)"}`,
-            background: dragOver ? "rgba(94,106,210,0.04)" : "transparent",
+            border: `1px dashed ${dragOver ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.08)"}`,
+            background: dragOver ? "rgba(255,255,255,0.04)" : "transparent",
           }}>
           <Upload size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
           <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>
@@ -664,11 +664,11 @@ function VaultPageContent() {
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
               className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
               {analyzing ? (
-                <Loader2 size={13} className="animate-spin" style={{ color: "#5E6AD2" }} />
+                <Loader2 size={13} className="animate-spin" style={{ color: "#FFFFFF" }} />
               ) : analyzeProgress === "Saved!" ? (
                 <Check size={13} style={{ color: "#10B981" }} />
               ) : null}
-              <span style={{ fontSize: "12px", fontWeight: 500, color: analyzeProgress === "Saved!" ? "#10B981" : "#5E6AD2" }}>
+              <span style={{ fontSize: "12px", fontWeight: 500, color: analyzeProgress === "Saved!" ? "#10B981" : "#FFFFFF" }}>
                 {analyzeProgress}
               </span>
             </motion.div>
@@ -708,8 +708,8 @@ function VaultPageContent() {
                     ) : (
                       <div className="w-14 h-14 rounded-xl flex items-center justify-center cursor-pointer transition-all hover:scale-105"
                         onClick={() => logoRef.current?.click()}
-                        style={{ background: "rgba(94,106,210,0.08)", border: "1px dashed rgba(94,106,210,0.3)" }}>
-                        {logoUploading ? <Loader2 size={16} className="animate-spin" style={{ color: "#5E6AD2" }} /> : <Plus size={16} style={{ color: "#5E6AD2" }} />}
+                        style={{ background: "rgba(255,255,255,0.08)", border: "1px dashed rgba(255,255,255,0.3)" }}>
+                        {logoUploading ? <Loader2 size={16} className="animate-spin" style={{ color: "#FFFFFF" }} /> : <Plus size={16} style={{ color: "#FFFFFF" }} />}
                       </div>
                     )}
                     {vault.logo_url && (
@@ -738,9 +738,9 @@ function VaultPageContent() {
                 <div className="flex items-center gap-2.5 shrink-0">
                   {vault.confidence_score > 0 && (
                     <div className="flex items-baseline gap-1 px-3 py-1.5 rounded-lg"
-                      style={{ background: "rgba(94,106,210,0.08)", border: "1px solid rgba(94,106,210,0.15)" }}>
-                      <span style={{ fontSize: "16px", fontWeight: 600, color: "#5E6AD2" }}>{vault.confidence_score}</span>
-                      <span style={{ fontSize: "10px", color: "rgba(94,106,210,0.6)", fontWeight: 500 }}>/100</span>
+                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                      <span style={{ fontSize: "16px", fontWeight: 600, color: "#FFFFFF" }}>{vault.confidence_score}</span>
+                      <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>/100</span>
                     </div>
                   )}
                   {vault.source_url && (
@@ -790,7 +790,7 @@ function VaultPageContent() {
                   <div className="space-y-3">
                     {vault.tone.primary_tone && (
                       <span className="inline-block px-3 py-1.5 rounded-lg"
-                        style={{ background: "rgba(94,106,210,0.12)", border: "1px solid rgba(94,106,210,0.2)", color: "#5E6AD2", fontSize: "12px", fontWeight: 500 }}>
+                        style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "#FFFFFF", fontSize: "12px", fontWeight: 500 }}>
                         {vault.tone.primary_tone}
                       </span>
                     )}
@@ -804,7 +804,7 @@ function VaultPageContent() {
                       <div className="flex flex-wrap gap-1.5">
                         {vault.tone.adjectives.map((a, i) => (
                           <span key={i} className="px-2 py-0.5 rounded"
-                            style={{ fontSize: "11px", fontWeight: 500, background: "rgba(94,106,210,0.08)", color: "#5E6AD2" }}>
+                            style={{ fontSize: "11px", fontWeight: 500, background: "rgba(255,255,255,0.08)", color: "#FFFFFF" }}>
                             {a}
                           </span>
                         ))}
@@ -842,8 +842,8 @@ function VaultPageContent() {
                   {(vault.product_anchors?.length || 0) > 0 && (
                     <div className="space-y-3 mb-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <Shield size={12} style={{ color: "#5E6AD2" }} />
-                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        <Shield size={12} style={{ color: "#FFFFFF" }} />
+                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           Product Anchors
                         </span>
                       </div>
@@ -866,10 +866,10 @@ function VaultPageContent() {
 
                   {/* Add Product Anchor */}
                   <button onClick={handleAddProductAnchor}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-[rgba(94,106,210,0.08)]"
-                    style={{ border: "1px dashed rgba(94,106,210,0.3)", background: "rgba(94,106,210,0.04)" }}>
-                    <Plus size={13} style={{ color: "#5E6AD2" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 500, color: "#5E6AD2" }}>Add Product Anchor</span>
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-[rgba(255,255,255,0.08)]"
+                    style={{ border: "1px dashed rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.04)" }}>
+                    <Plus size={13} style={{ color: "#FFFFFF" }} />
+                    <span style={{ fontSize: "12px", fontWeight: 500, color: "#FFFFFF" }}>Add Product Anchor</span>
                   </button>
 
                   {/* Legacy string products */}
@@ -881,7 +881,7 @@ function VaultPageContent() {
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         {vault.products_services.map((p, i) => (
                           <button key={i} onClick={() => handlePromoteToAnchor(p)}
-                            className="px-2.5 py-1 rounded-lg cursor-pointer transition-all hover:border-[rgba(94,106,210,0.3)]"
+                            className="px-2.5 py-1 rounded-lg cursor-pointer transition-all hover:border-[rgba(255,255,255,0.3)]"
                             style={{ fontSize: "12px", fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "#E8E4DF", border: "1px solid rgba(255,255,255,0.08)" }}>
                             {p} <ArrowRight size={10} className="inline ml-1" style={{ opacity: 0.5 }} />
                           </button>
@@ -896,7 +896,7 @@ function VaultPageContent() {
                   <Link
                     to="/hub/vault/products"
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors hover:bg-white/[0.04] mt-2"
-                    style={{ fontSize: "12px", fontWeight: 600, color: "#5E6AD2" }}>
+                    style={{ fontSize: "12px", fontWeight: 600, color: "#FFFFFF" }}>
                     <ArrowRight size={12} />
                     Manage Product Catalogue
                   </Link>
@@ -916,7 +916,7 @@ function VaultPageContent() {
                     ].filter(x => x.value).map((x, i) => (
                       <div key={i} className="p-2.5 rounded-lg"
                         style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <span style={{ fontSize: "9px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                        <span style={{ fontSize: "9px", fontWeight: 600, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           {x.label}
                         </span>
                         <p style={{ fontSize: "12px", fontWeight: 500, color: "#E8E4DF", marginTop: 3 }}>{x.value}</p>
@@ -972,8 +972,8 @@ function VaultPageContent() {
                   <div className="space-y-1.5">
                     {vault.key_messages.map((m, i) => (
                       <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg"
-                        style={{ background: "rgba(94,106,210,0.04)", border: "1px solid rgba(94,106,210,0.08)" }}>
-                        <ArrowRight size={11} style={{ color: "#5E6AD2", marginTop: 3, flexShrink: 0, opacity: 0.6 }} />
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <ArrowRight size={11} style={{ color: "#FFFFFF", marginTop: 3, flexShrink: 0, opacity: 0.6 }} />
                         <span style={{ fontSize: "12px", lineHeight: 1.55, color: "#E8E4DF" }}>{m}</span>
                       </div>
                     ))}
@@ -1156,8 +1156,8 @@ function VaultPageContent() {
                           value={vault.compliance_rules?.compliance_threshold || 85}
                           onChange={(e) => handleComplianceUpdate("compliance_threshold", parseInt(e.target.value))}
                           className="w-32"
-                          style={{ accentColor: "#5E6AD2" }} />
-                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#5E6AD2", minWidth: 32, textAlign: "right" }}>
+                          style={{ accentColor: "#FFFFFF" }} />
+                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#FFFFFF", minWidth: 32, textAlign: "right" }}>
                           {vault.compliance_rules?.compliance_threshold || 85}
                         </span>
                       </div>
@@ -1221,8 +1221,8 @@ function VaultPageContent() {
       {!hasData && !loading && !analyzing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-center py-20">
           <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-5"
-            style={{ background: "rgba(94,106,210,0.08)", border: "1px solid rgba(94,106,210,0.15)" }}>
-            <Building2 size={24} style={{ color: "#5E6AD2" }} />
+            style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}>
+            <Building2 size={24} style={{ color: "#FFFFFF" }} />
           </div>
           <h3 style={{ fontSize: "20px", fontWeight: 500, color: "#E8E4DF", letterSpacing: "-0.02em" }}>
             No brand data yet
@@ -1257,8 +1257,8 @@ function SectionCard({ icon: Icon, title, count, children, open, onToggle }: {
         style={{ background: "transparent" }}>
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "rgba(94,106,210,0.08)" }}>
-            <Icon size={15} style={{ color: "#5E6AD2" }} />
+            style={{ background: "rgba(255,255,255,0.08)" }}>
+            <Icon size={15} style={{ color: "#FFFFFF" }} />
           </div>
           <span style={{ fontSize: "14px", fontWeight: 500, color: "#E8E4DF" }}>{title}</span>
           {count > 0 && (
@@ -1315,7 +1315,7 @@ function ToneGauge({ label, value }: { label: string; value: number }) {
           animate={{ width: `${pct}%` }}
           transition={{ duration: 0.8, delay: 0.2, ease: [0.23, 1, 0.32, 1] }}
           className="h-full rounded-full"
-          style={{ background: "#5E6AD2" }}
+          style={{ background: "#FFFFFF" }}
         />
       </div>
     </div>
@@ -1359,7 +1359,7 @@ function ProductAnchorCard({ product, onUpdate, onRemove }: {
       <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors"
         onClick={() => setExpanded(!expanded)}>
         <div className="flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full" style={{ background: product.name ? "#5E6AD2" : "#9A9590" }} />
+          <div className="w-2 h-2 rounded-full" style={{ background: product.name ? "#FFFFFF" : "#9A9590" }} />
           <span style={{ fontSize: "13px", fontWeight: 500, color: "#E8E4DF" }}>
             {product.name || "New Product Anchor"}
           </span>
@@ -1373,9 +1373,9 @@ function ProductAnchorCard({ product, onUpdate, onRemove }: {
           {product.name && (
             <div className="flex items-center gap-1">
               {product.appearance_rules?.must_name_in_voiceover && (
-                <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(94,106,210,0.1)", color: "#5E6AD2" }}>VO</span>
+                <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(255,255,255,0.1)", color: "#FFFFFF" }}>VO</span>
               )}
-              <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(94,106,210,0.1)", color: "#5E6AD2" }}>
+              <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(255,255,255,0.1)", color: "#FFFFFF" }}>
                 {product.appearance_rules?.min_scenes || 2}+ scenes
               </span>
             </div>
@@ -1434,13 +1434,13 @@ function ProductAnchorCard({ product, onUpdate, onRemove }: {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={draft.appearance_rules.must_name_in_voiceover}
                       onChange={(e) => setDraft({ ...draft, appearance_rules: { ...draft.appearance_rules, must_name_in_voiceover: e.target.checked } })}
-                      style={{ accentColor: "#5E6AD2" }} />
+                      style={{ accentColor: "#FFFFFF" }} />
                     <span style={{ fontSize: "12px", color: "#E8E4DF" }}>Name in voiceover</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={draft.appearance_rules.visible_in_final_scene}
                       onChange={(e) => setDraft({ ...draft, appearance_rules: { ...draft.appearance_rules, visible_in_final_scene: e.target.checked } })}
-                      style={{ accentColor: "#5E6AD2" }} />
+                      style={{ accentColor: "#FFFFFF" }} />
                     <span style={{ fontSize: "12px", color: "#E8E4DF" }}>Visible in final scene</span>
                   </label>
                 </div>
@@ -1450,7 +1450,7 @@ function ProductAnchorCard({ product, onUpdate, onRemove }: {
               <div className="flex items-center gap-2 pt-2">
                 <button onClick={handleSave}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-all hover:opacity-90"
-                  style={{ background: "#5E6AD2", fontSize: "12px", fontWeight: 500, color: "#FFF" }}>
+                  style={{ background: "#FFFFFF", fontSize: "12px", fontWeight: 500, color: "#18171A" }}>
                   <Check size={12} /> Save
                 </button>
                 <button onClick={onRemove}

@@ -46,7 +46,7 @@ export const contentTypes: ContentTypeOption[] = [
 ];
 
 const palettes = [
-  ["#3b4fc4", "#6b7ec9", "#c4cbe0", "#e8ebf4"],
+  ["#FFFFFF", "#e8824a", "#f0b897", "#f8dece"],
   ["#1a1a2e", "#4a5568", "#9ba8d4", "#f4f4f6"],
   ["#2d3a8c", "#5a6abf", "#8b9ad4", "#d4daf0"],
   ["#1e293b", "#334155", "#64748b", "#cbd5e1"],

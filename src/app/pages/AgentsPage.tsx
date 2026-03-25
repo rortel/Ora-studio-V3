@@ -348,7 +348,7 @@ export function AgentsPage() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               className="flex-shrink-0 md:w-48 bg-card border border-ora-signal/30 rounded-xl p-5 flex flex-col items-center justify-center text-center"
-              style={{ boxShadow: "0 1px 3px rgba(59,79,196,0.08)" }}
+              style={{ boxShadow: "0 1px 3px rgba(255,255,255,0.08)" }}
             >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"

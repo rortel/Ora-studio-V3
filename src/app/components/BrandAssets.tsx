@@ -99,12 +99,12 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
   };
 
   const roleColor = (role: string) => {
-    const colors: Record<string, string> = { logo: "#8B6CF7", pattern: "#E8A84C", graphic: "#4CC3E0", packshot: "#5FBF6A", overlay: "#E05A4F" };
-    return colors[role] || "#8B6CF7";
+    const colors: Record<string, string> = { logo: "#FFFFFF", pattern: "#E8A84C", graphic: "#4CC3E0", packshot: "#5FBF6A", overlay: "#E05A4F" };
+    return colors[role] || "#FFFFFF";
   };
 
   const usageBadge = (usage: string) => {
-    if (usage === "always_overlay") return { label: "Auto-overlay", color: "#8B6CF7" };
+    if (usage === "always_overlay") return { label: "Auto-overlay", color: "#FFFFFF" };
     if (usage === "img2img_source") return { label: "AI source", color: "#E8A84C" };
     return { label: "Reference", color: "#6B6660" };
   };
@@ -119,8 +119,8 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(139,108,247,0.1)" }}>
-            <Layers size={16} style={{ color: "#8B6CF7" }} />
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }}>
+            <Layers size={16} style={{ color: "#FFFFFF" }} />
           </div>
           <div>
             <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#EDEDEC" }}>Brand Assets</h3>
@@ -129,7 +129,7 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
             </p>
           </div>
         </div>
-        <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(139,108,247,0.1)", color: "#8B6CF7" }}>
+        <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(255,255,255,0.1)", color: "#FFFFFF" }}>
           {assets.length} asset{assets.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -170,7 +170,7 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           className="w-full flex items-center justify-center gap-2 py-4 rounded-xl cursor-pointer transition-all hover:bg-white/[0.02]"
-          style={{ border: "1.5px dashed rgba(139,108,247,0.25)", color: "#8B6CF7", fontSize: "12px", fontWeight: 500 }}
+          style={{ border: "1.5px dashed rgba(255,255,255,0.25)", color: "#FFFFFF", fontSize: "12px", fontWeight: 500 }}
         >
           {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           {uploading ? "Uploading..." : `Drop ${ROLES.find(r => r.id === uploadRole)?.label.toLowerCase() || "files"} here — PNG, SVG, WebP`}
@@ -180,7 +180,7 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
       {/* Assets grid grouped by role */}
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 size={18} className="animate-spin" style={{ color: "#8B6CF7" }} />
+          <Loader2 size={18} className="animate-spin" style={{ color: "#FFFFFF" }} />
         </div>
       ) : assets.length === 0 ? (
         <div className="text-center py-6" style={{ fontSize: "12px", color: "#6B6660" }}>

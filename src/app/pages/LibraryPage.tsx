@@ -319,12 +319,12 @@ function LibraryPageContent() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "#FFFFFF" }} />
       </div>
     );
   }
 
-  const typeBg: Record<string, string> = { image: "#5E6AD2", film: "#D4956B", text: "#C27A98", code: "#6D9B7E", sound: "#C9A84C" };
+  const typeBg: Record<string, string> = { image: "#FFFFFF", film: "#D4956B", text: "#C27A98", code: "#6D9B7E", sound: "#C9A84C" };
 
   return (
     <div className="min-h-screen bg-background">

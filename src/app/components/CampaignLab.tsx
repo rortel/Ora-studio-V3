@@ -1667,7 +1667,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(59,79,196,0.12)" }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.12)" }}>
             <Sparkles size={16} style={{ color: "var(--ora-signal)" }} />
           </div>
           <div>
@@ -1685,7 +1685,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               onClick={handleSaveCampaign}
               disabled={savingCampaign || assets.filter(a => a.status === "ready").length === 0}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
-              style={{ background: "rgba(94,106,210,0.12)", border: "1px solid rgba(94,106,210,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
+              style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
             >
               {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               {savingCampaign ? "Saving..." : "Save Campaign"}
@@ -1773,7 +1773,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                 <div
                   className="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
                   style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
-                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "rgba(59,79,196,0.4)"; }}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "rgba(255,255,255,0.4)"; }}
                   onDragLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
                   onDrop={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; handlePhotoDrop(e); }}
                   onClick={() => fileInputRef.current?.click()}
@@ -1826,7 +1826,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", outline: "none",
                   }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                   onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                 />
               </div>
@@ -1848,7 +1848,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", lineHeight: 1.6, minHeight: 100, outline: "none",
                   }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                   onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                 />
               </div>
@@ -1872,7 +1872,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                       backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   >
                     <option value="">Select objective...</option>
@@ -1904,7 +1904,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                       backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   >
                     <option value="auto">Auto-detect</option>
@@ -1929,7 +1929,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
                   className="rounded-xl px-5 py-4"
-                  style={{ background: "rgba(94,106,210,0.06)", border: "1px solid rgba(94,106,210,0.12)" }}
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
                 >
                   <div className="flex items-start gap-3">
                     <Zap size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--ora-signal)" }} />
@@ -1945,7 +1945,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           <button
                             onClick={() => setToneOverride(currentObjectiveTip.suggestedTone)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                            style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
+                            style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
                           >
                             <TrendingUp size={10} />
                             Apply suggested tone: {currentObjectiveTip.suggestedTone}
@@ -1954,7 +1954,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         <button
                           onClick={() => setSelectedFormats(currentObjectiveTip.suggestedFormats)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                          style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
+                          style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
                         >
                           <LayoutGrid size={10} />
                           Apply optimal formats ({currentObjectiveTip.suggestedFormats.length})
@@ -1986,7 +1986,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       fontSize: "14px", outline: "none",
                       colorScheme: "dark",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   />
                 </div>
@@ -2009,7 +2009,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                       backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   >
                     <option value="">Select duration...</option>
@@ -2046,8 +2046,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         onClick={() => setToneOverride(tone)}
                         className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
                         style={{
-                          background: isSelected ? "rgba(94,106,210,0.15)" : "rgba(255,255,255,0.02)",
-                          border: `1px solid ${isSelected ? "rgba(94,106,210,0.4)" : "rgba(255,255,255,0.06)"}`,
+                          background: isSelected ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${isSelected ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.06)"}`,
                           color: isSelected ? "var(--ora-signal)" : "#7A7572",
                           fontSize: "12px", fontWeight: isSelected ? 600 : 400,
                         }}
@@ -2077,7 +2077,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", outline: "none",
                   }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                   onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                 />
               </div>
@@ -2100,7 +2100,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                     fontSize: "14px", lineHeight: 1.6, minHeight: 80, outline: "none",
                   }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                   onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                 />
               </div>
@@ -2124,7 +2124,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                       fontSize: "14px", outline: "none",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   />
                 </div>
@@ -2145,7 +2145,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                       background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
                       fontSize: "14px", outline: "none",
                     }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                    onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                     onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                   />
                 </div>
@@ -2163,7 +2163,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   <div className="flex flex-wrap items-center gap-2">
                     {VAULT_PILLS.map(pill => (
                       <span key={pill.key} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-                        style={{ background: "rgba(59,79,196,0.08)", border: "1px solid rgba(59,79,196,0.15)" }}>
+                        style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}>
                         <pill.icon size={10} style={{ color: "var(--ora-signal)" }} />
                         <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)" }}>{pill.label}</span>
                       </span>
@@ -2216,7 +2216,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   </span>
                   <div className="flex items-center gap-2">
                     <button onClick={() => setSelectedFormats(FORMAT_OPTIONS.map(f => f.id))}
-                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(94,106,210,0.08)" }}>
+                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(255,255,255,0.08)" }}>
                       All
                     </button>
                     <button onClick={() => setSelectedFormats([])}
@@ -2471,7 +2471,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               {/* Social Accounts — transparent integration */}
               <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,79,196,0.12)" }}>
+                  <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(255,255,255,0.12)" }}>
                     <Send size={11} style={{ color: "var(--ora-signal)" }} />
                   </div>
                   <span style={{ fontSize: "12px", color: "#E8E4DF", fontWeight: 600 }}>Social Accounts</span>
@@ -2529,8 +2529,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   const color = PLATFORM_COLORS[asset.platform] || "#7A7572";
 
                   return (
-                    <motion.div key={asset.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }} className="rounded-xl overflow-hidden group"
+                    <motion.div key={asset.id}
+                      initial={{ opacity: 0, scale: 0.90, y: 32 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ delay: i * 0.12, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                      whileHover={{ y: -4, boxShadow: "0 12px 32px rgba(0,0,0,0.45)" }}
+                      className="rounded-xl overflow-hidden group cursor-pointer"
                       style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
                       {/* Preview area */}
                       <div className="relative cursor-pointer"
@@ -2638,13 +2642,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                 <span style={{ fontSize: "12px", color: "#7A7572" }}>No text generated</span>
                                 <button onClick={(e) => { e.stopPropagation(); retryTextGeneration(); }}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md cursor-pointer"
-                                  style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "11px", fontWeight: 600 }}>
+                                  style={{ background: "var(--ora-signal)", color: "#18171A", fontSize: "11px", fontWeight: 600 }}>
                                   <RefreshCw size={10} /> Retry
                                 </button>
                               </div>
                             )}
                             {asset.ctaText && (
-                              <span className="inline-block mt-2 px-3 py-1 rounded text-xs" style={{ background: "var(--ora-signal)", color: "#fff", fontWeight: 600, fontSize: "10px" }}>
+                              <span className="inline-block mt-2 px-3 py-1 rounded text-xs" style={{ background: "var(--ora-signal)", color: "#18171A", fontWeight: 600, fontSize: "10px" }}>
                                 {asset.ctaText}
                               </span>
                             )}
@@ -2660,7 +2664,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                             <span style={{ fontSize: "11px", color: "#d4183d" }}>{asset.error?.slice(0, 50) || "Error"}</span>
                             <button onClick={(e) => { e.stopPropagation(); retryTextGeneration(); }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md cursor-pointer"
-                              style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "11px", fontWeight: 600 }}>
+                              style={{ background: "var(--ora-signal)", color: "#18171A", fontSize: "11px", fontWeight: 600 }}>
                               <RefreshCw size={10} /> Retry Texts
                             </button>
                           </div>
@@ -2703,7 +2707,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                   }}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
                                   title={assetTemplates[asset.formatId] ? "Edit template" : "Choose template"}
-                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}
+                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)" }}
                                 >
                                   <Pencil size={12} style={{ color: assetTemplates[asset.formatId] ? "var(--ora-signal)" : "#7A7572" }} />
                                 </button>
@@ -2712,7 +2716,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                                 disabled={deployingAssets[asset.formatId] === "deploying" || deployingAssets[asset.formatId] === "deployed"}
                                 className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
                                 title={deployingAssets[asset.formatId] === "deployed" ? "Published" : deployingAssets[asset.formatId] === "scheduled" ? "Scheduled" : "Publish to platform"}
-                                style={{ background: deployingAssets[asset.formatId] === "deployed" ? "rgba(16,185,129,0.15)" : deployingAssets[asset.formatId] === "scheduled" ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}>
+                                style={{ background: deployingAssets[asset.formatId] === "deployed" ? "rgba(16,185,129,0.15)" : deployingAssets[asset.formatId] === "scheduled" ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.04)" }}>
                                 {deployingAssets[asset.formatId] === "deploying" ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
                                   : deployingAssets[asset.formatId] === "deployed" ? <Check size={12} style={{ color: "#10b981" }} />
                                   : deployingAssets[asset.formatId] === "scheduled" ? <Clock size={12} style={{ color: "var(--ora-signal)" }} />
@@ -2767,8 +2771,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     disabled={calendarLoading || assets.filter(a => a.status === "ready").length === 0}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all cursor-pointer"
                     style={{
-                      background: calendarGenerated ? "rgba(16,185,129,0.08)" : "rgba(59,79,196,0.1)",
-                      border: `1px solid ${calendarGenerated ? "rgba(16,185,129,0.2)" : "rgba(59,79,196,0.2)"}`,
+                      background: calendarGenerated ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.1)",
+                      border: `1px solid ${calendarGenerated ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.2)"}`,
                       color: calendarGenerated ? "#10b981" : "var(--ora-signal)",
                       fontSize: "13px", fontWeight: 600,
                       opacity: calendarLoading ? 0.6 : 1,
@@ -2872,7 +2876,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                             <div className="flex items-center gap-3">
                               <Calendar size={14} style={{ color: "var(--ora-signal)" }} />
                               <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>Editorial Calendar</span>
-                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(59,79,196,0.1)" }}>
+                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(255,255,255,0.1)" }}>
                                 {calendarEvents.length} posts
                               </span>
                             </div>
@@ -3045,14 +3049,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         <button
                           onClick={() => { setEditorAsset(selectedAsset); setSelectedAsset(null); }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
-                          style={{ background: "rgba(59,79,196,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(59,79,196,0.3)" }}
+                          style={{ background: "rgba(255,255,255,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(255,255,255,0.3)" }}
                         >
                           <Pencil size={12} /> Edit
                         </button>
                       )}
                     </>
                   )}
-                  <button onClick={() => handleSaveAsset(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
+                  <button onClick={() => handleSaveAsset(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal)", color: "#18171A", fontSize: "12px", fontWeight: 600 }}>
                     <Save size={12} /> Save to Library
                   </button>
                   <button onClick={() => handleDownload(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}>
@@ -3227,7 +3231,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Call to Action
                     </span>
-                    <span className="inline-flex items-center px-5 py-2.5 rounded-lg" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "14px", fontWeight: 600 }}>
+                    <span className="inline-flex items-center px-5 py-2.5 rounded-lg" style={{ background: "var(--ora-signal)", color: "#18171A", fontSize: "14px", fontWeight: 600 }}>
                       {selectedAsset.ctaText}
                     </span>
                   </div>
@@ -3246,7 +3250,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                         placeholder={`Describe what you want instead... (current: ${selectedAsset.imagePrompt?.slice(0, 60) || selectedAsset.videoPrompt?.slice(0, 60) || "auto-generated"})`}
                         className="flex-1 rounded-lg px-4 py-2.5 transition-all"
                         style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                        onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                        onFocus={e => (e.target.style.border = "1px solid rgba(255,255,255,0.4)")}
                         onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                         onKeyDown={e => { if (e.key === "Enter" && repromptText.trim()) handleRegenerateAsset(selectedAsset, repromptText); }}
                       />

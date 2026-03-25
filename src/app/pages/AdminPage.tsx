@@ -77,41 +77,28 @@ function AdminPageContent() {
   const [editPlan, setEditPlan] = useState("");
   const [error, setError] = useState("");
 
-  /**
-   * POST-based admin fetch with Authorization header.
-   * _token in body is extracted by server body-parser middleware for user auth.
-   */
-  const adminPost = useCallback(async (
-    path: string,
-    extraBody?: Record<string, any>,
-    timeout = 30000,
-  ): Promise<any> => {
-    // Always get the freshest token from Supabase session
-    let token = accessToken;
+  /** Get a fresh Supabase user JWT. */
+  const getFreshToken = useCallback(async (): Promise<string> => {
     try {
       const { data: sess } = await supabase.auth.getSession();
-      if (sess?.session?.access_token) {
-        token = sess.session.access_token;
-      }
-    } catch { /* use existing token */ }
-    if (!token) throw new Error("No auth token available");
-    console.log("[Admin] adminPost token length:", token.length, "preview:", token.slice(0, 20) + "...");
+      if (sess?.session?.access_token) return sess.session.access_token;
+    } catch { /* fall through */ }
+    if (accessToken) return accessToken;
+    throw new Error("No auth token available");
+  }, [accessToken]);
 
+  /** GET request authenticated via X-User-Token header (as the server expects). */
+  const adminGet = useCallback(async (path: string, timeout = 30_000): Promise<any> => {
+    const token = await getFreshToken();
     const url = `${API_BASE}${path}`;
-    const body = JSON.stringify({ _token: token, ...extraBody });
-
     const attempt = async (label: string): Promise<any> => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeout);
       try {
-        console.log(`[Admin] ${label} POST ${path}`);
+        console.log(`[Admin] ${label} GET ${path}`);
         const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${publicAnonKey}`,
-            "Content-Type": "text/plain",
-          },
-          body,
+          method: "GET",
+          headers: { "X-User-Token": token, "Authorization": `Bearer ${publicAnonKey}` },
           signal: controller.signal,
         });
         clearTimeout(timer);
@@ -119,20 +106,36 @@ function AdminPageContent() {
         if (res.status === 403) throw new Error("Access denied");
         if (res.status === 401) throw new Error("Unauthorized");
         return data;
-      } catch (err) {
-        clearTimeout(timer);
-        throw err;
-      }
+      } catch (err) { clearTimeout(timer); throw err; }
     };
-
-    try {
-      return await attempt("try1");
-    } catch (err1) {
+    try { return await attempt("try1"); }
+    catch (err1) {
       console.warn(`[Admin] ${path} attempt 1 failed:`, err1);
       await new Promise((r) => setTimeout(r, 2500));
       return await attempt("try2");
     }
-  }, [accessToken]);
+  }, [getFreshToken]);
+
+  /** PUT request authenticated via X-User-Token header. */
+  const adminPut = useCallback(async (path: string, body: Record<string, any>, timeout = 30_000): Promise<any> => {
+    const token = await getFreshToken();
+    const url = `${API_BASE}${path}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "X-User-Token": token, "Authorization": `Bearer ${publicAnonKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const data = await res.json();
+      if (res.status === 403) throw new Error("Access denied");
+      if (res.status === 401) throw new Error("Unauthorized");
+      return data;
+    } catch (err) { clearTimeout(timer); throw err; }
+  }, [getFreshToken]);
 
   const isAdminUser = isAdmin || (user?.email?.toLowerCase() === ADMIN_EMAIL);
 
@@ -146,26 +149,7 @@ function AdminPageContent() {
   }, [isLoading, isAdminUser, user, profile, navigate]);
 
   const fetchData = useCallback(async () => {
-    if (!accessToken) {
-      console.log("[Admin] No accessToken yet, skipping fetch");
-      return;
-    }
-    console.log("[Admin] accessToken present, length:", accessToken.length, "preview:", accessToken.slice(0, 20) + "...");
-
-    // Refresh session to ensure token is not expired
-    let freshToken = accessToken;
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData?.session?.access_token) {
-        freshToken = sessionData.session.access_token;
-        if (freshToken !== accessToken) {
-          console.log("[Admin] Using refreshed session token");
-        }
-      }
-    } catch (refreshErr) {
-      console.warn("[Admin] Session refresh check failed:", refreshErr);
-    }
-
+    if (!accessToken) return;
     setLoading(true);
     setError("");
 
@@ -182,34 +166,44 @@ function AdminPageContent() {
     };
 
     try {
-      // Single POST request — no CORS preflight, all admin data at once
-      console.log("[Admin] Fetching all admin data via POST /admin/data...");
-      const data = await adminPost("/admin/data");
+      const [overviewRes, usersRes, logsRes, costsRes] = await Promise.allSettled([
+        adminGet("/admin/overview"),
+        adminGet("/admin/users"),
+        adminGet("/admin/logs"),
+        adminGet("/admin/costs"),
+      ]);
 
-      if (data.overview) setOverview(data.overview);
+      if (overviewRes.status === "fulfilled" && overviewRes.value?.overview)
+        setOverview(overviewRes.value.overview);
       else setOverview(emptyOverview);
 
-      if (data.users) setUsers(data.users);
-      if (data.logs) setLogs(data.logs);
-      if (data.costs) setCostsData(data.costs);
+      if (usersRes.status === "fulfilled" && usersRes.value?.users)
+        setUsers(usersRes.value.users);
 
-      if (data.error) setError(data.error);
-      else console.log("[Admin] All data loaded:", data.overview?.totalUsers, "users");
+      if (logsRes.status === "fulfilled" && logsRes.value?.logs)
+        setLogs(logsRes.value.logs);
+
+      if (costsRes.status === "fulfilled" && costsRes.value)
+        setCostsData(costsRes.value);
+
+      const firstError = [overviewRes, usersRes, logsRes, costsRes].find(
+        (r) => r.status === "rejected"
+      ) as PromiseRejectedResult | undefined;
+      if (firstError) setError(String(firstError.reason));
     } catch (err) {
       console.error("[Admin] Fetch error:", err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Admin data: ${msg}`);
+      setError(err instanceof Error ? err.message : String(err));
       if (!overview) setOverview(emptyOverview);
     }
     setLoading(false);
-  }, [accessToken, adminPost]);
+  }, [accessToken, adminGet]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handlePlanChange = async (userId: string) => {
     if (!editPlan) return;
     try {
-      await adminPost(`/admin/users/${userId}/plan`, { plan: editPlan });
+      await adminPut(`/admin/users/${userId}/plan`, { plan: editPlan });
       setEditingUser(null);
       fetchData();
     } catch (err) {

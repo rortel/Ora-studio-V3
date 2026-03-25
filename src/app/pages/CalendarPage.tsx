@@ -47,7 +47,7 @@ const statusConfig: Record<string, { label: string; bg: string; text: string }> 
   scheduled: { label: "Scheduled", bg: "var(--ora-signal-light)", text: "var(--ora-signal)" },
   published: { label: "Published", bg: "rgba(22,163,74,0.08)", text: "#16a34a" },
   review: { label: "In review", bg: "rgba(245,158,11,0.08)", text: "#f59e0b" },
-  deploying: { label: "Deploying...", bg: "rgba(59,79,196,0.08)", text: "var(--ora-signal)" },
+  deploying: { label: "Deploying...", bg: "rgba(255,255,255,0.08)", text: "var(--ora-signal)" },
   failed: { label: "Failed", bg: "rgba(212,24,61,0.08)", text: "#d4183d" },
 };
 
@@ -287,7 +287,7 @@ function CalendarPageContent() {
                   disabled={deployingAll}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-lg transition-all cursor-pointer"
                   style={{
-                    background: deployingAll ? "rgba(59,79,196,0.08)" : "var(--ora-signal)",
+                    background: deployingAll ? "rgba(255,255,255,0.08)" : "var(--ora-signal)",
                     color: deployingAll ? "var(--ora-signal)" : "#fff",
                     fontSize: "14px", fontWeight: 500,
                     opacity: deployingAll ? 0.7 : 1,
@@ -610,7 +610,7 @@ function CalendarPageContent() {
                                               disabled={isDeploying}
                                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer"
                                               style={{
-                                                background: isDeploying ? "rgba(59,79,196,0.08)" : "var(--ora-signal)",
+                                                background: isDeploying ? "rgba(255,255,255,0.08)" : "var(--ora-signal)",
                                                 color: isDeploying ? "var(--ora-signal)" : "#fff",
                                                 fontSize: "11px", fontWeight: 600,
                                                 opacity: isDeploying ? 0.7 : 1,

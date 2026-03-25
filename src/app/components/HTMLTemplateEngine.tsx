@@ -58,9 +58,9 @@ export function HTMLTemplateEngine({ template, asset, vault, brandLogoUrl, width
   // ── Resolve vault color by role ──
   const resolveVaultColor = useCallback((role: string): string => {
     const colors = vault?.colors as { hex: string; name: string; role: string }[] | undefined;
-    if (!colors?.length) return "#3B4FC4";
+    if (!colors?.length) return "#FFFFFF";
     const match = colors.find(c => c.role?.toLowerCase() === role || c.name?.toLowerCase() === role);
-    return match?.hex || colors[0]?.hex || "#3B4FC4";
+    return match?.hex || colors[0]?.hex || "#FFFFFF";
   }, [vault]);
 
   // ── Resolve placeholders and inline images ──

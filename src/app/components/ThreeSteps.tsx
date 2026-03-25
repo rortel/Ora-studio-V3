@@ -1,174 +1,164 @@
 import { motion } from "motion/react";
+import { ArrowRight } from "lucide-react";
+import { Link } from "react-router";
 
-/**
- * Screen 2 — "One prompt, all models" aggregator diagram
- */
-
-const steps = [
+const features = [
   {
     num: "01",
-    title: "One prompt",
-    desc: "Type once. ORA sends your brief to every AI model simultaneously. No switching tabs, no copy-pasting.",
+    tag: "AI Aggregator",
+    title: "One prompt.\nEvery model.",
+    desc: "Describe your vision once. ORA sends it simultaneously to 38+ models — GPT-5, Claude, Flux, DALL-E, Sora and many more. Each returns its best result. You choose.",
+    cta: "Explore models",
+    href: "/models",
+    img: "https://images.unsplash.com/photo-1767089261452-1245afe371af?w=900&q=90",
+    imgAlt: "Brand campaign AI output",
+    reverse: false,
   },
   {
     num: "02",
-    title: "All models",
-    desc: "38+ models across image, video, text, code, audio. Each returns its best interpretation. Side by side.",
+    tag: "Arena",
+    title: "Compare.\nChoose the best.",
+    desc: "The Arena shows every result side by side. Quality, speed, cost — all visible at a glance. Iterate in seconds. Save the winner.",
+    cta: "Open the Arena",
+    href: "/hub",
+    img: "https://images.unsplash.com/photo-1662972580899-b64ac990c9e9?w=900&q=90",
+    imgAlt: "AI comparison grid",
+    reverse: true,
   },
   {
     num: "03",
-    title: "Pick the best",
-    desc: "Compare quality, speed, cost instantly. Save to library. Iterate. Ship.",
+    tag: "Campaign Lab",
+    title: "One brief.\nEvery channel.",
+    desc: "LinkedIn, Instagram, TikTok, email — Campaign Lab generates every format at once. Images adapted, copy adjusted, brand identity maintained. Automatically.",
+    cta: "See Campaign Lab",
+    href: "/hub",
+    img: "https://images.unsplash.com/photo-1688377051459-aebb99b42bff?w=900&q=90",
+    imgAlt: "Multi-platform campaign",
+    reverse: false,
   },
-];
-
-const modelNodes = [
-  { name: "GPT-5", x: 78, y: 8 },
-  { name: "Claude 4.5", x: 88, y: 22 },
-  { name: "Flux Pro", x: 92, y: 38 },
-  { name: "Luma Ray", x: 90, y: 54 },
-  { name: "DALL-E 3", x: 84, y: 68 },
-  { name: "Sora 2", x: 74, y: 82 },
-  { name: "Gemini", x: 62, y: 92 },
 ];
 
 export function ThreeSteps() {
   return (
-    <section id="how-it-works" className="py-24 md:py-32" style={{ background: "#131211" }}>
-      <div className="max-w-[1200px] mx-auto px-6">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="mb-16"
+    <section id="how-it-works" style={{ background: "#0A0A0A" }}>
+      {features.map((f, idx) => (
+        <div
+          key={f.num}
+          style={{
+            background: idx % 2 === 0 ? "#0A0A0A" : "#0E0E0E",
+            borderTop: "1px solid rgba(255,255,255,0.05)",
+          }}
         >
-          <h2
-            style={{
-              fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
-              fontWeight: 500,
-              lineHeight: 1.1,
-              letterSpacing: "-0.03em",
-              color: "#E8E4DF",
-              marginBottom: 12,
-            }}
-          >
-            One prompt. <span style={{ color: "#8B6CF7" }}>All models.</span>
-          </h2>
-          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#6B6660", maxWidth: 440 }}>
-            The aggregator pattern: your brief goes everywhere at once.
-          </p>
-        </motion.div>
-
-        {/* Diagram + steps side by side */}
-        <div className="grid lg:grid-cols-2 gap-16 items-start">
-          {/* Aggregator diagram */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="relative"
-          >
-            <svg viewBox="0 0 100 100" className="w-full max-w-[480px]" fill="none">
-              {/* Source dot */}
-              <circle cx="8" cy="50" r="2" fill="#E8E4DF" />
-              <text x="8" y="58" textAnchor="middle" fill="#5C5856" fontSize="3" fontFamily="Inter">
-                prompt
-              </text>
-
-              {/* Lines to targets */}
-              {modelNodes.map((node, i) => (
-                <motion.line
-                  key={i}
-                  x1="10"
-                  y1="50"
-                  x2={node.x}
-                  y2={node.y}
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeWidth="0.3"
-                  strokeDasharray="1 1"
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  whileInView={{ pathLength: 1, opacity: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.8, delay: 0.2 + i * 0.1 }}
-                />
-              ))}
-
-              {/* Model nodes */}
-              {modelNodes.map((node, i) => (
-                <g key={`node-${i}`}>
-                  <motion.circle
-                    cx={node.x}
-                    cy={node.y}
-                    r="1.5"
-                    fill="#E8E4DF"
-                    opacity={0.4}
-                    initial={{ scale: 0, opacity: 0 }}
-                    whileInView={{ scale: 1, opacity: 0.4 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: 0.5 + i * 0.08 }}
-                  />
-                  <motion.text
-                    x={node.x + 3}
-                    y={node.y + 1}
-                    fill="#9A9590"
-                    fontSize="2.5"
-                    fontFamily="Inter"
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: 0.6 + i * 0.08 }}
-                  >
-                    {node.name}
-                  </motion.text>
-                </g>
-              ))}
-            </svg>
-          </motion.div>
-
-          {/* Steps */}
-          <div className="space-y-8">
-            {steps.map((s, i) => (
+          <div className="max-w-[1200px] mx-auto px-5 md:px-6 py-16 md:py-32">
+            <div
+              className={`flex flex-col ${f.reverse ? "md:flex-row-reverse" : "md:flex-row"} gap-10 md:gap-20 items-center`}
+            >
+              {/* Image */}
               <motion.div
-                key={s.num}
-                initial={{ opacity: 0, y: 14 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                className="flex gap-5"
+                initial={{ opacity: 0, scale: 0.96, x: f.reverse ? 32 : -32 }}
+                whileInView={{ opacity: 1, scale: 1, x: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full md:flex-1"
               >
-                <span
+                <div
+                  className="rounded-2xl md:rounded-3xl overflow-hidden w-full"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    color: "#5C5856",
-                    minWidth: 28,
-                    paddingTop: 2,
+                    aspectRatio: "4/3",
+                    boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)",
                   }}
                 >
-                  {s.num}
-                </span>
-                <div>
-                  <h3
-                    style={{
-                      fontSize: "17px",
-                      fontWeight: 500,
-                      color: "#E8E4DF",
-                      letterSpacing: "-0.02em",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {s.title}
-                  </h3>
-                  <p style={{ fontSize: "15px", lineHeight: 1.6, color: "#9A9590" }}>
-                    {s.desc}
-                  </p>
+                  <img
+                    src={f.img}
+                    alt={f.imgAlt}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 </div>
               </motion.div>
-            ))}
+
+              {/* Text */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.9, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full md:flex-1 flex flex-col gap-5 md:gap-6"
+                style={{ maxWidth: 480 }}
+              >
+                {/* Tag + number */}
+                <div className="flex items-center gap-3">
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "rgba(255,255,255,0.50)",
+                    }}
+                  >
+                    {f.tag}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 500,
+                      color: "rgba(255,255,255,0.15)",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    — {f.num}
+                  </span>
+                </div>
+
+                {/* Title */}
+                <h2
+                  style={{
+                    fontSize: "clamp(1.9rem, 4.5vw, 3.2rem)",
+                    fontWeight: 300,
+                    lineHeight: 1.1,
+                    letterSpacing: "-0.045em",
+                    color: "#F0EDE8",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {f.title}
+                </h2>
+
+                {/* Description */}
+                <p
+                  style={{
+                    fontSize: "15px",
+                    lineHeight: 1.7,
+                    color: "rgba(240,237,232,0.45)",
+                    fontWeight: 400,
+                  }}
+                >
+                  {f.desc}
+                </p>
+
+                {/* CTA */}
+                <Link
+                  to={f.href}
+                  className="group inline-flex items-center gap-2 self-start"
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "rgba(255,255,255,0.80)",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  {f.cta}
+                  <ArrowRight
+                    size={14}
+                    className="group-hover:translate-x-1 transition-transform duration-300"
+                  />
+                </Link>
+              </motion.div>
+            </div>
           </div>
         </div>
-      </div>
+      ))}
     </section>
   );
 }
