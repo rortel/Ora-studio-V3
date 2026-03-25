@@ -12431,5 +12431,168 @@ app.get("/generate/cl-hf-status", async (c) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// PRODUCTS CRUD
+// ══════════════════════════════════════════════════════════════
+
+// GET /products — list all products for user
+app.get("/products", async (c) => {
+  try {
+    const user = await getUser(c);
+    const items = await kv.getByPrefix(`product:${user.id}:`);
+    const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
+    products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return c.json({ success: true, products });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 401);
+  }
+});
+
+// POST /products — create a product
+app.post("/products", async (c) => {
+  try {
+    const user = await getUser(c);
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, ...data } = body;
+    const id = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const product = {
+      id,
+      name: data.name || "",
+      description: data.description || "",
+      url: data.url || "",
+      features: data.features || [],
+      price: data.price || "",
+      currency: data.currency || "EUR",
+      category: data.category || "",
+      images: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${id}`, product);
+    console.log(`[products] Created product ${id} for ${user.id}`);
+    return c.json({ success: true, product });
+  } catch (err) {
+    console.log(`[products] Create error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// PUT /products/:id — update a product
+app.put("/products/:id", async (c) => {
+  try {
+    const user = await getUser(c);
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, ...data } = body;
+    const existing = await kv.get(`product:${user.id}:${id}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+    const updated = {
+      ...existing,
+      name: data.name ?? existing.name,
+      description: data.description ?? existing.description,
+      url: data.url ?? existing.url,
+      features: data.features ?? existing.features,
+      price: data.price ?? existing.price,
+      currency: data.currency ?? existing.currency,
+      category: data.category ?? existing.category,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${id}`, updated);
+    return c.json({ success: true, product: updated });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// DELETE /products/:id — delete a product
+app.delete("/products/:id", async (c) => {
+  try {
+    const user = await getUser(c);
+    const id = c.req.param("id");
+    await kv.delete(`product:${user.id}:${id}`);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/scrape-url — scrape product info from a URL
+app.post("/products/scrape-url", async (c) => {
+  try {
+    const user = await getUser(c);
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const url = body.url || body._url;
+    if (!url) return c.json({ success: false, error: "url required" }, 400);
+
+    console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
+
+    // Fetch the page HTML
+    let html = "";
+    try {
+      const pageRes = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      html = await pageRes.text();
+      // Strip scripts/styles, keep text content
+      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
+    } catch (fetchErr) {
+      console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
+    }
+
+    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
+
+    // Use AI to extract product info
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) return c.json({ success: false, error: "AI key not configured" }, 500);
+
+    const systemPrompt = `You are a product data extractor. Given a webpage's text content, extract structured product information.
+Return a JSON object with these fields (use null if not found):
+{
+  "name": "product name",
+  "description": "short product description (2-3 sentences max)",
+  "price": "numeric price as string (e.g. '29.99')",
+  "currency": "3-letter currency code (e.g. EUR, USD, GBP)",
+  "category": "product category",
+  "features": ["feature 1", "feature 2", "feature 3"] (up to 6 key features)
+}
+Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `URL: ${url}\n\nPage content:\n${html}` },
+        ],
+        max_tokens: 500,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!aiRes.ok) return c.json({ success: false, error: "AI extraction failed" }, 500);
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content?.trim() || "{}";
+    let extracted: any = {};
+    try {
+      // Handle possible markdown code blocks
+      const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
+      extracted = JSON.parse(jsonStr);
+    } catch {
+      extracted = {};
+    }
+
+    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
+    return c.json({ success: true, product: extracted });
+  } catch (err) {
+    console.log(`[products/scrape-url] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
 // (end of legacy dead code block)
 }
