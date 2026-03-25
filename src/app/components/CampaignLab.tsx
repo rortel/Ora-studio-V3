@@ -175,6 +175,28 @@ const CONNECTABLE_PLATFORMS = [
   { id: "pinterest", label: "Pinterest", icon: ImageIcon, color: "#E60023" },
 ];
 
+/* ── AI Model Options ── */
+const TEXT_MODELS = [
+  { id: "gpt-4o",                    label: "GPT-4o",          badge: "Fast",       color: "#10a37f" },
+  { id: "gpt-4.1",                   label: "GPT-4.1",         badge: "Smart",      color: "#10a37f" },
+  { id: "claude-sonnet-4-20250514",  label: "Claude Sonnet",   badge: "Creative",   color: "#c96442" },
+  { id: "claude-haiku-4-20250514",   label: "Claude Haiku",    badge: "Ultra Fast", color: "#c96442" },
+  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#4285F4" },
+];
+const IMAGE_MODELS = [
+  { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#8b5cf6" },
+  { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#8b5cf6" },
+  { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#f59e0b" },
+  { id: "flux-schnell",    label: "Flux Schnell",      badge: "Ultra Fast", color: "#f59e0b" },
+  { id: "dall-e-3",        label: "DALL-E 3",          badge: "Precise",    color: "#10a37f" },
+];
+const VIDEO_MODELS = [
+  { id: "ray-flash-2", label: "Ray Flash 2",  badge: "Fast · $0.08",    color: "#8b5cf6" },
+  { id: "ray-2",       label: "Ray 2",        badge: "Premium · $0.15", color: "#8b5cf6" },
+  { id: "kling-v2.1",  label: "Kling v2.1",  badge: "Alt",             color: "#e11d48" },
+  { id: "seedance-v1", label: "SeedAnce v1",  badge: "Alt",             color: "#0ea5e9" },
+];
+
 const VAULT_PILLS = [
   { key: "tone", label: "Tone", icon: MessageSquare },
   { key: "vocabulary", label: "Vocabulary", icon: Type },
@@ -250,6 +272,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [repromptText, setRepromptText] = useState("");
   const [regeneratingAsset, setRegeneratingAsset] = useState<string | null>(null);
   const [savingCampaign, setSavingCampaign] = useState(false);
+
+  // ── Model selection ──
+  const [textModel, setTextModel] = useState("gpt-4o");
+  const [imageModel, setImageModel] = useState("photon-1");
+  const [videoModel, setVideoModel] = useState("ray-flash-2");
 
   // ── Template state ──
   const [assetTemplates, setAssetTemplates] = useState<Record<string, string>>({});
@@ -533,7 +560,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       }
       // No ref OR ref was base64 (can't pass in URL) → standard generation
       const encodedPrompt = encodeURIComponent(realisticPrompt.slice(0, 600));
-      const url = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent(models[0] || "photon-1")}&aspectRatio=${encodeURIComponent(aspectRatio)}`;
+      const url = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent(models[0] || imageModel)}&aspectRatio=${encodeURIComponent(aspectRatio)}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${publicAnonKey}` },
@@ -582,6 +609,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         language: language || "auto",
         campaignStartDate: campaignStartDate || "",
         campaignDuration: campaignDuration || "",
+        model: textModel,
       };
       const url = `${API_BASE}/campaign/generate-texts`;
       const token = getAuthToken();
@@ -631,7 +659,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     const arMap: Record<string, string> = { "1:1": "1:1", "1.91:1": "16:9", "9:16": "9:16", "16:9": "16:9" };
     const ar = arMap[fmt.aspectRatio] || "1:1";
     const encodedPrompt = encodeURIComponent(imgPrompt.slice(0, 400));
-    const imageGetUrl = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent("photon-1")}&aspectRatio=${ar}`;
+    const imageGetUrl = `${API_BASE}/generate/image-via-get?prompt=${encodedPrompt}&models=${encodeURIComponent(imageModel)}&aspectRatio=${ar}`;
     console.log(`[CampaignLab] Image GET [${fmt.id}]:`, imageGetUrl.slice(0, 150));
     const res = await fetch(imageGetUrl, {
       method: "GET",
@@ -648,7 +676,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
   // ── Helper: Video generation with optional first-frame image ──
   const generateVideoWithKeyframe = async (fmt: FormatOption, vidPrompt: string, keyframeImageUrl?: string) => {
-    const params = new URLSearchParams({ prompt: vidPrompt.slice(0, 400), model: "ray-flash-2" });
+    const params = new URLSearchParams({ prompt: vidPrompt.slice(0, 400), model: videoModel });
     if (keyframeImageUrl) params.set("imageUrl", keyframeImageUrl);
     const startUrl = `${API_BASE}/generate/video-start?${params.toString()}`;
     console.log(`[CampaignLab] Video START [${fmt.id}]: hasKeyframe=${!!keyframeImageUrl}`, startUrl.slice(0, 150));
@@ -2364,6 +2392,50 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   </div>
                 </motion.div>
               )}
+
+              {/* ── AI Model Selector ── */}
+              <div className="rounded-xl px-5 py-4 space-y-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center gap-2">
+                  <Zap size={13} style={{ color: "#7A7572" }} />
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    AI Models
+                  </span>
+                  <span style={{ fontSize: "10px", color: "#4a4644" }}>— 38+ models available</span>
+                </div>
+                {[
+                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText },
+                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon },
+                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film },
+                ].map(({ label, models, value, set, icon: Icon }) => (
+                  <div key={label}>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Icon size={11} style={{ color: "#5C5856" }} />
+                      <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {models.map(m => {
+                        const active = value === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => set(m.id)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
+                            style={{
+                              background: active ? `${m.color}18` : "rgba(255,255,255,0.03)",
+                              border: `1px solid ${active ? m.color + "50" : "rgba(255,255,255,0.06)"}`,
+                              color: active ? m.color : "#7A7572",
+                              fontSize: "12px", fontWeight: active ? 600 : 400,
+                            }}
+                          >
+                            {m.label}
+                            <span style={{ fontSize: "9px", fontWeight: 500, opacity: 0.7 }}>{m.badge}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               {/* Generate Button */}
               <button
