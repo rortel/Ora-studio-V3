@@ -656,7 +656,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     const startRes = await fetch(startUrl, {
       method: "GET",
       headers: { Authorization: `Bearer ${publicAnonKey}` },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(30_000),
     });
     const startData = JSON.parse(await startRes.text());
     if (!startData.success || !startData.generationId) throw new Error(startData.error || "Failed to start video");

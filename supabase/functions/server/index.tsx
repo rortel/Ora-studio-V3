@@ -1608,7 +1608,6 @@ async function generateVideo(req: { prompt: string; model: string; imageUrl?: st
 
   // Build request body — add keyframes for image-to-video
   const body: any = {
-    generation_type: "video",
     prompt: req.prompt,
     model: mapping.lumaModel,
     aspect_ratio: mapping.aspectRatio,
@@ -1625,6 +1624,7 @@ async function generateVideo(req: { prompt: string; model: string; imageUrl?: st
     method: "POST",
     headers: lumaHeaders(),
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!submitRes.ok) { const b = await submitRes.text(); throw new Error(`Luma video submit ${submitRes.status}: ${b}`); }
   const generation = await submitRes.json();
@@ -2330,8 +2330,11 @@ app.get("/generate/video-start", async (c) => {
       console.log(`[video-start] Fallback brand visual from query param (${prompt.length} chars)`);
     }
 
-    // Enhance/translate prompt — preserve brand name when ref image exists
-    const enhancedPrompt = await enhanceImagePrompt(prompt, !!imageUrl);
+    // Enhance/translate prompt — use fast timeout to avoid slowing down video-start
+    const enhancedPrompt = await Promise.race([
+      enhanceImagePrompt(prompt, !!imageUrl),
+      new Promise<string>(resolve => setTimeout(() => resolve(prompt), 8_000)),
+    ]);
     console.log(`[video-start] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${!!imageUrl})`);
 
     if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
@@ -2389,7 +2392,6 @@ app.get("/generate/video-start", async (c) => {
     const aspectRatio = clientAspectRatio || mapping.aspectRatio;
 
     const body: any = {
-      generation_type: "video",
       prompt: finalVideoPrompt,
       model: mapping.lumaModel,
       aspect_ratio: aspectRatio,
@@ -2403,6 +2405,7 @@ app.get("/generate/video-start", async (c) => {
       method: "POST",
       headers: lumaHeaders(),
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!submitRes.ok) {
       const errBody = await submitRes.text();
