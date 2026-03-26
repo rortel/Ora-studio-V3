@@ -4729,6 +4729,61 @@ app.post("/vault/analyze-file", async (c) => {
     const isImage = fileType.startsWith("image/");
 
     let extractedText = "";
+    let structuredDna: any = null;
+
+    const isPDF = fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+    const isPPT = fileType.includes("presentation") || fileType.includes("powerpoint") || /\.pptx?$/i.test(fileName);
+    const isDoc = fileType.includes("document") || fileType.includes("word") || /\.docx?$/i.test(fileName);
+
+    // ── Brand charter extraction prompt (structured JSON output) ──
+    const charterSystemPrompt = `You are an elite brand analyst. Analyze this brand guidelines document (brand book / charte graphique) and extract EVERY piece of brand data into structured JSON.
+Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
+
+{
+  "company_name": "string — official brand name",
+  "industry": "string — sector/industry",
+  "tagline": "string — main tagline/signature or null",
+  "products_services": ["string — products or services mentioned"],
+  "target_audiences": [{ "name": "string — segment name", "description": "string — 1-2 sentences" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter", "role": "primary|secondary|accent|background|text" }],
+  "logo_description": "string — describe logo shape, style, variants, rules",
+  "tone": {
+    "formality": 1-10,
+    "confidence": 1-10,
+    "warmth": 1-10,
+    "humor": 1-10,
+    "primary_tone": "string — main tone",
+    "adjectives": ["5-8 brand personality adjectives"]
+  },
+  "photo_style": {
+    "framing": "string — photo framing guidelines",
+    "mood": "string — photo mood/atmosphere",
+    "lighting": "string — lighting direction",
+    "subjects": "string — typical subjects"
+  },
+  "fonts": ["string — font family names with weights if specified"],
+  "font_usage_rules": "string — which font for titles, body, data, etc.",
+  "key_messages": ["string — core messages, slogans, claims (4-8)"],
+  "approved_terms": ["string — brand-approved vocabulary (10-20)"],
+  "forbidden_terms": ["string — words/styles to avoid (5-15)"],
+  "mission": "string — brand mission statement or null",
+  "vision": "string — brand vision statement or null",
+  "personality": "string — 3-5 personality traits comma-separated or null",
+  "usp": "string — unique selling proposition or null",
+  "values": "string — brand values comma-separated or null",
+  "competitors": "string — known competitors comma-separated or null",
+  "brand_guidelines_text": "string — condensed brand rules: dos and don'ts, logo rules, color rules, visual territory rules (max 1500 chars)",
+  "confidence_score": 0-100
+}
+
+Rules:
+- Extract ALL hex color codes you can find (CMYK → convert to hex, Pantone → approximate hex). Include color names from the document.
+- For tone values: infer from the brand's voice, vocabulary, and positioning. Integers 1-10.
+- Extract EVERY font mentioned (with weight variants if listed).
+- For brand_guidelines_text: condense the key dos/don'ts, logo usage rules, color usage rules, typography rules, and visual territory rules.
+- RESPOND IN THE SAME LANGUAGE as the document.
+- confidence_score: 80-100 for a full brand book, 50-70 for partial guidelines.
+- If you cannot determine a value, use null — never invent data.`;
 
     if (isImage) {
       // Vision analysis via APIPod (GPT-4o vision)
@@ -4763,6 +4818,121 @@ app.post("/vault/analyze-file", async (c) => {
           console.log(`[vault/analyze-file] Vision failed: ${vRes.status}`);
         }
       } catch (e) { console.log(`[vault/analyze-file] Vision error: ${e}`); }
+
+    } else if (isPDF || isPPT || isDoc) {
+      // ── Document: extract text + structured brand DNA via Mistral document understanding ──
+      console.log(`[vault/analyze-file] Document → Mistral document understanding...`);
+
+      // Step 1: Try regex text extraction for PDFs (fast, gets raw text)
+      if (isPDF) {
+        const textDecoder = new TextDecoder("utf-8", { fatal: false });
+        const rawText = textDecoder.decode(arrayBuffer);
+        const readable = rawText.match(/[\x20-\x7E\xA0-\xFF]{4,}/g) || [];
+        const filtered = readable.filter((s: string) => !s.match(/^[\/\\<>{}()\[\]%#&]+$/) && s.length > 5).join(" ");
+        extractedText = filtered.slice(0, 20000);
+        console.log(`[vault/analyze-file] PDF regex text: ${extractedText.length} chars`);
+      }
+
+      // Step 2: Send document to Mistral for structured brand extraction
+      if (fileSize < 20 * 1024 * 1024) {
+        try {
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const docBase64 = btoa(binary);
+          const mimeType = isPDF ? "application/pdf" : fileType;
+
+          console.log(`[vault/analyze-file] Sending ${(fileSize/1024).toFixed(0)}KB document to Mistral...`);
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 120_000);
+
+          const mistralKey = Deno.env.get("MISTRAL_API_KEY");
+          const res = await fetch(`${MISTRAL_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
+            body: JSON.stringify({
+              model: "mistral-large-latest",
+              messages: [
+                { role: "system", content: charterSystemPrompt },
+                { role: "user", content: [
+                  { type: "text", text: `Analyze this brand guidelines document "${fileName}" and extract the complete structured brand profile.` },
+                  { type: "document_url", document_url: { url: `data:${mimeType};base64,${docBase64}` } },
+                ] },
+              ],
+              max_tokens: 4000,
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+            }),
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+
+          if (res.ok) {
+            const data = await res.json();
+            const raw = data.choices?.[0]?.message?.content || "";
+            console.log(`[vault/analyze-file] Mistral doc response: ${raw.length} chars`);
+            if (raw) {
+              try {
+                const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+                const match = cleaned.match(/\{[\s\S]*\}/);
+                structuredDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
+                console.log(`[vault/analyze-file] Structured DNA extracted: ${structuredDna.company_name}, ${structuredDna.colors?.length || 0} colors, ${structuredDna.fonts?.length || 0} fonts`);
+                // Use AI text as extractedText if regex extraction was poor
+                if (!extractedText || extractedText.length < 200) {
+                  extractedText = raw;
+                }
+              } catch (parseErr) {
+                console.log(`[vault/analyze-file] JSON parse failed: ${parseErr}, using raw as text`);
+                if (raw.length > extractedText.length) extractedText = raw;
+              }
+            }
+          } else {
+            console.log(`[vault/analyze-file] Mistral doc error: ${res.status} ${(await res.text()).slice(0, 200)}`);
+          }
+        } catch (e: any) {
+          if (e?.name === "AbortError") {
+            console.log(`[vault/analyze-file] Mistral doc timeout (120s)`);
+          } else {
+            console.log(`[vault/analyze-file] Mistral doc error: ${e?.message || e}`);
+          }
+        }
+      }
+
+      // Step 3: If no structured DNA yet but we have extracted text, try GPT-4o for structuring
+      if (!structuredDna && extractedText.length > 200) {
+        console.log(`[vault/analyze-file] Fallback: structuring ${extractedText.length} chars of text with GPT-4o...`);
+        try {
+          const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: apipodHeaders(),
+            body: JSON.stringify({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: charterSystemPrompt },
+                { role: "user", content: `Analyze brand guidelines from "${fileName}":\n\n${extractedText.slice(0, 16000)}` },
+              ],
+              max_tokens: 4000,
+              temperature: 0.1,
+            }),
+          });
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const raw = aiData.choices?.[0]?.message?.content || "";
+            if (raw) {
+              try {
+                const match = raw.match(/\{[\s\S]*\}/);
+                structuredDna = match ? JSON.parse(match[0]) : null;
+                if (structuredDna) console.log(`[vault/analyze-file] GPT-4o fallback DNA: ${structuredDna.company_name}`);
+              } catch { console.log(`[vault/analyze-file] GPT-4o fallback parse failed`); }
+            }
+          }
+        } catch (e) { console.log(`[vault/analyze-file] GPT-4o fallback error: ${e}`); }
+      }
+
+      if (!extractedText || extractedText.length < 20) {
+        extractedText = `[Document uploaded: ${fileName} (${fileType}, ${(fileSize/1024).toFixed(0)}KB)]`;
+      }
+
     } else {
       // Text-based file: read as text
       try {
@@ -4779,8 +4949,8 @@ app.post("/vault/analyze-file", async (c) => {
       return c.json({ success: false, error: "Could not extract content from file" }, 400);
     }
 
-    console.log(`[vault/analyze-file] DONE in ${Date.now() - t0}ms`);
-    return c.json({ success: true, extractedText, fileName, fileType });
+    console.log(`[vault/analyze-file] DONE in ${Date.now() - t0}ms, hasDna=${!!structuredDna}`);
+    return c.json({ success: true, extractedText, fileName, fileType, ...(structuredDna ? { dna: structuredDna } : {}) });
 
   } catch (err: any) {
     console.log(`[vault/analyze-file] ERROR: ${err?.message || err}`);

@@ -247,12 +247,17 @@ function VaultPageContent() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
+  const charterRef = useRef<HTMLDivElement>(null);
   const { accessToken } = useAuth();
   const tokenRef = useRef(accessToken);
   useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
 
   const token = () => tokenRef.current || "";
-  const hasData = !!vault.company_name;
+  const hasData = !!(
+    vault.company_name || vault.colors.length || vault.fonts.length ||
+    vault.mission || vault.vision || vault.values || vault.key_messages.length ||
+    vault.tone || vault.brand_guidelines_text
+  );
 
   // ── Load ──
   useEffect(() => {
@@ -399,6 +404,7 @@ function VaultPageContent() {
         const data = await res.json();
 
         let dnaOk = false;
+        console.log("[Vault] analyze-file response:", JSON.stringify(data).slice(0, 500));
         if (data.success && data.dna) {
           console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
           const updated = mergeVaultData(vault, data.dna);
@@ -446,6 +452,8 @@ function VaultPageContent() {
         if (dnaOk) {
           setAnalyzeProgress("Saved!");
           setTimeout(() => setAnalyzeProgress(""), 2000);
+          // Scroll to Brand Charter if it now has data
+          setTimeout(() => charterRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
         }
       } else {
         const text = await file.text();
@@ -932,7 +940,7 @@ function VaultPageContent() {
 
               {/* Brand Charter -- full width */}
               {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
-                <div className="md:col-span-2">
+                <div ref={charterRef} className="md:col-span-2">
                   <SectionCard icon={BookOpen} title="Brand Charter"
                     count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
                     open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
