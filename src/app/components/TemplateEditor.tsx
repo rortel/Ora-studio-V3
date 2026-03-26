@@ -183,13 +183,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     if (!token) return;
     setVaultAssetsLoading(true);
 
-    // Fetch brand assets
-    const fetchAssets = fetch(`${API_BASE}/brand-assets`, {
-      headers: { Authorization: `Bearer ${publicAnonKey}`, "X-User-Token": token },
-      signal: AbortSignal.timeout(10_000),
-    }).then(r => r.json()).then(data => {
-      if (data.success && data.assets) setBrandAssets(data.assets);
-    }).catch(() => {});
+    // Fetch brand assets — /brand-assets endpoint doesn't exist, use vault/brand-dna instead
+    // Skip this for now — brand assets come from the vault passed as prop
+    const fetchAssets = Promise.resolve();
 
     // Fetch image bank (first 20 images)
     const fetchImages = fetch(`${API_BASE}/vault/images/list`, {

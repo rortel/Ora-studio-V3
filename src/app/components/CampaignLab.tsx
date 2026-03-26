@@ -232,13 +232,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     }).then(res => res.json());
   }, [getAuthToken]);
 
-  // ── GET helper (token via X-User-Token header to avoid URL length limits) ──
+  // ── GET-like helper — uses POST with _token in body because JWT is >8KB (too large for URL or header) ──
   const serverGet = useCallback((path: string, timeoutMs?: number) => {
     const token = getAuthToken();
-    const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
-    if (token) headers["X-User-Token"] = token;
     return fetch(`${API_BASE}${path}`, {
-      headers,
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ _token: token }),
       signal: AbortSignal.timeout(timeoutMs || 15_000),
     }).then(r => r.json());
   }, [getAuthToken]);
@@ -326,11 +326,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
     const fetchVault = async (attempt: number) => {
       try {
-        // Use GET with X-User-Token header to avoid URL length overflow from large JWT
-        const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
-        if (token) headers["X-User-Token"] = token;
+        // POST with _token in body — JWT is >8KB, too large for URL query or HTTP header
         const res = await fetch(`${API_BASE}/user/init`, {
-          headers,
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ _token: token }),
           signal: AbortSignal.timeout(15_000),
         });
         const data = await res.json();
@@ -359,7 +359,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     if (!token || productsLoadedRef.current) return;
     productsLoadedRef.current = true;
     setProductsLoading(true);
-    serverGet("/products")
+    serverGet("/products/list")
       .then((data: any) => {
         if (data.success && data.products) setProducts(data.products);
       })
@@ -1332,7 +1332,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     if (phase !== "results" || zernioLoadedRef.current) return;
     zernioLoadedRef.current = true;
     setZernioLoading(true);
-    serverGet("/zernio/accounts")
+    serverGet("/zernio/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
           setZernioAccounts(data.accounts);
@@ -1346,7 +1346,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   // ── Refresh Zernio accounts list ──
   const refreshZernioAccounts = useCallback(() => {
     setZernioLoading(true);
-    serverGet("/zernio/accounts")
+    serverGet("/zernio/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
           setZernioAccounts(data.accounts);
