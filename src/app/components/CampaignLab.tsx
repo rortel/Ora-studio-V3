@@ -1335,23 +1335,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
   };
 
-  // ── Fetch Zernio connected accounts when entering results ──
-  useEffect(() => {
-    if (phase !== "results" || zernioLoadedRef.current) return;
-    zernioLoadedRef.current = true;
-    setZernioLoading(true);
-    serverGet("/zernio/accounts/list")
-      .then(data => {
-        if (data.success && data.accounts) {
-          setZernioAccounts(data.accounts);
-          console.log(`[CampaignLab] Zernio accounts:`, data.accounts.map((a: any) => `${a.platform}:${a._id}`));
-        }
-      })
-      .catch(err => console.log("[CampaignLab] Zernio accounts fetch:", err))
-      .finally(() => setZernioLoading(false));
-  }, [phase, serverGet]);
-
-  // ── Refresh Zernio accounts list ──
+  // ── Refresh Zernio accounts list (must be before useEffect and handleConnectPlatform that use it) ──
   const refreshZernioAccounts = useCallback(() => {
     setZernioLoading(true);
     serverGet("/zernio/accounts/list")
@@ -1364,6 +1348,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       .catch(err => console.log("[CampaignLab] Accounts refresh:", err))
       .finally(() => setZernioLoading(false));
   }, [serverGet]);
+
+  // Load Zernio accounts when entering results phase
+  useEffect(() => {
+    if (phase !== "results" || zernioLoadedRef.current) return;
+    zernioLoadedRef.current = true;
+    setZernioLoading(true);
+    serverGet("/zernio/accounts/list")
+      .then(data => {
+        if (data.success && data.accounts) {
+          setZernioAccounts(data.accounts);
+        }
+      })
+      .catch(err => console.log("[CampaignLab] Zernio accounts fetch:", err))
+      .finally(() => setZernioLoading(false));
+  }, [phase, serverGet]);
 
   // ── Connect a social platform via OAuth popup (transparent — no Zernio branding) ──
   const handleConnectPlatform = useCallback(async (platform: string) => {
