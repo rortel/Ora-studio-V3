@@ -326,12 +326,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
     const fetchVault = async (attempt: number) => {
       try {
-        // Use GET to avoid CORS preflight (POST with application/json triggers OPTIONS)
-        const initUrl = token
-          ? `${API_BASE}/user/init?_token=${encodeURIComponent(token)}`
-          : `${API_BASE}/user/init`;
-        const res = await fetch(initUrl, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
+        // Use GET with X-User-Token header to avoid URL length overflow from large JWT
+        const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
+        if (token) headers["X-User-Token"] = token;
+        const res = await fetch(`${API_BASE}/user/init`, {
+          headers,
           signal: AbortSignal.timeout(15_000),
         });
         const data = await res.json();

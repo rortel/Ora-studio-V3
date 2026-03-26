@@ -768,8 +768,9 @@ function SocialAccountsSection() {
   const fetchAccounts = useCallback(() => {
     setLoading(true);
     const token = auth.getAuthHeader();
-    const url = token ? `${API_BASE}/zernio/accounts?_token=${encodeURIComponent(token)}` : `${API_BASE}/zernio/accounts`;
-    fetch(url, { headers: makeHeaders() })
+    const hdrs = makeHeaders();
+    if (token) hdrs["X-User-Token"] = token;
+    fetch(`${API_BASE}/zernio/accounts`, { headers: hdrs })
       .then(res => res.json())
       .then(data => { if (data.success && data.accounts) setAccounts(data.accounts); })
       .catch(err => console.error("[SocialAccounts] Fetch error:", err))
