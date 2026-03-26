@@ -473,7 +473,9 @@ function VaultPageContent() {
         if (dnaOk && isPDF) {
           try {
             setAnalyzeProgress("Extracting images from PDF...");
+            console.log("[Vault] Starting PDF image extraction...");
             const imageBlobs = await extractPdfImages(file);
+            console.log(`[Vault] Extracted ${imageBlobs.length} images from PDF (sizes: ${imageBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
             if (imageBlobs.length > 0) {
               setAnalyzeProgress(`Classifying & uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""}...`);
               const uploadForm = new FormData();
@@ -482,15 +484,21 @@ function VaultPageContent() {
               });
               uploadForm.append("_token", token());
               uploadForm.append("brand_name", vault.company_name || "");
+              console.log(`[Vault] Uploading ${imageBlobs.length} images to categorize-upload...`);
               const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
               const catData = await catRes.json();
+              console.log("[Vault] categorize-upload response:", JSON.stringify(catData).slice(0, 300));
               if (catData.success) {
                 const { uploaded, skipped } = catData.stats || {};
                 console.log(`[Vault] PDF images: ${uploaded} uploaded, ${skipped} skipped`);
                 setAnalyzeProgress(`${uploaded} image${uploaded > 1 ? "s" : ""} added to Image Bank`);
               }
+            } else {
+              console.log("[Vault] No images found in PDF (all too small or extraction failed)");
             }
-          } catch (err) { console.warn("[Vault] PDF image extraction skipped:", err); }
+          } catch (err: any) {
+            console.warn("[Vault] PDF image extraction error:", err?.message || err);
+          }
         }
 
         if (dnaOk) {

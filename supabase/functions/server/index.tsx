@@ -4602,8 +4602,40 @@ RULES:
           clearTimeout(timer);
           console.log(`[vault/analyze] Charter AI failed: ${e?.message || e}`);
         }
-        // If charter structuring failed, fall through to generic URL analysis below
-        console.log(`[vault/analyze] Charter structuring failed, falling back to GPT-4o...`);
+        // If charter structuring with Mistral failed, retry with GPT-4o using the SAME charter prompt
+        console.log(`[vault/analyze] Charter via Mistral failed, retrying with GPT-4o charter prompt...`);
+        try {
+          const gpt4oCharterRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: apipodHeaders(),
+            body: JSON.stringify({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: charterPrompt },
+                { role: "user", content: `Analyze this brand guidelines document "${sourceName}" and extract the complete structured brand profile.\n\n${textToAnalyze.slice(0, 25000)}` },
+              ],
+              max_tokens: 8000,
+              temperature: 0.1,
+            }),
+          });
+          if (gpt4oCharterRes.ok) {
+            const gptData = await gpt4oCharterRes.json();
+            const gptRaw = gptData.choices?.[0]?.message?.content || "";
+            console.log(`[vault/analyze] GPT-4o charter response: ${gptRaw.length} chars`);
+            const gptCleaned = gptRaw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+            const gptMatch = gptCleaned.match(/\{[\s\S]*\}/);
+            const charterDna = gptMatch ? JSON.parse(gptMatch[0]) : JSON.parse(gptCleaned);
+            console.log(`[vault/analyze] GPT-4o Charter DNA: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}`);
+            const existing = await kv.get(`vault:${user.id}`) || {};
+            const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
+            await kv.set(`vault:${user.id}`, merged);
+            return c.json({ success: true, dna: charterDna, vault: merged });
+          } else {
+            console.log(`[vault/analyze] GPT-4o charter error: ${gpt4oCharterRes.status}`);
+          }
+        } catch (gptErr: any) {
+          console.log(`[vault/analyze] GPT-4o charter fallback failed: ${gptErr?.message || gptErr}`);
+        }
       }
     } else {
       return c.json({ success: false, error: "Provide url or content" }, 400);

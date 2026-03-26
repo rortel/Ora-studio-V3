@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   Plus, X, Loader2, Trash2, Edit3, Upload, ArrowLeft,
   Package, DollarSign, Tag, Link as LinkIcon, List, Image as ImageIcon,
-  Check, ChevronRight, AlertCircle,
+  Check, ChevronRight, AlertCircle, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
@@ -77,6 +77,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "CAD", "AUD", "JPY"];
 
 export function ProductsPage() {
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
 
   // Data
   const [products, setProducts] = useState<Product[]>([]);
@@ -100,6 +101,7 @@ export function ProductsPage() {
   const [price, setPrice] = useState("");
   const [currency, setCurrency] = useState("EUR");
   const [category, setCategory] = useState("");
+  const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
 
   // ── Load all products ──
   const loadProducts = useCallback(async () => {
@@ -134,6 +136,7 @@ export function ProductsPage() {
   const resetForm = () => {
     setName(""); setDescription(""); setUrl("");
     setFeatures([""]); setPrice(""); setCurrency("EUR"); setCategory("");
+    setScrapedImageUrls([]);
   };
 
   // ── Open dialogs ──
@@ -170,7 +173,8 @@ export function ProductsPage() {
         if (p.currency) setCurrency(p.currency);
         if (p.category) setCategory(p.category);
         if (p.features?.length) setFeatures(p.features);
-        toast.success("Informations extraites avec succès");
+        if (p.imageUrls?.length) setScrapedImageUrls(p.imageUrls);
+        toast.success(`Informations extraites${p.imageUrls?.length ? ` + ${p.imageUrls.length} photo(s)` : ""}`);
       } else {
         toast.error(data.error || "Impossible d'extraire les infos");
       }
@@ -208,6 +212,20 @@ export function ProductsPage() {
 
       if (data.success) {
         toast.success(isEdit ? "Produit mis à jour" : "Produit créé");
+        // Import scraped images if any (only on create)
+        const productId = data.product?.id || data.id;
+        if (!isEdit && scrapedImageUrls.length > 0 && productId) {
+          toast.info(`Import de ${scrapedImageUrls.length} photo(s)...`);
+          try {
+            const imgRes = await postJson(`/products/${productId}/images-from-urls`, accessToken, { imageUrls: scrapedImageUrls });
+            const imgData = await imgRes.json();
+            if (imgData.success && imgData.images?.length) {
+              toast.success(`${imgData.images.length} photo(s) importée(s)`);
+            }
+          } catch (imgErr) {
+            console.error("[ProductsPage] image import:", imgErr);
+          }
+        }
         setDialogOpen(false);
         resetForm();
         await loadProducts();
@@ -438,6 +456,13 @@ export function ProductsPage() {
                         </div>
                       )}
 
+                      {/* Generate Campaign CTA */}
+                      <button onClick={() => navigate(`/hub?type=campaign&productId=${product.id}`)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-all hover:opacity-90 text-[12px] font-semibold mb-2"
+                        style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff" }}>
+                        <Sparkles size={13} /> Generate Campaign
+                      </button>
+
                       {/* Actions */}
                       <div className="flex items-center gap-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                         <button onClick={() => openEdit(product)}
@@ -587,6 +612,30 @@ export function ProductsPage() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Scraped image previews (create mode) */}
+                    {!editingProduct && scrapedImageUrls.length > 0 && (
+                      <div>
+                        <label className={labelCls} style={labelSx}><ImageIcon size={11} /> Photos trouvées ({scrapedImageUrls.length})</label>
+                        <div className="grid grid-cols-4 gap-2 mb-2">
+                          {scrapedImageUrls.map((imgUrl, idx) => (
+                            <div key={idx} className="relative group rounded-lg overflow-hidden aspect-square"
+                              style={{ background: "#18171A" }}>
+                              <img src={imgUrl} alt={`Product ${idx + 1}`} className="w-full h-full object-cover"
+                                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                              <button onClick={() => setScrapedImageUrls(prev => prev.filter((_, i) => i !== idx))}
+                                className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                style={{ background: "rgba(239,68,68,0.8)", color: "#fff" }}>
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] mt-1" style={{ color: "#7A7572" }}>
+                          Ces images seront importées à la création du produit
+                        </p>
+                      </div>
+                    )}
 
                     {/* Images (edit mode only) */}
                     {editingProduct && (

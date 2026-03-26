@@ -56,6 +56,29 @@ interface CarouselSlide {
   status?: "pending" | "generating" | "ready" | "error";
 }
 
+interface AssetVariant {
+  model: string;
+  modelLabel: string;
+  // Text variant fields
+  copy?: string;
+  caption?: string;
+  headline?: string;
+  subject?: string;
+  ctaText?: string;
+  hashtags?: string;
+  features?: string[];
+  imagePrompt?: string;
+  videoPrompt?: string;
+  carouselSlides?: CarouselSlide[];
+  // Image variant fields
+  imageUrl?: string;
+  // Video variant fields
+  videoUrl?: string;
+  // Status
+  status: "pending" | "generating" | "ready" | "error";
+  error?: string;
+}
+
 interface GeneratedAsset {
   id: string;
   formatId: string;
@@ -65,7 +88,7 @@ interface GeneratedAsset {
   status: "pending" | "generating" | "ready" | "error";
   imageUrl?: string;
   videoUrl?: string;
-  
+
   copy?: string;
   caption?: string;
   hashtags?: string;
@@ -78,11 +101,16 @@ interface GeneratedAsset {
   imagePrompt?: string;
   videoPrompt?: string;
   carouselSlides?: CarouselSlide[];
+
+  // Multi-model variants
+  variants?: AssetVariant[];
+  selectedVariant?: number; // index into variants[]
 }
 
 interface CampaignLabProps {
   onAssetComplete?: (asset: any) => void;
   onSaveAssetToLibrary?: (asset: any) => void;
+  initialProductId?: string | null;
 }
 
 /* ═══════════════════════════════════
@@ -210,7 +238,7 @@ const VAULT_PILLS = [
    MAIN COMPONENT
    ═══════════════════════════════════ */
 
-export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignLabProps) {
+export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProductId }: CampaignLabProps) {
   const auth = useAuth();
   const getAuthToken = useCallback(() => auth.getAuthHeader(), [auth]);
 
@@ -277,6 +305,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const [textModel, setTextModel] = useState("gpt-4o");
   const [imageModel, setImageModel] = useState("photon-1");
   const [videoModel, setVideoModel] = useState("ray-flash-2");
+
+  // ── Multi-model variants (aggregator mode) ──
+  const [multiModelEnabled, setMultiModelEnabled] = useState(true);
+  const [textModelsSelected, setTextModelsSelected] = useState<string[]>(["gpt-4o", "claude-sonnet-4-20250514"]);
+  const [imageModelsSelected, setImageModelsSelected] = useState<string[]>(["photon-1", "flux-pro-v1.1"]);
 
   // ── Template state ──
   const [assetTemplates, setAssetTemplates] = useState<Record<string, string>>({});
@@ -353,20 +386,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     fetchVault(1).finally(() => setVaultLoading(false));
   }, [getAuthToken]);
 
-  // ── Load products on mount ──
-  useEffect(() => {
-    const token = getAuthToken();
-    if (!token || productsLoadedRef.current) return;
-    productsLoadedRef.current = true;
-    setProductsLoading(true);
-    serverGet("/products/list")
-      .then((data: any) => {
-        if (data.success && data.products) setProducts(data.products);
-      })
-      .catch(() => {})
-      .finally(() => setProductsLoading(false));
-  }, [getAuthToken, serverGet]);
-
   // ── Select a product: auto-fill brief + add product images as ref photos ──
   const handleSelectProduct = useCallback((product: any) => {
     setSelectedProduct(product);
@@ -389,6 +408,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     }
     toast.success(`Product "${product.name}" loaded`);
   }, []);
+
+  // ── Load products on mount ──
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || productsLoadedRef.current) return;
+    productsLoadedRef.current = true;
+    setProductsLoading(true);
+    serverGet("/products/list")
+      .then((data: any) => {
+        if (data.success && data.products) {
+          setProducts(data.products);
+          // Auto-select product if initialProductId is provided
+          if (initialProductId) {
+            const match = data.products.find((p: any) => p.id === initialProductId);
+            if (match) handleSelectProduct(match);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setProductsLoading(false));
+  }, [getAuthToken, serverGet, handleSelectProduct, initialProductId]);
 
   // ── Photo upload handlers (client-side only — used as visual ref in UI) ──
   const handlePhotoDrop = useCallback((e: React.DragEvent) => {
@@ -639,7 +679,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   };
 
   // ── Generate text copy via POST (no URL length limit) ──
-  const generateCopy = async (formats: FormatOption[], briefShort: string, urlsShort: string): Promise<Record<string, any>> => {
+  const generateCopyWithModel = async (formats: FormatOption[], briefShort: string, urlsShort: string, model: string): Promise<Record<string, any>> => {
     try {
       const formatIds = formats.map(f => f.id).join(",");
       const postBody = {
@@ -655,14 +695,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         language: language || "auto",
         campaignStartDate: campaignStartDate || "",
         campaignDuration: campaignDuration || "",
-        model: textModel,
+        model,
       };
       const url = `${API_BASE}/campaign/generate-texts`;
       const token = getAuthToken();
       const fullBody = { ...postBody, _token: token || undefined };
-      console.log(`[CampaignLab] POST texts: ${formats.length} formats, brief=${briefShort.length}c, body=${JSON.stringify(fullBody).length}c`);
+      console.log(`[CampaignLab] POST texts [${model}]: ${formats.length} formats, brief=${briefShort.length}c`);
 
-      // text/plain Content-Type avoids CORS preflight (application/json triggers OPTIONS)
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -673,31 +712,37 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         signal: AbortSignal.timeout(120_000),
       });
       const rawText = await res.text();
-      console.log(`[CampaignLab] Text response: HTTP ${res.status}, ${rawText.length}c, body=${rawText.slice(0, 400)}`);
+      console.log(`[CampaignLab] Text [${model}]: HTTP ${res.status}, ${rawText.length}c`);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${rawText.slice(0, 200)}`);
       const data = JSON.parse(rawText);
       if (data.success && data.copyMap && Object.keys(data.copyMap).length > 0) {
-        console.log(`[CampaignLab] Text OK: ${data.formatCount} formats, provider=${data.provider}, ${data.latencyMs}ms, keys=[${Object.keys(data.copyMap).join(",")}]`);
+        console.log(`[CampaignLab] Text OK [${model}]: ${data.formatCount} formats, ${data.latencyMs}ms`);
         return data.copyMap;
       }
-      console.warn("[CampaignLab] Text returned empty copyMap:", data.error || "no keys");
+      console.warn(`[CampaignLab] Text [${model}] returned empty copyMap`);
     } catch (err: any) {
-      console.error("[CampaignLab] Text FAILED:", err?.name, err?.message, err);
-      // Auto-diagnostic
-      try {
-        const diagRes = await fetch(`${API_BASE}/test-campaign-text`, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-          signal: AbortSignal.timeout(15_000),
-        });
-        const diagData = await diagRes.json();
-        console.log("[CampaignLab] DIAGNOSTIC:", JSON.stringify(diagData, null, 2));
-      } catch (de: any) {
-        console.error("[CampaignLab] DIAGNOSTIC failed too:", de?.name, de?.message);
-      }
+      console.error(`[CampaignLab] Text [${model}] FAILED:`, err?.message);
     }
-
-    console.error("[CampaignLab] Text generation failed — returning empty copyMap");
     return {};
+  };
+
+  // ── Multi-model text generation (aggregator) ──
+  const generateCopy = async (formats: FormatOption[], briefShort: string, urlsShort: string): Promise<{ primary: Record<string, any>; allVariants: { model: string; copyMap: Record<string, any> }[] }> => {
+    const models = multiModelEnabled && textModelsSelected.length > 1
+      ? textModelsSelected
+      : [textModel];
+
+    console.log(`[CampaignLab] Generating text with ${models.length} model(s): ${models.join(", ")}`);
+    const results = await Promise.all(
+      models.map(async (m) => ({
+        model: m,
+        copyMap: await generateCopyWithModel(formats, briefShort, urlsShort, m),
+      }))
+    );
+
+    // Primary = first model with non-empty results, or first overall
+    const primary = results.find(r => Object.keys(r.copyMap).length > 0)?.copyMap || {};
+    return { primary, allVariants: results };
   };
 
   // ── Helper: Classic image generation (fallback — same as before) ──
@@ -813,25 +858,22 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
       // ═══ PHASE 1: Vision Analysis + Text Copy in PARALLEL ═══
       setGenerationProgress(10);
-      const [visualDNA, copyMap] = await Promise.all([
+      const [visualDNA, textResult] = await Promise.all([
         useV2Pipeline ? analyzeRefs(refSignedUrls) : Promise.resolve(null),
         generateCopy(formats, briefShort, urlsShort),
       ]);
+      const copyMap = textResult.primary;
+      const allTextVariants = textResult.allVariants;
       setGenerationProgress(35);
 
       // Build ultra-precise product description from Visual DNA for image/video prompts
-      // Visual DNA keys from GPT-4o Vision: subject, environment, color_palette, lighting,
-      // composition, texture, mood, photography_style, post_processing, distinctive_elements
       let productDescription = "";
       if (visualDNA) {
         console.log("[CampaignLab] Visual DNA keys:", Object.keys(visualDNA));
         const dna = visualDNA;
         const parts: string[] = [];
-        // Priority 1: SUBJECT is the most critical — hyper-specific product description
         if (dna.subject) parts.push(`SUBJECT: ${dna.subject}`);
-        // Priority 2: DISTINCTIVE_ELEMENTS — unique features that MUST be reproduced
         if (dna.distinctive_elements) parts.push(`MUST REPRODUCE: ${dna.distinctive_elements}`);
-        // Priority 3: Visual context
         if (dna.environment) parts.push(`Environment: ${dna.environment}`);
         if (dna.color_palette) parts.push(`Colors: ${dna.color_palette}`);
         if (dna.lighting) parts.push(`Lighting: ${dna.lighting}`);
@@ -840,7 +882,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
         if (dna.photography_style) parts.push(`Style: ${dna.photography_style}`);
         if (dna.mood) parts.push(`Mood: ${dna.mood}`);
         if (dna.post_processing) parts.push(`Post-processing: ${dna.post_processing}`);
-        // Fallback: use raw_analysis if no structured fields
         if (parts.length === 0 && dna.raw_analysis) {
           const raw = typeof dna.raw_analysis === "string" ? dna.raw_analysis : JSON.stringify(dna.raw_analysis);
           parts.push(raw.slice(0, 600));
@@ -856,18 +897,31 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       }
       console.log("[CampaignLab] copyMap keys:", Object.keys(copyMap));
 
-      // ═══ PHASE 2: Update assets with copy data ═══
-      setAssets(prev => prev.map(a => {
-        const fc = copyMap[a.formatId] || {};
+      // ═══ PHASE 2: Update assets with copy data + text variants ═══
+      const extractCopyFields = (fc: any) => {
         const captionText = fc.caption || fc.text || fc.copy || fc.body || fc.content || fc.message || "";
         const hashtagsText = typeof fc.hashtags === "string" ? fc.hashtags : Array.isArray(fc.hashtags) ? fc.hashtags.join(" ") : "";
-        const subjectText = fc.subject || "";
-        const hasCopy = !!(captionText || fc.headline);
+        return {
+          caption: captionText,
+          copy: captionText,
+          hashtags: hashtagsText,
+          subject: fc.subject || "",
+          headline: fc.headline || "",
+          ctaText: fc.ctaText || fc.cta || "",
+          features: fc.features || [],
+          imagePrompt: fc.imagePrompt || "",
+          videoPrompt: fc.videoPrompt || "",
+        };
+      };
+
+      setAssets(prev => prev.map(a => {
+        const fc = copyMap[a.formatId] || {};
+        const fields = extractCopyFields(fc);
+        const hasCopy = !!(fields.caption || fields.headline);
 
         // Parse carousel slides for carousel formats
         let carouselSlides: CarouselSlide[] | undefined;
-        if (isCarouselFormat(a.formatId) && captionText) {
-          // If API returned slides array directly, use it
+        if (isCarouselFormat(a.formatId) && fields.caption) {
           if (Array.isArray(fc.slides) && fc.slides.length > 0) {
             carouselSlides = fc.slides.map((s: any) => ({
               text: typeof s === "string" ? s : (s.text || s.caption || ""),
@@ -875,27 +929,35 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               status: "pending" as const,
             }));
           } else {
-            carouselSlides = parseCarouselSlides(captionText);
+            carouselSlides = parseCarouselSlides(fields.caption);
           }
-          // Generate image prompts for each slide based on slide content
           carouselSlides = carouselSlides.map((slide, idx) => ({
             ...slide,
             imagePrompt: slide.imagePrompt || `Slide ${idx + 1} for ${a.platform} carousel: ${slide.text.slice(0, 120)}. Professional brand visual matching the slide content.`,
           }));
         }
 
+        // Build text variants from all models
+        const textVariants: AssetVariant[] = allTextVariants
+          .filter(v => Object.keys(v.copyMap).length > 0)
+          .map(v => {
+            const vfc = v.copyMap[a.formatId] || {};
+            const vFields = extractCopyFields(vfc);
+            const modelInfo = TEXT_MODELS.find(m => m.id === v.model);
+            return {
+              model: v.model,
+              modelLabel: modelInfo?.label || v.model,
+              ...vFields,
+              status: (vFields.caption || vFields.headline) ? "ready" as const : "error" as const,
+            };
+          });
+
         return {
           ...a,
-          caption: captionText,
-          copy: captionText,
-          hashtags: hashtagsText,
-          subject: subjectText,
-          headline: fc.headline || "",
-          ctaText: fc.ctaText || fc.cta || "",
-          features: fc.features || [],
-          imagePrompt: fc.imagePrompt || "",
-          videoPrompt: fc.videoPrompt || "",
+          ...fields,
           carouselSlides,
+          variants: textVariants.length > 1 ? textVariants : undefined,
+          selectedVariant: 0,
           status: a.type === "text"
             ? (hasCopy ? "ready" as const : "error" as const)
             : "generating" as const,
@@ -992,49 +1054,63 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               return;
             }
 
-            // ── SINGLE IMAGE (non-carousel) ──
-            if (useV2Pipeline) {
-              // V2: FAL Flux img2img at strength=0.85 — generates a COMPLETELY NEW scene from the brief.
-              // The prompt must describe a vivid, specific NEW environment/situation so the model
-              // transforms the background while the product's shape/colors guide what stays.
-              const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
-              const sceneContext = fc.imagePrompt
-                ? fc.imagePrompt.trim().slice(0, 300)
-                : `Product in a scene that illustrates: ${briefShort.slice(0, 200)}. ${fmt.platform} format.`;
-              const briefContext = contentAngle.trim() ? `Campaign context: ${contentAngle.trim().slice(0, 100)}. ` : (brief.trim() ? `Campaign: ${brief.trim().slice(0, 100)}. ` : "");
-              const finalPrompt = `${briefContext}${sceneContext}. ${diversitySuffix} Photorealistic commercial photography, new environment, professional lighting.`;
+            // ── SINGLE IMAGE (non-carousel) — multi-model variants ──
+            const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
+            const sceneContext = fc.imagePrompt
+              ? fc.imagePrompt.trim().slice(0, 300)
+              : `Product in a scene that illustrates: ${briefShort.slice(0, 200)}. ${fmt.platform} format.`;
+            const briefContext = contentAngle.trim() ? `Campaign context: ${contentAngle.trim().slice(0, 100)}. ` : (brief.trim() ? `Campaign: ${brief.trim().slice(0, 100)}. ` : "");
+            const finalPrompt = `${briefContext}${sceneContext}. ${diversitySuffix} Photorealistic commercial photography, new environment, professional lighting.`;
 
+            const modelsToUse = multiModelEnabled && imageModelsSelected.length > 1
+              ? imageModelsSelected : [imageModel];
+
+            if (useV2Pipeline) {
               const fmtIdx = imageFormats.indexOf(fmt);
               const refUrl = refSignedUrls.length > 0
                 ? refSignedUrls[fmtIdx % refSignedUrls.length]
                 : null;
 
-              console.log(`[CampaignLab] V2 Image [${fmt.id}]: ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}, prompt=${finalPrompt.slice(0, 80)}...`);
+              console.log(`[CampaignLab] V2 Image [${fmt.id}]: ${modelsToUse.length} models, ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}`);
 
-              const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, ["photon-1"]);
+              // Generate with all selected models in parallel
+              const modelResults = await Promise.all(modelsToUse.map(async (mdl) => {
+                try {
+                  const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, [mdl]);
+                  if (candidates.length > 0) {
+                    return { model: mdl, imageUrl: candidates[0].imageUrl, status: "ready" as const };
+                  }
+                  // Fallback to classic for this model
+                  const classicUrl = await generateImageClassic(fmt, finalPrompt + REALISM_SUFFIX);
+                  return { model: mdl, imageUrl: classicUrl, status: "ready" as const };
+                } catch (e: any) {
+                  console.warn(`[CampaignLab] Image [${fmt.id}] model ${mdl} failed:`, e?.message);
+                  return { model: mdl, imageUrl: "", status: "error" as const, error: e?.message };
+                }
+              }));
 
-              if (candidates.length === 0) {
-                console.warn(`[CampaignLab] V2 Hub failed for [${fmt.id}], falling back to classic`);
-                const classicUrl = await generateImageClassic(fmt, finalPrompt + REALISM_SUFFIX);
-                setAssets(prev => prev.map(a => a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a));
-                generatedImageUrls[fmt.id] = classicUrl;
-                return;
-              }
+              const imageVariants: AssetVariant[] = modelResults.map(r => {
+                const modelInfo = IMAGE_MODELS.find(m => m.id === r.model);
+                return { model: r.model, modelLabel: modelInfo?.label || r.model, imageUrl: r.imageUrl, status: r.status };
+              });
+              const bestResult = modelResults.find(r => r.imageUrl) || modelResults[0];
 
-              const bestUrl = candidates[0].imageUrl;
-
-              setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: bestUrl, model: "photon-1-v2" } : a
-              ));
-              generatedImageUrls[fmt.id] = bestUrl;
-              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK:`, bestUrl.slice(0, 60));
+              setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
+                ...a, status: "ready", imageUrl: bestResult.imageUrl, model: bestResult.model,
+                variants: [
+                  ...(a.variants || []),
+                  ...imageVariants.filter(v => v.status === "ready"),
+                ],
+                selectedVariant: 0,
+              } : a));
+              if (bestResult.imageUrl) generatedImageUrls[fmt.id] = bestResult.imageUrl;
+              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK: ${modelResults.filter(r => r.imageUrl).length}/${modelsToUse.length} models`);
 
             } else {
-              const diversitySuffix = FORMAT_DIVERSITY[fmt.id] || "";
               const imgPrompt = (fc.imagePrompt || `Professional ${fmt.platform} post. ${briefShort.slice(0, 120)}. Cinematic brand photography, no text.`) + (diversitySuffix ? ` ${diversitySuffix}` : "") + REALISM_SUFFIX;
               const classicUrl = await generateImageClassic(fmt, imgPrompt);
               setAssets(prev => prev.map(a =>
-                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: "photon-1" } : a
+                a.formatId === fmt.id ? { ...a, status: "ready", imageUrl: classicUrl, model: imageModel } : a
               ));
               generatedImageUrls[fmt.id] = classicUrl;
               console.log(`[CampaignLab] Classic Image [${fmt.id}] OK:`, classicUrl.slice(0, 60));
@@ -1327,23 +1403,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     }
   };
 
-  // ── Fetch Zernio connected accounts when entering results ──
-  useEffect(() => {
-    if (phase !== "results" || zernioLoadedRef.current) return;
-    zernioLoadedRef.current = true;
-    setZernioLoading(true);
-    serverGet("/zernio/accounts/list")
-      .then(data => {
-        if (data.success && data.accounts) {
-          setZernioAccounts(data.accounts);
-          console.log(`[CampaignLab] Zernio accounts:`, data.accounts.map((a: any) => `${a.platform}:${a._id}`));
-        }
-      })
-      .catch(err => console.log("[CampaignLab] Zernio accounts fetch:", err))
-      .finally(() => setZernioLoading(false));
-  }, [phase, serverGet]);
-
-  // ── Refresh Zernio accounts list ──
+  // ── Refresh Zernio accounts list (must be before useEffect and handleConnectPlatform that use it) ──
   const refreshZernioAccounts = useCallback(() => {
     setZernioLoading(true);
     serverGet("/zernio/accounts/list")
@@ -1356,6 +1416,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
       .catch(err => console.log("[CampaignLab] Accounts refresh:", err))
       .finally(() => setZernioLoading(false));
   }, [serverGet]);
+
+  // Load Zernio accounts when entering results phase
+  useEffect(() => {
+    if (phase !== "results" || zernioLoadedRef.current) return;
+    zernioLoadedRef.current = true;
+    setZernioLoading(true);
+    serverGet("/zernio/accounts/list")
+      .then(data => {
+        if (data.success && data.accounts) {
+          setZernioAccounts(data.accounts);
+        }
+      })
+      .catch(err => console.log("[CampaignLab] Zernio accounts fetch:", err))
+      .finally(() => setZernioLoading(false));
+  }, [phase, serverGet]);
 
   // ── Connect a social platform via OAuth popup (transparent — no Zernio branding) ──
   const handleConnectPlatform = useCallback(async (platform: string) => {
@@ -2497,30 +2572,72 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
               {/* ── AI Model Selector ── */}
               <div className="rounded-xl px-5 py-4 space-y-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center gap-2">
-                  <Zap size={13} style={{ color: "#7A7572" }} />
-                  <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    AI Models
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#4a4644" }}>— 38+ models available</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap size={13} style={{ color: "#7A7572" }} />
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      AI Models
+                    </span>
+                  </div>
+                  <button onClick={() => setMultiModelEnabled(!multiModelEnabled)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
+                    style={{
+                      background: multiModelEnabled ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${multiModelEnabled ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    }}>
+                    <div className="w-3 h-3 rounded-full" style={{
+                      background: multiModelEnabled ? "var(--ora-signal)" : "#3d3c3b",
+                      transition: "background 0.2s",
+                    }} />
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: multiModelEnabled ? "#E8E4DF" : "#5C5856" }}>
+                      Compare AI
+                    </span>
+                  </button>
                 </div>
                 {[
-                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText },
-                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon },
-                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film },
-                ].map(({ label, models, value, set, icon: Icon }) => (
+                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected, canMulti: true },
+                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected, canMulti: true },
+                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: null as any, canMulti: false },
+                ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
                   <div key={label}>
                     <div className="flex items-center gap-1.5 mb-2">
                       <Icon size={11} style={{ color: "#5C5856" }} />
                       <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
+                      {multiModelEnabled && canMulti && multiSelected.length > 1 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600, background: "rgba(59,79,196,0.1)" }}>
+                          {multiSelected.length} models selected
+                        </span>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {models.map(m => {
-                        const active = value === m.id;
+                        const isMulti = multiModelEnabled && canMulti;
+                        const active = isMulti ? multiSelected.includes(m.id) : value === m.id;
                         return (
                           <button
                             key={m.id}
-                            onClick={() => set(m.id)}
+                            onClick={() => {
+                              if (isMulti && setMulti) {
+                                // Multi-select mode: toggle this model on/off
+                                if (multiSelected.includes(m.id)) {
+                                  if (multiSelected.length > 1) {
+                                    setMulti(multiSelected.filter((id: string) => id !== m.id));
+                                    // Update primary to first remaining
+                                    const remaining = multiSelected.filter((id: string) => id !== m.id);
+                                    set(remaining[0]);
+                                  }
+                                } else {
+                                  if (multiSelected.length < 3) {
+                                    setMulti([...multiSelected, m.id]);
+                                  } else {
+                                    toast.error("Max 3 models — deselect one first");
+                                  }
+                                }
+                              } else {
+                                // Single-select mode
+                                set(m.id);
+                              }
+                            }}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
                             style={{
                               background: active ? `${m.color}18` : "rgba(255,255,255,0.03)",
@@ -2529,6 +2646,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                               fontSize: "12px", fontWeight: active ? 600 : 400,
                             }}
                           >
+                            {active && isMulti && <Check size={10} />}
                             {m.label}
                             <span style={{ fontSize: "9px", fontWeight: 500, opacity: 0.7 }}>{m.badge}</span>
                           </button>
@@ -2856,6 +2974,46 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                           </span>
                         </div>
                       </div>
+
+                      {/* Variant selector */}
+                      {asset.variants && asset.variants.length > 1 && (
+                        <div className="px-4 pt-3 pb-0">
+                          <div className="flex items-center gap-1">
+                            {asset.variants.map((v, vi) => {
+                              const isSelected = (asset.selectedVariant ?? 0) === vi;
+                              const isImage = !!v.imageUrl;
+                              return (
+                                <button key={vi} onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssets(prev => prev.map(a => a.id === asset.id ? {
+                                    ...a,
+                                    selectedVariant: vi,
+                                    ...(isImage ? { imageUrl: v.imageUrl } : {}),
+                                    ...(!isImage && v.caption ? {
+                                      caption: v.caption, copy: v.copy, headline: v.headline,
+                                      subject: v.subject, ctaText: v.ctaText, hashtags: v.hashtags,
+                                      model: v.model,
+                                    } : {}),
+                                  } : a));
+                                }}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer"
+                                  style={{
+                                    background: isSelected ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
+                                    border: isSelected ? "1px solid rgba(59,79,196,0.5)" : "1px solid rgba(255,255,255,0.06)",
+                                  }}>
+                                  {isImage && v.imageUrl ? (
+                                    <img src={v.imageUrl} alt={v.modelLabel} className="w-5 h-5 rounded object-cover" />
+                                  ) : null}
+                                  <span style={{
+                                    fontSize: "9px", fontWeight: isSelected ? 700 : 500,
+                                    color: isSelected ? "#E8E4DF" : "#7A7572",
+                                  }}>{v.modelLabel}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Info */}
                       <div className="p-4">

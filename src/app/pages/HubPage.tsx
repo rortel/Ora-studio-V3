@@ -540,6 +540,53 @@ function HubPageContent() {
     setRefImage(null);
   }, [refImage]);
 
+  // ── Server call helpers (must be before handleGenerate which uses autoSaveToLibrary) ──
+  const serverPost = useCallback((path: string, bodyData: any) => {
+    const token = getAuthToken();
+    const payload = token ? { ...bodyData, _token: token } : bodyData;
+    return fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${publicAnonKey}`,
+        "Content-Type": "text/plain",
+      },
+      body: JSON.stringify(payload),
+    }).then(res => res.json());
+  }, [getAuthToken]);
+
+  const serverDelete = useCallback((itemId: string) => {
+    return serverPost("/library/items-delete", { itemId });
+  }, [serverPost]);
+
+  const autoSaveToLibrary = useCallback((items: GeneratedItem[], source: LibraryTab = "content") => {
+    const defaultFolder = libraryFolders.find(f => f.source === source);
+    const newItems: LibraryItem[] = items
+      .filter(item => {
+        if (item.preview.kind === "image" && (item.preview as any).imageUrl) return true;
+        if (item.preview.kind === "film" && (item.preview as any).videoUrl) return true;
+        if (item.preview.kind === "text" && (item.preview as any).excerpt) return true;
+        if (item.preview.kind === "code" && (item.preview as any).snippet) return true;
+        if (item.preview.kind === "sound" && (item.preview as any).audioUrl) return true;
+        return false;
+      })
+      .map(item => ({
+        ...item,
+        saved: true,
+        tags: [item.type],
+        source,
+        folderId: defaultFolder?.id,
+      }));
+    if (newItems.length > 0) {
+      setLibrary(prev => [...newItems, ...prev]);
+      console.log(`[HubPage] Auto-saving ${newItems.length} items to server...`);
+      for (const item of newItems) {
+        serverPost("/library/items", { item: { id: item.id, type: item.type, model: item.model, prompt: item.prompt, timestamp: item.timestamp, preview: item.preview, saved: true, tags: item.tags, source: item.source, savedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })
+          .then(data => { if (!data.success) console.warn(`[HubPage] Auto-save failed for ${item.id}:`, data.error); })
+          .catch(err => console.warn("[HubPage] Auto-save error:", err));
+      }
+    }
+  }, [libraryFolders, serverPost]);
+
   const handleGenerate = useCallback(async () => {
     console.log("[HubPage] handleGenerate called", { prompt: prompt.slice(0, 60), isGenerating, activeModelsCount: activeModels.length, contentType });
     if (!prompt.trim() || isGenerating || activeModels.length === 0) {
@@ -1035,26 +1082,6 @@ function HubPageContent() {
     }
   }, [prompt, contentType, activeModels, isGenerating, refImage, refStrength, aspectRatio]);
 
-  // ── v483 server call helper (standard auth pattern) ──
-  const serverPost = useCallback((path: string, bodyData: any) => {
-    const token = getAuthToken();
-    // Put _token in body (like auth/me) instead of X-User-Token header to avoid CORS preflight issues
-    const payload = token ? { ...bodyData, _token: token } : bodyData;
-    return fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${publicAnonKey}`,
-        "Content-Type": "text/plain",
-      },
-      body: JSON.stringify(payload),
-    }).then(res => res.json());
-  }, [getAuthToken]);
-
-  // CORS-safe delete (uses POST instead of DELETE to avoid preflight)
-  const serverDelete = useCallback((itemId: string) => {
-    return serverPost("/library/items-delete", { itemId });
-  }, [serverPost]);
-
   // ── Load library from server on mount (POST = no CORS preflight) ──
   const libraryLoadedRef = useRef(false);
   useEffect(() => {
@@ -1162,37 +1189,6 @@ function HubPageContent() {
   }, [serverDelete]);
 
   // ── Auto-save to library (Content tab) ──
-  const autoSaveToLibrary = useCallback((items: GeneratedItem[], source: LibraryTab = "content") => {
-    const defaultFolder = libraryFolders.find(f => f.source === source);
-    const newItems: LibraryItem[] = items
-      .filter(item => {
-        // Only auto-save items that have real content (not failed/placeholder)
-        if (item.preview.kind === "image" && (item.preview as any).imageUrl) return true;
-        if (item.preview.kind === "film" && (item.preview as any).videoUrl) return true;
-        if (item.preview.kind === "text" && (item.preview as any).excerpt) return true;
-        if (item.preview.kind === "code" && (item.preview as any).snippet) return true;
-        if (item.preview.kind === "sound" && (item.preview as any).audioUrl) return true;
-        return false;
-      })
-      .map(item => ({
-        ...item,
-        saved: true,
-        tags: [item.type],
-        source,
-        folderId: defaultFolder?.id,
-      }));
-    if (newItems.length > 0) {
-      setLibrary(prev => [...newItems, ...prev]);
-      // Persist each item to server (fire-and-forget)
-      console.log(`[HubPage] Auto-saving ${newItems.length} items to server...`);
-      for (const item of newItems) {
-        serverPost("/library/items", { item: { id: item.id, type: item.type, model: item.model, prompt: item.prompt, timestamp: item.timestamp, preview: item.preview, saved: true, tags: item.tags, source: item.source, savedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })
-          .then(data => { if (!data.success) console.warn(`[HubPage] Auto-save failed for ${item.id}:`, data.error); })
-          .catch(err => console.warn("[HubPage] Auto-save error:", err));
-      }
-    }
-  }, [libraryFolders, serverPost]);
-
   // ── Animate: switch to Film mode with image as ref ──
   const handleAnimate = useCallback((item: GeneratedItem) => {
     const imgUrl = item.preview.kind === "image" ? (item.preview.imageUrl || null) : null;
@@ -1379,7 +1375,7 @@ function HubPageContent() {
           {activeTab === "generate" && contentType === "campaign" && (
             <motion.div key="campaign-lab" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
               className="flex-1 min-h-0" style={{ display: "flex", flexDirection: "column" }}>
-              <CampaignLab onAssetComplete={handleCampaignAssetComplete} onSaveAssetToLibrary={handleSaveCampaignAssetToLibrary} />
+              <CampaignLab onAssetComplete={handleCampaignAssetComplete} onSaveAssetToLibrary={handleSaveCampaignAssetToLibrary} initialProductId={searchParams.get("productId")} />
             </motion.div>
           )}
           {activeTab === "generate" && contentType !== "campaign" && (
