@@ -430,21 +430,26 @@ function VaultPageContent() {
           } else { setAnalyzeError(data2.error || "Analysis failed"); }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
-        // Extract embedded images from PDF and upload to Image Bank
+        // Extract embedded images from PDF, classify with AI, upload to Image Bank
         if (dnaOk && isPDF) {
           try {
             setAnalyzeProgress("Extracting images from PDF...");
             const imageBlobs = await extractPdfImages(file);
             if (imageBlobs.length > 0) {
-              setAnalyzeProgress(`Uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""} to Image Bank...`);
+              setAnalyzeProgress(`Classifying & uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""}...`);
               const uploadForm = new FormData();
               imageBlobs.forEach((blob, idx) => {
                 uploadForm.append("files", blob, `${file.name.replace(/\.pdf$/i, "")}_img_${idx + 1}.png`);
               });
               uploadForm.append("_token", token());
-              uploadForm.append("category", "brand-charter");
-              await fetch(apiUrl("/vault/images"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
-              console.log(`[Vault] Uploaded ${imageBlobs.length} images from PDF to Image Bank`);
+              uploadForm.append("brand_name", vault.company_name || "");
+              const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
+              const catData = await catRes.json();
+              if (catData.success) {
+                const { uploaded, skipped } = catData.stats || {};
+                console.log(`[Vault] PDF images: ${uploaded} uploaded, ${skipped} skipped`);
+                setAnalyzeProgress(`${uploaded} image${uploaded > 1 ? "s" : ""} added to Image Bank`);
+              }
             }
           } catch (err) { console.warn("[Vault] PDF image extraction skipped:", err); }
         }
