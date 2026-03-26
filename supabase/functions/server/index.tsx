@@ -11358,8 +11358,6 @@ app.post("/calendar/deploy-all", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ error: "Not found", path: c.req.path }, 404));
-
 console.log("[boot] ORA server ready — asset-persistence, calendar-deploy, social-analytics — deploy 2026-03-20T12:00Z");
 
 // ── SOCIAL INTELLIGENCE (PARKED — waiting for dedicated social API) ──
