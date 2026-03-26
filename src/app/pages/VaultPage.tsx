@@ -526,7 +526,7 @@ function VaultPageContent() {
                 form.append("_token", token());
                 form.append("brand_name", vault.company_name || "");
                 form.append("source", "pdf-charter");
-                const res = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: form });
+                const res = await fetch(apiUrl("/vault/pdf-images-upload"), { method: "POST", headers: apiHeaders(false), body: form });
                 return res.json();
               }));
 

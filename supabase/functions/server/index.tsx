@@ -106,7 +106,7 @@ app.use("*", async (c, next) => {
 });
 
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
-app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 200, audio: "suno-start-poll" }));
+app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 201, audio: "suno-start-poll" }));
 
 // ── DEBUG ECHO — returns exactly what the server receives (no auth needed) ──
 app.all("/debug/echo", async (c) => {
@@ -7437,9 +7437,9 @@ app.post("/vault/images", async (c) => {
   }
 });
 
-// POST /vault/images/categorize-upload — Upload images from PDF with AI categorization
+// POST /vault/pdf-images-upload — Upload images from PDF with AI categorization
 // Receives images as FormData, classifies each with Mistral Vision, uploads with proper category+tags
-app.post("/vault/images/categorize-upload", async (c) => {
+app.post("/vault/pdf-images-upload", async (c) => {
   const t0 = Date.now();
   try {
     await ensureImageBankBucket();
