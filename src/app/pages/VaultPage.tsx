@@ -414,7 +414,7 @@ function VaultPageContent() {
         const ctx = canvas.getContext("2d")!;
         await page.render({ canvasContext: ctx, viewport }).promise;
         const blob = await new Promise<Blob | null>((resolve) =>
-          canvas.toBlob(resolve, "image/png", 0.9)
+          canvas.toBlob(resolve, "image/jpeg", 0.75)
         );
         if (blob && blob.size > 1000) pageBlobs.push(blob);
         page.cleanup();
@@ -503,35 +503,48 @@ function VaultPageContent() {
             const rasterBlobs = await extractPdfRasterImages(file);
             console.log(`[Vault] Raster: ${rasterBlobs.length} images (${rasterBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
 
-            // Layer 2: Render full pages as PNG (captures vector logos, pictos, usage rules, layouts)
+            // Layer 2: Render full pages as JPEG (captures vector logos, pictos, usage rules)
             setAnalyzeProgress("Rendering PDF pages for visual analysis...");
             console.log("[Vault] Layer 2: Rendering PDF pages as images...");
-            const pageBlobs = await renderPdfPages(file);
+            const pageBlobs = await renderPdfPages(file, 30, 1.5); // scale 1.5 to keep size manageable
             console.log(`[Vault] Pages: ${pageBlobs.length} rendered (${pageBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
 
-            // Combine: raster images + page renders
-            const allBlobs = [...rasterBlobs, ...pageBlobs];
+            // Upload in batches of 5 to avoid 504 timeout
+            const allBlobs: { blob: Blob; name: string }[] = [];
+            const pdfName = file.name.replace(/\.pdf$/i, "");
+            rasterBlobs.forEach((blob, idx) => allBlobs.push({ blob, name: `${pdfName}_img_${idx + 1}.png` }));
+            pageBlobs.forEach((blob, idx) => allBlobs.push({ blob, name: `${pdfName}_page_${idx + 1}.jpg` }));
+
             if (allBlobs.length > 0) {
-              setAnalyzeProgress(`Classifying & uploading ${allBlobs.length} visual asset${allBlobs.length > 1 ? "s" : ""}...`);
-              const uploadForm = new FormData();
-              const pdfName = file.name.replace(/\.pdf$/i, "");
-              rasterBlobs.forEach((blob, idx) => {
-                uploadForm.append("files", blob, `${pdfName}_img_${idx + 1}.png`);
-              });
-              pageBlobs.forEach((blob, idx) => {
-                uploadForm.append("files", blob, `${pdfName}_page_${idx + 1}.png`);
-              });
-              uploadForm.append("_token", token());
-              uploadForm.append("brand_name", vault.company_name || "");
-              uploadForm.append("source", "pdf-charter");
-              console.log(`[Vault] Uploading ${allBlobs.length} assets (${rasterBlobs.length} raster + ${pageBlobs.length} pages) to categorize-upload...`);
-              const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
-              const catData = await catRes.json();
-              console.log("[Vault] categorize-upload response:", JSON.stringify(catData).slice(0, 500));
-              if (catData.success) {
-                const { uploaded, skipped } = catData.stats || {};
-                console.log(`[Vault] PDF assets: ${uploaded} uploaded, ${skipped} skipped`);
-                setAnalyzeProgress(`${uploaded} visual asset${uploaded > 1 ? "s" : ""} added to Image Bank`);
+              const BATCH_SIZE = 5;
+              let totalUploaded = 0;
+              let totalSkipped = 0;
+              const batches = Math.ceil(allBlobs.length / BATCH_SIZE);
+              console.log(`[Vault] Uploading ${allBlobs.length} assets in ${batches} batches of ${BATCH_SIZE}...`);
+
+              for (let b = 0; b < batches; b++) {
+                const batch = allBlobs.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+                setAnalyzeProgress(`Classifying batch ${b + 1}/${batches} (${batch.length} assets)...`);
+                const uploadForm = new FormData();
+                batch.forEach(({ blob, name }) => uploadForm.append("files", blob, name));
+                uploadForm.append("_token", token());
+                uploadForm.append("brand_name", vault.company_name || "");
+                uploadForm.append("source", "pdf-charter");
+                try {
+                  const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
+                  const catData = await catRes.json();
+                  console.log(`[Vault] Batch ${b + 1}/${batches} response:`, JSON.stringify(catData).slice(0, 300));
+                  if (catData.success) {
+                    totalUploaded += catData.stats?.uploaded || 0;
+                    totalSkipped += catData.stats?.skipped || 0;
+                  }
+                } catch (batchErr: any) {
+                  console.warn(`[Vault] Batch ${b + 1} failed:`, batchErr?.message || batchErr);
+                }
+              }
+              console.log(`[Vault] PDF assets total: ${totalUploaded} uploaded, ${totalSkipped} skipped`);
+              if (totalUploaded > 0) {
+                setAnalyzeProgress(`${totalUploaded} visual asset${totalUploaded > 1 ? "s" : ""} added to Image Bank`);
               }
             } else {
               console.log("[Vault] No extractable visual assets found in PDF");
