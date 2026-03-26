@@ -1,19 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Link } from "react-router";
 import {
   Globe, Upload, Loader2, Check, X, Plus,
   Palette, Users, Target, Megaphone, Sparkles,
   Camera, Type, FileText, ArrowRight, RefreshCw,
   Instagram, Linkedin, Twitter, Facebook, Youtube,
   Building2, ShoppingBag, Eye, Paintbrush, Image as ImageIcon,
-  Layers, ChevronDown, Shield, Save,
+  Layers, ChevronDown, Shield, Save, BookOpen,
 } from "lucide-react";
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { ImageBank } from "../components/ImageBank";
-import { BrandAssets } from "../components/BrandAssets";
 
 // ── Helpers ──
 
@@ -22,28 +20,6 @@ function corsBody(token: string | null, data?: Record<string, any>): string {
 }
 
 // ── Types ──
-
-interface ProductAnchor {
-  id: string;
-  name: string;                  // Nom exact tel qu'il doit apparaître dans le voiceover
-  visual_description: string;    // Description visuelle précise
-  usp_primary: string;           // USP principale
-  usp_secondary: string | null;  // USP secondaire
-  usage_moment: string;          // Moment d'usage canonique
-  appearance_rules: {
-    min_scenes: number;                // Minimum de scènes (défaut 2)
-    must_name_in_voiceover: boolean;   // Doit être nommé explicitement
-    visible_in_final_scene: boolean;   // Visible dans la scène finale
-  };
-}
-
-interface ComplianceRules {
-  sector_restrictions: string[];           // e.g. "alcool", "armes"
-  authorized_cultural_refs: string[];      // Références culturelles autorisées
-  forbidden_cultural_refs: string[];       // Références culturelles interdites
-  mandatory_legal_mentions: string[];      // Mentions légales obligatoires
-  compliance_threshold: number;            // 0-100, défaut 85
-}
 
 interface VaultData {
   company_name: string;
@@ -61,30 +37,27 @@ interface VaultData {
   approved_terms: string[];
   forbidden_terms: string[];
   fonts: string[];
-  font_rules: string | null;
   confidence_score: number;
   source_url: string | null;
   updatedAt: string | null;
-  // ── Nouveaux champs BrandVault ──
-  product_anchors: ProductAnchor[];
-  compliance_rules: ComplianceRules | null;
-  // Charter fields
+  // Brand Charter fields
   mission: string | null;
   vision: string | null;
-  values: string[];
   personality: string | null;
-  guidelines: string | null;
   usp: string | null;
-  competitors: string[];
+  values: string | null;
+  font_usage_rules: string | null;
+  competitors: string | null;
+  brand_guidelines_text: string | null;
 }
 
 const EMPTY_VAULT: VaultData = {
   company_name: "", industry: "", tagline: null, products_services: [], target_audiences: [],
   colors: [], logo_url: null, logo_description: null, tone: null, photo_style: null,
   social_presence: [], key_messages: [], approved_terms: [], forbidden_terms: [],
-  fonts: [], font_rules: null, confidence_score: 0, source_url: null, updatedAt: null,
-  product_anchors: [], compliance_rules: null,
-  mission: null, vision: null, values: [], personality: null, guidelines: null, usp: null, competitors: [],
+  fonts: [], confidence_score: 0, source_url: null, updatedAt: null,
+  mission: null, vision: null, personality: null, usp: null, values: null,
+  font_usage_rules: null, competitors: null, brand_guidelines_text: null,
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -192,41 +165,6 @@ function mergeVaultData(existing: VaultData, incoming: Partial<VaultData>): Vaul
     };
   };
 
-  // Product anchors: merge by name (case-insensitive), incoming enriches
-  const mergeProductAnchors = (
-    a: ProductAnchor[],
-    b: ProductAnchor[]
-  ): ProductAnchor[] => {
-    const map = new Map(a.map(p => [p.name.toLowerCase(), p]));
-    for (const p of b) {
-      const key = p.name.toLowerCase();
-      if (!key) continue;
-      const ex = map.get(key);
-      if (!ex) {
-        map.set(key, p);
-      } else {
-        map.set(key, { ...ex, ...p, id: ex.id }); // preserve original ID
-      }
-    }
-    return [...map.values()];
-  };
-
-  // Compliance rules: merge arrays, incoming threshold overrides
-  const mergeComplianceRules = (
-    a: ComplianceRules | null | undefined,
-    b: ComplianceRules | null | undefined
-  ): ComplianceRules | null => {
-    if (!b) return a ?? null;
-    if (!a) return b;
-    return {
-      sector_restrictions: dedupeStrings(a.sector_restrictions || [], b.sector_restrictions || []),
-      authorized_cultural_refs: dedupeStrings(a.authorized_cultural_refs || [], b.authorized_cultural_refs || []),
-      forbidden_cultural_refs: dedupeStrings(a.forbidden_cultural_refs || [], b.forbidden_cultural_refs || []),
-      mandatory_legal_mentions: dedupeStrings(a.mandatory_legal_mentions || [], b.mandatory_legal_mentions || []),
-      compliance_threshold: b.compliance_threshold || a.compliance_threshold || 85,
-    };
-  };
-
   return {
     // Factual: keep URL scan unless empty
     company_name: existing.company_name || incoming.company_name || "",
@@ -255,26 +193,18 @@ function mergeVaultData(existing: VaultData, incoming: Partial<VaultData>): Vaul
     // Score: keep highest
     confidence_score: Math.max(existing.confidence_score || 0, incoming.confidence_score || 0),
 
-    // Timestamp: always update
-    updatedAt: existing.updatedAt,
-
-    // Product anchors: merge by name
-    product_anchors: mergeProductAnchors(existing.product_anchors || [], incoming.product_anchors || []),
-
-    // Compliance rules: merge arrays
-    compliance_rules: mergeComplianceRules(existing.compliance_rules, incoming.compliance_rules),
-
-    // Font rules: charter overrides
-    font_rules: incoming.font_rules || existing.font_rules || null,
-
-    // Charter fields: incoming overrides if present
+    // Brand Charter: incoming overrides if non-empty (charter document is authoritative)
     mission: incoming.mission || existing.mission || null,
     vision: incoming.vision || existing.vision || null,
-    values: dedupeStrings(existing.values || [], incoming.values || []),
     personality: incoming.personality || existing.personality || null,
-    guidelines: incoming.guidelines || existing.guidelines || null,
     usp: incoming.usp || existing.usp || null,
-    competitors: dedupeStrings(existing.competitors || [], incoming.competitors || []),
+    values: incoming.values || existing.values || null,
+    font_usage_rules: incoming.font_usage_rules || existing.font_usage_rules || null,
+    competitors: incoming.competitors || existing.competitors || null,
+    brand_guidelines_text: incoming.brand_guidelines_text || existing.brand_guidelines_text || null,
+
+    // Timestamp: always update
+    updatedAt: existing.updatedAt,
   };
 }
 
@@ -323,13 +253,7 @@ function VaultPageContent() {
         const data = await res.json();
         console.log("[Vault] Load response:", data.success, data.vault ? "has vault" : "no vault");
         if (data.success && data.vault) {
-          setVault((prev) => ({
-            ...EMPTY_VAULT,
-            ...prev,
-            ...data.vault,
-            product_anchors: data.vault.product_anchors || [],
-            compliance_rules: data.vault.compliance_rules || null,
-          }));
+          setVault((prev) => ({ ...prev, ...data.vault }));
           if (data.vault.source_url) setUrlInput(data.vault.source_url);
         }
       } catch (err) { console.error("[Vault] Load error:", err); }
@@ -366,16 +290,8 @@ function VaultPageContent() {
       });
       const data = await res.json();
       if (data.success && data.dna) {
-        // Smart merge: scan enriches but doesn't overwrite non-empty manual fields with null/empty
-        const merged: Record<string, any> = { ...vault };
-        for (const [key, val] of Object.entries(data.dna)) {
-          if (val === null || val === undefined) continue;
-          if (Array.isArray(val) && val.length === 0 && Array.isArray((vault as any)[key]) && (vault as any)[key].length > 0) continue;
-          if (typeof val === "string" && !val.trim() && (vault as any)[key] && typeof (vault as any)[key] === "string" && (vault as any)[key].trim()) continue;
-          merged[key] = val;
-        }
-        const updated = { ...merged, source_url: url, updatedAt: new Date().toISOString() };
-        setVault(updated as VaultData);
+        const updated = { ...vault, ...data.dna, source_url: url, updatedAt: new Date().toISOString() };
+        setVault(updated);
         setAnalyzeProgress("Saving to vault...");
         await saveVault(updated);
         setAnalyzeProgress("Saved!");
@@ -397,13 +313,28 @@ function VaultPageContent() {
     setAnalyzeProgress(`Analyzing ${file.name}...`);
     try {
       const isImage = file.type.startsWith("image/");
-      if (isImage || file.type === "application/pdf" || file.name.match(/\.(pptx?|docx?)$/i)) {
+      const isDocument = file.type === "application/pdf" || !!file.name.match(/\.(pptx?|docx?|pdf)$/i);
+      if (isImage || isDocument) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("_token", token());
+        setAnalyzeProgress(isDocument ? `Extracting brand DNA from ${file.name}...` : `Analyzing ${file.name}...`);
         const res = await fetch(apiUrl("/vault/analyze-file"), { method: "POST", headers: vaultFormHeaders(), body: formData });
         const data = await res.json();
-        if (data.success && data.extractedText) {
+
+        if (data.success && data.dna) {
+          // Direct structured DNA from backend (PDF/document charter extraction)
+          console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
+          const updated = mergeVaultData(vault, data.dna);
+          updated.updatedAt = new Date().toISOString();
+          setVault(updated);
+          setAnalyzeProgress("Saving to vault...");
+          await saveVault(updated);
+          setAnalyzeProgress("Saved!");
+          setTimeout(() => setAnalyzeProgress(""), 2000);
+        } else if (data.success && data.extractedText) {
+          // Fallback: send extracted text to /vault/analyze for structuring
+          setAnalyzeProgress("Structuring brand data...");
           const res2 = await fetch(apiUrl("/vault/analyze"), {
             method: "POST", headers: vaultHeaders(),
             body: corsBody(token(), { content: data.extractedText, sourceName: file.name, sourceType: file.type }),
@@ -459,60 +390,6 @@ function VaultPageContent() {
     setLogoUploading(false);
   };
 
-  // ── Product Anchors ──
-  const handleAddProductAnchor = () => {
-    const newAnchor: ProductAnchor = {
-      id: crypto.randomUUID(),
-      name: "",
-      visual_description: "",
-      usp_primary: "",
-      usp_secondary: null,
-      usage_moment: "",
-      appearance_rules: {
-        min_scenes: 2,
-        must_name_in_voiceover: true,
-        visible_in_final_scene: true,
-      },
-    };
-    setVault({ ...vault, product_anchors: [...(vault.product_anchors || []), newAnchor] });
-  };
-
-  const handlePromoteToAnchor = (productName: string) => {
-    const newAnchor: ProductAnchor = {
-      id: crypto.randomUUID(),
-      name: productName,
-      visual_description: "",
-      usp_primary: "",
-      usp_secondary: null,
-      usage_moment: "",
-      appearance_rules: {
-        min_scenes: 2,
-        must_name_in_voiceover: true,
-        visible_in_final_scene: true,
-      },
-    };
-    setVault({
-      ...vault,
-      product_anchors: [...(vault.product_anchors || []), newAnchor],
-      products_services: vault.products_services.filter(p => p.toLowerCase() !== productName.toLowerCase()),
-    });
-  };
-
-  // ── Compliance Rules ──
-  const handleComplianceUpdate = (field: string, value: any) => {
-    const current = vault.compliance_rules || {
-      sector_restrictions: [],
-      authorized_cultural_refs: [],
-      forbidden_cultural_refs: [],
-      mandatory_legal_mentions: [],
-      compliance_threshold: 85,
-    };
-    setVault({
-      ...vault,
-      compliance_rules: { ...current, [field]: value },
-    });
-  };
-
   // ── Drop zone ──
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
@@ -553,31 +430,17 @@ function VaultPageContent() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
         <div className="flex items-end justify-between gap-4">
           <div>
+            <p className="mb-3 uppercase" style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.1em", color: "#5E6AD2" }}>
+              Brand Intelligence
+            </p>
             <h1 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.15, color: "#E8E4DF" }}>
-              Brand Settings
+              Brand Vault
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", lineHeight: 1.55, color: "#9A9590", fontWeight: 400, maxWidth: 460 }}>
-              Your brand identity. Scan your website or drop a file to auto-configure.
+              Your brand DNA, extracted and structured. Drop a URL, a PDF, or an image.
             </p>
           </div>
           {hasData && (
-            <div className="flex items-center gap-2.5">
-              <Link to="/hub/vault/products">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer transition-all shrink-0"
-                  style={{
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    color: "#E8E4DF",
-                  }}>
-                  <ShoppingBag size={14} />
-                  Products
-                </motion.button>
-              </Link>
             <motion.button
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -603,7 +466,6 @@ function VaultPageContent() {
               )}
               {saving ? "Saving..." : saveOk ? "Saved" : "Save"}
             </motion.button>
-            </div>
           )}
         </div>
       </motion.div>
@@ -611,7 +473,7 @@ function VaultPageContent() {
       {/* ── Scanner ── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="rounded-xl p-5 mb-10"
-        style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}
+        style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}>
@@ -695,7 +557,7 @@ function VaultPageContent() {
             <motion.div
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="rounded-xl p-6 mb-6"
-              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
                   {/* Logo */}
@@ -832,76 +694,20 @@ function VaultPageContent() {
                 ) : <EmptyState />}
               </SectionCard>
 
-              {/* Products & Anchors */}
-              <div className="md:col-span-2">
-                <SectionCard icon={ShoppingBag} title="Products & Anchors"
-                  count={(vault.product_anchors?.length || 0) + vault.products_services.length}
-                  open={isOpen("products")} onToggle={() => toggleSection("products")}>
-
-                  {/* Structured Product Anchors */}
-                  {(vault.product_anchors?.length || 0) > 0 && (
-                    <div className="space-y-3 mb-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Shield size={12} style={{ color: "#5E6AD2" }} />
-                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Product Anchors
-                        </span>
-                      </div>
-                      {vault.product_anchors.map((p, i) => (
-                        <ProductAnchorCard
-                          key={p.id}
-                          product={p}
-                          onUpdate={(updated) => {
-                            const newAnchors = [...vault.product_anchors];
-                            newAnchors[i] = updated;
-                            setVault({ ...vault, product_anchors: newAnchors });
-                          }}
-                          onRemove={() => {
-                            setVault({ ...vault, product_anchors: vault.product_anchors.filter((_, j) => j !== i) });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Add Product Anchor */}
-                  <button onClick={handleAddProductAnchor}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg cursor-pointer transition-all hover:bg-[rgba(94,106,210,0.08)]"
-                    style={{ border: "1px dashed rgba(94,106,210,0.3)", background: "rgba(94,106,210,0.04)" }}>
-                    <Plus size={13} style={{ color: "#5E6AD2" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 500, color: "#5E6AD2" }}>Add Product Anchor</span>
-                  </button>
-
-                  {/* Legacy string products */}
-                  {vault.products_services.length > 0 && (
-                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                      <span style={{ fontSize: "10px", color: "#9A9590", fontWeight: 500 }}>
-                        Legacy products (click to upgrade to anchor):
+              {/* Products */}
+              <SectionCard icon={ShoppingBag} title="Products & Services" count={vault.products_services.length}
+                open={isOpen("products")} onToggle={() => toggleSection("products")}>
+                {vault.products_services.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {vault.products_services.map((p, i) => (
+                      <span key={i} className="px-2.5 py-1 rounded-lg"
+                        style={{ fontSize: "12px", fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "#E8E4DF", border: "1px solid rgba(255,255,255,0.08)" }}>
+                        {p}
                       </span>
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {vault.products_services.map((p, i) => (
-                          <button key={i} onClick={() => handlePromoteToAnchor(p)}
-                            className="px-2.5 py-1 rounded-lg cursor-pointer transition-all hover:border-[rgba(94,106,210,0.3)]"
-                            style={{ fontSize: "12px", fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "#E8E4DF", border: "1px solid rgba(255,255,255,0.08)" }}>
-                            {p} <ArrowRight size={10} className="inline ml-1" style={{ opacity: 0.5 }} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {(vault.product_anchors?.length || 0) === 0 && vault.products_services.length === 0 && <EmptyState />}
-
-                  {/* Manage Product Catalogue link */}
-                  <Link
-                    to="/hub/vault/products"
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors hover:bg-white/[0.04] mt-2"
-                    style={{ fontSize: "12px", fontWeight: 600, color: "#5E6AD2" }}>
-                    <ArrowRight size={12} />
-                    Manage Product Catalogue
-                  </Link>
-                </SectionCard>
-              </div>
+                    ))}
+                  </div>
+                ) : <EmptyState />}
+              </SectionCard>
 
               {/* Visual Style */}
               <SectionCard icon={Camera} title="Visual Style" count={vault.photo_style ? 4 : 0}
@@ -981,115 +787,6 @@ function VaultPageContent() {
                 ) : <EmptyState />}
               </SectionCard>
 
-              {/* Brand Charter — editable fields that enrich AI generation */}
-              <div className="md:col-span-2">
-                <SectionCard icon={FileText} title="Brand Charter" count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.guidelines].filter(Boolean).length + (Array.isArray(vault.values) ? vault.values.length : 0)}
-                  open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
-                  <div className="space-y-4">
-                    <p style={{ fontSize: "11px", color: "#6B6660", lineHeight: 1.5, marginBottom: 8 }}>
-                      These fields directly feed into AI generation. The more precise you are, the better the output.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Mission</label>
-                        <textarea
-                          value={vault.mission || ""}
-                          onChange={e => setVault(prev => ({ ...prev, mission: e.target.value || null }))}
-                          placeholder="Why does your brand exist? e.g. 'To make sustainable transport accessible to all'"
-                          rows={2}
-                          className="w-full px-3 py-2 rounded-lg resize-none"
-                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-                      <div>
-                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Vision</label>
-                        <textarea
-                          value={vault.vision || ""}
-                          onChange={e => setVault(prev => ({ ...prev, vision: e.target.value || null }))}
-                          placeholder="Where is your brand going? e.g. 'A world where every fleet is zero-emission'"
-                          rows={2}
-                          className="w-full px-3 py-2 rounded-lg resize-none"
-                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Personality</label>
-                        <input
-                          type="text"
-                          value={vault.personality || ""}
-                          onChange={e => setVault(prev => ({ ...prev, personality: e.target.value || null }))}
-                          placeholder="e.g. Bold, approachable, technically expert"
-                          className="w-full px-3 py-2 rounded-lg"
-                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-                      <div>
-                        <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>USP (Unique Selling Proposition)</label>
-                        <input
-                          type="text"
-                          value={vault.usp || ""}
-                          onChange={e => setVault(prev => ({ ...prev, usp: e.target.value || null }))}
-                          placeholder="e.g. The only 100% electric long-haul truck with 500km range"
-                          className="w-full px-3 py-2 rounded-lg"
-                          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Values (comma-separated)</label>
-                      <input
-                        type="text"
-                        value={Array.isArray(vault.values) ? vault.values.join(", ") : (vault.values || "")}
-                        onChange={e => setVault(prev => ({ ...prev, values: e.target.value.split(",").map(v => v.trim()).filter(Boolean) }))}
-                        placeholder="e.g. Innovation, Sustainability, Reliability, Performance"
-                        className="w-full px-3 py-2 rounded-lg"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Font usage rules</label>
-                      <input
-                        type="text"
-                        value={vault.font_rules || ""}
-                        onChange={e => setVault(prev => ({ ...prev, font_rules: e.target.value || null }))}
-                        placeholder="e.g. Poppins Bold for headings only, Inter Regular for body text, never use serif"
-                        className="w-full px-3 py-2 rounded-lg"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>Competitors (comma-separated)</label>
-                      <input
-                        type="text"
-                        value={Array.isArray(vault.competitors) ? vault.competitors.map((c: any) => typeof c === "string" ? c : c?.name || String(c)).join(", ") : (typeof vault.competitors === "string" ? vault.competitors : "")}
-                        onChange={e => setVault(prev => ({ ...prev, competitors: e.target.value.split(",").map(v => v.trim()).filter(Boolean) }))}
-                        placeholder="e.g. Volvo Trucks, Scania, DAF"
-                        className="w-full px-3 py-2 rounded-lg"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none" }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block mb-1" style={{ fontSize: "10px", fontWeight: 600, color: "#A09B96", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Brand guidelines (free text — pasted from your charter)
-                      </label>
-                      <textarea
-                        value={vault.guidelines || ""}
-                        onChange={e => setVault(prev => ({ ...prev, guidelines: e.target.value || null }))}
-                        placeholder="Paste your brand guidelines here. Be as specific as possible: tone rules, do's and don'ts, visual directions, messaging framework..."
-                        rows={5}
-                        className="w-full px-3 py-2 rounded-lg resize-none"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "12px", outline: "none", lineHeight: 1.5 }}
-                      />
-                      <p style={{ fontSize: "10px", color: "#6B6660", marginTop: 4 }}>
-                        This text is injected directly into AI prompts. Up to 1500 characters are used.
-                      </p>
-                    </div>
-                  </div>
-                </SectionCard>
-              </div>
-
               {/* Vocabulary -- full width */}
               <div className="md:col-span-2">
                 <SectionCard icon={Paintbrush} title="Vocabulary"
@@ -1136,65 +833,50 @@ function VaultPageContent() {
                 </SectionCard>
               </div>
 
-              {/* Compliance Rules -- full width */}
-              <div className="md:col-span-2">
-                <SectionCard icon={Shield} title="Compliance Rules"
-                  count={
-                    (vault.compliance_rules?.sector_restrictions?.length || 0) +
-                    (vault.compliance_rules?.mandatory_legal_mentions?.length || 0) +
-                    (vault.compliance_rules?.forbidden_cultural_refs?.length || 0)
-                  }
-                  open={isOpen("compliance")} onToggle={() => toggleSection("compliance")}>
-                  <div className="space-y-4">
-                    {/* Threshold slider */}
-                    <div className="flex items-center justify-between">
-                      <span style={{ fontSize: "12px", fontWeight: 500, color: "#E8E4DF" }}>
-                        Compliance Threshold
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <input type="range" min={50} max={100}
-                          value={vault.compliance_rules?.compliance_threshold || 85}
-                          onChange={(e) => handleComplianceUpdate("compliance_threshold", parseInt(e.target.value))}
-                          className="w-32"
-                          style={{ accentColor: "#5E6AD2" }} />
-                        <span style={{ fontSize: "14px", fontWeight: 600, color: "#5E6AD2", minWidth: 32, textAlign: "right" }}>
-                          {vault.compliance_rules?.compliance_threshold || 85}
-                        </span>
+              {/* Brand Charter -- full width */}
+              {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
+                <div className="md:col-span-2">
+                  <SectionCard icon={BookOpen} title="Brand Charter"
+                    count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
+                    open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
+                    <div className="space-y-3">
+                      <p style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>
+                        These fields directly feed into AI generation. The more precise, the better the output.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {[
+                          { label: "Mission", value: vault.mission, key: "mission" },
+                          { label: "Vision", value: vault.vision, key: "vision" },
+                          { label: "Personality", value: vault.personality, key: "personality" },
+                          { label: "USP", value: vault.usp, key: "usp" },
+                          { label: "Values", value: vault.values, key: "values" },
+                          { label: "Font usage rules", value: vault.font_usage_rules, key: "font_usage_rules" },
+                          { label: "Competitors", value: vault.competitors, key: "competitors" },
+                        ].filter(x => x.value).map((field) => (
+                          <div key={field.key} className="p-3 rounded-lg"
+                            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              {field.label}
+                            </span>
+                            <p style={{ fontSize: "12px", lineHeight: 1.55, color: "#E8E4DF", marginTop: 4 }}>{field.value}</p>
+                          </div>
+                        ))}
                       </div>
+                      {vault.brand_guidelines_text && (
+                        <div className="p-3 rounded-lg"
+                          style={{ background: "rgba(94,106,210,0.04)", border: "1px solid rgba(94,106,210,0.08)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Brand guidelines
+                          </span>
+                          <p style={{ fontSize: "12px", lineHeight: 1.6, color: "#E8E4DF", marginTop: 4, whiteSpace: "pre-line" }}>
+                            {vault.brand_guidelines_text}
+                          </p>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Tag lists */}
-                    <ComplianceTagList
-                      label="Sector Restrictions"
-                      color="#EF4444"
-                      tags={vault.compliance_rules?.sector_restrictions || []}
-                      onChange={(tags) => handleComplianceUpdate("sector_restrictions", tags)}
-                      placeholder="e.g., alcohol, weapons, gambling"
-                    />
-                    <ComplianceTagList
-                      label="Authorized Cultural References"
-                      color="#10B981"
-                      tags={vault.compliance_rules?.authorized_cultural_refs || []}
-                      onChange={(tags) => handleComplianceUpdate("authorized_cultural_refs", tags)}
-                      placeholder="e.g., mainstream cinema, sports"
-                    />
-                    <ComplianceTagList
-                      label="Forbidden Cultural References"
-                      color="#EF4444"
-                      tags={vault.compliance_rules?.forbidden_cultural_refs || []}
-                      onChange={(tags) => handleComplianceUpdate("forbidden_cultural_refs", tags)}
-                      placeholder="e.g., violence, politics"
-                    />
-                    <ComplianceTagList
-                      label="Mandatory Legal Mentions"
-                      color="#F59E0B"
-                      tags={vault.compliance_rules?.mandatory_legal_mentions || []}
-                      onChange={(tags) => handleComplianceUpdate("mandatory_legal_mentions", tags)}
-                      placeholder="e.g., Drink responsibly, 18+"
-                    />
-                  </div>
-                </SectionCard>
-              </div>
+                  </SectionCard>
+                </div>
+              )}
 
             </div>
 
@@ -1206,10 +888,7 @@ function VaultPageContent() {
               </p>
             )}
 
-            {/* Brand Assets — permanent brand elements */}
-            <BrandAssets accessToken={accessToken} />
-
-            {/* Image Bank — style reference photos */}
+            {/* Image Bank */}
             <div className="mt-8">
               <ImageBank accessToken={accessToken} />
             </div>
@@ -1249,7 +928,7 @@ function SectionCard({ icon: Icon, title, count, children, open, onToggle }: {
   return (
     <div
       className="rounded-xl overflow-hidden transition-all"
-      style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
       {/* Header */}
       <button
         onClick={onToggle}
@@ -1324,216 +1003,6 @@ function ToneGauge({ label, value }: { label: string; value: number }) {
 
 function EmptyState() {
   return <span style={{ fontSize: "12px", color: "#9A9590", fontWeight: 400 }}>Not detected yet</span>;
-}
-
-// ════════════════════════════════════════
-// PRODUCT ANCHOR CARD
-// ════════════════════════════════════════
-
-function ProductAnchorCard({ product, onUpdate, onRemove }: {
-  product: ProductAnchor;
-  onUpdate: (p: ProductAnchor) => void;
-  onRemove: () => void;
-}) {
-  const [expanded, setExpanded] = useState(!product.name);
-  const [draft, setDraft] = useState(product);
-
-  const handleSave = () => {
-    onUpdate(draft);
-    if (draft.name) setExpanded(false);
-  };
-
-  const fieldStyle: React.CSSProperties = {
-    width: "100%", padding: "8px 12px", borderRadius: 8, fontSize: "13px", fontWeight: 400,
-    color: "#E8E4DF", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-    outline: "none",
-  };
-  const labelStyle: React.CSSProperties = {
-    fontSize: "10px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4,
-  };
-
-  return (
-    <div className="rounded-lg overflow-hidden"
-      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-white/[0.02] transition-colors"
-        onClick={() => setExpanded(!expanded)}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full" style={{ background: product.name ? "#5E6AD2" : "#9A9590" }} />
-          <span style={{ fontSize: "13px", fontWeight: 500, color: "#E8E4DF" }}>
-            {product.name || "New Product Anchor"}
-          </span>
-          {product.usp_primary && (
-            <span style={{ fontSize: "11px", color: "#9A9590", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {product.usp_primary}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {product.name && (
-            <div className="flex items-center gap-1">
-              {product.appearance_rules?.must_name_in_voiceover && (
-                <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(94,106,210,0.1)", color: "#5E6AD2" }}>VO</span>
-              )}
-              <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: "rgba(94,106,210,0.1)", color: "#5E6AD2" }}>
-                {product.appearance_rules?.min_scenes || 2}+ scenes
-              </span>
-            </div>
-          )}
-          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-            <ChevronDown size={13} style={{ color: "#9A9590" }} />
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Expanded form */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }} className="overflow-hidden">
-            <div className="px-4 pb-4 space-y-3" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-              <div className="pt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <div style={labelStyle}>Product Name *</div>
-                  <input style={fieldStyle} value={draft.name} placeholder="Exact name (as in voiceover)"
-                    onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                </div>
-                <div>
-                  <div style={labelStyle}>Usage Moment</div>
-                  <input style={fieldStyle} value={draft.usage_moment} placeholder="When/how it appears in the story"
-                    onChange={(e) => setDraft({ ...draft, usage_moment: e.target.value })} />
-                </div>
-                <div className="md:col-span-2">
-                  <div style={labelStyle}>Visual Description</div>
-                  <textarea style={{ ...fieldStyle, minHeight: 60, resize: "vertical" }} value={draft.visual_description}
-                    placeholder="Precise visual description (color, shape, distinctive features...)"
-                    onChange={(e) => setDraft({ ...draft, visual_description: e.target.value })} />
-                </div>
-                <div>
-                  <div style={labelStyle}>Primary USP</div>
-                  <input style={fieldStyle} value={draft.usp_primary} placeholder="Main unique selling proposition"
-                    onChange={(e) => setDraft({ ...draft, usp_primary: e.target.value })} />
-                </div>
-                <div>
-                  <div style={labelStyle}>Secondary USP</div>
-                  <input style={fieldStyle} value={draft.usp_secondary || ""} placeholder="Optional secondary USP"
-                    onChange={(e) => setDraft({ ...draft, usp_secondary: e.target.value || null })} />
-                </div>
-              </div>
-
-              {/* Appearance Rules */}
-              <div className="pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <div style={{ ...labelStyle, marginBottom: 8 }}>Appearance Rules</div>
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: "12px", color: "#9A9590" }}>Min scenes:</span>
-                    <input type="number" min={1} max={10} style={{ ...fieldStyle, width: 60, textAlign: "center", padding: "6px 8px" }}
-                      value={draft.appearance_rules.min_scenes}
-                      onChange={(e) => setDraft({ ...draft, appearance_rules: { ...draft.appearance_rules, min_scenes: parseInt(e.target.value) || 2 } })} />
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={draft.appearance_rules.must_name_in_voiceover}
-                      onChange={(e) => setDraft({ ...draft, appearance_rules: { ...draft.appearance_rules, must_name_in_voiceover: e.target.checked } })}
-                      style={{ accentColor: "#5E6AD2" }} />
-                    <span style={{ fontSize: "12px", color: "#E8E4DF" }}>Name in voiceover</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={draft.appearance_rules.visible_in_final_scene}
-                      onChange={(e) => setDraft({ ...draft, appearance_rules: { ...draft.appearance_rules, visible_in_final_scene: e.target.checked } })}
-                      style={{ accentColor: "#5E6AD2" }} />
-                    <span style={{ fontSize: "12px", color: "#E8E4DF" }}>Visible in final scene</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 pt-2">
-                <button onClick={handleSave}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-all hover:opacity-90"
-                  style={{ background: "#5E6AD2", fontSize: "12px", fontWeight: 500, color: "#FFF" }}>
-                  <Check size={12} /> Save
-                </button>
-                <button onClick={onRemove}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-all hover:bg-red-500/10"
-                  style={{ border: "1px solid rgba(239,68,68,0.2)", fontSize: "12px", fontWeight: 500, color: "#EF4444" }}>
-                  <X size={12} /> Remove
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════
-// COMPLIANCE TAG LIST
-// ════════════════════════════════════════
-
-function ComplianceTagList({ label, color, tags, onChange, placeholder }: {
-  label: string; color: string; tags: string[];
-  onChange: (tags: string[]) => void; placeholder: string;
-}) {
-  const [input, setInput] = useState("");
-
-  const handleAdd = () => {
-    const trimmed = input.trim();
-    if (trimmed && !tags.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
-      onChange([...tags, trimmed]);
-      setInput("");
-    }
-  };
-
-  const handleRemove = (index: number) => {
-    onChange(tags.filter((_, i) => i !== index));
-  };
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-        <span style={{ fontSize: "10px", fontWeight: 600, color, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          {label}
-        </span>
-        {tags.length > 0 && (
-          <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 500, background: "rgba(255,255,255,0.06)", color: "#9A9590" }}>
-            {tags.length}
-          </span>
-        )}
-      </div>
-
-      {/* Existing tags */}
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {tags.map((t, i) => (
-            <span key={i} className="flex items-center gap-1 px-2 py-0.5 rounded group"
-              style={{ fontSize: "11px", fontWeight: 500, background: `${color}12`, color, border: `1px solid ${color}25` }}>
-              {t}
-              <button onClick={() => handleRemove(i)} className="opacity-40 hover:opacity-100 cursor-pointer transition-opacity">
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Add input */}
-      <div className="flex items-center gap-2">
-        <input
-          type="text" value={input} placeholder={placeholder}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          className="flex-1 bg-transparent outline-none placeholder:text-white/15 px-3 py-1.5 rounded-lg"
-          style={{ fontSize: "12px", color: "#E8E4DF", border: "1px solid rgba(255,255,255,0.08)" }} />
-        <button onClick={handleAdd} disabled={!input.trim()}
-          className="px-3 py-1.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
-          style={{ fontSize: "11px", fontWeight: 500, color, border: `1px solid ${color}30` }}>
-          Add
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // ════════════════════════════════════════

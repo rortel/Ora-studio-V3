@@ -4729,6 +4729,61 @@ app.post("/vault/analyze-file", async (c) => {
     const isImage = fileType.startsWith("image/");
 
     let extractedText = "";
+    let structuredDna: any = null;
+
+    const isPDF = fileType === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+    const isPPT = fileType.includes("presentation") || fileType.includes("powerpoint") || /\.pptx?$/i.test(fileName);
+    const isDoc = fileType.includes("document") || fileType.includes("word") || /\.docx?$/i.test(fileName);
+
+    // ── Brand charter extraction prompt (structured JSON output) ──
+    const charterSystemPrompt = `You are an elite brand analyst. Analyze this brand guidelines document (brand book / charte graphique) and extract EVERY piece of brand data into structured JSON.
+Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
+
+{
+  "company_name": "string — official brand name",
+  "industry": "string — sector/industry",
+  "tagline": "string — main tagline/signature or null",
+  "products_services": ["string — products or services mentioned"],
+  "target_audiences": [{ "name": "string — segment name", "description": "string — 1-2 sentences" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter", "role": "primary|secondary|accent|background|text" }],
+  "logo_description": "string — describe logo shape, style, variants, rules",
+  "tone": {
+    "formality": 1-10,
+    "confidence": 1-10,
+    "warmth": 1-10,
+    "humor": 1-10,
+    "primary_tone": "string — main tone",
+    "adjectives": ["5-8 brand personality adjectives"]
+  },
+  "photo_style": {
+    "framing": "string — photo framing guidelines",
+    "mood": "string — photo mood/atmosphere",
+    "lighting": "string — lighting direction",
+    "subjects": "string — typical subjects"
+  },
+  "fonts": ["string — font family names with weights if specified"],
+  "font_usage_rules": "string — which font for titles, body, data, etc.",
+  "key_messages": ["string — core messages, slogans, claims (4-8)"],
+  "approved_terms": ["string — brand-approved vocabulary (10-20)"],
+  "forbidden_terms": ["string — words/styles to avoid (5-15)"],
+  "mission": "string — brand mission statement or null",
+  "vision": "string — brand vision statement or null",
+  "personality": "string — 3-5 personality traits comma-separated or null",
+  "usp": "string — unique selling proposition or null",
+  "values": "string — brand values comma-separated or null",
+  "competitors": "string — known competitors comma-separated or null",
+  "brand_guidelines_text": "string — condensed brand rules: dos and don'ts, logo rules, color rules, visual territory rules (max 1500 chars)",
+  "confidence_score": 0-100
+}
+
+Rules:
+- Extract ALL hex color codes you can find (CMYK → convert to hex, Pantone → approximate hex). Include color names from the document.
+- For tone values: infer from the brand's voice, vocabulary, and positioning. Integers 1-10.
+- Extract EVERY font mentioned (with weight variants if listed).
+- For brand_guidelines_text: condense the key dos/don'ts, logo usage rules, color usage rules, typography rules, and visual territory rules.
+- RESPOND IN THE SAME LANGUAGE as the document.
+- confidence_score: 80-100 for a full brand book, 50-70 for partial guidelines.
+- If you cannot determine a value, use null — never invent data.`;
 
     if (isImage) {
       // Vision analysis via APIPod (GPT-4o vision)
@@ -4763,6 +4818,121 @@ app.post("/vault/analyze-file", async (c) => {
           console.log(`[vault/analyze-file] Vision failed: ${vRes.status}`);
         }
       } catch (e) { console.log(`[vault/analyze-file] Vision error: ${e}`); }
+
+    } else if (isPDF || isPPT || isDoc) {
+      // ── Document: extract text + structured brand DNA via Mistral document understanding ──
+      console.log(`[vault/analyze-file] Document → Mistral document understanding...`);
+
+      // Step 1: Try regex text extraction for PDFs (fast, gets raw text)
+      if (isPDF) {
+        const textDecoder = new TextDecoder("utf-8", { fatal: false });
+        const rawText = textDecoder.decode(arrayBuffer);
+        const readable = rawText.match(/[\x20-\x7E\xA0-\xFF]{4,}/g) || [];
+        const filtered = readable.filter((s: string) => !s.match(/^[\/\\<>{}()\[\]%#&]+$/) && s.length > 5).join(" ");
+        extractedText = filtered.slice(0, 20000);
+        console.log(`[vault/analyze-file] PDF regex text: ${extractedText.length} chars`);
+      }
+
+      // Step 2: Send document to Mistral for structured brand extraction
+      if (fileSize < 10 * 1024 * 1024) {
+        try {
+          const bytes = new Uint8Array(arrayBuffer);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const docBase64 = btoa(binary);
+          const mimeType = isPDF ? "application/pdf" : fileType;
+
+          console.log(`[vault/analyze-file] Sending ${(fileSize/1024).toFixed(0)}KB document to Mistral...`);
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 120_000);
+
+          const mistralKey = Deno.env.get("MISTRAL_API_KEY");
+          const res = await fetch(`${MISTRAL_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
+            body: JSON.stringify({
+              model: "mistral-large-latest",
+              messages: [
+                { role: "system", content: charterSystemPrompt },
+                { role: "user", content: [
+                  { type: "text", text: `Analyze this brand guidelines document "${fileName}" and extract the complete structured brand profile.` },
+                  { type: "document_url", document_url: { url: `data:${mimeType};base64,${docBase64}` } },
+                ] },
+              ],
+              max_tokens: 4000,
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+            }),
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+
+          if (res.ok) {
+            const data = await res.json();
+            const raw = data.choices?.[0]?.message?.content || "";
+            console.log(`[vault/analyze-file] Mistral doc response: ${raw.length} chars`);
+            if (raw) {
+              try {
+                const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+                const match = cleaned.match(/\{[\s\S]*\}/);
+                structuredDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
+                console.log(`[vault/analyze-file] Structured DNA extracted: ${structuredDna.company_name}, ${structuredDna.colors?.length || 0} colors, ${structuredDna.fonts?.length || 0} fonts`);
+                // Use AI text as extractedText if regex extraction was poor
+                if (!extractedText || extractedText.length < 200) {
+                  extractedText = raw;
+                }
+              } catch (parseErr) {
+                console.log(`[vault/analyze-file] JSON parse failed: ${parseErr}, using raw as text`);
+                if (raw.length > extractedText.length) extractedText = raw;
+              }
+            }
+          } else {
+            console.log(`[vault/analyze-file] Mistral doc error: ${res.status} ${(await res.text()).slice(0, 200)}`);
+          }
+        } catch (e: any) {
+          if (e?.name === "AbortError") {
+            console.log(`[vault/analyze-file] Mistral doc timeout (120s)`);
+          } else {
+            console.log(`[vault/analyze-file] Mistral doc error: ${e?.message || e}`);
+          }
+        }
+      }
+
+      // Step 3: If no structured DNA yet but we have extracted text, try GPT-4o for structuring
+      if (!structuredDna && extractedText.length > 200) {
+        console.log(`[vault/analyze-file] Fallback: structuring ${extractedText.length} chars of text with GPT-4o...`);
+        try {
+          const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: apipodHeaders(),
+            body: JSON.stringify({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: charterSystemPrompt },
+                { role: "user", content: `Analyze brand guidelines from "${fileName}":\n\n${extractedText.slice(0, 16000)}` },
+              ],
+              max_tokens: 4000,
+              temperature: 0.1,
+            }),
+          });
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const raw = aiData.choices?.[0]?.message?.content || "";
+            if (raw) {
+              try {
+                const match = raw.match(/\{[\s\S]*\}/);
+                structuredDna = match ? JSON.parse(match[0]) : null;
+                if (structuredDna) console.log(`[vault/analyze-file] GPT-4o fallback DNA: ${structuredDna.company_name}`);
+              } catch { console.log(`[vault/analyze-file] GPT-4o fallback parse failed`); }
+            }
+          }
+        } catch (e) { console.log(`[vault/analyze-file] GPT-4o fallback error: ${e}`); }
+      }
+
+      if (!extractedText || extractedText.length < 20) {
+        extractedText = `[Document uploaded: ${fileName} (${fileType}, ${(fileSize/1024).toFixed(0)}KB)]`;
+      }
+
     } else {
       // Text-based file: read as text
       try {
@@ -4779,8 +4949,8 @@ app.post("/vault/analyze-file", async (c) => {
       return c.json({ success: false, error: "Could not extract content from file" }, 400);
     }
 
-    console.log(`[vault/analyze-file] DONE in ${Date.now() - t0}ms`);
-    return c.json({ success: true, extractedText, fileName, fileType });
+    console.log(`[vault/analyze-file] DONE in ${Date.now() - t0}ms, hasDna=${!!structuredDna}`);
+    return c.json({ success: true, extractedText, fileName, fileType, ...(structuredDna ? { dna: structuredDna } : {}) });
 
   } catch (err: any) {
     console.log(`[vault/analyze-file] ERROR: ${err?.message || err}`);
@@ -7981,7 +8151,9 @@ app.post("/zernio/ensure-profile", async (c) => {
 });
 
 // GET /zernio/accounts — List connected social accounts (SCOPED to user's profile)
-app.get("/zernio/accounts", async (c) => {
+// GET & POST /zernio/accounts — list social accounts
+// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
+async function listZernioAccounts(c: any) {
   try {
     const user = await requireAuth(c);
     const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
@@ -7991,7 +8163,9 @@ app.get("/zernio/accounts", async (c) => {
     console.log(`[zernio] List accounts error: ${err}`);
     return c.json({ success: false, error: String(err) }, 500);
   }
-});
+}
+app.get("/zernio/accounts", listZernioAccounts);
+app.post("/zernio/accounts/list", listZernioAccounts);
 
 // GET /zernio/profiles — List profiles (only this user's)
 app.get("/zernio/profiles", async (c) => {
@@ -11354,8 +11528,6 @@ app.post("/calendar/deploy-all", async (c) => {
   }
 });
 
-// NOTE: catch-all 404 moved to END of file (after all route registrations)
-
 console.log("[boot] ORA server ready — asset-persistence, calendar-deploy, social-analytics — deploy 2026-03-20T12:00Z");
 
 // ── SOCIAL INTELLIGENCE (PARKED — waiting for dedicated social API) ──
@@ -12432,15 +12604,13 @@ app.get("/generate/cl-hf-status", async (c) => {
   }
 });
 
-// (end of legacy dead code block)
-}
-
 // ══════════════════════════════════════════════════════════════
 // PRODUCTS CRUD
 // ══════════════════════════════════════════════════════════════
 
-// GET /products — list all products for user
-app.get("/products", async (c) => {
+// GET & POST /products/list — list all products for user
+// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
+async function listProducts(c: any) {
   try {
     const user = await getUser(c);
     if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
@@ -12467,7 +12637,9 @@ app.get("/products", async (c) => {
   } catch (err) {
     return c.json({ success: false, error: `${err}` }, 401);
   }
-});
+}
+app.get("/products", listProducts);
+app.post("/products/list", listProducts);
 
 // POST /products — create a product
 app.post("/products", async (c) => {
@@ -12558,83 +12730,21 @@ app.post("/products/scrape-url", async (c) => {
     console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
 
     // Fetch the page HTML
-    let rawHtml = "";
+    let html = "";
     try {
       const pageRes = await fetch(url, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
         signal: AbortSignal.timeout(10_000),
       });
-      rawHtml = await pageRes.text();
+      html = await pageRes.text();
+      // Strip scripts/styles, keep text content
+      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
     } catch (fetchErr) {
       console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
     }
 
-    if (!rawHtml) return c.json({ success: false, error: "Could not fetch page" }, 422);
-
-    // ── Extract image URLs BEFORE stripping HTML tags ──
-    const imageUrls: string[] = [];
-    const baseUrl = new URL(url).origin;
-    const seen = new Set<string>();
-
-    // 1. og:image meta tags (highest priority — usually the hero product image)
-    for (const m of rawHtml.matchAll(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi)) {
-      if (m[1]) imageUrls.push(m[1]);
-    }
-    // Also match reversed attribute order
-    for (const m of rawHtml.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi)) {
-      if (m[1]) imageUrls.push(m[1]);
-    }
-
-    // 2. JSON-LD Product schema images
-    for (const m of rawHtml.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
-      try {
-        const ld = JSON.parse(m[1]);
-        const items = Array.isArray(ld) ? ld : [ld];
-        for (const item of items) {
-          if (item["@type"] === "Product" || item["@type"]?.includes?.("Product")) {
-            const imgs = item.image ? (Array.isArray(item.image) ? item.image : [item.image]) : [];
-            for (const img of imgs) {
-              if (typeof img === "string") imageUrls.push(img);
-              else if (img?.url) imageUrls.push(img.url);
-            }
-          }
-        }
-      } catch { /* ignore malformed JSON-LD */ }
-    }
-
-    // 3. <img> tags — filter for product-sized images (skip icons/logos)
-    for (const m of rawHtml.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*/gi)) {
-      const src = m[1];
-      if (!src || src.startsWith("data:")) continue;
-      // Skip tiny images (icons, tracking pixels) — check width/height attributes
-      const widthMatch = m[0].match(/width=["']?(\d+)/i);
-      const heightMatch = m[0].match(/height=["']?(\d+)/i);
-      const w = widthMatch ? parseInt(widthMatch[1]) : 999;
-      const h = heightMatch ? parseInt(heightMatch[1]) : 999;
-      if (w < 100 || h < 100) continue;
-      // Skip common non-product patterns
-      if (/logo|icon|favicon|sprite|badge|rating|star|arrow|banner-ad/i.test(src)) continue;
-      imageUrls.push(src);
-    }
-
-    // Deduplicate and resolve relative URLs, limit to 10
-    const finalImageUrls: string[] = [];
-    for (const raw of imageUrls) {
-      try {
-        const absolute = raw.startsWith("http") ? raw : new URL(raw, baseUrl).href;
-        if (!seen.has(absolute)) {
-          seen.add(absolute);
-          finalImageUrls.push(absolute);
-          if (finalImageUrls.length >= 10) break;
-        }
-      } catch { /* skip malformed URLs */ }
-    }
-
-    console.log(`[products/scrape-url] Found ${finalImageUrls.length} product images`);
-
-    // Strip scripts/styles/tags for text extraction
-    let html = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-    html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
+    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
 
     // Use AI to extract product info
     const key = Deno.env.get("APIPOD_API_KEY");
@@ -12679,8 +12789,8 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
       extracted = {};
     }
 
-    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}, images=${finalImageUrls.length}`);
-    return c.json({ success: true, product: { ...extracted, imageUrls: finalImageUrls } });
+    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
+    return c.json({ success: true, product: extracted });
   } catch (err) {
     console.log(`[products/scrape-url] Error:`, err);
     return c.json({ success: false, error: `${err}` }, 500);
@@ -12690,17 +12800,13 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
 // POST /products/:id/images — upload images to a product
 app.post("/products/:id/images", async (c) => {
   try {
-    // FormData: must read _token from form fields since body is not JSON
-    const formData = await c.req.formData();
-    const formToken = formData.get("_token");
-    if (formToken) c.set("userToken", formToken);
-
     const user = await getUser(c);
     if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
     const productId = c.req.param("id");
     const existing = await kv.get(`product:${user.id}:${productId}`);
     if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
 
+    const formData = await c.req.formData();
     const files = formData.getAll("files");
     const sb = supabaseAdmin();
     const newImages: any[] = [];
@@ -12775,118 +12881,5 @@ app.delete("/products/:id/images/:imageId", async (c) => {
   }
 });
 
-// POST /products/:id/images-from-urls — download remote images and store them
-app.post("/products/:id/images-from-urls", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const productId = c.req.param("id");
-    const existing = await kv.get(`product:${user.id}:${productId}`);
-    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
-
-    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
-    const urls: string[] = (body.imageUrls || []).slice(0, 10);
-    if (!urls.length) return c.json({ success: true, images: [], product: existing });
-
-    const sb = supabaseAdmin();
-    const newImages: any[] = [];
-
-    for (const imgUrl of urls) {
-      try {
-        const imgRes = await fetch(imgUrl, {
-          headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
-          signal: AbortSignal.timeout(8_000),
-        });
-        if (!imgRes.ok) continue;
-        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-        if (!contentType.startsWith("image/")) continue;
-        const arrayBuffer = await imgRes.arrayBuffer();
-        if (arrayBuffer.byteLength < 1000 || arrayBuffer.byteLength > 10_000_000) continue; // skip < 1KB or > 10MB
-
-        const ext = contentType.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "jpg";
-        const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
-
-        const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
-          contentType,
-          upsert: true,
-        });
-        if (uploadErr) { console.log(`[products/images-from-urls] Upload error:`, uploadErr); continue; }
-
-        const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
-        newImages.push({
-          id: imageId,
-          fileName: imgUrl.split("/").pop()?.split("?")[0] || `image.${ext}`,
-          storagePath,
-          signedUrl: urlData?.signedUrl || null,
-          sourceUrl: imgUrl,
-          fileSize: arrayBuffer.byteLength,
-          mimeType: contentType,
-          uploadedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.log(`[products/images-from-urls] Skip ${imgUrl.slice(0, 80)}: ${err}`);
-      }
-    }
-
-    const updated = {
-      ...existing,
-      images: [...(existing.images || []), ...newImages],
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(`product:${user.id}:${productId}`, updated);
-    console.log(`[products/images-from-urls] Added ${newImages.length}/${urls.length} images to product ${productId}`);
-    return c.json({ success: true, images: newImages, product: updated });
-  } catch (err) {
-    console.log(`[products/images-from-urls] Error:`, err);
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// ══════════════════════════════════════════════════════════════
-// POST list variants — JWT >8KB, too large for URL query or HTTP header
-// These duplicate GET handlers but accept _token in the request body
-// ══════════════════════════════════════════════════════════════
-
-// POST /products/list — list products (same as GET /products)
-app.post("/products/list", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const items = await kv.getByPrefix(`product:${user.id}:`);
-    const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
-    products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
-    const sb = supabaseAdmin();
-    for (const product of products) {
-      if (product.images?.length > 0) {
-        for (const img of product.images) {
-          if (img.storagePath) {
-            try {
-              const { data } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(img.storagePath, 86400);
-              if (data?.signedUrl) img.signedUrl = data.signedUrl;
-            } catch { /* keep existing URL */ }
-          }
-        }
-      }
-    }
-
-    return c.json({ success: true, products });
-  } catch (err) {
-    return c.json({ success: false, error: `${err}` }, 401);
-  }
-});
-
-// POST /zernio/accounts/list — list social accounts (same as GET /zernio/accounts)
-app.post("/zernio/accounts/list", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
-    return c.json({ success: true, accounts, profileId });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
-
-// ── CATCH-ALL 404 — MUST be the LAST route registered ──
-app.all("*", (c) => c.json({ error: "Not found", path: c.req.path }, 404));
+// (end of legacy dead code block)
+}
