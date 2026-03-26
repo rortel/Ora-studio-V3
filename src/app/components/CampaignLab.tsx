@@ -354,27 +354,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     fetchVault(1).finally(() => setVaultLoading(false));
   }, [getAuthToken]);
 
-  // ── Load products on mount ──
-  useEffect(() => {
-    const token = getAuthToken();
-    if (!token || productsLoadedRef.current) return;
-    productsLoadedRef.current = true;
-    setProductsLoading(true);
-    serverGet("/products/list")
-      .then((data: any) => {
-        if (data.success && data.products) {
-          setProducts(data.products);
-          // Auto-select product if initialProductId is provided
-          if (initialProductId) {
-            const match = data.products.find((p: any) => p.id === initialProductId);
-            if (match) handleSelectProduct(match);
-          }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setProductsLoading(false));
-  }, [getAuthToken, serverGet]);
-
   // ── Select a product: auto-fill brief + add product images as ref photos ──
   const handleSelectProduct = useCallback((product: any) => {
     setSelectedProduct(product);
@@ -397,6 +376,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
     toast.success(`Product "${product.name}" loaded`);
   }, []);
+
+  // ── Load products on mount ──
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || productsLoadedRef.current) return;
+    productsLoadedRef.current = true;
+    setProductsLoading(true);
+    serverGet("/products/list")
+      .then((data: any) => {
+        if (data.success && data.products) {
+          setProducts(data.products);
+          // Auto-select product if initialProductId is provided
+          if (initialProductId) {
+            const match = data.products.find((p: any) => p.id === initialProductId);
+            if (match) handleSelectProduct(match);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setProductsLoading(false));
+  }, [getAuthToken, serverGet, handleSelectProduct, initialProductId]);
 
   // ── Photo upload handlers (client-side only — used as visual ref in UI) ──
   const handlePhotoDrop = useCallback((e: React.DragEvent) => {
