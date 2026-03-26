@@ -2595,39 +2595,48 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </button>
                 </div>
                 {[
-                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected },
-                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected },
-                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: (() => {}) as any },
-                ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti }) => (
+                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected, canMulti: true },
+                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected, canMulti: true },
+                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: null as any, canMulti: false },
+                ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
                   <div key={label}>
                     <div className="flex items-center gap-1.5 mb-2">
                       <Icon size={11} style={{ color: "#5C5856" }} />
                       <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
-                      {multiModelEnabled && multiSelected.length > 1 && (
-                        <span style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600 }}>
-                          {multiSelected.length} models
+                      {multiModelEnabled && canMulti && multiSelected.length > 1 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600, background: "rgba(59,79,196,0.1)" }}>
+                          {multiSelected.length} models selected
                         </span>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {models.map(m => {
-                        const active = multiModelEnabled && multiSelected.length > 0
-                          ? multiSelected.includes(m.id)
-                          : value === m.id;
+                        const isMulti = multiModelEnabled && canMulti;
+                        const active = isMulti ? multiSelected.includes(m.id) : value === m.id;
                         return (
                           <button
                             key={m.id}
                             onClick={() => {
-                              if (multiModelEnabled && setMulti !== (() => {})) {
-                                // Multi-select: toggle model
+                              if (isMulti && setMulti) {
+                                // Multi-select mode: toggle this model on/off
                                 if (multiSelected.includes(m.id)) {
-                                  if (multiSelected.length > 1) setMulti(multiSelected.filter((id: string) => id !== m.id));
+                                  if (multiSelected.length > 1) {
+                                    setMulti(multiSelected.filter((id: string) => id !== m.id));
+                                    // Update primary to first remaining
+                                    const remaining = multiSelected.filter((id: string) => id !== m.id);
+                                    set(remaining[0]);
+                                  }
                                 } else {
-                                  if (multiSelected.length < 3) setMulti([...multiSelected, m.id]);
-                                  else toast.error("Max 3 models per category");
+                                  if (multiSelected.length < 3) {
+                                    setMulti([...multiSelected, m.id]);
+                                  } else {
+                                    toast.error("Max 3 models — deselect one first");
+                                  }
                                 }
+                              } else {
+                                // Single-select mode
+                                set(m.id);
                               }
-                              set(m.id);
                             }}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
                             style={{
@@ -2637,6 +2646,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                               fontSize: "12px", fontWeight: active ? 600 : 400,
                             }}
                           >
+                            {active && isMulti && <Check size={10} />}
                             {m.label}
                             <span style={{ fontSize: "9px", fontWeight: 500, opacity: 0.7 }}>{m.badge}</span>
                           </button>
