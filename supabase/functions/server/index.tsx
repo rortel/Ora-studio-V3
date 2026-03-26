@@ -12558,21 +12558,83 @@ app.post("/products/scrape-url", async (c) => {
     console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
 
     // Fetch the page HTML
-    let html = "";
+    let rawHtml = "";
     try {
       const pageRes = await fetch(url, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
         signal: AbortSignal.timeout(10_000),
       });
-      html = await pageRes.text();
-      // Strip scripts/styles, keep text content
-      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
+      rawHtml = await pageRes.text();
     } catch (fetchErr) {
       console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
     }
 
-    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
+    if (!rawHtml) return c.json({ success: false, error: "Could not fetch page" }, 422);
+
+    // ── Extract image URLs BEFORE stripping HTML tags ──
+    const imageUrls: string[] = [];
+    const baseUrl = new URL(url).origin;
+    const seen = new Set<string>();
+
+    // 1. og:image meta tags (highest priority — usually the hero product image)
+    for (const m of rawHtml.matchAll(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi)) {
+      if (m[1]) imageUrls.push(m[1]);
+    }
+    // Also match reversed attribute order
+    for (const m of rawHtml.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/gi)) {
+      if (m[1]) imageUrls.push(m[1]);
+    }
+
+    // 2. JSON-LD Product schema images
+    for (const m of rawHtml.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+      try {
+        const ld = JSON.parse(m[1]);
+        const items = Array.isArray(ld) ? ld : [ld];
+        for (const item of items) {
+          if (item["@type"] === "Product" || item["@type"]?.includes?.("Product")) {
+            const imgs = item.image ? (Array.isArray(item.image) ? item.image : [item.image]) : [];
+            for (const img of imgs) {
+              if (typeof img === "string") imageUrls.push(img);
+              else if (img?.url) imageUrls.push(img.url);
+            }
+          }
+        }
+      } catch { /* ignore malformed JSON-LD */ }
+    }
+
+    // 3. <img> tags — filter for product-sized images (skip icons/logos)
+    for (const m of rawHtml.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*/gi)) {
+      const src = m[1];
+      if (!src || src.startsWith("data:")) continue;
+      // Skip tiny images (icons, tracking pixels) — check width/height attributes
+      const widthMatch = m[0].match(/width=["']?(\d+)/i);
+      const heightMatch = m[0].match(/height=["']?(\d+)/i);
+      const w = widthMatch ? parseInt(widthMatch[1]) : 999;
+      const h = heightMatch ? parseInt(heightMatch[1]) : 999;
+      if (w < 100 || h < 100) continue;
+      // Skip common non-product patterns
+      if (/logo|icon|favicon|sprite|badge|rating|star|arrow|banner-ad/i.test(src)) continue;
+      imageUrls.push(src);
+    }
+
+    // Deduplicate and resolve relative URLs, limit to 10
+    const finalImageUrls: string[] = [];
+    for (const raw of imageUrls) {
+      try {
+        const absolute = raw.startsWith("http") ? raw : new URL(raw, baseUrl).href;
+        if (!seen.has(absolute)) {
+          seen.add(absolute);
+          finalImageUrls.push(absolute);
+          if (finalImageUrls.length >= 10) break;
+        }
+      } catch { /* skip malformed URLs */ }
+    }
+
+    console.log(`[products/scrape-url] Found ${finalImageUrls.length} product images`);
+
+    // Strip scripts/styles/tags for text extraction
+    let html = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+    html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
 
     // Use AI to extract product info
     const key = Deno.env.get("APIPOD_API_KEY");
@@ -12617,8 +12679,8 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
       extracted = {};
     }
 
-    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
-    return c.json({ success: true, product: extracted });
+    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}, images=${finalImageUrls.length}`);
+    return c.json({ success: true, product: { ...extracted, imageUrls: finalImageUrls } });
   } catch (err) {
     console.log(`[products/scrape-url] Error:`, err);
     return c.json({ success: false, error: `${err}` }, 500);
@@ -12705,6 +12767,74 @@ app.delete("/products/:id/images/:imageId", async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.log(`[products/images] Delete error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/:id/images-from-urls — download remote images and store them
+app.post("/products/:id/images-from-urls", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const urls: string[] = (body.imageUrls || []).slice(0, 10);
+    if (!urls.length) return c.json({ success: true, images: [], product: existing });
+
+    const sb = supabaseAdmin();
+    const newImages: any[] = [];
+
+    for (const imgUrl of urls) {
+      try {
+        const imgRes = await fetch(imgUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!imgRes.ok) continue;
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+        if (!contentType.startsWith("image/")) continue;
+        const arrayBuffer = await imgRes.arrayBuffer();
+        if (arrayBuffer.byteLength < 1000 || arrayBuffer.byteLength > 10_000_000) continue; // skip < 1KB or > 10MB
+
+        const ext = contentType.split("/")[1]?.split(";")[0]?.replace("jpeg", "jpg") || "jpg";
+        const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
+
+        const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
+          contentType,
+          upsert: true,
+        });
+        if (uploadErr) { console.log(`[products/images-from-urls] Upload error:`, uploadErr); continue; }
+
+        const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
+        newImages.push({
+          id: imageId,
+          fileName: imgUrl.split("/").pop()?.split("?")[0] || `image.${ext}`,
+          storagePath,
+          signedUrl: urlData?.signedUrl || null,
+          sourceUrl: imgUrl,
+          fileSize: arrayBuffer.byteLength,
+          mimeType: contentType,
+          uploadedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.log(`[products/images-from-urls] Skip ${imgUrl.slice(0, 80)}: ${err}`);
+      }
+    }
+
+    const updated = {
+      ...existing,
+      images: [...(existing.images || []), ...newImages],
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images-from-urls] Added ${newImages.length}/${urls.length} images to product ${productId}`);
+    return c.json({ success: true, images: newImages, product: updated });
+  } catch (err) {
+    console.log(`[products/images-from-urls] Error:`, err);
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
