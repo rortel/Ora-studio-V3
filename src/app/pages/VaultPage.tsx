@@ -247,12 +247,17 @@ function VaultPageContent() {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
+  const charterRef = useRef<HTMLDivElement>(null);
   const { accessToken } = useAuth();
   const tokenRef = useRef(accessToken);
   useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
 
   const token = () => tokenRef.current || "";
-  const hasData = !!vault.company_name;
+  const hasData = !!(
+    vault.company_name || vault.colors.length || vault.fonts.length ||
+    vault.mission || vault.vision || vault.values || vault.key_messages.length ||
+    vault.tone || vault.brand_guidelines_text
+  );
 
   // ── Load ──
   useEffect(() => {
@@ -318,19 +323,66 @@ function VaultPageContent() {
     setAnalyzing(false);
   };
 
-  // ── Extract text from PDF client-side using pdf.js ──
-  const extractPdfText = async (file: File): Promise<string> => {
+  // ── Extract embedded images from PDF using pdf.js ──
+  const extractPdfImages = async (file: File): Promise<Blob[]> => {
     const pdfjsLib = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const pages: string[] = [];
+    const blobs: Blob[] = [];
+    const MIN_SIZE = 50; // skip tiny decorative images
+
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const text = content.items.map((item: any) => item.str).join(" ");
-      if (text.trim()) pages.push(text);
+      const ops = await page.getOperatorList();
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        if (
+          ops.fnArray[j] === pdfjsLib.OPS.paintImageXObject ||
+          ops.fnArray[j] === pdfjsLib.OPS.paintJpegXObject
+        ) {
+          const imgName = ops.argsArray[j][0];
+          try {
+            const imgData: any = await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
+              page.objs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
+            });
+            if (!imgData || !imgData.width || !imgData.height) continue;
+            if (imgData.width < MIN_SIZE || imgData.height < MIN_SIZE) continue;
+
+            // Convert pixel data to PNG blob via canvas
+            const canvas = document.createElement("canvas");
+            canvas.width = imgData.width;
+            canvas.height = imgData.height;
+            const ctx = canvas.getContext("2d")!;
+            const src = imgData.data;
+
+            // pdf.js image data can be RGB (kind=2) or RGBA (kind=3) or grayscale (kind=1)
+            const imgDataObj = ctx.createImageData(imgData.width, imgData.height);
+            const dest = imgDataObj.data;
+            const hasAlpha = imgData.kind === 3 || src.length === imgData.width * imgData.height * 4;
+            if (hasAlpha) {
+              dest.set(src);
+            } else {
+              // RGB → RGBA
+              const pixelCount = imgData.width * imgData.height;
+              for (let p = 0; p < pixelCount; p++) {
+                dest[p * 4] = src[p * 3];
+                dest[p * 4 + 1] = src[p * 3 + 1];
+                dest[p * 4 + 2] = src[p * 3 + 2];
+                dest[p * 4 + 3] = 255;
+              }
+            }
+            ctx.putImageData(imgDataObj, 0, 0);
+
+            const blob = await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob(resolve, "image/png")
+            );
+            if (blob && blob.size > 500) blobs.push(blob); // skip degenerate blobs
+          } catch { /* skip unreadable images */ }
+        }
+      }
+      page.cleanup();
     }
-    return pages.join("\n\n");
+    return blobs;
   };
 
   // ── Analyze File ──
@@ -342,33 +394,8 @@ function VaultPageContent() {
       const isImage = file.type.startsWith("image/");
       const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       const isDocument = isPDF || !!file.name.match(/\.(pptx?|docx?)$/i);
-      const isLargeFile = file.size > 15 * 1024 * 1024; // 15MB
 
-      // Large PDFs: extract text client-side, then send text to /vault/analyze
-      if (isPDF && isLargeFile) {
-        console.log(`[Vault] Large PDF (${(file.size / 1024 / 1024).toFixed(1)}MB), extracting text client-side...`);
-        setAnalyzeProgress(`Reading ${file.name} (${(file.size / 1024 / 1024).toFixed(0)}MB)...`);
-        const pdfText = await extractPdfText(file);
-        console.log(`[Vault] PDF text extracted: ${pdfText.length} chars`);
-        if (pdfText.length < 50) { setAnalyzeError("Could not extract text from PDF"); setAnalyzing(false); return; }
-        setAnalyzeProgress("Extracting brand DNA...");
-        const res = await fetch(apiUrl("/vault/analyze"), {
-          method: "POST", headers: vaultHeaders(),
-          body: corsBody(token(), { content: pdfText, sourceName: file.name, sourceType: "pdf-charter" }),
-        });
-        const data = await res.json();
-        if (data.success && data.dna) {
-          const updated = mergeVaultData(vault, data.dna);
-          updated.updatedAt = new Date().toISOString();
-          setVault(updated);
-          setAnalyzeProgress("Saving to vault...");
-          await saveVault(updated);
-          setAnalyzeProgress("Saved!");
-          setTimeout(() => setAnalyzeProgress(""), 2000);
-        } else { setAnalyzeError(data.error || "Analysis failed"); }
-
-      } else if (isImage || isDocument) {
-        // Small files: upload to backend for processing
+      if (isImage || isDocument) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("_token", token());
@@ -376,6 +403,8 @@ function VaultPageContent() {
         const res = await fetch(apiUrl("/vault/analyze-file"), { method: "POST", headers: vaultFormHeaders(), body: formData });
         const data = await res.json();
 
+        let dnaOk = false;
+        console.log("[Vault] analyze-file response:", JSON.stringify(data).slice(0, 500));
         if (data.success && data.dna) {
           console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
           const updated = mergeVaultData(vault, data.dna);
@@ -383,8 +412,7 @@ function VaultPageContent() {
           setVault(updated);
           setAnalyzeProgress("Saving to vault...");
           await saveVault(updated);
-          setAnalyzeProgress("Saved!");
-          setTimeout(() => setAnalyzeProgress(""), 2000);
+          dnaOk = true;
         } else if (data.success && data.extractedText) {
           setAnalyzeProgress("Structuring brand data...");
           const res2 = await fetch(apiUrl("/vault/analyze"), {
@@ -398,10 +426,40 @@ function VaultPageContent() {
             setVault(updated);
             setAnalyzeProgress("Saving to vault...");
             await saveVault(updated);
-            setAnalyzeProgress("Saved!");
-            setTimeout(() => setAnalyzeProgress(""), 2000);
+            dnaOk = true;
           } else { setAnalyzeError(data2.error || "Analysis failed"); }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
+
+        // Extract embedded images from PDF, classify with AI, upload to Image Bank
+        if (dnaOk && isPDF) {
+          try {
+            setAnalyzeProgress("Extracting images from PDF...");
+            const imageBlobs = await extractPdfImages(file);
+            if (imageBlobs.length > 0) {
+              setAnalyzeProgress(`Classifying & uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""}...`);
+              const uploadForm = new FormData();
+              imageBlobs.forEach((blob, idx) => {
+                uploadForm.append("files", blob, `${file.name.replace(/\.pdf$/i, "")}_img_${idx + 1}.png`);
+              });
+              uploadForm.append("_token", token());
+              uploadForm.append("brand_name", vault.company_name || "");
+              const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
+              const catData = await catRes.json();
+              if (catData.success) {
+                const { uploaded, skipped } = catData.stats || {};
+                console.log(`[Vault] PDF images: ${uploaded} uploaded, ${skipped} skipped`);
+                setAnalyzeProgress(`${uploaded} image${uploaded > 1 ? "s" : ""} added to Image Bank`);
+              }
+            }
+          } catch (err) { console.warn("[Vault] PDF image extraction skipped:", err); }
+        }
+
+        if (dnaOk) {
+          setAnalyzeProgress("Saved!");
+          setTimeout(() => setAnalyzeProgress(""), 2000);
+          // Scroll to Brand Charter if it now has data
+          setTimeout(() => charterRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 400);
+        }
       } else {
         const text = await file.text();
         if (text.length < 50) { setAnalyzeError("File content too short"); setAnalyzing(false); return; }
@@ -565,7 +623,7 @@ function VaultPageContent() {
           }}>
           <Upload size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
           <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>
-            Drop or click -- PDF, PPT, DOCX, images
+            Drop or click — PDF, PPT, DOCX, images (max 20 MB)
           </span>
           <input ref={fileRef} type="file" className="hidden"
             accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.jpg,.jpeg,.png,.webp,.svg"
@@ -887,7 +945,7 @@ function VaultPageContent() {
 
               {/* Brand Charter -- full width */}
               {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
-                <div className="md:col-span-2">
+                <div ref={charterRef} className="md:col-span-2">
                   <SectionCard icon={BookOpen} title="Brand Charter"
                     count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
                     open={isOpen("charter")} onToggle={() => toggleSection("charter")}>

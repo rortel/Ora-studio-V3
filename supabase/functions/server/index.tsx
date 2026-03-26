@@ -4742,47 +4742,50 @@ Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 {
   "company_name": "string — official brand name",
   "industry": "string — sector/industry",
-  "tagline": "string — main tagline/signature or null",
+  "tagline": "string — main tagline/brand signature or null",
   "products_services": ["string — products or services mentioned"],
-  "target_audiences": [{ "name": "string — segment name", "description": "string — 1-2 sentences" }],
-  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter", "role": "primary|secondary|accent|background|text" }],
-  "logo_description": "string — describe logo shape, style, variants, rules",
+  "target_audiences": [{ "name": "string — market segment or sector", "description": "string — 1-2 sentences about the audience" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter (e.g. 'Violet Adaltra')", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
+  "logo_description": "string — logo shape, style, ALL variants (color, B&W, monochrome, avatar), protection zone rules, forbidden usages, angle/rotation rules if any",
   "tone": {
     "formality": 1-10,
     "confidence": 1-10,
     "warmth": 1-10,
     "humor": 1-10,
     "primary_tone": "string — main tone",
-    "adjectives": ["5-8 brand personality adjectives"]
+    "adjectives": ["string — 5-10 brand personality adjectives from the charter"]
   },
   "photo_style": {
-    "framing": "string — photo framing guidelines",
+    "framing": "string — composition rules (e.g. double images, interconnected visuals, specific grid)",
     "mood": "string — photo mood/atmosphere",
-    "lighting": "string — lighting direction",
-    "subjects": "string — typical subjects"
+    "lighting": "string — lighting direction and quality",
+    "subjects": "string — typical subjects and how they are combined"
   },
-  "fonts": ["string — font family names with weights if specified"],
-  "font_usage_rules": "string — which font for titles, body, data, etc.",
-  "key_messages": ["string — core messages, slogans, claims (4-8)"],
-  "approved_terms": ["string — brand-approved vocabulary (10-20)"],
-  "forbidden_terms": ["string — words/styles to avoid (5-15)"],
-  "mission": "string — brand mission statement or null",
-  "vision": "string — brand vision statement or null",
-  "personality": "string — 3-5 personality traits comma-separated or null",
-  "usp": "string — unique selling proposition or null",
-  "values": "string — brand values comma-separated or null",
-  "competitors": "string — known competitors comma-separated or null",
-  "brand_guidelines_text": "string — condensed brand rules: dos and don'ts, logo rules, color rules, visual territory rules (max 1500 chars)",
+  "fonts": ["string — each font family + ALL weight variants mentioned (e.g. 'Lexend Light', 'Lexend Regular', 'Lexend Bold')"],
+  "font_usage_rules": "string — EXACT mapping: which font+weight for titles, body text, data/numbers, signature, etc.",
+  "key_messages": ["string — EVERY core message, slogan, claim, and brand signature mentioned (6-12)"],
+  "approved_terms": ["string — ALL brand-approved vocabulary: terms the brand uses to describe itself, its values, its positioning (15-30)"],
+  "forbidden_terms": ["string — words/styles/tones to NEVER use, derived from don'ts and brand positioning (10-20)"],
+  "mission": "string — brand mission statement, in the document's own words",
+  "vision": "string — brand vision statement, in the document's own words",
+  "personality": "string — 3-6 personality traits comma-separated, using the charter's exact terms",
+  "usp": "string — unique selling proposition: what makes this brand different from competitors",
+  "values": "string — brand values comma-separated, using the charter's exact terms",
+  "competitors": "string — competitors mentioned or implied, comma-separated, or null",
+  "brand_guidelines_text": "string — COMPREHENSIVE compliance rules (max 2000 chars): logo dos/don'ts, color usage rules (allowed gradients, forbidden combinations), typography rules, signature placement rules, visual territory rules, image treatment rules. Be specific and actionable.",
   "confidence_score": 0-100
 }
 
-Rules:
-- Extract ALL hex color codes you can find (CMYK → convert to hex, Pantone → approximate hex). Include color names from the document.
-- For tone values: infer from the brand's voice, vocabulary, and positioning. Integers 1-10.
-- Extract EVERY font mentioned (with weight variants if listed).
-- For brand_guidelines_text: condense the key dos/don'ts, logo usage rules, color usage rules, typography rules, and visual territory rules.
+CRITICAL RULES:
+- Extract ALL hex color codes. Convert CMYK/Pantone/RGB to hex. Include gradients as separate entries with role "gradient" and describe the gradient in the name (e.g. "Dégradé violet-bleu #463A86→#2F1BEC").
+- Assign PRECISE color roles: primary (main brand color), secondary (supporting), accent (highlight/CTA), neutral (grays, black, white). Every color must have a role.
+- For tone values: infer from the brand's voice, vocabulary, and positioning. Be precise — humor=1 if no humor at all.
+- Extract EVERY font weight variant separately (Light, Regular, Medium, Bold, ExtraBold, etc.).
+- For approved_terms: include technical vocabulary, brand-specific expressions, narrative territory words. Be exhaustive.
+- For forbidden_terms: derive from the charter's don'ts, anti-positioning, and brand territory boundaries.
+- For brand_guidelines_text: include logo protection zones, rotation/angle rules, minimum sizes, forbidden deformations, color-on-background rules, signature placement.
 - RESPOND IN THE SAME LANGUAGE as the document.
-- confidence_score: 80-100 for a full brand book, 50-70 for partial guidelines.
+- confidence_score: 85-100 for a complete brand book, 60-80 for partial guidelines.
 - If you cannot determine a value, use null — never invent data.`;
 
     if (isImage) {
@@ -4834,7 +4837,7 @@ Rules:
       }
 
       // Step 2: Send document to Mistral for structured brand extraction
-      if (fileSize < 10 * 1024 * 1024) {
+      if (fileSize < 20 * 1024 * 1024) {
         try {
           const bytes = new Uint8Array(arrayBuffer);
           let binary = "";
@@ -7377,6 +7380,131 @@ app.post("/vault/images", async (c) => {
     console.log(`[image-bank] POST /vault/images ERROR: ${msg}`);
     if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
     return c.json({ success: false, error: `Image upload failed: ${msg}` }, 500);
+  }
+});
+
+// POST /vault/images/categorize-upload — Upload images from PDF with AI categorization
+// Receives images as FormData, classifies each with Mistral Vision, uploads with proper category+tags
+app.post("/vault/images/categorize-upload", async (c) => {
+  const t0 = Date.now();
+  try {
+    await ensureImageBankBucket();
+    const sb = supabaseAdmin();
+    const formData = await c.req.formData();
+    const files = formData.getAll("files") as File[];
+    const formToken = formData.get("_token") as string || "";
+    const brandName = formData.get("brand_name") as string || "";
+
+    const jwt = decodeJwtPayload(formToken);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    if (!files || files.length === 0) return c.json({ success: false, error: "No files" }, 400);
+    console.log(`[categorize-upload] ${files.length} images from PDF for user=${userId}, brand=${brandName}`);
+
+    const categorizationPrompt = `You are a brand asset classifier. Analyze this image extracted from a brand guidelines PDF${brandName ? ` for "${brandName}"` : ""}.
+
+Classify it into EXACTLY ONE category and assign relevant tags.
+
+Categories (pick ONE):
+- "logo" — brand logo, logomark, logotype, monogram, avatar, favicon, any logo variant (color, B&W, reversed)
+- "graphic-element" — icons, pictograms, market/sector icons, decorative brand elements
+- "pattern" — patterns, textures, tube/cable motifs, repeated graphical elements
+- "overlay" — brand lockup (logo + signature combined), watermark, stamp, badge
+- "photo-mood" — aspirational/mood photography, lifestyle, abstract, atmospheric
+- "photo-product" — product photos, technical images, cable/connector close-ups
+- "photo-people" — people at work, team, human interactions, workplace
+- "mockup" — business card mockup, press ad, vehicle branding, signage, stationery
+- "color-swatch" — color palette display, gradient swatch, color chart
+- "typography-sample" — font specimen, typography layout example
+- "diagram" — organizational chart, process flow, infographic
+- "skip" — blank page, page number, tiny decorative element, noise, or unidentifiable
+
+Return ONLY a JSON object: {"category":"...","tags":["tag1","tag2"],"description":"one-line description"}
+No markdown, no backticks, no explanation.`;
+
+    const results: any[] = [];
+
+    for (const file of files) {
+      const allowed = ["image/png", "image/jpeg", "image/webp"];
+      if (!allowed.includes(file.type)) { results.push({ fileName: file.name, success: false, error: "unsupported type" }); continue; }
+      if (file.size > 10 * 1024 * 1024) { results.push({ fileName: file.name, success: false, error: "too large" }); continue; }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+
+      // ── AI categorization via Mistral Vision ──
+      let category = "general";
+      let tags: string[] = [];
+      let description = "";
+      try {
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        const imgBase64 = btoa(binary);
+        const dataUri = `data:${file.type};base64,${imgBase64}`;
+
+        const res = await fetchWithTimeout(`${MISTRAL_BASE}/chat/completions`, {
+          method: "POST",
+          headers: mistralHeaders(),
+          body: JSON.stringify({
+            model: "pixtral-large-latest",
+            messages: [{ role: "user", content: [
+              { type: "text", text: categorizationPrompt },
+              { type: "image_url", image_url: { url: dataUri } },
+            ] }],
+            max_tokens: 300,
+            temperature: 0.1,
+            response_format: { type: "json_object" },
+          }),
+        }, 30_000);
+
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.choices?.[0]?.message?.content || "";
+          try {
+            const parsed = JSON.parse(raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim());
+            if (parsed.category === "skip") {
+              console.log(`[categorize-upload] Skipping ${file.name}: classified as skip`);
+              results.push({ fileName: file.name, success: false, skipped: true, reason: parsed.description || "skip" });
+              continue;
+            }
+            category = parsed.category || "general";
+            tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+            description = parsed.description || "";
+            console.log(`[categorize-upload] ${file.name} → ${category} [${tags.join(",")}]`);
+          } catch { console.log(`[categorize-upload] Parse failed for ${file.name}, using defaults`); }
+        }
+      } catch (e: any) { console.log(`[categorize-upload] Vision error for ${file.name}: ${e.message}`); }
+
+      // ── Upload to storage ──
+      const imageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const ext = file.name.split(".").pop() || "png";
+      const storagePath = `${userId}/${imageId}.${ext}`;
+
+      const { error: uploadError } = await sb.storage
+        .from(IMAGE_BANK_BUCKET)
+        .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false });
+      if (uploadError) { results.push({ fileName: file.name, success: false, error: uploadError.message }); continue; }
+
+      const meta = {
+        id: imageId, fileName: file.name, storagePath, fileSize: file.size,
+        mimeType: file.type, tags, category, description, source: "pdf-charter",
+        uploadedAt: new Date().toISOString(),
+      };
+      await kv.set(`brand-image:${userId}:${imageId}`, meta);
+
+      const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(storagePath, 86400);
+      results.push({ ...meta, success: true, signedUrl: signedData?.signedUrl || "" });
+    }
+
+    const ok = results.filter(r => r.success).length;
+    const skipped = results.filter(r => r.skipped).length;
+    console.log(`[categorize-upload] Done: ${ok} uploaded, ${skipped} skipped, ${results.length - ok - skipped} failed (${Date.now() - t0}ms)`);
+    return c.json({ success: true, images: results, stats: { uploaded: ok, skipped, failed: results.length - ok - skipped } });
+
+  } catch (err: any) {
+    console.log(`[categorize-upload] ERROR: ${err?.message || err}`);
+    return c.json({ success: false, error: `Categorized upload failed: ${err?.message || err}` }, 500);
   }
 });
 
