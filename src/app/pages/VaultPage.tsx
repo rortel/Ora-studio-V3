@@ -440,11 +440,31 @@ function VaultPageContent() {
         formData.append("file", file);
         formData.append("_token", token());
         setAnalyzeProgress(isDocument ? `Extracting brand DNA from ${file.name}...` : `Analyzing ${file.name}...`);
-        const res = await fetch(apiUrl("/vault/analyze-file"), { method: "POST", headers: vaultFormHeaders(), body: formData });
-        const data = await res.json();
+        let data: any = {};
+        let analyzeFileFailed = false;
+        try {
+          const res = await fetch(apiUrl("/vault/analyze-file"), { method: "POST", headers: vaultFormHeaders(), body: formData });
+          data = await res.json();
+          console.log("[Vault] analyze-file response:", JSON.stringify(data).slice(0, 500));
+          if (!res.ok || !data.success) analyzeFileFailed = true;
+        } catch (err: any) {
+          console.warn("[Vault] analyze-file network error:", err?.message);
+          analyzeFileFailed = true;
+        }
+
+        // If backend failed entirely (546 WORKER_LIMIT, timeout, etc.) → fall back to client-side PDF extraction
+        if (analyzeFileFailed && isPDF) {
+          console.log("[Vault] analyze-file failed, falling back to client-side pdf.js extraction...");
+          setAnalyzeProgress("Reading PDF text (client-side)...");
+          const clientText = await extractPdfText(file);
+          console.log(`[Vault] pdf.js fallback extracted ${clientText.length} chars`);
+          if (clientText.length >= 50) {
+            data = { success: true, extractedText: clientText };
+            analyzeFileFailed = false;
+          }
+        }
 
         let dnaOk = false;
-        console.log("[Vault] analyze-file response:", JSON.stringify(data).slice(0, 500));
         if (data.success && data.dna) {
           console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
           const updated = mergeVaultData(vault, data.dna);
@@ -526,7 +546,7 @@ function VaultPageContent() {
                 form.append("_token", token());
                 form.append("brand_name", vault.company_name || "");
                 form.append("source", "pdf-charter");
-                const res = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: form });
+                const res = await fetch(apiUrl("/vault/pdf-images-upload"), { method: "POST", headers: apiHeaders(false), body: form });
                 return res.json();
               }));
 
