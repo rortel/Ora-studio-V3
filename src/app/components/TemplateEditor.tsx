@@ -184,8 +184,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     setVaultAssetsLoading(true);
 
     // Fetch brand assets
-    const fetchAssets = fetch(`${API_BASE}/brand-assets?_token=${encodeURIComponent(token)}`, {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    const fetchAssets = fetch(`${API_BASE}/brand-assets`, {
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "X-User-Token": token },
       signal: AbortSignal.timeout(10_000),
     }).then(r => r.json()).then(data => {
       if (data.success && data.assets) setBrandAssets(data.assets);

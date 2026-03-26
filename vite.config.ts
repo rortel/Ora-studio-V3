@@ -24,4 +24,22 @@ export default defineConfig({
   optimizeDeps: {
     include: ['konva', 'react-konva'],
   },
+
+  build: {
+    commonjsOptions: {
+      include: [/konva/, /react-konva/, /node_modules/],
+      transformMixedEsModules: true,
+    },
+    rollupOptions: {
+      output: {
+        // Isolate konva/react-konva into their own chunk so CJS → ESM wrappers
+        // are fully initialised before any component code runs (fixes TDZ crash).
+        manualChunks(id) {
+          if (id.includes('node_modules/konva') || id.includes('node_modules/react-konva')) {
+            return 'konva';
+          }
+        },
+      },
+    },
+  },
 })
