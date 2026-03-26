@@ -74,8 +74,8 @@ export function ProductsPage() {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/products?_token=${accessToken}`, {
-        headers: apiHeaders(false),
+      const res = await fetch(`${API_BASE}/products`, {
+        headers: { ...apiHeaders(false), "X-User-Token": accessToken },
       });
       const data = await res.json();
       if (data.success && data.products) {
