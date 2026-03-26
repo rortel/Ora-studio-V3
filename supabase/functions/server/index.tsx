@@ -7437,9 +7437,9 @@ app.post("/vault/images", async (c) => {
   }
 });
 
-// POST /vault/pdf-images-upload — Upload images from PDF with AI categorization
-// Receives images as FormData, classifies each with Mistral Vision, uploads with proper category+tags
-app.post("/vault/pdf-images-upload", async (c) => {
+// POST /vault/pdf-images-upload (+ legacy alias /vault/images/categorize-upload)
+// Upload images from PDF with AI categorization
+const handlePdfImagesUpload = async (c: any) => {
   const t0 = Date.now();
   try {
     await ensureImageBankBucket();
@@ -7568,7 +7568,9 @@ No markdown, no backticks, no explanation.`;
     console.log(`[categorize-upload] ERROR: ${err?.message || err}`);
     return c.json({ success: false, error: `Categorized upload failed: ${err?.message || err}` }, 500);
   }
-});
+};
+app.post("/vault/pdf-images-upload", handlePdfImagesUpload);
+app.post("/vault/images/categorize-upload", handlePdfImagesUpload);
 
 // GET /vault/images — List all brand images for the user (with signed URLs)
 app.get("/vault/images", async (c) => {
