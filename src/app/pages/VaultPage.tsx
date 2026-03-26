@@ -440,20 +440,32 @@ function VaultPageContent() {
           }
           if (textForAI.length < 50) { setAnalyzeError("Could not extract text from file"); }
           else {
-            setAnalyzeProgress("Structuring brand data...");
-            const res2 = await fetch(apiUrl("/vault/analyze"), {
-              method: "POST", headers: vaultHeaders(),
-              body: corsBody(token(), { content: textForAI.slice(0, 30000), sourceName: file.name, sourceType: "pdf-charter" }),
-            });
-            const data2 = await res2.json();
-            if (data2.success && data2.dna) {
-              const updated = mergeVaultData(vault, data2.dna);
-              updated.updatedAt = new Date().toISOString();
-              setVault(updated);
-              setAnalyzeProgress("Saving to vault...");
-              await saveVault(updated);
-              dnaOk = true;
-            } else { setAnalyzeError(data2.error || "Analysis failed"); }
+            console.log(`[Vault] Sending ${textForAI.length} chars to /vault/analyze (sourceType=pdf-charter)...`);
+            setAnalyzeProgress("Structuring brand data (this may take 30-60s)...");
+            try {
+              const res2 = await fetch(apiUrl("/vault/analyze"), {
+                method: "POST", headers: vaultHeaders(),
+                body: corsBody(token(), { content: textForAI.slice(0, 25000), sourceName: file.name, sourceType: "pdf-charter" }),
+              });
+              console.log(`[Vault] /vault/analyze status: ${res2.status}`);
+              const data2 = await res2.json();
+              console.log("[Vault] /vault/analyze response:", JSON.stringify(data2).slice(0, 300));
+              if (data2.success && data2.dna) {
+                console.log(`[Vault] Charter DNA: ${data2.dna.company_name}, colors=${data2.dna.colors?.length}, mission=${!!data2.dna.mission}`);
+                const updated = mergeVaultData(vault, data2.dna);
+                updated.updatedAt = new Date().toISOString();
+                setVault(updated);
+                setAnalyzeProgress("Saving to vault...");
+                await saveVault(updated);
+                dnaOk = true;
+              } else {
+                console.error("[Vault] /vault/analyze failed:", data2.error);
+                setAnalyzeError(data2.error || "Analysis failed");
+              }
+            } catch (fetchErr: any) {
+              console.error("[Vault] /vault/analyze fetch error:", fetchErr?.message || fetchErr);
+              setAnalyzeError(`Analysis request failed: ${fetchErr?.message || "network error"}`);
+            }
           }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
