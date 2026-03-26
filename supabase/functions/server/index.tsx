@@ -4515,7 +4515,96 @@ app.post("/vault/analyze", async (c) => {
       }
     } else if (content) {
       textToAnalyze = content;
-      console.log(`[vault/analyze] Text: ${textToAnalyze.length} chars from ${source}`);
+      console.log(`[vault/analyze] Text: ${textToAnalyze.length} chars from ${source}, type=${sourceType}`);
+
+      // ── PDF Charter: use dedicated charter prompt instead of URL prompt ──
+      if (sourceType === "pdf-charter" && textToAnalyze.length > 100) {
+        console.log(`[vault/analyze] PDF charter mode: structuring with pixtral-large...`);
+        const charterPrompt = `You are an elite brand analyst. Analyze this brand guidelines text and extract EVERY piece of brand data into structured JSON.
+Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
+
+{
+  "company_name": "string — official brand name",
+  "industry": "string — sector/industry",
+  "tagline": "string — main tagline/brand signature or null",
+  "products_services": ["string — products or services mentioned"],
+  "target_audiences": [{ "name": "string — market segment or sector", "description": "string — 1-2 sentences" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string — color name (e.g. 'Violet Adaltra')", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
+  "logo_description": "string — logo shape, style, ALL variants, protection zone rules, forbidden usages",
+  "tone": { "formality": 1-10, "confidence": 1-10, "warmth": 1-10, "humor": 1-10, "primary_tone": "string", "adjectives": ["5-10 brand personality adjectives"] },
+  "photo_style": { "framing": "string — composition rules", "mood": "string", "lighting": "string", "subjects": "string" },
+  "fonts": ["string — each font family + ALL weight variants (e.g. 'Lexend Light', 'Lexend Bold')"],
+  "font_usage_rules": "string — exact mapping: which font+weight for titles, body, data, etc.",
+  "key_messages": ["string — EVERY core message, slogan, claim (6-12)"],
+  "approved_terms": ["string — ALL brand-approved vocabulary (15-30)"],
+  "forbidden_terms": ["string — words/tones to NEVER use (10-20)"],
+  "mission": "string — mission statement in the document's own words",
+  "vision": "string — vision statement in the document's own words",
+  "personality": "string — 3-6 personality traits comma-separated",
+  "usp": "string — unique selling proposition",
+  "values": "string — brand values comma-separated",
+  "competitors": "string — competitors mentioned or null",
+  "brand_guidelines_text": "string — compliance rules (max 2000 chars): logo dos/don'ts, color rules, typography rules, signature placement",
+  "confidence_score": 0-100
+}
+
+RULES:
+- Extract ALL hex color codes (convert CMYK/Pantone/RGB to hex). Include gradients with role "gradient".
+- Assign precise color roles: primary, secondary, accent, neutral. Every color must have a role.
+- Extract EVERY font weight variant separately.
+- For approved_terms: include brand vocabulary, narrative territory words. Be exhaustive.
+- For forbidden_terms: derive from don'ts and anti-positioning.
+- RESPOND IN THE SAME LANGUAGE as the content.
+- confidence_score: 85-100 for complete brand books.`;
+
+        const mistralKey = Deno.env.get("MISTRAL_API_KEY");
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 90_000);
+        try {
+          const charterRes = await fetch(`${MISTRAL_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
+            body: JSON.stringify({
+              model: "pixtral-large-latest",
+              messages: [
+                { role: "system", content: charterPrompt },
+                { role: "user", content: `Analyze this brand guidelines document "${sourceName}" and extract the complete structured brand profile.\n\n${textToAnalyze.slice(0, 30000)}` },
+              ],
+              max_tokens: 8000,
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+            }),
+            signal: ctrl.signal,
+          });
+          clearTimeout(timer);
+
+          if (charterRes.ok) {
+            const cData = await charterRes.json();
+            const raw = cData.choices?.[0]?.message?.content || "";
+            console.log(`[vault/analyze] Charter AI response: ${raw.length} chars`);
+            try {
+              const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+              const match = cleaned.match(/\{[\s\S]*\}/);
+              const charterDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
+              console.log(`[vault/analyze] Charter DNA: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}`);
+              // Save and return
+              const existing = await kv.get(`vault:${user.id}`) || {};
+              const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
+              await kv.set(`vault:${user.id}`, merged);
+              return c.json({ success: true, dna: charterDna, vault: merged });
+            } catch (parseErr) {
+              console.log(`[vault/analyze] Charter JSON parse failed: ${parseErr}`);
+            }
+          } else {
+            console.log(`[vault/analyze] Charter AI error: ${charterRes.status} ${(await charterRes.text()).slice(0, 200)}`);
+          }
+        } catch (e: any) {
+          clearTimeout(timer);
+          console.log(`[vault/analyze] Charter AI failed: ${e?.message || e}`);
+        }
+        // If charter structuring failed, fall through to generic URL analysis below
+        console.log(`[vault/analyze] Charter structuring failed, falling back to GPT-4o...`);
+      }
     } else {
       return c.json({ success: false, error: "Provide url or content" }, 400);
     }
