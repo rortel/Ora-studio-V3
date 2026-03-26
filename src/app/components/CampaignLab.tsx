@@ -83,6 +83,7 @@ interface GeneratedAsset {
 interface CampaignLabProps {
   onAssetComplete?: (asset: any) => void;
   onSaveAssetToLibrary?: (asset: any) => void;
+  initialProductId?: string | null;
 }
 
 /* ═══════════════════════════════════
@@ -210,7 +211,7 @@ const VAULT_PILLS = [
    MAIN COMPONENT
    ═══════════════════════════════════ */
 
-export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignLabProps) {
+export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProductId }: CampaignLabProps) {
   const auth = useAuth();
   const getAuthToken = useCallback(() => auth.getAuthHeader(), [auth]);
 
@@ -361,7 +362,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     setProductsLoading(true);
     serverGet("/products/list")
       .then((data: any) => {
-        if (data.success && data.products) setProducts(data.products);
+        if (data.success && data.products) {
+          setProducts(data.products);
+          // Auto-select product if initialProductId is provided
+          if (initialProductId) {
+            const match = data.products.find((p: any) => p.id === initialProductId);
+            if (match) handleSelectProduct(match);
+          }
+        }
       })
       .catch(() => {})
       .finally(() => setProductsLoading(false));

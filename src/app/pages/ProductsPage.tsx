@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   Plus, X, Loader2, Trash2, Edit3, Upload, ArrowLeft,
   Package, DollarSign, Tag, Link as LinkIcon, List, Image as ImageIcon,
-  Check, ChevronRight, AlertCircle,
+  Check, ChevronRight, AlertCircle, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
@@ -77,6 +77,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "CAD", "AUD", "JPY"];
 
 export function ProductsPage() {
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
 
   // Data
   const [products, setProducts] = useState<Product[]>([]);
@@ -454,6 +455,13 @@ export function ProductsPage() {
                           </span>
                         </div>
                       )}
+
+                      {/* Generate Campaign CTA */}
+                      <button onClick={() => navigate(`/hub?type=campaign&productId=${product.id}`)}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-all hover:opacity-90 text-[12px] font-semibold mb-2"
+                        style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff" }}>
+                        <Sparkles size={13} /> Generate Campaign
+                      </button>
 
                       {/* Actions */}
                       <div className="flex items-center gap-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
