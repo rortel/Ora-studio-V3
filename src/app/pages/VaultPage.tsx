@@ -6,12 +6,24 @@ import {
   Camera, Type, FileText, ArrowRight, RefreshCw,
   Instagram, Linkedin, Twitter, Facebook, Youtube,
   Building2, ShoppingBag, Eye, Paintbrush, Image as ImageIcon,
-  Layers, ChevronDown, Shield, Save,
+  Layers, ChevronDown, Shield, Save, BookOpen,
 } from "lucide-react";
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { ImageBank } from "../components/ImageBank";
+// PDF.js loaded lazily (only when a PDF is dropped)
+let pdfjsReady: typeof import("pdfjs-dist") | null = null;
+async function getPdfJs() {
+  if (pdfjsReady) return pdfjsReady;
+  const lib = await import("pdfjs-dist");
+  lib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.mjs",
+    import.meta.url,
+  ).toString();
+  pdfjsReady = lib;
+  return lib;
+}
 
 // ── Helpers ──
 
@@ -40,6 +52,15 @@ interface VaultData {
   confidence_score: number;
   source_url: string | null;
   updatedAt: string | null;
+  // Brand Charter fields
+  mission: string | null;
+  vision: string | null;
+  personality: string | null;
+  usp: string | null;
+  values: string | null;
+  font_usage_rules: string | null;
+  competitors: string | null;
+  brand_guidelines_text: string | null;
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -47,6 +68,8 @@ const EMPTY_VAULT: VaultData = {
   colors: [], logo_url: null, logo_description: null, tone: null, photo_style: null,
   social_presence: [], key_messages: [], approved_terms: [], forbidden_terms: [],
   fonts: [], confidence_score: 0, source_url: null, updatedAt: null,
+  mission: null, vision: null, personality: null, usp: null, values: null,
+  font_usage_rules: null, competitors: null, brand_guidelines_text: null,
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -182,6 +205,16 @@ function mergeVaultData(existing: VaultData, incoming: Partial<VaultData>): Vaul
     // Score: keep highest
     confidence_score: Math.max(existing.confidence_score || 0, incoming.confidence_score || 0),
 
+    // Brand Charter: incoming overrides if non-empty (charter document is authoritative)
+    mission: incoming.mission || existing.mission || null,
+    vision: incoming.vision || existing.vision || null,
+    personality: incoming.personality || existing.personality || null,
+    usp: incoming.usp || existing.usp || null,
+    values: incoming.values || existing.values || null,
+    font_usage_rules: incoming.font_usage_rules || existing.font_usage_rules || null,
+    competitors: incoming.competitors || existing.competitors || null,
+    brand_guidelines_text: incoming.brand_guidelines_text || existing.brand_guidelines_text || null,
+
     // Timestamp: always update
     updatedAt: existing.updatedAt,
   };
@@ -285,6 +318,68 @@ function VaultPageContent() {
     setAnalyzing(false);
   };
 
+  // ── Extract embedded images from PDF using pdf.js ──
+  const extractPdfImages = async (file: File): Promise<Blob[]> => {
+    const pdfjsLib = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const blobs: Blob[] = [];
+    const MIN_SIZE = 50; // skip tiny decorative images
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const ops = await page.getOperatorList();
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        if (
+          ops.fnArray[j] === pdfjsLib.OPS.paintImageXObject ||
+          ops.fnArray[j] === pdfjsLib.OPS.paintJpegXObject
+        ) {
+          const imgName = ops.argsArray[j][0];
+          try {
+            const imgData: any = await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
+              page.objs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
+            });
+            if (!imgData || !imgData.width || !imgData.height) continue;
+            if (imgData.width < MIN_SIZE || imgData.height < MIN_SIZE) continue;
+
+            // Convert pixel data to PNG blob via canvas
+            const canvas = document.createElement("canvas");
+            canvas.width = imgData.width;
+            canvas.height = imgData.height;
+            const ctx = canvas.getContext("2d")!;
+            const src = imgData.data;
+
+            // pdf.js image data can be RGB (kind=2) or RGBA (kind=3) or grayscale (kind=1)
+            const imgDataObj = ctx.createImageData(imgData.width, imgData.height);
+            const dest = imgDataObj.data;
+            const hasAlpha = imgData.kind === 3 || src.length === imgData.width * imgData.height * 4;
+            if (hasAlpha) {
+              dest.set(src);
+            } else {
+              // RGB → RGBA
+              const pixelCount = imgData.width * imgData.height;
+              for (let p = 0; p < pixelCount; p++) {
+                dest[p * 4] = src[p * 3];
+                dest[p * 4 + 1] = src[p * 3 + 1];
+                dest[p * 4 + 2] = src[p * 3 + 2];
+                dest[p * 4 + 3] = 255;
+              }
+            }
+            ctx.putImageData(imgDataObj, 0, 0);
+
+            const blob = await new Promise<Blob | null>((resolve) =>
+              canvas.toBlob(resolve, "image/png")
+            );
+            if (blob && blob.size > 500) blobs.push(blob); // skip degenerate blobs
+          } catch { /* skip unreadable images */ }
+        }
+      }
+      page.cleanup();
+    }
+    return blobs;
+  };
+
   // ── Analyze File ──
   const handleFile = async (file: File) => {
     setAnalyzing(true);
@@ -292,13 +387,28 @@ function VaultPageContent() {
     setAnalyzeProgress(`Analyzing ${file.name}...`);
     try {
       const isImage = file.type.startsWith("image/");
-      if (isImage || file.type === "application/pdf" || file.name.match(/\.(pptx?|docx?)$/i)) {
+      const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const isDocument = isPDF || !!file.name.match(/\.(pptx?|docx?)$/i);
+
+      if (isImage || isDocument) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("_token", token());
+        setAnalyzeProgress(isDocument ? `Extracting brand DNA from ${file.name}...` : `Analyzing ${file.name}...`);
         const res = await fetch(apiUrl("/vault/analyze-file"), { method: "POST", headers: vaultFormHeaders(), body: formData });
         const data = await res.json();
-        if (data.success && data.extractedText) {
+
+        let dnaOk = false;
+        if (data.success && data.dna) {
+          console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
+          const updated = mergeVaultData(vault, data.dna);
+          updated.updatedAt = new Date().toISOString();
+          setVault(updated);
+          setAnalyzeProgress("Saving to vault...");
+          await saveVault(updated);
+          dnaOk = true;
+        } else if (data.success && data.extractedText) {
+          setAnalyzeProgress("Structuring brand data...");
           const res2 = await fetch(apiUrl("/vault/analyze"), {
             method: "POST", headers: vaultHeaders(),
             body: corsBody(token(), { content: data.extractedText, sourceName: file.name, sourceType: file.type }),
@@ -310,10 +420,33 @@ function VaultPageContent() {
             setVault(updated);
             setAnalyzeProgress("Saving to vault...");
             await saveVault(updated);
-            setAnalyzeProgress("Saved!");
-            setTimeout(() => setAnalyzeProgress(""), 2000);
+            dnaOk = true;
           } else { setAnalyzeError(data2.error || "Analysis failed"); }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
+
+        // Extract embedded images from PDF and upload to Image Bank
+        if (dnaOk && isPDF) {
+          try {
+            setAnalyzeProgress("Extracting images from PDF...");
+            const imageBlobs = await extractPdfImages(file);
+            if (imageBlobs.length > 0) {
+              setAnalyzeProgress(`Uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""} to Image Bank...`);
+              const uploadForm = new FormData();
+              imageBlobs.forEach((blob, idx) => {
+                uploadForm.append("files", blob, `${file.name.replace(/\.pdf$/i, "")}_img_${idx + 1}.png`);
+              });
+              uploadForm.append("_token", token());
+              uploadForm.append("category", "brand-charter");
+              await fetch(apiUrl("/vault/images"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
+              console.log(`[Vault] Uploaded ${imageBlobs.length} images from PDF to Image Bank`);
+            }
+          } catch (err) { console.warn("[Vault] PDF image extraction skipped:", err); }
+        }
+
+        if (dnaOk) {
+          setAnalyzeProgress("Saved!");
+          setTimeout(() => setAnalyzeProgress(""), 2000);
+        }
       } else {
         const text = await file.text();
         if (text.length < 50) { setAnalyzeError("File content too short"); setAnalyzing(false); return; }
@@ -477,7 +610,7 @@ function VaultPageContent() {
           }}>
           <Upload size={14} style={{ color: "rgba(255,255,255,0.25)" }} />
           <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", fontWeight: 400 }}>
-            Drop or click -- PDF, PPT, DOCX, images
+            Drop or click — PDF, PPT, DOCX, images (max 20 MB)
           </span>
           <input ref={fileRef} type="file" className="hidden"
             accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.jpg,.jpeg,.png,.webp,.svg"
@@ -796,6 +929,51 @@ function VaultPageContent() {
                   </div>
                 </SectionCard>
               </div>
+
+              {/* Brand Charter -- full width */}
+              {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
+                <div className="md:col-span-2">
+                  <SectionCard icon={BookOpen} title="Brand Charter"
+                    count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
+                    open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
+                    <div className="space-y-3">
+                      <p style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>
+                        These fields directly feed into AI generation. The more precise, the better the output.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {[
+                          { label: "Mission", value: vault.mission, key: "mission" },
+                          { label: "Vision", value: vault.vision, key: "vision" },
+                          { label: "Personality", value: vault.personality, key: "personality" },
+                          { label: "USP", value: vault.usp, key: "usp" },
+                          { label: "Values", value: vault.values, key: "values" },
+                          { label: "Font usage rules", value: vault.font_usage_rules, key: "font_usage_rules" },
+                          { label: "Competitors", value: vault.competitors, key: "competitors" },
+                        ].filter(x => x.value).map((field) => (
+                          <div key={field.key} className="p-3 rounded-lg"
+                            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              {field.label}
+                            </span>
+                            <p style={{ fontSize: "12px", lineHeight: 1.55, color: "#E8E4DF", marginTop: 4 }}>{field.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {vault.brand_guidelines_text && (
+                        <div className="p-3 rounded-lg"
+                          style={{ background: "rgba(94,106,210,0.04)", border: "1px solid rgba(94,106,210,0.08)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "#5E6AD2", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Brand guidelines
+                          </span>
+                          <p style={{ fontSize: "12px", lineHeight: 1.6, color: "#E8E4DF", marginTop: 4, whiteSpace: "pre-line" }}>
+                            {vault.brand_guidelines_text}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </SectionCard>
+                </div>
+              )}
 
             </div>
 
