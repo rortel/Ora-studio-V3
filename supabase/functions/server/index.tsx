@@ -7981,9 +7981,7 @@ app.post("/zernio/ensure-profile", async (c) => {
 });
 
 // GET /zernio/accounts — List connected social accounts (SCOPED to user's profile)
-// GET & POST /zernio/accounts — list social accounts
-// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
-async function listZernioAccounts(c: any) {
+app.get("/zernio/accounts", async (c) => {
   try {
     const user = await requireAuth(c);
     const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
@@ -7993,9 +7991,7 @@ async function listZernioAccounts(c: any) {
     console.log(`[zernio] List accounts error: ${err}`);
     return c.json({ success: false, error: String(err) }, 500);
   }
-}
-app.get("/zernio/accounts", listZernioAccounts);
-app.post("/zernio/accounts/list", listZernioAccounts);
+});
 
 // GET /zernio/profiles — List profiles (only this user's)
 app.get("/zernio/profiles", async (c) => {
@@ -11358,7 +11354,7 @@ app.post("/calendar/deploy-all", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ error: "Not found", path: c.req.path }, 404));
+// NOTE: catch-all 404 moved to END of file (after all route registrations)
 
 console.log("[boot] ORA server ready — asset-persistence, calendar-deploy, social-analytics — deploy 2026-03-20T12:00Z");
 
@@ -12440,9 +12436,8 @@ app.get("/generate/cl-hf-status", async (c) => {
 // PRODUCTS CRUD
 // ══════════════════════════════════════════════════════════════
 
-// GET & POST /products/list — list all products for user
-// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
-async function listProducts(c: any) {
+// GET /products — list all products for user
+app.get("/products", async (c) => {
   try {
     const user = await getUser(c);
     if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
@@ -12469,9 +12464,7 @@ async function listProducts(c: any) {
   } catch (err) {
     return c.json({ success: false, error: `${err}` }, 401);
   }
-}
-app.get("/products", listProducts);
-app.post("/products/list", listProducts);
+});
 
 // POST /products — create a product
 app.post("/products", async (c) => {
@@ -12715,3 +12708,51 @@ app.delete("/products/:id/images/:imageId", async (c) => {
 
 // (end of legacy dead code block)
 }
+
+// ══════════════════════════════════════════════════════════════
+// POST list variants — JWT >8KB, too large for URL query or HTTP header
+// These duplicate GET handlers but accept _token in the request body
+// ══════════════════════════════════════════════════════════════
+
+// POST /products/list — list products (same as GET /products)
+app.post("/products/list", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const items = await kv.getByPrefix(`product:${user.id}:`);
+    const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
+    products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const sb = supabaseAdmin();
+    for (const product of products) {
+      if (product.images?.length > 0) {
+        for (const img of product.images) {
+          if (img.storagePath) {
+            try {
+              const { data } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(img.storagePath, 86400);
+              if (data?.signedUrl) img.signedUrl = data.signedUrl;
+            } catch { /* keep existing URL */ }
+          }
+        }
+      }
+    }
+
+    return c.json({ success: true, products });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 401);
+  }
+});
+
+// POST /zernio/accounts/list — list social accounts (same as GET /zernio/accounts)
+app.post("/zernio/accounts/list", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
+    return c.json({ success: true, accounts, profileId });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── CATCH-ALL 404 — MUST be the LAST route registered ──
+app.all("*", (c) => c.json({ error: "Not found", path: c.req.path }, 404));
