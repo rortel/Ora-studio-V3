@@ -103,7 +103,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   const [brandAssets, setBrandAssets] = useState<VaultBrandAsset[]>([]);
   const [brandImages, setBrandImages] = useState<VaultBrandImage[]>([]);
   const [vaultAssetsLoading, setVaultAssetsLoading] = useState(false);
-  const { getAuthToken } = useAuth();
+  const auth = useAuth();
+  const getAuthToken = useCallback(() => auth.getAuthHeader(), [auth]);
 
   // ── Refs ──
   const containerRef = useRef<HTMLDivElement>(null);
