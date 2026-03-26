@@ -339,12 +339,13 @@ function VaultPageContent() {
   };
 
   // ── Extract embedded images from PDF using pdf.js ──
-  const extractPdfImages = async (file: File): Promise<Blob[]> => {
+  // Extract embedded raster images (photos, bitmaps) from PDF
+  const extractPdfRasterImages = async (file: File): Promise<Blob[]> => {
     const pdfjsLib = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const blobs: Blob[] = [];
-    const MIN_SIZE = 50; // skip tiny decorative images
+    const MIN_SIZE = 50;
 
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
@@ -363,21 +364,17 @@ function VaultPageContent() {
             if (!imgData || !imgData.width || !imgData.height) continue;
             if (imgData.width < MIN_SIZE || imgData.height < MIN_SIZE) continue;
 
-            // Convert pixel data to PNG blob via canvas
             const canvas = document.createElement("canvas");
             canvas.width = imgData.width;
             canvas.height = imgData.height;
             const ctx = canvas.getContext("2d")!;
             const src = imgData.data;
-
-            // pdf.js image data can be RGB (kind=2) or RGBA (kind=3) or grayscale (kind=1)
             const imgDataObj = ctx.createImageData(imgData.width, imgData.height);
             const dest = imgDataObj.data;
             const hasAlpha = imgData.kind === 3 || src.length === imgData.width * imgData.height * 4;
             if (hasAlpha) {
               dest.set(src);
             } else {
-              // RGB → RGBA
               const pixelCount = imgData.width * imgData.height;
               for (let p = 0; p < pixelCount; p++) {
                 dest[p * 4] = src[p * 3];
@@ -387,17 +384,45 @@ function VaultPageContent() {
               }
             }
             ctx.putImageData(imgDataObj, 0, 0);
-
             const blob = await new Promise<Blob | null>((resolve) =>
               canvas.toBlob(resolve, "image/png")
             );
-            if (blob && blob.size > 500) blobs.push(blob); // skip degenerate blobs
+            if (blob && blob.size > 500) blobs.push(blob);
           } catch { /* skip unreadable images */ }
         }
       }
       page.cleanup();
     }
     return blobs;
+  };
+
+  // Render each PDF page as a full-page PNG (captures vectors, logos, pictos, layout)
+  const renderPdfPages = async (file: File, maxPages = 30, scale = 2): Promise<Blob[]> => {
+    const pdfjsLib = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pageBlobs: Blob[] = [];
+    const numPages = Math.min(pdf.numPages, maxPages);
+
+    for (let i = 1; i <= numPages; i++) {
+      try {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext("2d")!;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, "image/png", 0.9)
+        );
+        if (blob && blob.size > 1000) pageBlobs.push(blob);
+        page.cleanup();
+      } catch (err) {
+        console.warn(`[Vault] Failed to render page ${i}:`, err);
+      }
+    }
+    return pageBlobs;
   };
 
   // ── Analyze File ──
@@ -469,32 +494,47 @@ function VaultPageContent() {
           }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
-        // Extract embedded images from PDF, classify with AI, upload to Image Bank
+        // Extract images from PDF: raster images + rendered pages → AI categorization
         if (dnaOk && isPDF) {
           try {
+            // Layer 1: Extract embedded raster images (photos, bitmaps)
             setAnalyzeProgress("Extracting images from PDF...");
-            console.log("[Vault] Starting PDF image extraction...");
-            const imageBlobs = await extractPdfImages(file);
-            console.log(`[Vault] Extracted ${imageBlobs.length} images from PDF (sizes: ${imageBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
-            if (imageBlobs.length > 0) {
-              setAnalyzeProgress(`Classifying & uploading ${imageBlobs.length} image${imageBlobs.length > 1 ? "s" : ""}...`);
+            console.log("[Vault] Layer 1: Extracting raster images from PDF...");
+            const rasterBlobs = await extractPdfRasterImages(file);
+            console.log(`[Vault] Raster: ${rasterBlobs.length} images (${rasterBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
+
+            // Layer 2: Render full pages as PNG (captures vector logos, pictos, usage rules, layouts)
+            setAnalyzeProgress("Rendering PDF pages for visual analysis...");
+            console.log("[Vault] Layer 2: Rendering PDF pages as images...");
+            const pageBlobs = await renderPdfPages(file);
+            console.log(`[Vault] Pages: ${pageBlobs.length} rendered (${pageBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
+
+            // Combine: raster images + page renders
+            const allBlobs = [...rasterBlobs, ...pageBlobs];
+            if (allBlobs.length > 0) {
+              setAnalyzeProgress(`Classifying & uploading ${allBlobs.length} visual asset${allBlobs.length > 1 ? "s" : ""}...`);
               const uploadForm = new FormData();
-              imageBlobs.forEach((blob, idx) => {
-                uploadForm.append("files", blob, `${file.name.replace(/\.pdf$/i, "")}_img_${idx + 1}.png`);
+              const pdfName = file.name.replace(/\.pdf$/i, "");
+              rasterBlobs.forEach((blob, idx) => {
+                uploadForm.append("files", blob, `${pdfName}_img_${idx + 1}.png`);
+              });
+              pageBlobs.forEach((blob, idx) => {
+                uploadForm.append("files", blob, `${pdfName}_page_${idx + 1}.png`);
               });
               uploadForm.append("_token", token());
               uploadForm.append("brand_name", vault.company_name || "");
-              console.log(`[Vault] Uploading ${imageBlobs.length} images to categorize-upload...`);
+              uploadForm.append("source", "pdf-charter");
+              console.log(`[Vault] Uploading ${allBlobs.length} assets (${rasterBlobs.length} raster + ${pageBlobs.length} pages) to categorize-upload...`);
               const catRes = await fetch(apiUrl("/vault/images/categorize-upload"), { method: "POST", headers: apiHeaders(false), body: uploadForm });
               const catData = await catRes.json();
-              console.log("[Vault] categorize-upload response:", JSON.stringify(catData).slice(0, 300));
+              console.log("[Vault] categorize-upload response:", JSON.stringify(catData).slice(0, 500));
               if (catData.success) {
                 const { uploaded, skipped } = catData.stats || {};
-                console.log(`[Vault] PDF images: ${uploaded} uploaded, ${skipped} skipped`);
-                setAnalyzeProgress(`${uploaded} image${uploaded > 1 ? "s" : ""} added to Image Bank`);
+                console.log(`[Vault] PDF assets: ${uploaded} uploaded, ${skipped} skipped`);
+                setAnalyzeProgress(`${uploaded} visual asset${uploaded > 1 ? "s" : ""} added to Image Bank`);
               }
             } else {
-              console.log("[Vault] No images found in PDF (all too small or extraction failed)");
+              console.log("[Vault] No extractable visual assets found in PDF");
             }
           } catch (err: any) {
             console.warn("[Vault] PDF image extraction error:", err?.message || err);

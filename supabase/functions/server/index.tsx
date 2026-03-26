@@ -7546,15 +7546,23 @@ app.post("/vault/images/categorize-upload", async (c) => {
     const userId = jwt.sub;
 
     if (!files || files.length === 0) return c.json({ success: false, error: "No files" }, 400);
-    console.log(`[categorize-upload] ${files.length} images from PDF for user=${userId}, brand=${brandName}`);
+    const pdfSource = formData.get("source") as string || "";
+    const isCharterSource = pdfSource === "pdf-charter";
+    console.log(`[categorize-upload] ${files.length} assets from PDF for user=${userId}, brand=${brandName}, source=${pdfSource}`);
 
     const categorizationPrompt = `You are a brand asset classifier. Analyze this image extracted from a brand guidelines PDF${brandName ? ` for "${brandName}"` : ""}.
 
-Classify it into EXACTLY ONE category and assign relevant tags.
+This may be either:
+- An individual image/graphic extracted from the PDF
+- A full rendered page from the PDF (containing logos, pictos, text, layout, usage rules)
+
+For FULL PAGES: classify based on the PRIMARY visual content shown. A page showing logo variants = "logo". A page showing pictograms/icons = "graphic-element". A page showing color palette = "color-swatch". A page of text-only guidelines without visual assets = "skip".
+
+Classify into EXACTLY ONE category and assign relevant tags.
 
 Categories (pick ONE):
-- "logo" — brand logo, logomark, logotype, monogram, avatar, favicon, any logo variant (color, B&W, reversed)
-- "graphic-element" — icons, pictograms, market/sector icons, decorative brand elements
+- "logo" — brand logo, logomark, logotype, monogram, avatar, favicon, any logo variant (color, B&W, reversed), logo usage rules page
+- "graphic-element" — icons, pictograms, market/sector icons, decorative brand elements, iconography page
 - "pattern" — patterns, textures, tube/cable motifs, repeated graphical elements
 - "overlay" — brand lockup (logo + signature combined), watermark, stamp, badge
 - "photo-mood" — aspirational/mood photography, lifestyle, abstract, atmospheric
@@ -7562,9 +7570,11 @@ Categories (pick ONE):
 - "photo-people" — people at work, team, human interactions, workplace
 - "mockup" — business card mockup, press ad, vehicle branding, signage, stationery
 - "color-swatch" — color palette display, gradient swatch, color chart
-- "typography-sample" — font specimen, typography layout example
+- "typography-sample" — font specimen, typography layout example, font weight showcase
 - "diagram" — organizational chart, process flow, infographic
-- "skip" — blank page, page number, tiny decorative element, noise, or unidentifiable
+- "skip" — blank page, table of contents, page with ONLY text (no visual assets), page number, tiny decorative element, noise, or unidentifiable
+
+IMPORTANT: Pages showing logo variants, pictograms, photography rules, mockups, patterns, or color palettes should NOT be skipped — classify them by their primary visual content.
 
 Return ONLY a JSON object: {"category":"...","tags":["tag1","tag2"],"description":"one-line description"}
 No markdown, no backticks, no explanation.`;
