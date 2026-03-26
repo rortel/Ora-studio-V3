@@ -4558,7 +4558,9 @@ RULES:
 - RESPOND IN THE SAME LANGUAGE as the content.
 - confidence_score: 85-100 for complete brand books.`;
 
+        let charterError = "";
         try {
+          console.log(`[vault/analyze] Calling APIPOD GPT-4o for charter... APIPOD_BASE=${APIPOD_BASE?.slice(0, 30)}`);
           const charterRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
             method: "POST",
             headers: apipodHeaders(),
@@ -4573,10 +4575,11 @@ RULES:
             }),
           });
 
+          console.log(`[vault/analyze] Charter GPT-4o status: ${charterRes.status}`);
           if (charterRes.ok) {
             const cData = await charterRes.json();
             const raw = cData.choices?.[0]?.message?.content || "";
-            console.log(`[vault/analyze] Charter GPT-4o response: ${raw.length} chars`);
+            console.log(`[vault/analyze] Charter GPT-4o response: ${raw.length} chars, starts: ${raw.slice(0, 100)}`);
             try {
               const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
               const match = cleaned.match(/\{[\s\S]*\}/);
@@ -4585,19 +4588,22 @@ RULES:
               const existing = await kv.get(`vault:${user.id}`) || {};
               const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
               await kv.set(`vault:${user.id}`, merged);
-              return c.json({ success: true, dna: charterDna, vault: merged });
+              return c.json({ success: true, dna: charterDna, vault: merged, _path: "charter-gpt4o" });
             } catch (parseErr) {
-              console.log(`[vault/analyze] Charter JSON parse failed: ${parseErr}, raw: ${raw.slice(0, 200)}`);
+              charterError = `parse: ${parseErr}, raw: ${raw.slice(0, 100)}`;
+              console.log(`[vault/analyze] Charter JSON parse failed: ${charterError}`);
             }
           } else {
             const errText = await charterRes.text();
-            console.log(`[vault/analyze] Charter GPT-4o error: ${charterRes.status} ${errText.slice(0, 200)}`);
+            charterError = `status ${charterRes.status}: ${errText.slice(0, 200)}`;
+            console.log(`[vault/analyze] Charter GPT-4o error: ${charterError}`);
           }
         } catch (e: any) {
-          console.log(`[vault/analyze] Charter GPT-4o failed: ${e?.message || e}`);
+          charterError = `fetch: ${e?.message || e}`;
+          console.log(`[vault/analyze] Charter GPT-4o failed: ${charterError}`);
         }
         // If charter structuring failed, fall through to generic analysis below
-        console.log(`[vault/analyze] Charter structuring failed, falling back to generic...`);
+        console.log(`[vault/analyze] Charter structuring failed (${charterError}), falling back to generic...`);
       }
     } else {
       return c.json({ success: false, error: "Provide url or content" }, 400);
@@ -4779,8 +4785,8 @@ ${truncated}` },
     const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
     await kv.set(`vault:${user.id}`, merged);
 
-    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${deep ? "deep" : "std"})`);
-    return c.json({ success: true, dna, vault: merged });
+    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${deep ? "deep" : "std"}) via GENERIC path`);
+    return c.json({ success: true, dna, vault: merged, _path: "generic-url" });
 
   } catch (err: any) {
     console.log(`[vault/analyze] ERROR (${Date.now() - t0}ms): ${err?.message || err}`);
@@ -7541,17 +7547,16 @@ IMPORTANT: Pages showing logo variants, pictograms, photography rules, mockups, 
 Return ONLY a JSON object: {"category":"...","tags":["tag1","tag2"],"description":"one-line description"}
 No markdown, no backticks, no explanation.`;
 
-    const results: any[] = [];
-
-    for (const file of files) {
-      const allowed = ["image/png", "image/jpeg", "image/webp"];
-      if (!allowed.includes(file.type)) { results.push({ fileName: file.name, success: false, error: "unsupported type" }); continue; }
-      if (file.size > 10 * 1024 * 1024) { results.push({ fileName: file.name, success: false, error: "too large" }); continue; }
+    // Process ALL files in parallel (classify + upload concurrently)
+    const allowed = new Set(["image/png", "image/jpeg", "image/webp"]);
+    const results = await Promise.all(files.map(async (file) => {
+      if (!allowed.has(file.type)) return { fileName: file.name, success: false, error: "unsupported type" };
+      if (file.size > 10 * 1024 * 1024) return { fileName: file.name, success: false, error: "too large" };
 
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
 
-      // ── AI categorization via Mistral Vision ──
+      // ── AI categorization via Mistral Vision (parallel) ──
       let category = "general";
       let tags: string[] = [];
       let description = "";
@@ -7574,7 +7579,7 @@ No markdown, no backticks, no explanation.`;
             temperature: 0.1,
             response_format: { type: "json_object" },
           }),
-        }, 30_000);
+        }, 20_000);
 
         if (res.ok) {
           const data = await res.json();
@@ -7582,17 +7587,16 @@ No markdown, no backticks, no explanation.`;
           try {
             const parsed = JSON.parse(raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim());
             if (parsed.category === "skip") {
-              console.log(`[categorize-upload] Skipping ${file.name}: classified as skip`);
-              results.push({ fileName: file.name, success: false, skipped: true, reason: parsed.description || "skip" });
-              continue;
+              console.log(`[categorize-upload] Skipping ${file.name}: ${parsed.description || "skip"}`);
+              return { fileName: file.name, success: false, skipped: true, reason: parsed.description || "skip" };
             }
             category = parsed.category || "general";
             tags = Array.isArray(parsed.tags) ? parsed.tags : [];
             description = parsed.description || "";
             console.log(`[categorize-upload] ${file.name} → ${category} [${tags.join(",")}]`);
-          } catch { console.log(`[categorize-upload] Parse failed for ${file.name}, using defaults`); }
+          } catch { console.log(`[categorize-upload] Parse fail ${file.name}, defaults`); }
         }
-      } catch (e: any) { console.log(`[categorize-upload] Vision error for ${file.name}: ${e.message}`); }
+      } catch (e: any) { console.log(`[categorize-upload] Vision err ${file.name}: ${e.message}`); }
 
       // ── Upload to storage ──
       const imageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -7602,7 +7606,7 @@ No markdown, no backticks, no explanation.`;
       const { error: uploadError } = await sb.storage
         .from(IMAGE_BANK_BUCKET)
         .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false });
-      if (uploadError) { results.push({ fileName: file.name, success: false, error: uploadError.message }); continue; }
+      if (uploadError) return { fileName: file.name, success: false, error: uploadError.message };
 
       const meta = {
         id: imageId, fileName: file.name, storagePath, fileSize: file.size,
@@ -7612,8 +7616,8 @@ No markdown, no backticks, no explanation.`;
       await kv.set(`brand-image:${userId}:${imageId}`, meta);
 
       const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(storagePath, 86400);
-      results.push({ ...meta, success: true, signedUrl: signedData?.signedUrl || "" });
-    }
+      return { ...meta, success: true, signedUrl: signedData?.signedUrl || "" };
+    }));
 
     const ok = results.filter(r => r.success).length;
     const skipped = results.filter(r => r.skipped).length;

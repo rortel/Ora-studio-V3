@@ -476,7 +476,7 @@ function VaultPageContent() {
               const data2 = await res2.json();
               console.log("[Vault] /vault/analyze response:", JSON.stringify(data2).slice(0, 300));
               if (data2.success && data2.dna) {
-                console.log(`[Vault] Charter DNA: ${data2.dna.company_name}, colors=${data2.dna.colors?.length}, mission=${!!data2.dna.mission}`);
+                console.log(`[Vault] Charter DNA: ${data2.dna.company_name}, colors=${data2.dna.colors?.length}, mission=${!!data2.dna.mission}, _path=${data2._path || "unknown"}`);
                 const updated = mergeVaultData(vault, data2.dna);
                 updated.updatedAt = new Date().toISOString();
                 setVault(updated);
