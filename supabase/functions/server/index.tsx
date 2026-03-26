@@ -4517,93 +4517,9 @@ app.post("/vault/analyze", async (c) => {
       textToAnalyze = content;
       console.log(`[vault/analyze] Text: ${textToAnalyze.length} chars from ${source}, type=${sourceType}`);
 
-      // ── PDF Charter: use GPT-4o with dedicated charter prompt (fast, reliable) ──
-      if (sourceType === "pdf-charter" && textToAnalyze.length > 100) {
-        console.log(`[vault/analyze] PDF charter mode: structuring ${textToAnalyze.length} chars with GPT-4o charter prompt...`);
-        const charterPrompt = `You are an elite brand analyst. Analyze this brand guidelines text and extract EVERY piece of brand data into structured JSON.
-Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
-
-{
-  "company_name": "string — official brand name",
-  "industry": "string — sector/industry",
-  "tagline": "string — main tagline/brand signature or null",
-  "products_services": ["string — products or services mentioned"],
-  "target_audiences": [{ "name": "string — market segment or sector", "description": "string — 1-2 sentences" }],
-  "colors": [{ "hex": "#XXXXXX", "name": "string — color name (e.g. 'Violet Adaltra')", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
-  "logo_description": "string — logo shape, style, ALL variants, protection zone rules, forbidden usages",
-  "tone": { "formality": 1-10, "confidence": 1-10, "warmth": 1-10, "humor": 1-10, "primary_tone": "string", "adjectives": ["5-10 brand personality adjectives"] },
-  "photo_style": { "framing": "string — composition rules", "mood": "string", "lighting": "string", "subjects": "string" },
-  "fonts": ["string — each font family + ALL weight variants (e.g. 'Lexend Light', 'Lexend Bold')"],
-  "font_usage_rules": "string — exact mapping: which font+weight for titles, body, data, etc.",
-  "key_messages": ["string — EVERY core message, slogan, claim (6-12)"],
-  "approved_terms": ["string — ALL brand-approved vocabulary (15-30)"],
-  "forbidden_terms": ["string — words/tones to NEVER use (10-20)"],
-  "mission": "string — mission statement in the document's own words",
-  "vision": "string — vision statement in the document's own words",
-  "personality": "string — 3-6 personality traits comma-separated",
-  "usp": "string — unique selling proposition",
-  "values": "string — brand values comma-separated",
-  "competitors": "string — competitors mentioned or null",
-  "brand_guidelines_text": "string — compliance rules (max 2000 chars): logo dos/don'ts, color rules, typography rules, signature placement",
-  "confidence_score": 0-100
-}
-
-RULES:
-- Extract ALL hex color codes you find in the text. Also look for color descriptions like "violet", "bleu marine" and convert to hex. Look for CMYK, Pantone, RGB values and convert to hex.
-- If colors are described by name without hex (e.g. "Violet Adaltra"), estimate the hex value based on the color name.
-- Assign precise color roles: primary, secondary, accent, neutral. Every color must have a role.
-- Extract EVERY font weight variant separately.
-- For approved_terms: include brand vocabulary, narrative territory words. Be exhaustive.
-- For forbidden_terms: derive from don'ts and anti-positioning.
-- RESPOND IN THE SAME LANGUAGE as the content.
-- confidence_score: 85-100 for complete brand books.`;
-
-        let charterError = "";
-        try {
-          console.log(`[vault/analyze] Calling APIPOD GPT-4o for charter... APIPOD_BASE=${APIPOD_BASE?.slice(0, 30)}`);
-          const charterRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
-            method: "POST",
-            headers: apipodHeaders(),
-            body: JSON.stringify({
-              model: "gpt-4o",
-              messages: [
-                { role: "system", content: charterPrompt },
-                { role: "user", content: `Analyze this brand guidelines document "${sourceName}" and extract the complete structured brand profile.\n\n${textToAnalyze.slice(0, 25000)}` },
-              ],
-              max_tokens: 8000,
-              temperature: 0.1,
-            }),
-          });
-
-          console.log(`[vault/analyze] Charter GPT-4o status: ${charterRes.status}`);
-          if (charterRes.ok) {
-            const cData = await charterRes.json();
-            const raw = cData.choices?.[0]?.message?.content || "";
-            console.log(`[vault/analyze] Charter GPT-4o response: ${raw.length} chars, starts: ${raw.slice(0, 100)}`);
-            try {
-              const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
-              const match = cleaned.match(/\{[\s\S]*\}/);
-              const charterDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
-              console.log(`[vault/analyze] Charter DNA OK: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}, values=${!!charterDna.values}`);
-              const existing = await kv.get(`vault:${user.id}`) || {};
-              const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
-              await kv.set(`vault:${user.id}`, merged);
-              return c.json({ success: true, dna: charterDna, vault: merged, _path: "charter-gpt4o" });
-            } catch (parseErr) {
-              charterError = `parse: ${parseErr}, raw: ${raw.slice(0, 100)}`;
-              console.log(`[vault/analyze] Charter JSON parse failed: ${charterError}`);
-            }
-          } else {
-            const errText = await charterRes.text();
-            charterError = `status ${charterRes.status}: ${errText.slice(0, 200)}`;
-            console.log(`[vault/analyze] Charter GPT-4o error: ${charterError}`);
-          }
-        } catch (e: any) {
-          charterError = `fetch: ${e?.message || e}`;
-          console.log(`[vault/analyze] Charter GPT-4o failed: ${charterError}`);
-        }
-        // If charter structuring failed, fall through to generic analysis below
-        console.log(`[vault/analyze] Charter structuring failed (${charterError}), falling back to generic...`);
+      // PDF charter: handled by the unified prompt below (isCharter flag)
+      if (sourceType === "pdf-charter") {
+        console.log(`[vault/analyze] PDF charter mode detected, ${textToAnalyze.length} chars`);
       }
     } else {
       return c.json({ success: false, error: "Provide url or content" }, 400);
@@ -4640,9 +4556,42 @@ OTHER EXTRACTED DATA:
 - Keywords: ${preExtracted.meta?.keywords || ""}
 ` : "";
 
-    const maxChars = deep ? 20000 : 14000;
+    const isCharter = sourceType === "pdf-charter";
+    const maxChars = isCharter ? 25000 : deep ? 20000 : 14000;
     const truncated = textToAnalyze.slice(0, maxChars);
-    console.log(`[vault/analyze] AI input: ${truncated.length} text + ${structuredContext.length} structured`);
+    console.log(`[vault/analyze] AI input: ${truncated.length} text + ${structuredContext.length} structured, isCharter=${isCharter}`);
+
+    // Charter-specific prompt additions
+    const charterFields = isCharter ? `
+  "mission": "string — mission statement in the document's own words",
+  "vision": "string — vision statement in the document's own words",
+  "personality": "string — 3-6 personality traits comma-separated",
+  "usp": "string — unique selling proposition",
+  "values": "string — brand values comma-separated",
+  "font_usage_rules": "string — exact mapping: which font+weight for titles, body, data, etc.",
+  "competitors": "string — competitors mentioned or null",
+  "brand_guidelines_text": "string — COMPREHENSIVE compliance rules (max 2000 chars): logo dos/don'ts, color rules, typography rules, signature placement",` : "";
+
+    const charterColorRules = isCharter
+      ? `- Extract ALL hex color codes from the text. Also convert named colors (e.g. "violet", "bleu marine") to hex.
+- Convert CMYK, Pantone, RGB values to hex. If a color is described by name only, estimate the hex.
+- Assign precise roles: primary, secondary, accent, neutral, gradient, background, text.
+- Include gradients as separate entries with role "gradient".`
+      : `- The "REAL COLORS EXTRACTED FROM CSS/HTML" section contains VERIFIED hex values from the actual website CSS.
+- Select brand colors EXCLUSIVELY from this extracted list. NEVER invent colors.
+- CSS Custom Properties (--primary, --accent) are the STRONGEST signal. Prioritize them.
+- If the extracted color list is empty, return an empty colors array.`;
+
+    const charterExtraRules = isCharter
+      ? `- Extract EVERY font weight variant separately (Light, Regular, Medium, Bold, etc.).
+- For approved_terms: include ALL brand vocabulary, narrative territory words (15-30 terms).
+- For forbidden_terms: derive from don'ts and anti-positioning (10-20 terms).
+- For key_messages: extract EVERY core message, slogan, claim (6-12).
+- confidence_score: 85-100 for complete brand books.`
+      : `- Detect ALL fonts from Google Fonts links, @font-face, font-family CSS.
+- Create 3-5 target audience segments with descriptions.
+- Identify 8-15 approved brand terms and 5-10 forbidden terms.
+- confidence_score: 50-70 sparse, 70-85 moderate, 85-100 rich.`;
 
     const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
       method: "POST",
@@ -4652,52 +4601,43 @@ OTHER EXTRACTED DATA:
         messages: [
           {
             role: "system",
-            content: `You are an elite brand analyst. Extract comprehensive brand DNA. Return ONLY valid JSON.
+            content: `You are an elite brand analyst. Extract comprehensive brand DNA. Return ONLY valid JSON. No markdown, no backticks.
 
-CRITICAL COLOR RULES:
-- The "REAL COLORS EXTRACTED FROM CSS/HTML" section contains VERIFIED hex values programmatically extracted from the website's actual CSS code. These are the ONLY colors you should use.
-- You MUST select the brand colors EXCLUSIVELY from this extracted list. NEVER invent, guess, or hallucinate colors based on the brand name, industry, or your training data.
-- CSS Custom Properties (design tokens like --primary, --accent, --brand-color) are the STRONGEST signal for brand colors. Prioritize them.
-- Meta theme-color is an explicit brand color declaration — always include it as primary or accent.
-- Higher weight = more frequently used on the site = more likely a brand color.
-- Assign roles (primary, secondary, accent, background, text) based on weight and CSS variable names.
-- If the extracted color list is empty, return an empty colors array rather than guessing.
+COLOR RULES:
+${charterColorRules}
+- Assign roles (primary, secondary, accent, background, text) based on importance.
 
 OTHER RULES:
-- Detect ALL fonts from Google Fonts links, @font-face, font-family CSS.
-- Find ALL social media from extracted links AND text mentions.
-- Create 3-5 specific target audience segments with detailed descriptions.
-- Extract 4-6 distinct key messages.
-- Identify 8-15 approved brand terms and 5-10 forbidden terms from vocabulary patterns.
-- For photo_style, infer from industry, positioning, and descriptions.
-- confidence_score: 50-70 sparse data, 70-85 moderate, 85-100 rich.
+- Find ALL social media from links AND text mentions.
+${charterExtraRules}
+- For photo_style, describe composition, mood, lighting, subjects.
 - RESPOND IN THE SAME LANGUAGE as the source content.
 
 JSON:
 {
   "company_name": "string",
-  "industry": "string (specific, e.g. 'Luxury Hospitality')",
+  "industry": "string (specific)",
   "tagline": "string or null",
-  "products_services": ["string (4-6 items)"],
-  "target_audiences": [{ "name": "string", "description": "string (2-3 sentences)" }],
-  "colors": [{ "hex": "#XXXXXX", "name": "string", "role": "primary|secondary|accent|background|text" }],
-  "logo_description": "string or null",
-  "tone": { "formality": 1-10, "confidence": 1-10, "warmth": 1-10, "humor": 1-10, "primary_tone": "string", "adjectives": ["5-8 adjectives"] },
+  "products_services": ["string"],
+  "target_audiences": [{ "name": "string", "description": "string" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
+  "logo_description": "string — logo shape, style, ALL variants, protection zone rules, forbidden usages",
+  "tone": { "formality": 1-10, "confidence": 1-10, "warmth": 1-10, "humor": 1-10, "primary_tone": "string", "adjectives": ["5-10 adjectives"] },
   "photo_style": { "framing": "string", "mood": "string", "lighting": "string", "subjects": "string" },
   "social_presence": [{ "platform": "string", "url": "string or null", "detected": true }],
-  "key_messages": ["string (4-6)"],
-  "approved_terms": ["string (8-15)"],
-  "forbidden_terms": ["string (5-10)"],
-  "fonts": ["string"],
+  "key_messages": ["string"],
+  "approved_terms": ["string"],
+  "forbidden_terms": ["string"],
+  "fonts": ["string"],${charterFields}
   "confidence_score": 0-100
 }`,
           },
-          { role: "user", content: `Analyze brand from "${source}":
+          { role: "user", content: `Analyze brand ${isCharter ? "guidelines document" : "from"} "${source}":
 ${structuredContext}
 --- CONTENT ---
 ${truncated}` },
         ],
-        max_tokens: 3000,
+        max_tokens: isCharter ? 6000 : 3000,
         temperature: 0.05,
       }),
     });
@@ -4785,8 +4725,8 @@ ${truncated}` },
     const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
     await kv.set(`vault:${user.id}`, merged);
 
-    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${deep ? "deep" : "std"}) via GENERIC path`);
-    return c.json({ success: true, dna, vault: merged, _path: "generic-url" });
+    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${isCharter ? "charter" : deep ? "deep" : "std"})`);
+    return c.json({ success: true, dna, vault: merged, _path: isCharter ? "charter" : "url" });
 
   } catch (err: any) {
     console.log(`[vault/analyze] ERROR (${Date.now() - t0}ms): ${err?.message || err}`);
