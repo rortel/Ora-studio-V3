@@ -323,6 +323,21 @@ function VaultPageContent() {
     setAnalyzing(false);
   };
 
+  // ── Extract text from PDF client-side using pdf.js (fallback) ──
+  const extractPdfText = async (file: File): Promise<string> => {
+    const pdfjsLib = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pages: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items.map((item: any) => item.str).join(" ");
+      if (text.trim()) pages.push(text);
+    }
+    return pages.join("\n\n");
+  };
+
   // ── Extract embedded images from PDF using pdf.js ──
   const extractPdfImages = async (file: File): Promise<Blob[]> => {
     const pdfjsLib = await getPdfJs();
@@ -414,20 +429,32 @@ function VaultPageContent() {
           await saveVault(updated);
           dnaOk = true;
         } else if (data.success && data.extractedText) {
-          setAnalyzeProgress("Structuring brand data...");
-          const res2 = await fetch(apiUrl("/vault/analyze"), {
-            method: "POST", headers: vaultHeaders(),
-            body: corsBody(token(), { content: data.extractedText, sourceName: file.name, sourceType: file.type }),
-          });
-          const data2 = await res2.json();
-          if (data2.success && data2.dna) {
-            const updated = mergeVaultData(vault, data2.dna);
-            updated.updatedAt = new Date().toISOString();
-            setVault(updated);
-            setAnalyzeProgress("Saving to vault...");
-            await saveVault(updated);
-            dnaOk = true;
-          } else { setAnalyzeError(data2.error || "Analysis failed"); }
+          // Check if extractedText is binary garbage (starts with %PDF or contains lots of non-readable chars)
+          let textForAI = data.extractedText;
+          const isBinaryGarbage = textForAI.startsWith("%PDF") || textForAI.startsWith("\\x") || (textForAI.match(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g)?.length || 0) > textForAI.length * 0.3;
+          if (isBinaryGarbage && isPDF) {
+            console.log("[Vault] Backend returned binary garbage, extracting text client-side with pdf.js...");
+            setAnalyzeProgress("Reading PDF text...");
+            textForAI = await extractPdfText(file);
+            console.log(`[Vault] pdf.js extracted ${textForAI.length} chars`);
+          }
+          if (textForAI.length < 50) { setAnalyzeError("Could not extract text from file"); }
+          else {
+            setAnalyzeProgress("Structuring brand data...");
+            const res2 = await fetch(apiUrl("/vault/analyze"), {
+              method: "POST", headers: vaultHeaders(),
+              body: corsBody(token(), { content: textForAI.slice(0, 30000), sourceName: file.name, sourceType: "pdf-charter" }),
+            });
+            const data2 = await res2.json();
+            if (data2.success && data2.dna) {
+              const updated = mergeVaultData(vault, data2.dna);
+              updated.updatedAt = new Date().toISOString();
+              setVault(updated);
+              setAnalyzeProgress("Saving to vault...");
+              await saveVault(updated);
+              dnaOk = true;
+            } else { setAnalyzeError(data2.error || "Analysis failed"); }
+          }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
         // Extract embedded images from PDF, classify with AI, upload to Image Bank
