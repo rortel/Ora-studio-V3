@@ -4517,9 +4517,9 @@ app.post("/vault/analyze", async (c) => {
       textToAnalyze = content;
       console.log(`[vault/analyze] Text: ${textToAnalyze.length} chars from ${source}, type=${sourceType}`);
 
-      // ── PDF Charter: use dedicated charter prompt instead of URL prompt ──
+      // ── PDF Charter: use GPT-4o with dedicated charter prompt (fast, reliable) ──
       if (sourceType === "pdf-charter" && textToAnalyze.length > 100) {
-        console.log(`[vault/analyze] PDF charter mode: structuring with pixtral-large...`);
+        console.log(`[vault/analyze] PDF charter mode: structuring ${textToAnalyze.length} chars with GPT-4o charter prompt...`);
         const charterPrompt = `You are an elite brand analyst. Analyze this brand guidelines text and extract EVERY piece of brand data into structured JSON.
 Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 
@@ -4549,7 +4549,8 @@ Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 }
 
 RULES:
-- Extract ALL hex color codes (convert CMYK/Pantone/RGB to hex). Include gradients with role "gradient".
+- Extract ALL hex color codes you find in the text. Also look for color descriptions like "violet", "bleu marine" and convert to hex. Look for CMYK, Pantone, RGB values and convert to hex.
+- If colors are described by name without hex (e.g. "Violet Adaltra"), estimate the hex value based on the color name.
 - Assign precise color roles: primary, secondary, accent, neutral. Every color must have a role.
 - Extract EVERY font weight variant separately.
 - For approved_terms: include brand vocabulary, narrative territory words. Be exhaustive.
@@ -4557,55 +4558,8 @@ RULES:
 - RESPOND IN THE SAME LANGUAGE as the content.
 - confidence_score: 85-100 for complete brand books.`;
 
-        const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 90_000);
         try {
-          const charterRes = await fetch(`${MISTRAL_BASE}/chat/completions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
-            body: JSON.stringify({
-              model: "pixtral-large-latest",
-              messages: [
-                { role: "system", content: charterPrompt },
-                { role: "user", content: `Analyze this brand guidelines document "${sourceName}" and extract the complete structured brand profile.\n\n${textToAnalyze.slice(0, 30000)}` },
-              ],
-              max_tokens: 8000,
-              temperature: 0.1,
-              response_format: { type: "json_object" },
-            }),
-            signal: ctrl.signal,
-          });
-          clearTimeout(timer);
-
-          if (charterRes.ok) {
-            const cData = await charterRes.json();
-            const raw = cData.choices?.[0]?.message?.content || "";
-            console.log(`[vault/analyze] Charter AI response: ${raw.length} chars`);
-            try {
-              const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
-              const match = cleaned.match(/\{[\s\S]*\}/);
-              const charterDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
-              console.log(`[vault/analyze] Charter DNA: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}`);
-              // Save and return
-              const existing = await kv.get(`vault:${user.id}`) || {};
-              const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
-              await kv.set(`vault:${user.id}`, merged);
-              return c.json({ success: true, dna: charterDna, vault: merged });
-            } catch (parseErr) {
-              console.log(`[vault/analyze] Charter JSON parse failed: ${parseErr}`);
-            }
-          } else {
-            console.log(`[vault/analyze] Charter AI error: ${charterRes.status} ${(await charterRes.text()).slice(0, 200)}`);
-          }
-        } catch (e: any) {
-          clearTimeout(timer);
-          console.log(`[vault/analyze] Charter AI failed: ${e?.message || e}`);
-        }
-        // If charter structuring with Mistral failed, retry with GPT-4o using the SAME charter prompt
-        console.log(`[vault/analyze] Charter via Mistral failed, retrying with GPT-4o charter prompt...`);
-        try {
-          const gpt4oCharterRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+          const charterRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
             method: "POST",
             headers: apipodHeaders(),
             body: JSON.stringify({
@@ -4618,24 +4572,32 @@ RULES:
               temperature: 0.1,
             }),
           });
-          if (gpt4oCharterRes.ok) {
-            const gptData = await gpt4oCharterRes.json();
-            const gptRaw = gptData.choices?.[0]?.message?.content || "";
-            console.log(`[vault/analyze] GPT-4o charter response: ${gptRaw.length} chars`);
-            const gptCleaned = gptRaw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
-            const gptMatch = gptCleaned.match(/\{[\s\S]*\}/);
-            const charterDna = gptMatch ? JSON.parse(gptMatch[0]) : JSON.parse(gptCleaned);
-            console.log(`[vault/analyze] GPT-4o Charter DNA: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}`);
-            const existing = await kv.get(`vault:${user.id}`) || {};
-            const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
-            await kv.set(`vault:${user.id}`, merged);
-            return c.json({ success: true, dna: charterDna, vault: merged });
+
+          if (charterRes.ok) {
+            const cData = await charterRes.json();
+            const raw = cData.choices?.[0]?.message?.content || "";
+            console.log(`[vault/analyze] Charter GPT-4o response: ${raw.length} chars`);
+            try {
+              const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+              const match = cleaned.match(/\{[\s\S]*\}/);
+              const charterDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
+              console.log(`[vault/analyze] Charter DNA OK: ${charterDna.company_name}, ${charterDna.colors?.length || 0} colors, mission=${!!charterDna.mission}, values=${!!charterDna.values}`);
+              const existing = await kv.get(`vault:${user.id}`) || {};
+              const merged = { ...existing, ...charterDna, source_type: "pdf-charter", userId: user.id, updatedAt: new Date().toISOString() };
+              await kv.set(`vault:${user.id}`, merged);
+              return c.json({ success: true, dna: charterDna, vault: merged });
+            } catch (parseErr) {
+              console.log(`[vault/analyze] Charter JSON parse failed: ${parseErr}, raw: ${raw.slice(0, 200)}`);
+            }
           } else {
-            console.log(`[vault/analyze] GPT-4o charter error: ${gpt4oCharterRes.status}`);
+            const errText = await charterRes.text();
+            console.log(`[vault/analyze] Charter GPT-4o error: ${charterRes.status} ${errText.slice(0, 200)}`);
           }
-        } catch (gptErr: any) {
-          console.log(`[vault/analyze] GPT-4o charter fallback failed: ${gptErr?.message || gptErr}`);
+        } catch (e: any) {
+          console.log(`[vault/analyze] Charter GPT-4o failed: ${e?.message || e}`);
         }
+        // If charter structuring failed, fall through to generic analysis below
+        console.log(`[vault/analyze] Charter structuring failed, falling back to generic...`);
       }
     } else {
       return c.json({ success: false, error: "Provide url or content" }, 400);
