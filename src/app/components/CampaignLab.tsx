@@ -232,13 +232,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     }).then(res => res.json());
   }, [getAuthToken]);
 
-  // ── GET helper (_token as query param, Authorization for Supabase gateway) ──
+  // ── GET helper (token via X-User-Token header to avoid URL length limits) ──
   const serverGet = useCallback((path: string, timeoutMs?: number) => {
     const token = getAuthToken();
-    const sep = path.includes("?") ? "&" : "?";
-    const url = token ? `${API_BASE}${path}${sep}_token=${encodeURIComponent(token)}` : `${API_BASE}${path}`;
-    return fetch(url, {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
+    if (token) headers["X-User-Token"] = token;
+    return fetch(`${API_BASE}${path}`, {
+      headers,
       signal: AbortSignal.timeout(timeoutMs || 15_000),
     }).then(r => r.json());
   }, [getAuthToken]);
