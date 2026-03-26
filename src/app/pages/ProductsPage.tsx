@@ -56,6 +56,7 @@ export function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [scraping, setScraping] = useState(false);
 
   // Form state
   const [formName, setFormName] = useState("");
@@ -112,6 +113,35 @@ export function ProductsPage() {
     setFormCurrency(product.currency || "EUR");
     setFormCategory(product.category || "");
     setDialogOpen(true);
+  };
+
+  // ── Scrape product info from URL ──
+  const handleScrapeUrl = async () => {
+    if (!accessToken || !formUrl.trim()) return;
+    setScraping(true);
+    try {
+      const res = await fetch(`${API_BASE}/products/scrape-url`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: corsBody(accessToken, { url: formUrl.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.product) {
+        const p = data.product;
+        if (p.name) setFormName(p.name);
+        if (p.description) setFormDescription(p.description);
+        if (p.price) setFormPrice(p.price);
+        if (p.currency) setFormCurrency(p.currency);
+        if (p.category) setFormCategory(p.category);
+        if (p.features?.length) setFormFeatures(p.features);
+      } else {
+        console.error("[products] Scrape failed:", data.error);
+      }
+    } catch (err) {
+      console.error("[products] Scrape error:", err);
+    } finally {
+      setScraping(false);
+    }
   };
 
   // ── Save product ──
@@ -259,7 +289,7 @@ export function ProductsPage() {
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90"
-              style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+              style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
             >
               <Plus size={14} />
               New Product
@@ -269,7 +299,7 @@ export function ProductsPage() {
           {/* Loading */}
           {loading && (
             <div className="flex items-center justify-center py-20">
-              <Loader2 size={24} className="animate-spin" style={{ color: "#5E6AD2" }} />
+              <Loader2 size={24} className="animate-spin" style={{ color: "#FFFFFF" }} />
             </div>
           )}
 
@@ -287,7 +317,7 @@ export function ProductsPage() {
               <button
                 onClick={openCreate}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer"
-                style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+                style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
               >
                 <Plus size={14} /> Create Product
               </button>
@@ -334,7 +364,7 @@ export function ProductsPage() {
                           {product.name}
                         </h3>
                         {product.price && (
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--ora-signal, #5E6AD2)" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--ora-signal, #FFFFFF)" }}>
                             {product.price} {product.currency}
                           </span>
                         )}
@@ -465,11 +495,27 @@ export function ProductsPage() {
                         style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                         <LinkIcon size={11} /> Product URL
                       </label>
-                      <input
-                        type="url" value={formUrl} onChange={e => setFormUrl(e.target.value)}
-                        placeholder="https://your-store.com/product"
-                        className="w-full px-3 py-2 rounded-lg" style={inputStyle}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="url" value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                          placeholder="https://your-store.com/product"
+                          className="flex-1 px-3 py-2 rounded-lg" style={inputStyle}
+                        />
+                        <button
+                          onClick={handleScrapeUrl}
+                          disabled={scraping || !formUrl.trim()}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40"
+                          style={{ background: "rgba(94,106,210,0.15)", border: "1px solid rgba(94,106,210,0.3)", color: "#8b9cf7", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap" }}
+                        >
+                          {scraping ? <Loader2 size={11} className="animate-spin" /> : <ChevronDown size={11} style={{ transform: "rotate(-90deg)" }} />}
+                          {scraping ? "Fetching..." : "Auto-fill"}
+                        </button>
+                      </div>
+                      {!scraping && formUrl.trim() && (
+                        <p style={{ fontSize: "10px", color: "#5C5856", marginTop: 4 }}>
+                          Click Auto-fill to extract product info from this URL
+                        </p>
+                      )}
                     </div>
 
                     {/* Price + Currency */}
@@ -539,7 +585,7 @@ export function ProductsPage() {
                         ))}
                         <button onClick={addFeature}
                           className="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:bg-white/[0.04]"
-                          style={{ fontSize: "11px", color: "#5E6AD2" }}>
+                          style={{ fontSize: "11px", color: "#FFFFFF" }}>
                           <Plus size={11} /> Add feature
                         </button>
                       </div>
@@ -594,7 +640,7 @@ export function ProductsPage() {
                           onClick={() => fileInputRef.current?.click()}
                           disabled={uploadingImages}
                           className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] disabled:opacity-40"
-                          style={{ fontSize: "11px", color: "#5E6AD2", border: "1px dashed rgba(94,106,210,0.3)" }}>
+                          style={{ fontSize: "11px", color: "#FFFFFF", border: "1px dashed rgba(255,255,255,0.3)" }}>
                           {uploadingImages ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                           {uploadingImages ? "Uploading..." : "Upload Images"}
                         </button>
@@ -613,7 +659,7 @@ export function ProductsPage() {
                     <button onClick={handleSave}
                       disabled={saving || !formName.trim()}
                       className="flex items-center gap-1.5 px-5 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40"
-                      style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
+                      style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
                       {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       {saving ? "Saving..." : (editingProduct ? "Save Changes" : "Create Product")}
                     </button>
