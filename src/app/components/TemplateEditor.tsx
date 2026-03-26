@@ -557,6 +557,26 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   }, [layers, pushHistory]);
 
   /* ───────────────────────────────────────────────────────────────────────
+     INLINE TEXT EDITING (must be before keyboard shortcuts that reference these)
+     ─────────────────────────────────────────────────────────────────────── */
+  const startTextEdit = useCallback((layerId: string) => {
+    setEditingTextId(layerId);
+    setSelectedId(layerId);
+  }, []);
+
+  const finishTextEdit = useCallback(() => {
+    if (!editingTextId || !textareaRef.current) return;
+    const value = textareaRef.current.value;
+    const layer = layers.find(l => l.id === editingTextId);
+    if (layer) {
+      updateLayer(editingTextId, {
+        dataBinding: { source: "static", field: value },
+      });
+    }
+    setEditingTextId(null);
+  }, [editingTextId, layers, updateLayer]);
+
+  /* ───────────────────────────────────────────────────────────────────────
      KEYBOARD SHORTCUTS
      ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -641,26 +661,6 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       alert("Export not available for external CDN images.");
     }
   }, [template, cw, stageScale]);
-
-  /* ───────────────────────────────────────────────────────────────────────
-     INLINE TEXT EDITING
-     ─────────────────────────────────────────────────────────────────────── */
-  const startTextEdit = useCallback((layerId: string) => {
-    setEditingTextId(layerId);
-    setSelectedId(layerId);
-  }, []);
-
-  const finishTextEdit = useCallback(() => {
-    if (!editingTextId || !textareaRef.current) return;
-    const value = textareaRef.current.value;
-    const layer = layers.find(l => l.id === editingTextId);
-    if (layer) {
-      updateLayer(editingTextId, {
-        dataBinding: { source: "static", field: value },
-      });
-    }
-    setEditingTextId(null);
-  }, [editingTextId, layers, updateLayer]);
 
   /* ───────────────────────────────────────────────────────────────────────
      DRAG / TRANSFORM HANDLERS
