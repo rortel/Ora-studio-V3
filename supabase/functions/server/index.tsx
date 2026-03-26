@@ -7981,7 +7981,9 @@ app.post("/zernio/ensure-profile", async (c) => {
 });
 
 // GET /zernio/accounts — List connected social accounts (SCOPED to user's profile)
-app.get("/zernio/accounts", async (c) => {
+// GET & POST /zernio/accounts — list social accounts
+// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
+async function listZernioAccounts(c: any) {
   try {
     const user = await requireAuth(c);
     const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
@@ -7991,7 +7993,9 @@ app.get("/zernio/accounts", async (c) => {
     console.log(`[zernio] List accounts error: ${err}`);
     return c.json({ success: false, error: String(err) }, 500);
   }
-});
+}
+app.get("/zernio/accounts", listZernioAccounts);
+app.post("/zernio/accounts/list", listZernioAccounts);
 
 // GET /zernio/profiles — List profiles (only this user's)
 app.get("/zernio/profiles", async (c) => {
@@ -12436,8 +12440,9 @@ app.get("/generate/cl-hf-status", async (c) => {
 // PRODUCTS CRUD
 // ══════════════════════════════════════════════════════════════
 
-// GET /products — list all products for user
-app.get("/products", async (c) => {
+// GET & POST /products/list — list all products for user
+// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
+async function listProducts(c: any) {
   try {
     const user = await getUser(c);
     if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
@@ -12464,7 +12469,9 @@ app.get("/products", async (c) => {
   } catch (err) {
     return c.json({ success: false, error: `${err}` }, 401);
   }
-});
+}
+app.get("/products", listProducts);
+app.post("/products/list", listProducts);
 
 // POST /products — create a product
 app.post("/products", async (c) => {

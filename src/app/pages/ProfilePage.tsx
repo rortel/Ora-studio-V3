@@ -768,9 +768,12 @@ function SocialAccountsSection() {
   const fetchAccounts = useCallback(() => {
     setLoading(true);
     const token = auth.getAuthHeader();
-    const hdrs = makeHeaders();
-    if (token) hdrs["X-User-Token"] = token;
-    fetch(`${API_BASE}/zernio/accounts`, { headers: hdrs })
+    // POST with _token in body — JWT is >8KB, too large for URL query or HTTP header
+    fetch(`${API_BASE}/zernio/accounts/list`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ _token: token }),
+    })
       .then(res => res.json())
       .then(data => { if (data.success && data.accounts) setAccounts(data.accounts); })
       .catch(err => console.error("[SocialAccounts] Fetch error:", err))

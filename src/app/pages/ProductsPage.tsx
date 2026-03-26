@@ -52,14 +52,9 @@ function postJson(path: string, token: string, data: Record<string, any> = {}, m
   });
 }
 
-/** GET: token goes in X-User-Token header (no body on GET requests) */
-function getJson(path: string, token: string) {
-  return fetch(`${API_BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${publicAnonKey}`,
-      "X-User-Token": token,
-    },
-  });
+/** List endpoint: uses POST with _token in body (JWT too large for URL query or HTTP header) */
+function listJson(path: string, token: string) {
+  return postJson(path, token);
 }
 
 /** Upload files via FormData — token in form field */
@@ -116,7 +111,7 @@ export function ProductsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await getJson("/products", accessToken);
+      const res = await listJson("/products/list", accessToken);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.products)) {
