@@ -4823,81 +4823,106 @@ CRITICAL RULES:
       } catch (e) { console.log(`[vault/analyze-file] Vision error: ${e}`); }
 
     } else if (isPDF || isPPT || isDoc) {
-      // ── Document: extract text + structured brand DNA via Mistral document understanding ──
-      console.log(`[vault/analyze-file] Document → Mistral document understanding...`);
+      // ── Document: OCR + structured brand DNA extraction ──
+      console.log(`[vault/analyze-file] Document → Mistral OCR + structuring...`);
 
-      // Step 1: Try regex text extraction for PDFs (fast, gets raw text)
-      if (isPDF) {
-        const textDecoder = new TextDecoder("utf-8", { fatal: false });
-        const rawText = textDecoder.decode(arrayBuffer);
-        const readable = rawText.match(/[\x20-\x7E\xA0-\xFF]{4,}/g) || [];
-        const filtered = readable.filter((s: string) => !s.match(/^[\/\\<>{}()\[\]%#&]+$/) && s.length > 5).join(" ");
-        extractedText = filtered.slice(0, 20000);
-        console.log(`[vault/analyze-file] PDF regex text: ${extractedText.length} chars`);
-      }
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const docBase64 = btoa(binary);
+      const mimeType = isPDF ? "application/pdf" : fileType;
+      const mistralKey = Deno.env.get("MISTRAL_API_KEY");
 
-      // Step 2: Send document to Mistral for structured brand extraction
-      if (fileSize < 20 * 1024 * 1024) {
+      // Step 1: Mistral OCR — extract all text from PDF pages
+      if (isPDF && fileSize < 20 * 1024 * 1024) {
         try {
-          const bytes = new Uint8Array(arrayBuffer);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          const docBase64 = btoa(binary);
-          const mimeType = isPDF ? "application/pdf" : fileType;
-
-          console.log(`[vault/analyze-file] Sending ${(fileSize/1024).toFixed(0)}KB document to Mistral...`);
+          console.log(`[vault/analyze-file] OCR: sending ${(fileSize/1024).toFixed(0)}KB PDF...`);
           const ctrl = new AbortController();
           const timer = setTimeout(() => ctrl.abort(), 120_000);
-
-          const mistralKey = Deno.env.get("MISTRAL_API_KEY");
-          const res = await fetch(`${MISTRAL_BASE}/chat/completions`, {
+          const ocrRes = await fetch(`${MISTRAL_BASE}/ocr`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
             body: JSON.stringify({
-              model: "mistral-large-latest",
-              messages: [
-                { role: "system", content: charterSystemPrompt },
-                { role: "user", content: [
-                  { type: "text", text: `Analyze this brand guidelines document "${fileName}" and extract the complete structured brand profile.` },
-                  { type: "document_url", document_url: { url: `data:${mimeType};base64,${docBase64}` } },
-                ] },
-              ],
-              max_tokens: 4000,
-              temperature: 0.1,
-              response_format: { type: "json_object" },
+              model: "mistral-ocr-latest",
+              document: { type: "document_url", document_url: `data:application/pdf;base64,${docBase64}` },
             }),
             signal: ctrl.signal,
           });
           clearTimeout(timer);
+          if (ocrRes.ok) {
+            const ocrData = await ocrRes.json();
+            // OCR returns pages with markdown text
+            const pages = ocrData.pages || ocrData.results || [];
+            const ocrText = pages.map((p: any) => p.markdown || p.text || "").join("\n\n");
+            if (ocrText.length > 100) {
+              extractedText = ocrText;
+              console.log(`[vault/analyze-file] OCR OK: ${extractedText.length} chars from ${pages.length} pages`);
+            } else {
+              console.log(`[vault/analyze-file] OCR returned little text: ${ocrText.length} chars`);
+            }
+          } else {
+            const errText = (await ocrRes.text()).slice(0, 300);
+            console.log(`[vault/analyze-file] OCR error ${ocrRes.status}: ${errText}`);
+          }
+        } catch (e: any) {
+          console.log(`[vault/analyze-file] OCR failed: ${e?.name === "AbortError" ? "timeout 120s" : e?.message || e}`);
+        }
+      }
 
-          if (res.ok) {
-            const data = await res.json();
+      // Fallback: regex text extraction if OCR failed
+      if (!extractedText || extractedText.length < 100) {
+        if (isPDF) {
+          const textDecoder = new TextDecoder("utf-8", { fatal: false });
+          const rawText = textDecoder.decode(arrayBuffer);
+          const readable = rawText.match(/[\x20-\x7E\xA0-\xFF]{4,}/g) || [];
+          const filtered = readable.filter((s: string) => !s.match(/^[\/\\<>{}()\[\]%#&]+$/) && s.length > 5).join(" ");
+          extractedText = filtered.slice(0, 20000);
+          console.log(`[vault/analyze-file] Regex fallback: ${extractedText.length} chars`);
+        }
+      }
+
+      // Step 2: Structure extracted text into brand DNA using pixtral-large
+      if (extractedText.length > 200) {
+        try {
+          console.log(`[vault/analyze-file] Structuring ${extractedText.length} chars with pixtral-large...`);
+          const ctrl2 = new AbortController();
+          const timer2 = setTimeout(() => ctrl2.abort(), 90_000);
+          const structRes = await fetch(`${MISTRAL_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${mistralKey}` },
+            body: JSON.stringify({
+              model: "pixtral-large-latest",
+              messages: [
+                { role: "system", content: charterSystemPrompt },
+                { role: "user", content: `Analyze this brand guidelines document "${fileName}" and extract the complete structured brand profile.\n\n${extractedText.slice(0, 30000)}` },
+              ],
+              max_tokens: 8000,
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+            }),
+            signal: ctrl2.signal,
+          });
+          clearTimeout(timer2);
+          if (structRes.ok) {
+            const data = await structRes.json();
             const raw = data.choices?.[0]?.message?.content || "";
-            console.log(`[vault/analyze-file] Mistral doc response: ${raw.length} chars`);
+            console.log(`[vault/analyze-file] Structuring response: ${raw.length} chars`);
             if (raw) {
               try {
                 const cleaned = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
                 const match = cleaned.match(/\{[\s\S]*\}/);
                 structuredDna = match ? JSON.parse(match[0]) : JSON.parse(cleaned);
-                console.log(`[vault/analyze-file] Structured DNA extracted: ${structuredDna.company_name}, ${structuredDna.colors?.length || 0} colors, ${structuredDna.fonts?.length || 0} fonts`);
-                // Use AI text as extractedText if regex extraction was poor
-                if (!extractedText || extractedText.length < 200) {
-                  extractedText = raw;
-                }
+                console.log(`[vault/analyze-file] DNA: ${structuredDna.company_name}, ${structuredDna.colors?.length || 0} colors, ${structuredDna.fonts?.length || 0} fonts`);
               } catch (parseErr) {
-                console.log(`[vault/analyze-file] JSON parse failed: ${parseErr}, using raw as text`);
+                console.log(`[vault/analyze-file] JSON parse failed: ${parseErr}`);
                 if (raw.length > extractedText.length) extractedText = raw;
               }
             }
           } else {
-            console.log(`[vault/analyze-file] Mistral doc error: ${res.status} ${(await res.text()).slice(0, 200)}`);
+            console.log(`[vault/analyze-file] Structuring error: ${structRes.status} ${(await structRes.text()).slice(0, 200)}`);
           }
         } catch (e: any) {
-          if (e?.name === "AbortError") {
-            console.log(`[vault/analyze-file] Mistral doc timeout (120s)`);
-          } else {
-            console.log(`[vault/analyze-file] Mistral doc error: ${e?.message || e}`);
-          }
+          console.log(`[vault/analyze-file] Structuring failed: ${e?.name === "AbortError" ? "timeout 90s" : e?.message || e}`);
         }
       }
 
