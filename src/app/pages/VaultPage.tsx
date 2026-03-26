@@ -12,6 +12,18 @@ import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { ImageBank } from "../components/ImageBank";
+// PDF.js loaded lazily (only when a PDF is dropped)
+let pdfjsReady: typeof import("pdfjs-dist") | null = null;
+async function getPdfJs() {
+  if (pdfjsReady) return pdfjsReady;
+  const lib = await import("pdfjs-dist");
+  lib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/build/pdf.worker.mjs",
+    import.meta.url,
+  ).toString();
+  pdfjsReady = lib;
+  return lib;
+}
 
 // ── Helpers ──
 
@@ -306,6 +318,21 @@ function VaultPageContent() {
     setAnalyzing(false);
   };
 
+  // ── Extract text from PDF client-side using pdf.js ──
+  const extractPdfText = async (file: File): Promise<string> => {
+    const pdfjsLib = await getPdfJs();
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pages: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items.map((item: any) => item.str).join(" ");
+      if (text.trim()) pages.push(text);
+    }
+    return pages.join("\n\n");
+  };
+
   // ── Analyze File ──
   const handleFile = async (file: File) => {
     setAnalyzing(true);
@@ -313,8 +340,35 @@ function VaultPageContent() {
     setAnalyzeProgress(`Analyzing ${file.name}...`);
     try {
       const isImage = file.type.startsWith("image/");
-      const isDocument = file.type === "application/pdf" || !!file.name.match(/\.(pptx?|docx?|pdf)$/i);
-      if (isImage || isDocument) {
+      const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const isDocument = isPDF || !!file.name.match(/\.(pptx?|docx?)$/i);
+      const isLargeFile = file.size > 15 * 1024 * 1024; // 15MB
+
+      // Large PDFs: extract text client-side, then send text to /vault/analyze
+      if (isPDF && isLargeFile) {
+        console.log(`[Vault] Large PDF (${(file.size / 1024 / 1024).toFixed(1)}MB), extracting text client-side...`);
+        setAnalyzeProgress(`Reading ${file.name} (${(file.size / 1024 / 1024).toFixed(0)}MB)...`);
+        const pdfText = await extractPdfText(file);
+        console.log(`[Vault] PDF text extracted: ${pdfText.length} chars`);
+        if (pdfText.length < 50) { setAnalyzeError("Could not extract text from PDF"); setAnalyzing(false); return; }
+        setAnalyzeProgress("Extracting brand DNA...");
+        const res = await fetch(apiUrl("/vault/analyze"), {
+          method: "POST", headers: vaultHeaders(),
+          body: corsBody(token(), { content: pdfText, sourceName: file.name, sourceType: "pdf-charter" }),
+        });
+        const data = await res.json();
+        if (data.success && data.dna) {
+          const updated = mergeVaultData(vault, data.dna);
+          updated.updatedAt = new Date().toISOString();
+          setVault(updated);
+          setAnalyzeProgress("Saving to vault...");
+          await saveVault(updated);
+          setAnalyzeProgress("Saved!");
+          setTimeout(() => setAnalyzeProgress(""), 2000);
+        } else { setAnalyzeError(data.error || "Analysis failed"); }
+
+      } else if (isImage || isDocument) {
+        // Small files: upload to backend for processing
         const formData = new FormData();
         formData.append("file", file);
         formData.append("_token", token());
@@ -323,7 +377,6 @@ function VaultPageContent() {
         const data = await res.json();
 
         if (data.success && data.dna) {
-          // Direct structured DNA from backend (PDF/document charter extraction)
           console.log("[Vault] Direct DNA from file:", data.dna.company_name, `${data.dna.colors?.length || 0} colors`);
           const updated = mergeVaultData(vault, data.dna);
           updated.updatedAt = new Date().toISOString();
@@ -333,7 +386,6 @@ function VaultPageContent() {
           setAnalyzeProgress("Saved!");
           setTimeout(() => setAnalyzeProgress(""), 2000);
         } else if (data.success && data.extractedText) {
-          // Fallback: send extracted text to /vault/analyze for structuring
           setAnalyzeProgress("Structuring brand data...");
           const res2 = await fetch(apiUrl("/vault/analyze"), {
             method: "POST", headers: vaultHeaders(),
