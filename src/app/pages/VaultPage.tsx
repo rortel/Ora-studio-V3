@@ -340,60 +340,107 @@ function VaultPageContent() {
 
   // ── Extract embedded images from PDF using pdf.js ──
   // Extract embedded raster images (photos, bitmaps) from PDF
-  const extractPdfRasterImages = async (file: File): Promise<Blob[]> => {
+  const extractPdfRasterImages = async (file: File): Promise<{ blob: Blob; page: number; w: number; h: number }[]> => {
     const pdfjsLib = await getPdfJs();
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const blobs: Blob[] = [];
-    const MIN_SIZE = 50;
+    const results: { blob: Blob; page: number; w: number; h: number }[] = [];
+    const MIN_SIZE = 80; // skip tiny decorations
+    const seen = new Set<string>(); // deduplicate by size signature
+
+    const imgDataToBlob = async (imgData: any): Promise<Blob | null> => {
+      if (!imgData) return null;
+      // Handle ImageBitmap or HTMLImageElement (some pdf.js versions)
+      if (typeof ImageBitmap !== "undefined" && imgData instanceof ImageBitmap) {
+        const canvas = document.createElement("canvas");
+        canvas.width = imgData.width; canvas.height = imgData.height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(imgData, 0, 0);
+        return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+      if (imgData instanceof HTMLImageElement) {
+        const canvas = document.createElement("canvas");
+        canvas.width = imgData.naturalWidth; canvas.height = imgData.naturalHeight;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(imgData, 0, 0);
+        return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+      // Standard pdf.js image data: { width, height, data, kind }
+      if (!imgData.width || !imgData.height || !imgData.data) return null;
+      if (imgData.width < MIN_SIZE || imgData.height < MIN_SIZE) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = imgData.width; canvas.height = imgData.height;
+      const ctx = canvas.getContext("2d")!;
+      const src = imgData.data;
+      const imgDataObj = ctx.createImageData(imgData.width, imgData.height);
+      const dest = imgDataObj.data;
+      const hasAlpha = imgData.kind === 3 || src.length === imgData.width * imgData.height * 4;
+      if (hasAlpha) {
+        dest.set(src);
+      } else {
+        const pixelCount = imgData.width * imgData.height;
+        for (let p = 0; p < pixelCount; p++) {
+          dest[p * 4] = src[p * 3];
+          dest[p * 4 + 1] = src[p * 3 + 1];
+          dest[p * 4 + 2] = src[p * 3 + 2];
+          dest[p * 4 + 3] = 255;
+        }
+      }
+      ctx.putImageData(imgDataObj, 0, 0);
+      return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    };
 
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const ops = await page.getOperatorList();
       for (let j = 0; j < ops.fnArray.length; j++) {
-        if (
-          ops.fnArray[j] === pdfjsLib.OPS.paintImageXObject ||
-          ops.fnArray[j] === pdfjsLib.OPS.paintJpegXObject
-        ) {
-          const imgName = ops.argsArray[j][0];
-          try {
+        const op = ops.fnArray[j];
+        try {
+          // Named image XObjects (most common)
+          if (op === pdfjsLib.OPS.paintImageXObject || op === pdfjsLib.OPS.paintJpegXObject) {
+            const imgName = ops.argsArray[j][0];
             const imgData: any = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
+              const timeout = setTimeout(() => reject(new Error("timeout")), 5000);
+              // Try page.objs first, then commonObjs (shared images)
               page.objs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
-            });
-            if (!imgData || !imgData.width || !imgData.height) continue;
-            if (imgData.width < MIN_SIZE || imgData.height < MIN_SIZE) continue;
-
-            const canvas = document.createElement("canvas");
-            canvas.width = imgData.width;
-            canvas.height = imgData.height;
-            const ctx = canvas.getContext("2d")!;
-            const src = imgData.data;
-            const imgDataObj = ctx.createImageData(imgData.width, imgData.height);
-            const dest = imgDataObj.data;
-            const hasAlpha = imgData.kind === 3 || src.length === imgData.width * imgData.height * 4;
-            if (hasAlpha) {
-              dest.set(src);
-            } else {
-              const pixelCount = imgData.width * imgData.height;
-              for (let p = 0; p < pixelCount; p++) {
-                dest[p * 4] = src[p * 3];
-                dest[p * 4 + 1] = src[p * 3 + 1];
-                dest[p * 4 + 2] = src[p * 3 + 2];
-                dest[p * 4 + 3] = 255;
-              }
+            }).catch(() => new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
+              page.commonObjs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
+            }).catch(() => null));
+            if (!imgData) continue;
+            const w = imgData.width || imgData.naturalWidth || 0;
+            const h = imgData.height || imgData.naturalHeight || 0;
+            if (w < MIN_SIZE || h < MIN_SIZE) continue;
+            const sig = `${w}x${h}`;
+            if (seen.has(sig)) continue; // deduplicate same-dimension images
+            const blob = await imgDataToBlob(imgData);
+            if (blob && blob.size > 1000) {
+              seen.add(sig);
+              results.push({ blob, page: i, w, h });
+              console.log(`[Vault] Raster img p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
             }
-            ctx.putImageData(imgDataObj, 0, 0);
-            const blob = await new Promise<Blob | null>((resolve) =>
-              canvas.toBlob(resolve, "image/png")
-            );
-            if (blob && blob.size > 500) blobs.push(blob);
-          } catch { /* skip unreadable images */ }
-        }
+          }
+          // Inline images (embedded directly in content stream, not named)
+          else if (op === pdfjsLib.OPS.paintInlineImageXObject || op === pdfjsLib.OPS.paintInlineImageXObjectGroup) {
+            const inlineData = ops.argsArray[j][0];
+            if (!inlineData) continue;
+            const w = inlineData.width || 0;
+            const h = inlineData.height || 0;
+            if (w < MIN_SIZE || h < MIN_SIZE) continue;
+            const sig = `inline-${w}x${h}`;
+            if (seen.has(sig)) continue;
+            const blob = await imgDataToBlob(inlineData);
+            if (blob && blob.size > 1000) {
+              seen.add(sig);
+              results.push({ blob, page: i, w, h });
+              console.log(`[Vault] Inline img p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
+            }
+          }
+        } catch { /* skip unreadable images */ }
       }
       page.cleanup();
     }
-    return blobs;
+    return results;
   };
 
   // Render each PDF page as a full-page PNG (captures vectors, logos, pictos, layout)
@@ -517,27 +564,37 @@ function VaultPageContent() {
         // Extract images from PDF: raster images + rendered pages → AI categorization
         if (dnaOk && isPDF) {
           try {
-            // Layer 1: Extract embedded raster images (photos, bitmaps)
-            setAnalyzeProgress("Extracting images from PDF...");
-            console.log("[Vault] Layer 1: Extracting raster images from PDF...");
-            const rasterBlobs = await extractPdfRasterImages(file);
-            console.log(`[Vault] Raster: ${rasterBlobs.length} images (${rasterBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
-
-            // Layer 2: Render full pages as JPEG (captures vector logos, pictos, usage rules)
-            setAnalyzeProgress("Rendering PDF pages for visual analysis...");
-            console.log("[Vault] Layer 2: Rendering PDF pages as images...");
-            const pageBlobs = await renderPdfPages(file, 30, 1.5); // scale 1.5 to keep size manageable
-            console.log(`[Vault] Pages: ${pageBlobs.length} rendered (${pageBlobs.map(b => `${(b.size/1024).toFixed(0)}KB`).join(", ")})`);
-
-            // Upload 1 image per request, all in parallel (avoids backend timeout)
-            const allBlobs: { blob: Blob; name: string }[] = [];
             const pdfName = file.name.replace(/\.pdf$/i, "");
-            rasterBlobs.forEach((blob, idx) => allBlobs.push({ blob, name: `${pdfName}_img_${idx + 1}.png` }));
-            pageBlobs.forEach((blob, idx) => allBlobs.push({ blob, name: `${pdfName}_page_${idx + 1}.jpg` }));
+
+            // ─── Layer 1: Extract ACTUAL embedded images (photos, logos as bitmaps) ───
+            setAnalyzeProgress("Extracting images from PDF...");
+            console.log("[Vault] Layer 1: Extracting embedded raster images...");
+            const rasterResults = await extractPdfRasterImages(file);
+            console.log(`[Vault] Raster: ${rasterResults.length} images found`);
+
+            // Upload raster images directly — these are real extracted assets
+            const rasterBlobs: { blob: Blob; name: string }[] = rasterResults.map((r, idx) =>
+              ({ blob: r.blob, name: `${pdfName}_img_p${r.page}_${r.w}x${r.h}.png` })
+            );
+
+            // ─── Layer 2: Render pages as JPEG for AI visual classification ───
+            // Only upload pages the AI classifies as visual assets (logo, photo, picto, mockup)
+            // Text-only pages, TOC, blank pages → skipped by backend AI
+            setAnalyzeProgress("Rendering PDF pages for visual analysis...");
+            console.log("[Vault] Layer 2: Rendering PDF pages...");
+            const pageBlobs = await renderPdfPages(file, 30, 2); // scale 2 for better AI detection
+            console.log(`[Vault] Pages: ${pageBlobs.length} rendered`);
+
+            // Tag page renders differently so backend knows they're full pages (may skip more)
+            const pageItems: { blob: Blob; name: string }[] = pageBlobs.map((blob, idx) =>
+              ({ blob, name: `${pdfName}_page_${idx + 1}.jpg` })
+            );
+
+            const allBlobs = [...rasterBlobs, ...pageItems];
 
             if (allBlobs.length > 0) {
-              setAnalyzeProgress(`Classifying ${allBlobs.length} visual assets...`);
-              console.log(`[Vault] Uploading ${allBlobs.length} assets (1 per request, parallel)...`);
+              setAnalyzeProgress(`Analyzing ${allBlobs.length} visual assets with AI...`);
+              console.log(`[Vault] Sending ${rasterBlobs.length} extracted images + ${pageItems.length} page renders for AI classification...`);
 
               // Fire all requests in parallel (browser limits concurrency to ~6)
               const results = await Promise.allSettled(allBlobs.map(async ({ blob, name }) => {
@@ -547,21 +604,32 @@ function VaultPageContent() {
                 form.append("brand_name", vault.company_name || "");
                 form.append("source", "pdf-charter");
                 const res = await fetch(apiUrl("/vault/pdf-images-upload"), { method: "POST", headers: apiHeaders(false), body: form });
+                if (!res.ok) {
+                  const errText = await res.text().catch(() => res.statusText);
+                  throw new Error(`${res.status}: ${errText}`);
+                }
                 return res.json();
               }));
 
               let totalUploaded = 0;
               let totalSkipped = 0;
+              let totalFailed = 0;
               for (const r of results) {
                 if (r.status === "fulfilled" && r.value?.success) {
                   totalUploaded += r.value.stats?.uploaded || 0;
                   totalSkipped += r.value.stats?.skipped || 0;
+                } else if (r.status === "fulfilled" && !r.value?.success) {
+                  totalSkipped += r.value.stats?.skipped || 0;
+                  totalFailed++;
+                } else {
+                  totalFailed++;
                 }
               }
-              const failed = results.filter(r => r.status === "rejected").length;
-              console.log(`[Vault] PDF assets: ${totalUploaded} uploaded, ${totalSkipped} skipped, ${failed} failed`);
+              console.log(`[Vault] PDF assets: ${totalUploaded} uploaded, ${totalSkipped} skipped by AI, ${totalFailed} failed`);
               if (totalUploaded > 0) {
                 setAnalyzeProgress(`${totalUploaded} visual asset${totalUploaded > 1 ? "s" : ""} added to Image Bank`);
+              } else {
+                setAnalyzeProgress("No visual assets detected in PDF pages");
               }
             } else {
               console.log("[Vault] No extractable visual assets found in PDF");
