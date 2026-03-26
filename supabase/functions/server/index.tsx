@@ -12690,13 +12690,17 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
 // POST /products/:id/images — upload images to a product
 app.post("/products/:id/images", async (c) => {
   try {
+    // FormData: must read _token from form fields since body is not JSON
+    const formData = await c.req.formData();
+    const formToken = formData.get("_token");
+    if (formToken) c.set("userToken", formToken);
+
     const user = await getUser(c);
     if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
     const productId = c.req.param("id");
     const existing = await kv.get(`product:${user.id}:${productId}`);
     if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
 
-    const formData = await c.req.formData();
     const files = formData.getAll("files");
     const sb = supabaseAdmin();
     const newImages: any[] = [];
