@@ -9,7 +9,7 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
-  Pencil,
+  Pencil, Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
@@ -298,7 +298,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
   const zernioLoadedRef = useRef(false);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
-
+  // ── Product state ──
+  const [products, setProducts] = useState<any[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const productsLoadedRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -349,6 +353,43 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     };
     fetchVault(1).finally(() => setVaultLoading(false));
   }, [getAuthToken]);
+
+  // ── Load products on mount ──
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || productsLoadedRef.current) return;
+    productsLoadedRef.current = true;
+    setProductsLoading(true);
+    serverGet("/products")
+      .then((data: any) => {
+        if (data.success && data.products) setProducts(data.products);
+      })
+      .catch(() => {})
+      .finally(() => setProductsLoading(false));
+  }, [getAuthToken, serverGet]);
+
+  // ── Select a product: auto-fill brief + add product images as ref photos ──
+  const handleSelectProduct = useCallback((product: any) => {
+    setSelectedProduct(product);
+    // Auto-fill brief with product info
+    const parts: string[] = [];
+    if (product.name) parts.push(`Product: ${product.name}`);
+    if (product.description) parts.push(product.description);
+    if (product.features?.length) parts.push(`Key features: ${product.features.join(", ")}`);
+    if (product.price) parts.push(`Price: ${product.price} ${product.currency || "EUR"}`);
+    if (product.category) parts.push(`Category: ${product.category}`);
+    setBrief(parts.join("\n"));
+    if (product.url) setProductUrls(product.url);
+    // Add product images as ref photos
+    if (product.images?.length > 0) {
+      const imagePhotos = product.images
+        .filter((img: any) => img.signedUrl)
+        .slice(0, 10)
+        .map((img: any) => ({ file: null as any, preview: img.signedUrl }));
+      setRefPhotos(imagePhotos);
+    }
+    toast.success(`Product "${product.name}" loaded`);
+  }, []);
 
   // ── Photo upload handlers (client-side only — used as visual ref in UI) ──
   const handlePhotoDrop = useCallback((e: React.DragEvent) => {
@@ -446,6 +487,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
 
     for (let i = 0; i < refPhotos.length; i++) {
       try {
+        // If ref photo is a URL (from product images), use it directly
+        if (!refPhotos[i].file && refPhotos[i].preview) {
+          urls.push(refPhotos[i].preview);
+          console.log(`[CampaignLab] Ref ${i + 1}/${refPhotos.length} using existing URL`);
+          continue;
+        }
         const resized = await resizeImage(refPhotos[i].file);
         const sizeKB = (resized.size / 1024).toFixed(0);
         const fd = new FormData();
@@ -1488,31 +1535,40 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
     setCalendarLoading(false);
 
     // Persist events to server so CalendarPage can display them
-    try {
-      for (const ev of events) {
-        serverPost("/calendar", {
-          title: ev.title,
-          channel: ev.channel,
-          channelIcon: ev.channel,
-          time: ev.time,
-          status: "scheduled",
-          score: 0,
-          color: ev.color,
-          day: ev.day,
-          month: ev.month,
-          year: ev.year,
-          postingNote: ev.postingNote || "",
-          campaignTheme: brief || "Campaign",
-          assetType: ev.assetType || "",
-          copy: ev.copy || "",
-          caption: ev.caption || "",
-          hashtags: ev.hashtags || "",
-          headline: ev.headline || "",
-          imageUrl: ev.imageUrl || "",
-          videoUrl: ev.videoUrl || "",
-        }, 10_000).catch(() => {});
+    // Update local IDs with server-generated IDs for deploy to work
+    const persistEvents = async () => {
+      const updatedEvents = [...events];
+      for (let i = 0; i < events.length; i++) {
+        try {
+          const data = await serverPost("/calendar", {
+            title: events[i].title,
+            channel: events[i].channel,
+            channelIcon: events[i].channel,
+            time: events[i].time,
+            status: "scheduled",
+            score: 0,
+            color: events[i].color,
+            day: events[i].day,
+            month: events[i].month,
+            year: events[i].year,
+            postingNote: events[i].postingNote || "",
+            campaignTheme: brief || "Campaign",
+            assetType: events[i].assetType || "",
+            copy: events[i].copy || "",
+            caption: events[i].caption || "",
+            hashtags: events[i].hashtags || "",
+            headline: events[i].headline || "",
+            imageUrl: events[i].imageUrl || "",
+            videoUrl: events[i].videoUrl || "",
+          }, 10_000);
+          if (data.success && data.event?.id) {
+            updatedEvents[i] = { ...updatedEvents[i], id: data.event.id };
+          }
+        } catch { /* best-effort */ }
       }
-    } catch (_) { /* best-effort sync */ }
+      setCalendarEvents(updatedEvents);
+    };
+    persistEvents();
   };
 
   // ── Deploy a single asset via Zernio ──
@@ -1719,7 +1775,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
               {savingCampaign ? "Saving..." : "Save Campaign"}
             </button>
             <button
-              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); }}
+              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", fontWeight: 500 }}
             >
@@ -1788,6 +1844,53 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary }: CampaignL
                   </p>
                 )}
               </div>
+
+              {/* ── Product Selector ── */}
+              {products.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Package size={14} style={{ color: "#9A9590" }} />
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
+                      Create from Product
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(auto-fills brief &amp; images)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {products.map((product: any) => {
+                      const isSelected = selectedProduct?.id === product.id;
+                      const mainImage = product.images?.[0]?.signedUrl;
+                      return (
+                        <button
+                          key={product.id}
+                          onClick={() => handleSelectProduct(product)}
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer"
+                          style={{
+                            background: isSelected ? "rgba(59,79,196,0.12)" : "#1a1918",
+                            border: `1px solid ${isSelected ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
+                          }}
+                        >
+                          {mainImage ? (
+                            <img src={mainImage} alt="" className="w-8 h-8 rounded-md object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)" }}>
+                              <Package size={14} style={{ color: "#3B3936" }} />
+                            </div>
+                          )}
+                          <div className="text-left">
+                            <span className="block" style={{ fontSize: "12px", fontWeight: 600, color: isSelected ? "var(--ora-signal)" : "#E8E4DF" }}>
+                              {product.name}
+                            </span>
+                            {product.price && (
+                              <span style={{ fontSize: "10px", color: "#7A7572" }}>{product.price} {product.currency || "EUR"}</span>
+                            )}
+                          </div>
+                          {isSelected && <Check size={14} style={{ color: "var(--ora-signal)" }} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Reference Photos */}
               <div>

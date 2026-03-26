@@ -7690,9 +7690,10 @@ app.get("/calendar", async (c) => {
 app.post("/calendar", async (c) => {
   try {
     const user = await requireAuth(c);
-    const body = await c.req.json();
-    const id = `calendar:${user.id}:${Date.now()}`;
-    const event = { id, ...body, userId: user.id, createdAt: new Date().toISOString() };
+    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, ...eventData } = body;
+    const id = `calendar:${user.id}:${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const event = { id, ...eventData, userId: user.id, createdAt: new Date().toISOString() };
     await kv.set(id, event);
     return c.json({ success: true, event });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
@@ -12439,9 +12440,26 @@ app.get("/generate/cl-hf-status", async (c) => {
 app.get("/products", async (c) => {
   try {
     const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
     const items = await kv.getByPrefix(`product:${user.id}:`);
     const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
     products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    // Refresh signed URLs for product images (they expire)
+    const sb = supabaseAdmin();
+    for (const product of products) {
+      if (product.images?.length > 0) {
+        for (const img of product.images) {
+          if (img.storagePath) {
+            try {
+              const { data } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(img.storagePath, 86400);
+              if (data?.signedUrl) img.signedUrl = data.signedUrl;
+            } catch { /* keep existing URL */ }
+          }
+        }
+      }
+    }
+
     return c.json({ success: true, products });
   } catch (err) {
     return c.json({ success: false, error: `${err}` }, 401);
@@ -12452,7 +12470,8 @@ app.get("/products", async (c) => {
 app.post("/products", async (c) => {
   try {
     const user = await getUser(c);
-    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
     const { _token, ...data } = body;
     const id = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const product = {
@@ -12481,8 +12500,9 @@ app.post("/products", async (c) => {
 app.put("/products/:id", async (c) => {
   try {
     const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
     const id = c.req.param("id");
-    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
     const { _token, ...data } = body;
     const existing = await kv.get(`product:${user.id}:${id}`);
     if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
@@ -12508,8 +12528,16 @@ app.put("/products/:id", async (c) => {
 app.delete("/products/:id", async (c) => {
   try {
     const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
     const id = c.req.param("id");
-    await kv.delete(`product:${user.id}:${id}`);
+    // Clean up product images from storage
+    const existing = await kv.get(`product:${user.id}:${id}`);
+    if (existing?.images?.length > 0) {
+      const sb = supabaseAdmin();
+      const paths = existing.images.map((img: any) => img.storagePath).filter(Boolean);
+      if (paths.length > 0) await sb.storage.from(MEDIA_BUCKET).remove(paths).catch(() => {});
+    }
+    await kv.del(`product:${user.id}:${id}`);
     return c.json({ success: true });
   } catch (err) {
     return c.json({ success: false, error: `${err}` }, 500);
@@ -12590,6 +12618,90 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
     return c.json({ success: true, product: extracted });
   } catch (err) {
     console.log(`[products/scrape-url] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/:id/images — upload images to a product
+app.post("/products/:id/images", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const formData = await c.req.formData();
+    const files = formData.getAll("files");
+    const sb = supabaseAdmin();
+    const newImages: any[] = [];
+
+    for (const file of files) {
+      if (!(file instanceof File)) continue;
+      const arrayBuffer = await file.arrayBuffer();
+      const ext = file.name.split(".").pop() || "jpg";
+      const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
+
+      await sb.storage.from(MEDIA_BUCKET).remove([storagePath]).catch(() => {});
+      const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type || `image/${ext}`,
+        upsert: true,
+      });
+      if (uploadErr) { console.log(`[products/images] Upload error:`, uploadErr); continue; }
+
+      const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
+      newImages.push({
+        id: imageId,
+        fileName: file.name,
+        storagePath,
+        signedUrl: urlData?.signedUrl || null,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+
+    const updated = {
+      ...existing,
+      images: [...(existing.images || []), ...newImages],
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images] Added ${newImages.length} images to product ${productId}`);
+    return c.json({ success: true, images: newImages, product: updated });
+  } catch (err) {
+    console.log(`[products/images] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// DELETE /products/:id/images/:imageId — delete an image from a product
+app.delete("/products/:id/images/:imageId", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const imageId = c.req.param("imageId");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const image = (existing.images || []).find((img: any) => img.id === imageId);
+    if (image?.storagePath) {
+      const sb = supabaseAdmin();
+      await sb.storage.from(MEDIA_BUCKET).remove([image.storagePath]).catch(() => {});
+    }
+
+    const updated = {
+      ...existing,
+      images: (existing.images || []).filter((img: any) => img.id !== imageId),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images] Deleted image ${imageId} from product ${productId}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[products/images] Delete error:`, err);
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
