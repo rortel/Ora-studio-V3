@@ -4,22 +4,22 @@ import { Link } from "react-router";
 import {
   Plus, X, Loader2, Trash2, Edit3, Upload, ArrowLeft,
   Package, DollarSign, Tag, Link as LinkIcon, List, Image as ImageIcon,
-  Check, ChevronDown,
+  Check, ChevronRight, AlertCircle,
 } from "lucide-react";
-import { API_BASE, publicAnonKey, apiHeaders } from "../lib/supabase";
+import { toast } from "sonner";
+import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 
-// ── Types ──
+// ══════════════════════════════════════
+// Types
+// ══════════════════════════════════════
 
 interface ProductImage {
   id: string;
   fileName: string;
   storagePath: string;
   signedUrl?: string | null;
-  fileSize?: number;
-  mimeType?: string;
-  uploadedAt?: string;
 }
 
 interface Product {
@@ -36,53 +36,98 @@ interface Product {
   updatedAt: string;
 }
 
-// ── Helpers ──
+// ══════════════════════════════════════
+// API helpers — single source of truth
+// ══════════════════════════════════════
 
-function corsBody(token: string, data?: Record<string, any>): string {
-  return JSON.stringify({ _token: token, ...data });
+/** POST/PUT/DELETE: token goes in JSON body as _token, Content-Type text/plain to skip CORS preflight */
+function postJson(path: string, token: string, data: Record<string, any> = {}, method = "POST") {
+  return fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${publicAnonKey}`,
+      "Content-Type": "text/plain",
+    },
+    body: JSON.stringify({ _token: token, ...data }),
+  });
+}
+
+/** GET: token goes in X-User-Token header (no body on GET requests) */
+function getJson(path: string, token: string) {
+  return fetch(`${API_BASE}${path}`, {
+    headers: {
+      Authorization: `Bearer ${publicAnonKey}`,
+      "X-User-Token": token,
+    },
+  });
+}
+
+/** Upload files via FormData — token in form field */
+function postFormData(path: string, token: string, files: FileList) {
+  const fd = new FormData();
+  fd.append("_token", token);
+  for (let i = 0; i < files.length; i++) fd.append("files", files[i]);
+  return fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${publicAnonKey}` },
+    body: fd,
+  });
 }
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "CAD", "AUD", "JPY"];
 
-// ════════════════════════════════════════
-// PRODUCTS PAGE
-// ════════════════════════════════════════
+// ══════════════════════════════════════
+// ProductsPage
+// ══════════════════════════════════════
 
 export function ProductsPage() {
   const { accessToken } = useAuth();
+
+  // Data
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [scraping, setScraping] = useState(false);
-
-  // Form state
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formUrl, setFormUrl] = useState("");
-  const [formFeatures, setFormFeatures] = useState<string[]>([""]);
-  const [formPrice, setFormPrice] = useState("");
-  const [formCurrency, setFormCurrency] = useState("EUR");
-  const [formCategory, setFormCategory] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [uploadingImages, setUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Load products ──
+  // Form fields
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [url, setUrl] = useState("");
+  const [features, setFeatures] = useState<string[]>([""]);
+  const [price, setPrice] = useState("");
+  const [currency, setCurrency] = useState("EUR");
+  const [category, setCategory] = useState("");
+
+  // ── Load all products ──
   const loadProducts = useCallback(async () => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setLoading(false);
+      setError("Vous devez être connecté pour voir vos produits.");
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}/products`, {
-        headers: { ...apiHeaders(false), "X-User-Token": accessToken },
-      });
+      const res = await getJson("/products", accessToken);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.success && data.products) {
+      if (data.success && Array.isArray(data.products)) {
         setProducts(data.products);
+      } else {
+        throw new Error(data.error || "Réponse inattendue du serveur");
       }
-    } catch (err) {
-      console.error("[products] Load failed:", err);
+    } catch (err: any) {
+      const msg = err?.message || "Erreur de chargement";
+      console.error("[ProductsPage] loadProducts:", msg);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -90,116 +135,114 @@ export function ProductsPage() {
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
-  // ── Open create / edit dialog ──
+  // ── Reset form ──
+  const resetForm = () => {
+    setName(""); setDescription(""); setUrl("");
+    setFeatures([""]); setPrice(""); setCurrency("EUR"); setCategory("");
+  };
+
+  // ── Open dialogs ──
   const openCreate = () => {
     setEditingProduct(null);
-    setFormName("");
-    setFormDescription("");
-    setFormUrl("");
-    setFormFeatures([""]);
-    setFormPrice("");
-    setFormCurrency("EUR");
-    setFormCategory("");
+    resetForm();
     setDialogOpen(true);
   };
 
-  const openEdit = (product: Product) => {
-    setEditingProduct(product);
-    setFormName(product.name);
-    setFormDescription(product.description || "");
-    setFormUrl(product.url || "");
-    setFormFeatures(product.features?.length ? [...product.features] : [""]);
-    setFormPrice(product.price || "");
-    setFormCurrency(product.currency || "EUR");
-    setFormCategory(product.category || "");
+  const openEdit = (p: Product) => {
+    setEditingProduct(p);
+    setName(p.name);
+    setDescription(p.description || "");
+    setUrl(p.url || "");
+    setFeatures(p.features?.length ? [...p.features] : [""]);
+    setPrice(p.price || "");
+    setCurrency(p.currency || "EUR");
+    setCategory(p.category || "");
     setDialogOpen(true);
   };
 
-  // ── Scrape product info from URL ──
-  const handleScrapeUrl = async () => {
-    if (!accessToken || !formUrl.trim()) return;
+  // ── Auto-fill from URL ──
+  const handleScrape = async () => {
+    if (!accessToken || !url.trim()) return;
     setScraping(true);
     try {
-      const res = await fetch(`${API_BASE}/products/scrape-url`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: corsBody(accessToken, { url: formUrl.trim() }),
-      });
+      const res = await postJson("/products/scrape-url", accessToken, { url: url.trim() });
       const data = await res.json();
       if (data.success && data.product) {
         const p = data.product;
-        if (p.name) setFormName(p.name);
-        if (p.description) setFormDescription(p.description);
-        if (p.price) setFormPrice(p.price);
-        if (p.currency) setFormCurrency(p.currency);
-        if (p.category) setFormCategory(p.category);
-        if (p.features?.length) setFormFeatures(p.features);
+        if (p.name) setName(p.name);
+        if (p.description) setDescription(p.description);
+        if (p.price) setPrice(p.price);
+        if (p.currency) setCurrency(p.currency);
+        if (p.category) setCategory(p.category);
+        if (p.features?.length) setFeatures(p.features);
+        toast.success("Informations extraites avec succès");
       } else {
-        console.error("[products] Scrape failed:", data.error);
+        toast.error(data.error || "Impossible d'extraire les infos");
       }
-    } catch (err) {
-      console.error("[products] Scrape error:", err);
+    } catch (err: any) {
+      toast.error("Erreur lors de l'extraction");
+      console.error("[ProductsPage] scrape:", err);
     } finally {
       setScraping(false);
     }
   };
 
-  // ── Save product ──
+  // ── Create or update product ──
   const handleSave = async () => {
-    if (!accessToken || !formName.trim()) return;
+    if (!accessToken) { toast.error("Non connecté"); return; }
+    if (!name.trim()) { toast.error("Le nom du produit est requis"); return; }
+
     setSaving(true);
     try {
       const payload = {
-        name: formName.trim(),
-        description: formDescription.trim(),
-        url: formUrl.trim(),
-        features: formFeatures.filter(f => f.trim()),
-        price: formPrice.trim(),
-        currency: formCurrency,
-        category: formCategory.trim(),
+        name: name.trim(),
+        description: description.trim(),
+        url: url.trim(),
+        features: features.filter(f => f.trim()),
+        price: price.trim(),
+        currency,
+        category: category.trim(),
       };
 
       const isEdit = !!editingProduct;
-      const url = isEdit
-        ? `${API_BASE}/products/${editingProduct!.id}`
-        : `${API_BASE}/products`;
+      const path = isEdit ? `/products/${editingProduct!.id}` : "/products";
       const method = isEdit ? "PUT" : "POST";
 
-      const res = await fetch(url, {
-        method,
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: corsBody(accessToken, payload),
-      });
+      const res = await postJson(path, accessToken, payload, method);
       const data = await res.json();
+
       if (data.success) {
+        toast.success(isEdit ? "Produit mis à jour" : "Produit créé");
         setDialogOpen(false);
+        resetForm();
         await loadProducts();
       } else {
-        console.error("[products] Save failed:", data.error);
+        toast.error(data.error || "Erreur lors de la sauvegarde");
       }
-    } catch (err) {
-      console.error("[products] Save error:", err);
+    } catch (err: any) {
+      toast.error("Erreur réseau — réessayez");
+      console.error("[ProductsPage] save:", err);
     } finally {
       setSaving(false);
     }
   };
 
   // ── Delete product ──
-  const handleDelete = async (productId: string) => {
+  const handleDelete = async (id: string) => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE}/products/${productId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: corsBody(accessToken),
-      });
+      const res = await postJson(`/products/${id}`, accessToken, {}, "DELETE");
       const data = await res.json();
       if (data.success) {
+        toast.success("Produit supprimé");
         setDeleteConfirm(null);
-        setProducts(prev => prev.filter(p => p.id !== productId));
+        setProducts(prev => prev.filter(p => p.id !== id));
+      } else {
+        toast.error(data.error || "Erreur de suppression");
       }
-    } catch (err) {
-      console.error("[products] Delete error:", err);
+    } catch (err: any) {
+      toast.error("Erreur réseau");
+      console.error("[ProductsPage] delete:", err);
     }
   };
 
@@ -208,22 +251,21 @@ export function ProductsPage() {
     if (!accessToken || files.length === 0) return;
     setUploadingImages(true);
     try {
-      const formData = new FormData();
-      formData.append("_token", accessToken);
-      for (let i = 0; i < files.length; i++) {
-        formData.append("files", files[i]);
-      }
-      const res = await fetch(`${API_BASE}/products/${productId}/images`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
-        body: formData,
-      });
+      const res = await postFormData(`/products/${productId}/images`, accessToken, files);
       const data = await res.json();
       if (data.success) {
+        toast.success(`${files.length} image(s) ajoutée(s)`);
         await loadProducts();
+        // Refresh editing product with new images
+        if (editingProduct && data.product) {
+          setEditingProduct(data.product);
+        }
+      } else {
+        toast.error(data.error || "Erreur d'upload");
       }
-    } catch (err) {
-      console.error("[products] Image upload error:", err);
+    } catch (err: any) {
+      toast.error("Erreur d'upload");
+      console.error("[ProductsPage] upload:", err);
     } finally {
       setUploadingImages(false);
     }
@@ -233,39 +275,43 @@ export function ProductsPage() {
   const handleDeleteImage = async (productId: string, imageId: string) => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE}/products/${productId}/images/${imageId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: corsBody(accessToken),
-      });
+      const res = await postJson(`/products/${productId}/images/${imageId}`, accessToken, {}, "DELETE");
       const data = await res.json();
       if (data.success) {
+        toast.success("Image supprimée");
         await loadProducts();
+        if (editingProduct) {
+          setEditingProduct(prev =>
+            prev ? { ...prev, images: prev.images.filter(img => img.id !== imageId) } : null
+          );
+        }
       }
-    } catch (err) {
-      console.error("[products] Delete image error:", err);
+    } catch (err: any) {
+      toast.error("Erreur de suppression");
     }
   };
 
   // ── Feature list helpers ──
-  const addFeature = () => setFormFeatures(prev => [...prev, ""]);
-  const removeFeature = (idx: number) => setFormFeatures(prev => prev.filter((_, i) => i !== idx));
-  const updateFeature = (idx: number, val: string) => setFormFeatures(prev => prev.map((f, i) => i === idx ? val : f));
+  const addFeature = () => setFeatures(prev => [...prev, ""]);
+  const removeFeature = (i: number) => setFeatures(prev => prev.filter((_, idx) => idx !== i));
+  const updateFeature = (i: number, val: string) => setFeatures(prev => prev.map((f, idx) => idx === i ? val : f));
 
-  const inputStyle = {
+  // ── Styles ──
+  const inputCls = "w-full px-3 py-2.5 rounded-lg text-[13px] outline-none transition-colors focus:ring-1 focus:ring-white/20";
+  const inputSx: React.CSSProperties = {
     background: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.08)",
     color: "#E8E4DF",
-    fontSize: "13px",
-    outline: "none",
   };
+  const labelCls = "flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider";
+  const labelSx: React.CSSProperties = { color: "#9A9590" };
 
   return (
     <RouteGuard requiredPlan="free">
       <div className="min-h-screen md:pl-[56px]" style={{ background: "#18171A" }}>
         <div className="max-w-5xl mx-auto px-6 py-8">
 
-          {/* Header */}
+          {/* ── Header ── */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
               <Link
@@ -273,14 +319,13 @@ export function ProductsPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors hover:bg-white/[0.04]"
                 style={{ fontSize: "12px", color: "#9A9590" }}
               >
-                <ArrowLeft size={14} />
-                Vault
+                <ArrowLeft size={14} /> Vault
               </Link>
               <div>
-                <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#E8E4DF" }}>
+                <h1 className="text-[22px] font-bold" style={{ color: "#E8E4DF" }}>
                   Product Catalogue
                 </h1>
-                <p style={{ fontSize: "12px", color: "#7A7572", marginTop: 2 }}>
+                <p className="text-[12px] mt-0.5" style={{ color: "#7A7572" }}>
                   Manage your products to generate targeted campaigns
                 </p>
               </div>
@@ -289,69 +334,75 @@ export function ProductsPage() {
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90"
-              style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+              style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
             >
-              <Plus size={14} />
-              New Product
+              <Plus size={14} /> New Product
             </button>
           </div>
 
-          {/* Loading */}
+          {/* ── Loading ── */}
           {loading && (
             <div className="flex items-center justify-center py-20">
-              <Loader2 size={24} className="animate-spin" style={{ color: "#FFFFFF" }} />
+              <Loader2 size={24} className="animate-spin" style={{ color: "#7A7572" }} />
             </div>
           )}
 
-          {/* Empty state */}
-          {!loading && products.length === 0 && (
+          {/* ── Error ── */}
+          {!loading && error && (
+            <div className="flex flex-col items-center justify-center gap-3 py-20 rounded-xl"
+              style={{ background: "#201F23", border: "1px solid rgba(239,68,68,0.15)" }}>
+              <AlertCircle size={32} style={{ color: "#ef4444" }} />
+              <p className="text-[13px]" style={{ color: "#ef4444" }}>{error}</p>
+              <button onClick={loadProducts}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer text-[12px] font-semibold"
+                style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF" }}>
+                Réessayer
+              </button>
+            </div>
+          )}
+
+          {/* ── Empty state ── */}
+          {!loading && !error && products.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 rounded-xl"
               style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
               <Package size={40} style={{ color: "#3B3936", marginBottom: 16 }} />
-              <p style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF", marginBottom: 4 }}>
+              <p className="text-[15px] font-semibold mb-1" style={{ color: "#E8E4DF" }}>
                 No products yet
               </p>
-              <p style={{ fontSize: "12px", color: "#7A7572", marginBottom: 16 }}>
+              <p className="text-[12px] mb-4" style={{ color: "#7A7572" }}>
                 Create your first product to generate targeted campaigns
               </p>
-              <button
-                onClick={openCreate}
+              <button onClick={openCreate}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg cursor-pointer"
-                style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
-              >
+                style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
                 <Plus size={14} /> Create Product
               </button>
             </div>
           )}
 
-          {/* Product grid */}
-          {!loading && products.length > 0 && (
+          {/* ── Product grid ── */}
+          {!loading && !error && products.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {products.map(product => {
+              {products.map((product, i) => {
                 const mainImage = product.images?.[0]?.signedUrl;
                 return (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
+                  <motion.div key={product.id}
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.04 }}
                     className="rounded-xl overflow-hidden group"
-                    style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}
-                  >
+                    style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.06)" }}>
                     {/* Image */}
-                    <div className="relative w-full aspect-[4/3] overflow-hidden"
-                      style={{ background: "#18171A" }}>
+                    <div className="relative w-full aspect-[4/3] overflow-hidden" style={{ background: "#18171A" }}>
                       {mainImage ? (
-                        <img src={mainImage} alt={product.name}
-                          className="w-full h-full object-cover" />
+                        <img src={mainImage} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package size={32} style={{ color: "#3B3936" }} />
                         </div>
                       )}
-                      {/* Image count badge */}
                       {product.images?.length > 1 && (
-                        <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded"
-                          style={{ fontSize: "10px", fontWeight: 600, background: "rgba(0,0,0,0.7)", color: "#E8E4DF" }}>
+                        <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                          style={{ background: "rgba(0,0,0,0.7)", color: "#E8E4DF" }}>
                           {product.images.length} photos
                         </span>
                       )}
@@ -360,26 +411,25 @@ export function ProductsPage() {
                     {/* Info */}
                     <div className="px-4 py-3">
                       <div className="flex items-start justify-between mb-1">
-                        <h3 className="line-clamp-1" style={{ fontSize: "14px", fontWeight: 600, color: "#E8E4DF" }}>
+                        <h3 className="line-clamp-1 text-[14px] font-semibold" style={{ color: "#E8E4DF" }}>
                           {product.name}
                         </h3>
                         {product.price && (
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--ora-signal, #FFFFFF)" }}>
+                          <span className="text-[13px] font-semibold" style={{ color: "var(--ora-signal, #3B4FC4)" }}>
                             {product.price} {product.currency}
                           </span>
                         )}
                       </div>
 
                       {product.category && (
-                        <span className="inline-block px-2 py-0.5 rounded mb-2"
-                          style={{ fontSize: "10px", fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "#9A9590", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <span className="inline-block px-2 py-0.5 rounded mb-2 text-[10px] font-medium"
+                          style={{ background: "rgba(255,255,255,0.04)", color: "#9A9590", border: "1px solid rgba(255,255,255,0.06)" }}>
                           {product.category}
                         </span>
                       )}
 
                       {product.description && (
-                        <p className="line-clamp-2 mb-2"
-                          style={{ fontSize: "11px", color: "#7A7572", lineHeight: 1.4 }}>
+                        <p className="line-clamp-2 mb-2 text-[11px]" style={{ color: "#7A7572", lineHeight: 1.4 }}>
                           {product.description}
                         </p>
                       )}
@@ -387,7 +437,7 @@ export function ProductsPage() {
                       {product.features?.length > 0 && (
                         <div className="flex items-center gap-1 mb-2">
                           <List size={10} style={{ color: "#5C5856" }} />
-                          <span style={{ fontSize: "10px", color: "#5C5856" }}>
+                          <span className="text-[10px]" style={{ color: "#5C5856" }}>
                             {product.features.length} feature{product.features.length > 1 ? "s" : ""}
                           </span>
                         </div>
@@ -396,27 +446,27 @@ export function ProductsPage() {
                       {/* Actions */}
                       <div className="flex items-center gap-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
                         <button onClick={() => openEdit(product)}
-                          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04]"
-                          style={{ fontSize: "11px", fontWeight: 500, color: "#9A9590" }}>
+                          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06] text-[11px] font-medium"
+                          style={{ color: "#9A9590" }}>
                           <Edit3 size={11} /> Edit
                         </button>
                         {deleteConfirm === product.id ? (
                           <>
                             <button onClick={() => handleDelete(product.id)}
-                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer"
-                              style={{ fontSize: "11px", fontWeight: 600, color: "#ef4444", background: "rgba(239,68,68,0.08)" }}>
+                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] font-semibold"
+                              style={{ color: "#ef4444", background: "rgba(239,68,68,0.08)" }}>
                               <Check size={11} /> Confirm
                             </button>
                             <button onClick={() => setDeleteConfirm(null)}
-                              className="px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/[0.04]"
-                              style={{ fontSize: "11px", color: "#9A9590" }}>
+                              className="px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/[0.06] text-[11px]"
+                              style={{ color: "#9A9590" }}>
                               Cancel
                             </button>
                           </>
                         ) : (
                           <button onClick={() => setDeleteConfirm(product.id)}
-                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04]"
-                            style={{ fontSize: "11px", fontWeight: 500, color: "#9A9590" }}>
+                            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06] text-[11px] font-medium"
+                            style={{ color: "#9A9590" }}>
                             <Trash2 size={11} /> Delete
                           </button>
                         )}
@@ -428,28 +478,26 @@ export function ProductsPage() {
             </div>
           )}
 
-          {/* ═══ CREATE / EDIT DIALOG ═══ */}
+          {/* ══════════════════════════════════
+              CREATE / EDIT DIALOG
+              ══════════════════════════════════ */}
           <AnimatePresence>
             {dialogOpen && (
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="fixed inset-0 z-[9999] flex items-center justify-center"
                 style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
                 onClick={(e) => { if (e.target === e.currentTarget) setDialogOpen(false); }}
               >
                 <motion.div
-                  initial={{ scale: 0.95, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.95, opacity: 0 }}
+                  initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
                   className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl"
                   style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)" }}
                 >
-                  {/* Dialog header */}
+                  {/* Header */}
                   <div className="flex items-center justify-between px-6 py-4"
                     style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                    <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#E8E4DF" }}>
+                    <h2 className="text-[16px] font-semibold" style={{ color: "#E8E4DF" }}>
                       {editingProduct ? "Edit Product" : "New Product"}
                     </h2>
                     <button onClick={() => setDialogOpen(false)}
@@ -464,83 +512,47 @@ export function ProductsPage() {
 
                     {/* Name */}
                     <div>
-                      <label className="flex items-center gap-1.5 mb-1.5"
-                        style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        <Package size={11} /> Product Name *
-                      </label>
-                      <input
-                        type="text" value={formName} onChange={e => setFormName(e.target.value)}
+                      <label className={labelCls} style={labelSx}><Package size={11} /> Product Name *</label>
+                      <input type="text" value={name} onChange={e => setName(e.target.value)}
                         placeholder="e.g. Premium Wireless Headphones"
-                        className="w-full px-3 py-2 rounded-lg" style={inputStyle}
-                      />
+                        className={inputCls} style={inputSx} />
                     </div>
 
                     {/* Description */}
                     <div>
-                      <label className="flex items-center gap-1.5 mb-1.5"
-                        style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        Description
-                      </label>
-                      <textarea
-                        value={formDescription} onChange={e => setFormDescription(e.target.value)}
-                        placeholder="Describe your product..."
-                        rows={3}
-                        className="w-full px-3 py-2 rounded-lg resize-none" style={inputStyle}
-                      />
+                      <label className={labelCls} style={labelSx}>Description</label>
+                      <textarea value={description} onChange={e => setDescription(e.target.value)}
+                        placeholder="Describe your product..." rows={3}
+                        className={`${inputCls} resize-none`} style={inputSx} />
                     </div>
 
-                    {/* URL */}
+                    {/* URL + Auto-fill */}
                     <div>
-                      <label className="flex items-center gap-1.5 mb-1.5"
-                        style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        <LinkIcon size={11} /> Product URL
-                      </label>
+                      <label className={labelCls} style={labelSx}><LinkIcon size={11} /> Product URL</label>
                       <div className="flex gap-2">
-                        <input
-                          type="url" value={formUrl} onChange={e => setFormUrl(e.target.value)}
+                        <input type="url" value={url} onChange={e => setUrl(e.target.value)}
                           placeholder="https://your-store.com/product"
-                          className="flex-1 px-3 py-2 rounded-lg" style={inputStyle}
-                        />
-                        <button
-                          onClick={handleScrapeUrl}
-                          disabled={scraping || !formUrl.trim()}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40"
-                          style={{ background: "rgba(94,106,210,0.15)", border: "1px solid rgba(94,106,210,0.3)", color: "#8b9cf7", fontSize: "11px", fontWeight: 600, whiteSpace: "nowrap" }}
-                        >
-                          {scraping ? <Loader2 size={11} className="animate-spin" /> : <ChevronDown size={11} style={{ transform: "rotate(-90deg)" }} />}
+                          className={`flex-1 ${inputCls}`} style={inputSx} />
+                        <button onClick={handleScrape} disabled={scraping || !url.trim()}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap text-[11px] font-semibold"
+                          style={{ background: "rgba(94,106,210,0.15)", border: "1px solid rgba(94,106,210,0.3)", color: "#8b9cf7" }}>
+                          {scraping ? <Loader2 size={11} className="animate-spin" /> : <ChevronRight size={11} />}
                           {scraping ? "Fetching..." : "Auto-fill"}
                         </button>
                       </div>
-                      {!scraping && formUrl.trim() && (
-                        <p style={{ fontSize: "10px", color: "#5C5856", marginTop: 4 }}>
-                          Click Auto-fill to extract product info from this URL
-                        </p>
-                      )}
                     </div>
 
                     {/* Price + Currency */}
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="flex items-center gap-1.5 mb-1.5"
-                          style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          <DollarSign size={11} /> Price
-                        </label>
-                        <input
-                          type="text" value={formPrice} onChange={e => setFormPrice(e.target.value)}
-                          placeholder="29.99"
-                          className="w-full px-3 py-2 rounded-lg" style={inputStyle}
-                        />
+                        <label className={labelCls} style={labelSx}><DollarSign size={11} /> Price</label>
+                        <input type="text" value={price} onChange={e => setPrice(e.target.value)}
+                          placeholder="29.99" className={inputCls} style={inputSx} />
                       </div>
                       <div>
-                        <label className="flex items-center gap-1.5 mb-1.5"
-                          style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          Currency
-                        </label>
-                        <select
-                          value={formCurrency} onChange={e => setFormCurrency(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg cursor-pointer"
-                          style={{ ...inputStyle, appearance: "none" }}
-                        >
+                        <label className={labelCls} style={labelSx}>Currency</label>
+                        <select value={currency} onChange={e => setCurrency(e.target.value)}
+                          className={`${inputCls} cursor-pointer`} style={{ ...inputSx, appearance: "none" }}>
                           {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
@@ -548,33 +560,23 @@ export function ProductsPage() {
 
                     {/* Category */}
                     <div>
-                      <label className="flex items-center gap-1.5 mb-1.5"
-                        style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        <Tag size={11} /> Category
-                      </label>
-                      <input
-                        type="text" value={formCategory} onChange={e => setFormCategory(e.target.value)}
+                      <label className={labelCls} style={labelSx}><Tag size={11} /> Category</label>
+                      <input type="text" value={category} onChange={e => setCategory(e.target.value)}
                         placeholder="e.g. Electronics, Fashion, SaaS..."
-                        className="w-full px-3 py-2 rounded-lg" style={inputStyle}
-                      />
+                        className={inputCls} style={inputSx} />
                     </div>
 
                     {/* Features */}
                     <div>
-                      <label className="flex items-center gap-1.5 mb-1.5"
-                        style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        <List size={11} /> Key Features
-                      </label>
+                      <label className={labelCls} style={labelSx}><List size={11} /> Key Features</label>
                       <div className="space-y-2">
-                        {formFeatures.map((feat, idx) => (
+                        {features.map((feat, idx) => (
                           <div key={idx} className="flex items-center gap-2">
-                            <input
-                              type="text" value={feat}
+                            <input type="text" value={feat}
                               onChange={e => updateFeature(idx, e.target.value)}
                               placeholder={`Feature ${idx + 1}`}
-                              className="flex-1 px-3 py-2 rounded-lg" style={inputStyle}
-                            />
-                            {formFeatures.length > 1 && (
+                              className={`flex-1 ${inputCls}`} style={inputSx} />
+                            {features.length > 1 && (
                               <button onClick={() => removeFeature(idx)}
                                 className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer hover:bg-white/[0.06]"
                                 style={{ color: "#9A9590" }}>
@@ -584,37 +586,31 @@ export function ProductsPage() {
                           </div>
                         ))}
                         <button onClick={addFeature}
-                          className="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:bg-white/[0.04]"
-                          style={{ fontSize: "11px", color: "#FFFFFF" }}>
+                          className="flex items-center gap-1 px-2 py-1 rounded cursor-pointer hover:bg-white/[0.04] text-[11px]"
+                          style={{ color: "#7A7572" }}>
                           <Plus size={11} /> Add feature
                         </button>
                       </div>
                     </div>
 
-                    {/* Images (only in edit mode) */}
+                    {/* Images (edit mode only) */}
                     {editingProduct && (
                       <div>
-                        <label className="flex items-center gap-1.5 mb-1.5"
-                          style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                          <ImageIcon size={11} /> Product Images
-                        </label>
+                        <label className={labelCls} style={labelSx}><ImageIcon size={11} /> Product Images</label>
 
-                        {/* Existing images */}
                         {editingProduct.images?.length > 0 && (
                           <div className="grid grid-cols-4 gap-2 mb-2">
                             {editingProduct.images.map(img => (
                               <div key={img.id} className="relative group rounded-lg overflow-hidden aspect-square"
                                 style={{ background: "#18171A" }}>
                                 {img.signedUrl ? (
-                                  <img src={img.signedUrl} alt={img.fileName}
-                                    className="w-full h-full object-cover" />
+                                  <img src={img.signedUrl} alt={img.fileName} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
                                     <ImageIcon size={16} style={{ color: "#3B3936" }} />
                                   </div>
                                 )}
-                                <button
-                                  onClick={() => handleDeleteImage(editingProduct.id, img.id)}
+                                <button onClick={() => handleDeleteImage(editingProduct.id, img.id)}
                                   className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                   style={{ background: "rgba(239,68,68,0.8)", color: "#fff" }}>
                                   <X size={10} />
@@ -624,23 +620,16 @@ export function ProductsPage() {
                           </div>
                         )}
 
-                        {/* Upload button */}
-                        <input
-                          ref={fileInputRef}
-                          type="file" multiple accept="image/*"
-                          className="hidden"
+                        <input ref={fileInputRef} type="file" multiple accept="image/*" className="hidden"
                           onChange={e => {
                             if (e.target.files && editingProduct) {
                               handleImageUpload(editingProduct.id, e.target.files);
                               e.target.value = "";
                             }
-                          }}
-                        />
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadingImages}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] disabled:opacity-40"
-                          style={{ fontSize: "11px", color: "#FFFFFF", border: "1px dashed rgba(255,255,255,0.3)" }}>
+                          }} />
+                        <button onClick={() => fileInputRef.current?.click()} disabled={uploadingImages}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] disabled:opacity-40 text-[11px]"
+                          style={{ color: "#9A9590", border: "1px dashed rgba(255,255,255,0.15)" }}>
                           {uploadingImages ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                           {uploadingImages ? "Uploading..." : "Upload Images"}
                         </button>
@@ -648,18 +637,17 @@ export function ProductsPage() {
                     )}
                   </div>
 
-                  {/* Dialog footer */}
+                  {/* Footer */}
                   <div className="flex items-center justify-between px-6 py-4"
                     style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
                     <button onClick={() => setDialogOpen(false)}
-                      className="px-4 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04]"
-                      style={{ fontSize: "12px", color: "#9A9590" }}>
+                      className="px-4 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] text-[12px]"
+                      style={{ color: "#9A9590" }}>
                       Cancel
                     </button>
-                    <button onClick={handleSave}
-                      disabled={saving || !formName.trim()}
-                      className="flex items-center gap-1.5 px-5 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40"
-                      style={{ background: "var(--ora-signal, #FFFFFF)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
+                    <button onClick={handleSave} disabled={saving || !name.trim()}
+                      className="flex items-center gap-1.5 px-5 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-90 disabled:opacity-40 text-[12px] font-semibold"
+                      style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff" }}>
                       {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                       {saving ? "Saving..." : (editingProduct ? "Save Changes" : "Create Product")}
                     </button>
