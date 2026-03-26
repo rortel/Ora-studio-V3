@@ -12432,6 +12432,9 @@ app.get("/generate/cl-hf-status", async (c) => {
   }
 });
 
+// (end of legacy dead code block)
+}
+
 // ══════════════════════════════════════════════════════════════
 // PRODUCTS CRUD
 // ══════════════════════════════════════════════════════════════
@@ -12705,9 +12708,6 @@ app.delete("/products/:id/images/:imageId", async (c) => {
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
-
-// (end of legacy dead code block)
-}
 
 // ══════════════════════════════════════════════════════════════
 // POST list variants — JWT >8KB, too large for URL query or HTTP header
