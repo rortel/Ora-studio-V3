@@ -6,7 +6,7 @@ import {
   Image as ImageIcon, FileText, AlertCircle, Download,
   RefreshCw, Shield, Users, MessageSquare,
   Palette, Type, BookOpen, Camera,
-  Calendar, Send, Clock, ChevronRight, ChevronLeft, ExternalLink, Plus, Twitter,
+  Calendar, Send, Clock, ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
   Pencil, Package,
@@ -196,6 +196,7 @@ const PLATFORM_GROUPS = [
   { platform: "Twitter/X", icon: Twitter },
   { platform: "YouTube", icon: Youtube },
   { platform: "Pinterest", icon: ImageIcon },
+  { platform: "Web", icon: BookOpen },
 ];
 
 // Platforms available for social connection
@@ -291,6 +292,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [campaignStartDate, setCampaignStartDate] = useState("");
   const [campaignDuration, setCampaignDuration] = useState("");
   const [selectedFormats, setSelectedFormats] = useState<string[]>(["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [vault, setVault] = useState<BrandVault | null>(null);
   const [vaultLoading, setVaultLoading] = useState(true);
 
@@ -1891,115 +1893,28 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           {/* ═══ INPUT PHASE ═══ */}
           {phase === "input" && (
             <motion.div key="input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+              className="max-w-3xl mx-auto px-6 py-8 space-y-6">
 
-              {/* ── Brief Completeness Score ── */}
-              <div className="rounded-xl px-5 py-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Target size={14} style={{ color: briefScoreColor }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Brief Quality
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span style={{ fontSize: "22px", fontWeight: 700, color: briefScoreColor, letterSpacing: "-0.02em" }}>
-                      {briefScore}
-                    </span>
-                    <span style={{ fontSize: "11px", fontWeight: 500, color: briefScoreColor }}>
-                      / 100
-                    </span>
-                    <span className="ml-1 px-2 py-0.5 rounded-full"
-                      style={{ fontSize: "10px", fontWeight: 600, color: briefScoreColor, background: `${briefScoreColor}18`, border: `1px solid ${briefScoreColor}30` }}>
-                      {briefScoreLabel}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-full h-1.5 rounded-full overflow-hidden mb-3" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <motion.div
-                    className="h-full rounded-full"
-                    style={{ background: briefScoreColor }}
-                    animate={{ width: `${briefScore}%` }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  {briefScoreItems.map(item => (
-                    <div key={item.key} className="flex items-center gap-1.5">
-                      {item.filled
-                        ? <CheckCircle2 size={10} style={{ color: "#10b981" }} />
-                        : <CircleDot size={10} style={{ color: "#3a3836" }} />
-                      }
-                      <span style={{ fontSize: "11px", color: item.filled ? "#9A9590" : "#4a4644" }}>
-                        {item.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {briefScore < 55 && (
-                  <p className="mt-3 flex items-start gap-2" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>
-                    <Info size={12} className="flex-shrink-0 mt-0.5" style={{ color: "#5C5856" }} />
-                    The more context you provide, the more precise and on-brand the 15 agents will be. A score above 70 significantly improves output quality.
-                  </p>
-                )}
+              {/* ═══ SECTION 1: ESSENTIAL — Brief + Formats ═══ */}
+
+              {/* Campaign Brief — THE main field */}
+              <div>
+                <textarea
+                  value={brief}
+                  onChange={e => setBrief(e.target.value)}
+                  placeholder={"Describe your campaign...\ne.g. Launch our new summer collection -- luxury, minimalist, target 25-45 professionals."}
+                  className="w-full rounded-xl px-5 py-4 resize-none transition-all"
+                  style={{
+                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                    fontSize: "15px", lineHeight: 1.6, minHeight: 110, outline: "none",
+                  }}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                />
               </div>
 
-              {/* ── Product Selector ── */}
-              {products.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Package size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Create from Product
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(auto-fills brief &amp; images)</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {products.map((product: any) => {
-                      const isSelected = selectedProduct?.id === product.id;
-                      const mainImage = product.images?.[0]?.signedUrl;
-                      return (
-                        <button
-                          key={product.id}
-                          onClick={() => handleSelectProduct(product)}
-                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer"
-                          style={{
-                            background: isSelected ? "rgba(59,79,196,0.12)" : "#1a1918",
-                            border: `1px solid ${isSelected ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
-                          }}
-                        >
-                          {mainImage ? (
-                            <img src={mainImage} alt="" className="w-8 h-8 rounded-md object-cover" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: "rgba(255,255,255,0.04)" }}>
-                              <Package size={14} style={{ color: "#3B3936" }} />
-                            </div>
-                          )}
-                          <div className="text-left">
-                            <span className="block" style={{ fontSize: "12px", fontWeight: 600, color: isSelected ? "var(--ora-signal)" : "#E8E4DF" }}>
-                              {product.name}
-                            </span>
-                            {product.price && (
-                              <span style={{ fontSize: "10px", color: "#7A7572" }}>{product.price} {product.currency || "EUR"}</span>
-                            )}
-                          </div>
-                          {isSelected && <Check size={14} style={{ color: "var(--ora-signal)" }} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Reference Photos */}
+              {/* Reference Photos — compact inline */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Camera size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Reference photos
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional, up to 10)</span>
-                </div>
                 <div
                   className="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
                   style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
@@ -2009,15 +1924,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {refPhotos.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 gap-2">
-                      <Upload size={20} style={{ color: "#5C5856" }} />
-                      <span style={{ fontSize: "14px", fontWeight: 500, color: "#9A9590" }}>Drop reference photos here</span>
-                      <span style={{ fontSize: "12px", color: "#5C5856" }}>Product shots, mood boards, style references...</span>
+                    <div className="flex items-center justify-center py-5 gap-3">
+                      <Camera size={16} style={{ color: "#5C5856" }} />
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#7A7572" }}>Drop reference photos or click to upload</span>
                     </div>
                   ) : (
                     <div className="p-3 flex flex-wrap gap-2">
                       {refPhotos.map((photo, i) => (
-                        <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden group">
+                        <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden group">
                           <img src={photo.preview} alt="" className="w-full h-full object-cover" />
                           <button
                             onClick={e => { e.stopPropagation(); removePhoto(i); }}
@@ -2028,8 +1942,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         </div>
                       ))}
                       {refPhotos.length < 10 && (
-                        <div className="w-20 h-20 rounded-lg border border-dashed flex items-center justify-center" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
-                          <Upload size={14} style={{ color: "#5C5856" }} />
+                        <div className="w-16 h-16 rounded-lg border border-dashed flex items-center justify-center" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+                          <Upload size={12} style={{ color: "#5C5856" }} />
                         </div>
                       )}
                     </div>
@@ -2038,405 +1952,36 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
               </div>
 
-              {/* Product / Service URLs */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Link2 size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Product / Service URLs
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                </div>
-                <input
-                  value={productUrls}
-                  onChange={e => setProductUrls(e.target.value)}
-                  placeholder="https://yoursite.com/product-page"
-                  className="w-full rounded-xl px-4 py-3 transition-all"
-                  style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                    fontSize: "14px", outline: "none",
-                  }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                />
-              </div>
-
-              {/* Campaign Brief */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <FileText size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Campaign Brief
-                  </span>
-                </div>
-                <textarea
-                  value={brief}
-                  onChange={e => setBrief(e.target.value)}
-                  placeholder={"Describe your campaign...\ne.g. Launch our new summer collection -- luxury, minimalist, target 25-45 professionals."}
-                  className="w-full rounded-xl px-5 py-4 resize-none transition-all"
-                  style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                    fontSize: "14px", lineHeight: 1.6, minHeight: 100, outline: "none",
-                  }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                />
-              </div>
-
-              {/* Campaign Objective + Language — side by side */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Megaphone size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Objective
-                    </span>
-                  </div>
-                  <select
-                    value={campaignObjective}
-                    onChange={e => setCampaignObjective(e.target.value)}
-                    className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: campaignObjective ? "#E8E4DF" : "#5C5856",
-                      fontSize: "14px", outline: "none", appearance: "none",
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-                      backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  >
-                    <option value="">Select objective...</option>
-                    <option value="Brand Awareness">Brand Awareness</option>
-                    <option value="Lead Generation">Lead Generation</option>
-                    <option value="Product Launch">Product Launch</option>
-                    <option value="Engagement & Community">Engagement & Community</option>
-                    <option value="Conversion & Sales">Conversion & Sales</option>
-                    <option value="Thought Leadership">Thought Leadership</option>
-                    <option value="Event Promotion">Event Promotion</option>
-                    <option value="Recruitment">Recruitment</option>
-                    <option value="Retention & Loyalty">Retention & Loyalty</option>
-                  </select>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <BookOpen size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Language
-                    </span>
-                  </div>
-                  <select
-                    value={language}
-                    onChange={e => setLanguage(e.target.value)}
-                    className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                      fontSize: "14px", outline: "none", appearance: "none",
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-                      backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  >
-                    <option value="auto">Auto-detect</option>
-                    <option value="English">English</option>
-                    <option value="French">French</option>
-                    <option value="Spanish">Spanish</option>
-                    <option value="German">German</option>
-                    <option value="Italian">Italian</option>
-                    <option value="Portuguese">Portuguese</option>
-                    <option value="Dutch">Dutch</option>
-                    <option value="Arabic">Arabic</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Chinese">Chinese</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Objective Smart Tip */}
-              {currentObjectiveTip && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="rounded-xl px-5 py-4"
-                  style={{ background: "rgba(94,106,210,0.06)", border: "1px solid rgba(94,106,210,0.12)" }}
-                >
-                  <div className="flex items-start gap-3">
-                    <Zap size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--ora-signal)" }} />
-                    <div>
-                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--ora-signal)" }}>
-                        Agent recommendation for "{campaignObjective}"
-                      </span>
-                      <p style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.55, marginTop: 4 }}>
-                        {currentObjectiveTip.tip}
-                      </p>
-                      <div className="flex items-center gap-3 mt-3">
-                        {!toneOverride && (
-                          <button
-                            onClick={() => setToneOverride(currentObjectiveTip.suggestedTone)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                            style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
-                          >
-                            <TrendingUp size={10} />
-                            Apply suggested tone: {currentObjectiveTip.suggestedTone}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setSelectedFormats(currentObjectiveTip.suggestedFormats)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                          style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}
-                        >
-                          <LayoutGrid size={10} />
-                          Apply optimal formats ({currentObjectiveTip.suggestedFormats.length})
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Campaign Period + Duration — side by side */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Calendar size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Start date
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                  </div>
-                  <input
-                    type="date"
-                    value={campaignStartDate}
-                    onChange={e => setCampaignStartDate(e.target.value)}
-                    className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)",
-                      color: campaignStartDate ? "#E8E4DF" : "#5C5856",
-                      fontSize: "14px", outline: "none",
-                      colorScheme: "dark",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Clock size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Duration
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                  </div>
-                  <select
-                    value={campaignDuration}
-                    onChange={e => setCampaignDuration(e.target.value)}
-                    className="w-full rounded-xl px-4 py-3 transition-all cursor-pointer"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)",
-                      color: campaignDuration ? "#E8E4DF" : "#5C5856",
-                      fontSize: "14px", outline: "none", appearance: "none",
-                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-                      backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  >
-                    <option value="">Select duration...</option>
-                    <option value="1 day (flash)">1 day (flash)</option>
-                    <option value="3 days">3 days</option>
-                    <option value="1 week">1 week</option>
-                    <option value="2 weeks">2 weeks</option>
-                    <option value="1 month">1 month</option>
-                    <option value="6 weeks">6 weeks</option>
-                    <option value="2 months">2 months</option>
-                    <option value="3 months (quarter)">3 months (quarter)</option>
-                    <option value="6 months">6 months</option>
-                    <option value="Ongoing / Evergreen">Ongoing / Evergreen</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Tone Override */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <MessageSquare size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Tone of voice
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(overrides vault default)</span>
-                </div>
+              {/* ── Product Selector (only if products exist) ── */}
+              {products.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {["", "Professional", "Casual & Friendly", "Bold & Confident", "Inspirational", "Educational", "Provocative", "Humorous", "Luxury & Refined", "Technical"].map(tone => {
-                    const isSelected = toneOverride === tone;
-                    const label = tone || "Vault Default";
+                  {products.map((product: any) => {
+                    const isSelected = selectedProduct?.id === product.id;
+                    const mainImage = product.images?.[0]?.signedUrl;
                     return (
                       <button
-                        key={tone}
-                        onClick={() => setToneOverride(tone)}
-                        className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                        key={product.id}
+                        onClick={() => handleSelectProduct(product)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer"
                         style={{
-                          background: isSelected ? "rgba(94,106,210,0.15)" : "rgba(255,255,255,0.02)",
-                          border: `1px solid ${isSelected ? "rgba(94,106,210,0.4)" : "rgba(255,255,255,0.06)"}`,
-                          color: isSelected ? "var(--ora-signal)" : "#7A7572",
-                          fontSize: "12px", fontWeight: isSelected ? 600 : 400,
+                          background: isSelected ? "rgba(59,79,196,0.12)" : "#1a1918",
+                          border: `1px solid ${isSelected ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
                         }}
                       >
-                        {label}
+                        {mainImage ? (
+                          <img src={mainImage} alt="" className="w-7 h-7 rounded-md object-cover" />
+                        ) : (
+                          <Package size={12} style={{ color: "#3B3936" }} />
+                        )}
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: isSelected ? "var(--ora-signal)" : "#E8E4DF" }}>
+                          {product.name}
+                        </span>
+                        {isSelected && <Check size={12} style={{ color: "var(--ora-signal)" }} />}
                       </button>
                     );
                   })}
                 </div>
-              </div>
-
-              {/* Content Angle */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Content angle / Hook
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                </div>
-                <input
-                  value={contentAngle}
-                  onChange={e => setContentAngle(e.target.value)}
-                  placeholder='e.g. "3 reasons why...", customer success story, behind-the-scenes, data-driven insight'
-                  className="w-full rounded-xl px-4 py-3 transition-all"
-                  style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                    fontSize: "14px", outline: "none",
-                  }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                />
-              </div>
-
-              {/* Key Messages */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Type size={14} style={{ color: "#9A9590" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                    Key messages / Talking points
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                </div>
-                <textarea
-                  value={keyMessages}
-                  onChange={e => setKeyMessages(e.target.value)}
-                  placeholder={"- Our product saves 10 hours/week\n- Used by 500+ companies\n- SOC 2 certified\n- Free trial, no credit card"}
-                  className="w-full rounded-xl px-5 py-4 resize-none transition-all"
-                  style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                    fontSize: "14px", lineHeight: 1.6, minHeight: 80, outline: "none",
-                  }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                />
-              </div>
-
-              {/* Target Audience + CTA — side by side */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Target audience
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                  </div>
-                  <input
-                    value={targetAudience}
-                    onChange={e => setTargetAudience(e.target.value)}
-                    placeholder="e.g. Tech professionals 25-45"
-                    className="w-full rounded-xl px-4 py-3 transition-all"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                      fontSize: "14px", outline: "none",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Send size={14} style={{ color: "#9A9590" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
-                      Call to action
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#5C5856" }}>(optional)</span>
-                  </div>
-                  <input
-                    value={ctaText}
-                    onChange={e => setCtaText(e.target.value)}
-                    placeholder='e.g. "Start free trial", "Book a demo"'
-                    className="w-full rounded-xl px-4 py-3 transition-all"
-                    style={{
-                      background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
-                      fontSize: "14px", outline: "none",
-                    }}
-                    onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                    onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                  />
-                </div>
-              </div>
-
-              {/* Brand Vault Status */}
-              <div className="rounded-xl px-5 py-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield size={14} style={{ color: vault ? "#10b981" : "#5C5856" }} />
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: vault ? "#10b981" : "#7A7572" }}>
-                    {vaultLoading ? "Loading Brand Vault..." : vault ? "Brand Vault active" : "Brand Vault not configured"}
-                  </span>
-                </div>
-                {vault && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {VAULT_PILLS.map(pill => (
-                      <span key={pill.key} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-                        style={{ background: "rgba(59,79,196,0.08)", border: "1px solid rgba(59,79,196,0.15)" }}>
-                        <pill.icon size={10} style={{ color: "var(--ora-signal)" }} />
-                        <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)" }}>{pill.label}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {!vault && !vaultLoading && (
-                  <p style={{ fontSize: "12px", color: "#5C5856", lineHeight: 1.5 }}>
-                    Configure your Brand Vault for brand-compliant content.
-                  </p>
-                )}
-              </div>
-
-              {/* Logo Upload */}
-              <div className="flex items-center gap-3">
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>Logo</span>
-                {logoUrl ? (
-                  <div className="flex items-center gap-2">
-                    <img src={logoUrl} alt="Logo" className="w-8 h-8 rounded object-contain" style={{ background: "#222120" }} />
-                    <Check size={12} style={{ color: "#10b981" }} />
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => logoInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#9A9590", fontSize: "12px" }}
-                  >
-                    {uploadingLogo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                    Upload logo
-                  </button>
-                )}
-                <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                {rawLogoUrl && (
-                  <button
-                    onClick={() => setShowLogoOverlay(!showLogoOverlay)}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-all"
-                    style={{ background: showLogoOverlay ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLogoOverlay ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.06)"}`, fontSize: "10px", fontWeight: 600, color: showLogoOverlay ? "#34d399" : "#5C5856" }}
-                  >
-                    {showLogoOverlay ? <Check size={9} /> : <Eye size={9} />}
-                    Overlay
-                  </button>
-                )}
-              </div>
+              )}
 
               {/* Format Selection — grouped by platform */}
               <div>
@@ -2455,7 +2000,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     </button>
                   </div>
                 </div>
-                <div className="space-y-3" style={{ maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
+                <div className="space-y-3" style={{ maxHeight: 280, overflowY: "auto", paddingRight: 4 }}>
                   {PLATFORM_GROUPS.map(group => {
                     const groupFormats = FORMAT_OPTIONS.filter(f => f.platform === group.platform);
                     if (groupFormats.length === 0) return null;
@@ -2510,179 +2055,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 </div>
               </div>
 
-
-
-              {/* ── Brief Summary (what agents will receive) ── */}
-              {canGenerate && briefScore >= 25 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-xl px-5 py-4"
-                  style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText size={13} style={{ color: "#7A7572" }} />
-                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      Agent Briefing Preview
-                    </span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {brief.trim() && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Brief</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>{brief.trim().slice(0, 120)}{brief.trim().length > 120 ? "..." : ""}</span>
-                      </div>
-                    )}
-                    {campaignObjective && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Objective</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{campaignObjective}</span>
-                      </div>
-                    )}
-                    {toneOverride && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Tone</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{toneOverride}</span>
-                      </div>
-                    )}
-                    {targetAudience.trim() && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Audience</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{targetAudience.trim().slice(0, 100)}</span>
-                      </div>
-                    )}
-                    {ctaText.trim() && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>CTA</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{ctaText.trim()}</span>
-                      </div>
-                    )}
-                    {contentAngle.trim() && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Angle</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{contentAngle.trim().slice(0, 100)}</span>
-                      </div>
-                    )}
-                    {(campaignStartDate || campaignDuration) && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Period</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>
-                          {campaignStartDate && new Date(campaignStartDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                          {campaignStartDate && campaignDuration && " — "}
-                          {campaignDuration}
-                        </span>
-                      </div>
-                    )}
-                    {language !== "auto" && (
-                      <div className="flex gap-2">
-                        <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Language</span>
-                        <span style={{ fontSize: "11px", color: "#9A9590" }}>{language}</span>
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Formats</span>
-                      <span style={{ fontSize: "11px", color: "#9A9590" }}>
-                        {selectedFormats.length} format{selectedFormats.length !== 1 ? "s" : ""} across {new Set(FORMAT_OPTIONS.filter(f => selectedFormats.includes(f.id)).map(f => f.platform)).size} platforms
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856", minWidth: 70 }}>Vault</span>
-                      <span style={{ fontSize: "11px", color: vault ? "#10b981" : "#5C5856" }}>
-                        {vault ? `${vault.brandName || "Active"} — tone, vocabulary, guardrails enforced` : "Not configured"}
-                      </span>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── AI Model Selector ── */}
-              <div className="rounded-xl px-5 py-4 space-y-4" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Zap size={13} style={{ color: "#7A7572" }} />
-                    <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      AI Models
-                    </span>
-                  </div>
-                  <button onClick={() => setMultiModelEnabled(!multiModelEnabled)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
-                    style={{
-                      background: multiModelEnabled ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${multiModelEnabled ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
-                    }}>
-                    <div className="w-3 h-3 rounded-full" style={{
-                      background: multiModelEnabled ? "var(--ora-signal)" : "#3d3c3b",
-                      transition: "background 0.2s",
-                    }} />
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: multiModelEnabled ? "#E8E4DF" : "#5C5856" }}>
-                      Compare AI
-                    </span>
-                  </button>
-                </div>
-                {[
-                  { label: "Text & Copy", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected, canMulti: true },
-                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected, canMulti: true },
-                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: null as any, canMulti: false },
-                ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
-                  <div key={label}>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Icon size={11} style={{ color: "#5C5856" }} />
-                      <span style={{ fontSize: "11px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
-                      {multiModelEnabled && canMulti && multiSelected.length > 1 && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600, background: "rgba(59,79,196,0.1)" }}>
-                          {multiSelected.length} models selected
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {models.map(m => {
-                        const isMulti = multiModelEnabled && canMulti;
-                        const active = isMulti ? multiSelected.includes(m.id) : value === m.id;
-                        return (
-                          <button
-                            key={m.id}
-                            onClick={() => {
-                              if (isMulti && setMulti) {
-                                // Multi-select mode: toggle this model on/off
-                                if (multiSelected.includes(m.id)) {
-                                  if (multiSelected.length > 1) {
-                                    setMulti(multiSelected.filter((id: string) => id !== m.id));
-                                    // Update primary to first remaining
-                                    const remaining = multiSelected.filter((id: string) => id !== m.id);
-                                    set(remaining[0]);
-                                  }
-                                } else {
-                                  if (multiSelected.length < 3) {
-                                    setMulti([...multiSelected, m.id]);
-                                  } else {
-                                    toast.error("Max 3 models — deselect one first");
-                                  }
-                                }
-                              } else {
-                                // Single-select mode
-                                set(m.id);
-                              }
-                            }}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
-                            style={{
-                              background: active ? `${m.color}18` : "rgba(255,255,255,0.03)",
-                              border: `1px solid ${active ? m.color + "50" : "rgba(255,255,255,0.06)"}`,
-                              color: active ? m.color : "#7A7572",
-                              fontSize: "12px", fontWeight: active ? 600 : 400,
-                            }}
-                          >
-                            {active && isMulti && <Check size={10} />}
-                            {m.label}
-                            <span style={{ fontSize: "9px", fontWeight: 500, opacity: 0.7 }}>{m.badge}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Generate Button */}
+              {/* Generate Button — RIGHT AFTER formats */}
               <button
                 onClick={handleGenerate}
                 disabled={!canGenerate}
@@ -2697,11 +2070,418 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <Sparkles size={18} />
                 Generate Campaign ({selectedFormats.length} format{selectedFormats.length !== 1 ? "s" : ""})
               </button>
-              {canGenerate && briefScore < 50 && (
-                <p className="text-center" style={{ fontSize: "11px", color: "#5C5856", marginTop: "-4px" }}>
-                  Tip: fill more fields above to get higher quality output from the 15 agents
-                </p>
-              )}
+
+              {/* ═══ SECTION 2: ADVANCED — Collapsible ═══ */}
+              <div className="rounded-xl overflow-hidden" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="w-full flex items-center justify-between px-5 py-4 cursor-pointer transition-all"
+                  style={{ background: showAdvanced ? "rgba(59,79,196,0.04)" : "transparent" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Zap size={14} style={{ color: showAdvanced ? "var(--ora-signal)" : "#5C5856" }} />
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: showAdvanced ? "#E8E4DF" : "#9A9590" }}>
+                      Refine campaign
+                    </span>
+                    {/* Count of filled advanced fields */}
+                    {(() => {
+                      const filledCount = [campaignObjective, toneOverride, contentAngle, keyMessages, targetAudience, ctaText, campaignStartDate, campaignDuration, language !== "auto" ? language : ""].filter(Boolean).length;
+                      return filledCount > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(59,79,196,0.12)" }}>
+                          {filledCount} option{filledCount > 1 ? "s" : ""} set
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
+                  <motion.div animate={{ rotate: showAdvanced ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                    <ChevronDown size={16} style={{ color: "#5C5856" }} />
+                  </motion.div>
+                </button>
+
+                <AnimatePresence>
+                  {showAdvanced && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-5 pb-5 space-y-6" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+
+                        {/* Campaign Objective + Language — side by side */}
+                        <div className="grid grid-cols-2 gap-4 pt-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Megaphone size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Objective</span>
+                            </div>
+                            <select
+                              value={campaignObjective}
+                              onChange={e => setCampaignObjective(e.target.value)}
+                              className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
+                              style={{
+                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignObjective ? "#E8E4DF" : "#5C5856",
+                                fontSize: "13px", outline: "none", appearance: "none",
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                                backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+                              }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            >
+                              <option value="">Select objective...</option>
+                              <option value="Brand Awareness">Brand Awareness</option>
+                              <option value="Lead Generation">Lead Generation</option>
+                              <option value="Product Launch">Product Launch</option>
+                              <option value="Engagement & Community">Engagement & Community</option>
+                              <option value="Conversion & Sales">Conversion & Sales</option>
+                              <option value="Thought Leadership">Thought Leadership</option>
+                              <option value="Event Promotion">Event Promotion</option>
+                              <option value="Recruitment">Recruitment</option>
+                              <option value="Retention & Loyalty">Retention & Loyalty</option>
+                            </select>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <BookOpen size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Language</span>
+                            </div>
+                            <select
+                              value={language}
+                              onChange={e => setLanguage(e.target.value)}
+                              className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
+                              style={{
+                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                                fontSize: "13px", outline: "none", appearance: "none",
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                                backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+                              }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            >
+                              <option value="auto">Auto-detect</option>
+                              <option value="English">English</option>
+                              <option value="French">French</option>
+                              <option value="Spanish">Spanish</option>
+                              <option value="German">German</option>
+                              <option value="Italian">Italian</option>
+                              <option value="Portuguese">Portuguese</option>
+                              <option value="Dutch">Dutch</option>
+                              <option value="Arabic">Arabic</option>
+                              <option value="Japanese">Japanese</option>
+                              <option value="Chinese">Chinese</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Objective Smart Tip */}
+                        {currentObjectiveTip && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="rounded-xl px-4 py-3"
+                            style={{ background: "rgba(94,106,210,0.06)", border: "1px solid rgba(94,106,210,0.12)" }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <Zap size={12} className="flex-shrink-0 mt-0.5" style={{ color: "var(--ora-signal)" }} />
+                              <div>
+                                <p style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.55 }}>
+                                  {currentObjectiveTip.tip}
+                                </p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  {!toneOverride && (
+                                    <button
+                                      onClick={() => setToneOverride(currentObjectiveTip.suggestedTone)}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer"
+                                      style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
+                                    >
+                                      <TrendingUp size={9} /> {currentObjectiveTip.suggestedTone}
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setSelectedFormats(currentObjectiveTip.suggestedFormats)}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer"
+                                    style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
+                                  >
+                                    <LayoutGrid size={9} /> Optimal formats ({currentObjectiveTip.suggestedFormats.length})
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Tone Override */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <MessageSquare size={12} style={{ color: "#7A7572" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Tone of voice</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {["", "Professional", "Casual & Friendly", "Bold & Confident", "Inspirational", "Educational", "Provocative", "Humorous", "Luxury & Refined", "Technical"].map(tone => {
+                              const isSelected = toneOverride === tone;
+                              const label = tone || "Vault Default";
+                              return (
+                                <button
+                                  key={tone}
+                                  onClick={() => setToneOverride(tone)}
+                                  className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                  style={{
+                                    background: isSelected ? "rgba(94,106,210,0.15)" : "rgba(255,255,255,0.02)",
+                                    border: `1px solid ${isSelected ? "rgba(94,106,210,0.4)" : "rgba(255,255,255,0.06)"}`,
+                                    color: isSelected ? "var(--ora-signal)" : "#7A7572",
+                                    fontSize: "11px", fontWeight: isSelected ? 600 : 400,
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Target Audience + CTA — side by side */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Users size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Target audience</span>
+                            </div>
+                            <input
+                              value={targetAudience}
+                              onChange={e => setTargetAudience(e.target.value)}
+                              placeholder="e.g. Tech professionals 25-45"
+                              className="w-full rounded-xl px-4 py-2.5 transition-all"
+                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Send size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Call to action</span>
+                            </div>
+                            <input
+                              value={ctaText}
+                              onChange={e => setCtaText(e.target.value)}
+                              placeholder='e.g. "Start free trial"'
+                              className="w-full rounded-xl px-4 py-2.5 transition-all"
+                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Content Angle */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Sparkles size={12} style={{ color: "#7A7572" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Content angle / Hook</span>
+                          </div>
+                          <input
+                            value={contentAngle}
+                            onChange={e => setContentAngle(e.target.value)}
+                            placeholder='e.g. "3 reasons why...", customer success story, data-driven insight'
+                            className="w-full rounded-xl px-4 py-2.5 transition-all"
+                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
+                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                          />
+                        </div>
+
+                        {/* Key Messages */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Type size={12} style={{ color: "#7A7572" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Key messages</span>
+                          </div>
+                          <textarea
+                            value={keyMessages}
+                            onChange={e => setKeyMessages(e.target.value)}
+                            placeholder={"- Product saves 10 hours/week\n- Used by 500+ companies\n- Free trial, no credit card"}
+                            className="w-full rounded-xl px-4 py-3 resize-none transition-all"
+                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", lineHeight: 1.6, minHeight: 70, outline: "none" }}
+                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                          />
+                        </div>
+
+                        {/* Dates + Duration — side by side */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Calendar size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Start date</span>
+                            </div>
+                            <input
+                              type="date"
+                              value={campaignStartDate}
+                              onChange={e => setCampaignStartDate(e.target.value)}
+                              className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
+                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignStartDate ? "#E8E4DF" : "#5C5856", fontSize: "13px", outline: "none", colorScheme: "dark" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Clock size={12} style={{ color: "#7A7572" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Duration</span>
+                            </div>
+                            <select
+                              value={campaignDuration}
+                              onChange={e => setCampaignDuration(e.target.value)}
+                              className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
+                              style={{
+                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignDuration ? "#E8E4DF" : "#5C5856",
+                                fontSize: "13px", outline: "none", appearance: "none",
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+                                backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+                              }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            >
+                              <option value="">Select duration...</option>
+                              <option value="1 day (flash)">1 day (flash)</option>
+                              <option value="3 days">3 days</option>
+                              <option value="1 week">1 week</option>
+                              <option value="2 weeks">2 weeks</option>
+                              <option value="1 month">1 month</option>
+                              <option value="6 weeks">6 weeks</option>
+                              <option value="2 months">2 months</option>
+                              <option value="3 months (quarter)">3 months (quarter)</option>
+                              <option value="6 months">6 months</option>
+                              <option value="Ongoing / Evergreen">Ongoing / Evergreen</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Product URLs */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Link2 size={12} style={{ color: "#7A7572" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Product URL</span>
+                          </div>
+                          <input
+                            value={productUrls}
+                            onChange={e => setProductUrls(e.target.value)}
+                            placeholder="https://yoursite.com/product-page"
+                            className="w-full rounded-xl px-4 py-2.5 transition-all"
+                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
+                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                          />
+                        </div>
+
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Brand Vault Status — compact */}
+              <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center gap-2">
+                  <Shield size={13} style={{ color: vault ? "#10b981" : "#5C5856" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: vault ? "#10b981" : "#7A7572" }}>
+                    {vaultLoading ? "Loading Vault..." : vault ? `${vault.brandName || "Brand Vault"} active` : "No Brand Vault"}
+                  </span>
+                  {vault && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", color: "var(--ora-signal)", background: "rgba(59,79,196,0.08)" }}>
+                      <Check size={8} /> tone + vocabulary + guardrails
+                    </span>
+                  )}
+                </div>
+                {/* Logo */}
+                <div className="flex items-center gap-2">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Logo" className="w-6 h-6 rounded object-contain" style={{ background: "#222120" }} />
+                  ) : (
+                    <button
+                      onClick={() => logoInputRef.current?.click()}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7A7572", fontSize: "11px" }}
+                    >
+                      {uploadingLogo ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                      Logo
+                    </button>
+                  )}
+                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  {rawLogoUrl && (
+                    <button
+                      onClick={() => setShowLogoOverlay(!showLogoOverlay)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
+                      style={{ background: showLogoOverlay ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLogoOverlay ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.06)"}`, fontSize: "10px", fontWeight: 600, color: showLogoOverlay ? "#34d399" : "#5C5856" }}
+                    >
+                      {showLogoOverlay ? <Check size={9} /> : <Eye size={9} />}
+                      Overlay
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Model Selector — compact inside advanced area */}
+              <div className="rounded-xl px-4 py-3" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Models</span>
+                  <button onClick={() => setMultiModelEnabled(!multiModelEnabled)}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg cursor-pointer"
+                    style={{
+                      background: multiModelEnabled ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${multiModelEnabled ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    }}>
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: multiModelEnabled ? "var(--ora-signal)" : "#3d3c3b" }} />
+                    <span style={{ fontSize: "9px", fontWeight: 600, color: multiModelEnabled ? "#E8E4DF" : "#5C5856" }}>Compare</span>
+                  </button>
+                </div>
+                {[
+                  { label: "Text", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected, canMulti: true },
+                  { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected, canMulti: true },
+                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: null as any, canMulti: false },
+                ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
+                  <div key={label} className="mb-2 last:mb-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Icon size={10} style={{ color: "#5C5856" }} />
+                      <span style={{ fontSize: "10px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {models.map(m => {
+                        const isMulti = multiModelEnabled && canMulti;
+                        const active = isMulti ? multiSelected.includes(m.id) : value === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              if (isMulti && setMulti) {
+                                if (multiSelected.includes(m.id)) {
+                                  if (multiSelected.length > 1) { setMulti(multiSelected.filter((id: string) => id !== m.id)); set(multiSelected.filter((id: string) => id !== m.id)[0]); }
+                                } else {
+                                  if (multiSelected.length < 3) setMulti([...multiSelected, m.id]);
+                                  else toast.error("Max 3 models");
+                                }
+                              } else { set(m.id); }
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                            style={{
+                              background: active ? `${m.color}18` : "rgba(255,255,255,0.03)",
+                              border: `1px solid ${active ? m.color + "50" : "rgba(255,255,255,0.06)"}`,
+                              color: active ? m.color : "#7A7572",
+                              fontSize: "11px", fontWeight: active ? 600 : 400,
+                            }}
+                          >
+                            {active && isMulti && <Check size={9} />}
+                            {m.label}
+                            <span style={{ fontSize: "8px", fontWeight: 500, opacity: 0.7 }}>{m.badge}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
 
