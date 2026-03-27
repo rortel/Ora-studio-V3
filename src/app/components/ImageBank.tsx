@@ -87,20 +87,20 @@ function corsBody(token: string, data?: Record<string, any>): string {
 
 // ── Shared style constants ──
 const C = {
-  bg: "#201F23",
+  bg: "var(--card)",
   bgInner: "rgba(255,255,255,0.03)",
-  border: "rgba(255,255,255,0.06)",
-  borderStrong: "rgba(255,255,255,0.10)",
-  text: "#E8E4DF",
-  textMuted: "#9A9590",
-  textDim: "rgba(255,255,255,0.25)",
-  accent: "#5E6AD2",
-  accentBg: "rgba(94,106,210,0.08)",
-  accentBorder: "rgba(94,106,210,0.15)",
+  border: "var(--border)",
+  borderStrong: "var(--border-strong)",
+  text: "var(--foreground)",
+  textMuted: "var(--text-tertiary)",
+  textDim: "rgba(26,23,20,0.18)",
+  accent: "var(--accent)",
+  accentBg: "rgba(17,17,17,0.08)",
+  accentBorder: "rgba(17,17,17,0.15)",
   shadow: "0 1px 3px rgba(0,0,0,0.08)",
-  green: "#10B981",
-  red: "#EF4444",
-  amber: "#b45309",
+  green: "#666666",
+  red: "#999999",
+  amber: "#999999",
 };
 
 export function ImageBank({ accessToken }: ImageBankProps) {
@@ -366,8 +366,8 @@ export function ImageBank({ accessToken }: ImageBankProps) {
         onClick={() => !uploading && fileRef.current?.click()}
         className="flex items-center justify-center gap-2.5 py-4 rounded-xl cursor-pointer transition-all"
         style={{
-          border: `1px dashed ${dragOver ? "rgba(94,106,210,0.5)" : C.border}`,
-          background: dragOver ? "rgba(94,106,210,0.04)" : "transparent",
+          border: `1px dashed ${dragOver ? "rgba(17,17,17,0.5)" : C.border}`,
+          background: dragOver ? "rgba(17,17,17,0.04)" : "transparent",
         }}
       >
         {uploading ? (
@@ -537,7 +537,7 @@ export function ImageBank({ accessToken }: ImageBankProps) {
                     </p>
                     <div className="flex items-center justify-between mt-1">
                       <span className="px-1.5 py-0.5 rounded"
-                        style={{ fontSize: "9px", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(255,255,255,0.04)", color: C.textMuted }}>
+                        style={{ fontSize: "9px", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(26,23,20,0.03)", color: C.textMuted }}>
                         {CATEGORY_LABELS[img.category] || img.category || "general"}
                       </span>
                       <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>{formatSize(img.fileSize || 0)}</span>
@@ -580,7 +580,7 @@ export function ImageBank({ accessToken }: ImageBankProps) {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex justify-end"
-            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+            style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(4px)" }}
             onClick={() => setInspectImage(null)}
           >
             <motion.div
@@ -609,13 +609,13 @@ export function ImageBank({ accessToken }: ImageBankProps) {
         {editingId && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center px-4"
-            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+            style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(4px)" }}
             onClick={() => setEditingId(null)}>
             <motion.div
               initial={{ opacity: 0, scale: 0.97, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97, y: 6 }}
               onClick={(e) => e.stopPropagation()}
               className="rounded-xl p-5 w-full max-w-[380px]"
-              style={{ background: C.bg, border: `1px solid ${C.border}`, boxShadow: "0 12px 48px rgba(0,0,0,0.25)" }}>
+              style={{ background: C.bg, border: `1px solid ${C.border}`, boxShadow: "0 12px 48px rgba(0,0,0,0.04)" }}>
               <div className="flex items-center justify-between mb-4">
                 <h4 style={{ fontSize: "14px", fontWeight: 500, color: C.text }}>Edit image metadata</h4>
                 <button onClick={() => setEditingId(null)} className="cursor-pointer"><X size={15} style={{ color: C.textMuted }} /></button>

@@ -96,13 +96,13 @@ export const TEMPLATES: CampaignTemplate[] = [
 ];
 
 export const PLATFORM_COLORS: Record<string, string> = {
-  LinkedIn:  "#0A66C2",
-  Instagram: "#E1306C",
-  Facebook:  "#1877F2",
-  TikTok:    "#00F2EA",
+  LinkedIn:  "#666666",
+  Instagram: "#666666",
+  Facebook:  "#666666",
+  TikTok:    "#666666",
   X:         "#E8E4DF",
-  Pinterest: "#E60023",
-  YouTube:   "#FF0000",
+  Pinterest: "#666666",
+  YouTube:   "#666666",
 };
 
 export const PLATFORM_ICONS: Record<string, string> = {

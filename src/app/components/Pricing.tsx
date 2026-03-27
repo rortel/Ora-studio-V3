@@ -2,11 +2,6 @@ import { Link } from "react-router";
 import { Check, ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
 
-/**
- * Screen 4 — Pricing: Free / Pro / Team
- * Dark monochrome. No accent colors.
- */
-
 const plans = [
   {
     name: "Starter",
@@ -62,27 +57,48 @@ const plans = [
 
 export function Pricing() {
   return (
-    <section id="pricing" className="py-24 md:py-32" style={{ background: "#131211" }}>
+    <section id="pricing" className="py-28 md:py-36" style={{ background: "#F5F5F5" }}>
       <div className="max-w-[1080px] mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-14"
+          className="mb-16 text-center"
         >
-          <h2
+          <p
             style={{
-              fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
+              fontSize: "12px",
               fontWeight: 500,
-              lineHeight: 1.1,
-              letterSpacing: "-0.03em",
-              color: "#E8E4DF",
-              marginBottom: 12,
+              fontFamily: "'Inter', sans-serif",
+              color: "#9A9590",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 16,
             }}
           >
             Pricing
+          </p>
+          <h2
+            style={{
+              fontSize: "clamp(2rem, 4.5vw, 3.5rem)",
+              fontWeight: 300,
+              lineHeight: 1.1,
+              letterSpacing: "-0.04em",
+              color: "#111111",
+              fontFamily: "'Inter', sans-serif",
+              marginBottom: 12,
+            }}
+          >
+            Simple, transparent pricing
           </h2>
-          <p style={{ fontSize: "16px", lineHeight: 1.55, color: "#5C5856", maxWidth: 360 }}>
+          <p style={{
+            fontSize: "15px",
+            lineHeight: 1.55,
+            color: "#9A9590",
+            fontFamily: "'Inter', sans-serif",
+            maxWidth: 380,
+            margin: "0 auto",
+          }}>
             Pay for credits. Use any model. Credits never expire.
           </p>
         </motion.div>
@@ -94,41 +110,42 @@ export function Pricing() {
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: i * 0.06 }}
-              className="rounded-xl p-6 flex flex-col relative"
+              transition={{ delay: i * 0.08 }}
+              className="rounded-2xl p-7 flex flex-col relative"
               style={{
-                background: p.highlighted
-                  ? "linear-gradient(180deg, rgba(139,108,247,0.08) 0%, #201F23 100%)"
-                  : "#201F23",
+                background: "#FFFFFF",
                 border: p.highlighted
-                  ? "1px solid rgba(139,108,247,0.3)"
-                  : "1px solid rgba(255,255,255,0.07)",
-                boxShadow: p.highlighted ? "0 4px 24px rgba(139,108,247,0.1)" : "none",
-                minHeight: 400,
+                  ? "1.5px solid #111111"
+                  : "1px solid rgba(0,0,0,0.06)",
+                minHeight: 420,
               }}
             >
               {p.highlighted && (
                 <span
-                  className="absolute top-4 right-4 px-2.5 py-1 rounded-full"
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full"
                   style={{
-                    background: "linear-gradient(135deg, #8B6CF7 0%, #A78BFA 100%)",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    color: "#fff",
+                    background: "#111111",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: "#FFFFFF",
                     letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    fontFamily: "'Inter', sans-serif",
                   }}
                 >
-                  POPULAR
+                  Popular
                 </span>
               )}
 
               <div>
                 <h3
                   style={{
-                    fontSize: "16px",
+                    fontSize: "15px",
                     fontWeight: 500,
-                    color: "#E8E4DF",
+                    fontFamily: "'Inter', sans-serif",
+                    color: "#111111",
                     marginBottom: 4,
+                    letterSpacing: "-0.01em",
                   }}
                 >
                   {p.name}
@@ -136,59 +153,63 @@ export function Pricing() {
                 <p
                   style={{
                     fontSize: "13px",
-                    color: "#5C5856",
-                    marginBottom: 16,
+                    color: "#9A9590",
+                    fontFamily: "'Inter', sans-serif",
+                    marginBottom: 20,
                   }}
                 >
                   {p.desc}
                 </p>
                 <div className="flex items-baseline gap-1 mb-1">
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>EUR</span>
+                  <span style={{ fontSize: "11px", color: "#9A9590", fontFamily: "'Inter', sans-serif" }}>EUR</span>
                   <span
                     style={{
-                      fontSize: "40px",
-                      fontWeight: 500,
-                      letterSpacing: "-0.035em",
+                      fontSize: "44px",
+                      fontWeight: 300,
+                      fontFamily: "'Inter', sans-serif",
+                      letterSpacing: "-0.04em",
                       lineHeight: 1,
-                      color: "#E8E4DF",
+                      color: "#111111",
                     }}
                   >
                     {p.price}
                   </span>
                   {p.period && (
-                    <span style={{ fontSize: "14px", color: "#5C5856" }}>{p.period}</span>
+                    <span style={{ fontSize: "13px", color: "#9A9590", fontFamily: "'Inter', sans-serif" }}>{p.period}</span>
                   )}
                 </div>
                 <p
                   style={{
                     fontSize: "12px",
                     fontWeight: 500,
-                    color: "#9A9590",
-                    marginBottom: 20,
+                    color: "#111111",
+                    fontFamily: "'Inter', sans-serif",
+                    marginBottom: 24,
                   }}
                 >
                   {p.credits}
                 </p>
               </div>
 
-              <ul className="space-y-2.5 flex-1">
+              <ul className="space-y-3 flex-1">
                 {p.features.map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
-                    <Check size={12} style={{ color: "#5C5856" }} strokeWidth={2} />
-                    <span style={{ fontSize: "13px", color: "#9A9590" }}>{f}</span>
+                    <Check size={13} style={{ color: "#111111" }} strokeWidth={2} />
+                    <span style={{ fontSize: "13px", color: "#666666", fontFamily: "'Inter', sans-serif" }}>{f}</span>
                   </li>
                 ))}
               </ul>
 
               <Link
                 to="/login?mode=signup"
-                className="group mt-6 flex items-center justify-center gap-2 py-3 rounded-lg transition-all hover:opacity-90"
+                className="group mt-8 flex items-center justify-center gap-2 py-3 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
                 style={{
-                  background: p.highlighted ? "#E8E4DF" : "rgba(255,255,255,0.06)",
-                  color: p.highlighted ? "#131211" : "#E8E4DF",
+                  background: p.highlighted ? "#111111" : "transparent",
+                  border: p.highlighted ? "none" : "1px solid rgba(0,0,0,0.12)",
+                  color: p.highlighted ? "#FFFFFF" : "#111111",
                   fontSize: "13px",
                   fontWeight: 500,
-                  border: p.highlighted ? "none" : "1px solid rgba(255,255,255,0.06)",
+                  fontFamily: "'Inter', sans-serif",
                 }}
               >
                 {p.cta}

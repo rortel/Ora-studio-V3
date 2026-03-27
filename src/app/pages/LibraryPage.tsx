@@ -112,13 +112,13 @@ function getPlatformIcon(p: string) {
 }
 function getPlatformColor(p: string) {
   const lower = p.toLowerCase();
-  if (lower.includes("instagram")) return "#E4405F";
-  if (lower.includes("linkedin")) return "#0A66C2";
-  if (lower.includes("facebook")) return "#1877F2";
-  if (lower.includes("twitter") || lower.includes("x")) return "#1DA1F2";
-  if (lower.includes("youtube")) return "#FF0000";
-  if (lower.includes("tiktok")) return "#00F2EA";
-  return "#9A9590";
+  if (lower.includes("instagram")) return "#666666";
+  if (lower.includes("linkedin")) return "#666666";
+  if (lower.includes("facebook")) return "#666666";
+  if (lower.includes("twitter") || lower.includes("x")) return "#666666";
+  if (lower.includes("youtube")) return "#666666";
+  if (lower.includes("tiktok")) return "#666666";
+  return "var(--text-tertiary)";
 }
 
 function sortItems(items: LibraryItem[], mode: SortMode): LibraryItem[] {
@@ -417,12 +417,12 @@ function LibraryPageContent() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
   }
 
-  const typeBg: Record<string, string> = { image: "#5E6AD2", film: "#D4956B", text: "#C27A98", code: "#6D9B7E", sound: "#C9A84C" };
+  const typeBg: Record<string, string> = { image: "var(--accent)", film: "#444444", text: "#888888", code: "#666666", sound: "#999999" };
 
   return (
     <div className="min-h-screen bg-background">
@@ -430,20 +430,20 @@ function LibraryPageContent() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "#E8E4DF" }}>
-              My Content
+            <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "var(--foreground)" }}>
+              Library
             </h1>
-            <p className="mt-2" style={{ fontSize: "15px", color: "#9A9590", fontWeight: 400 }}>
+            <p className="mt-2" style={{ fontSize: "15px", color: "var(--text-tertiary)", fontWeight: 400 }}>
               {contentItems.length} asset{contentItems.length !== 1 ? "s" : ""}, {campaignItems.length} campaign{campaignItems.length !== 1 ? "s" : ""}
             </p>
           </div>
           <Link
             to="/hub"
             className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
+            style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
-            Create new
+            Generate new
           </Link>
         </div>
 
@@ -453,10 +453,10 @@ function LibraryPageContent() {
             onClick={() => setActiveTab("content")}
             className="px-5 py-2.5 rounded-full cursor-pointer transition-all"
             style={{
-              fontSize: "13px", fontWeight: 800,
-              background: activeTab === "content" ? "#E8E4DF" : "#222120",
-              color: activeTab === "content" ? "#18171A" : "#5C5856",
-              border: activeTab === "content" ? "none" : "1px solid rgba(255,255,255,0.06)",
+              fontSize: "13px", fontWeight: 500,
+              background: activeTab === "content" ? "var(--foreground)" : "var(--secondary)",
+              color: activeTab === "content" ? "var(--background)" : "var(--text-secondary)",
+              border: activeTab === "content" ? "none" : "1px solid var(--border)",
             }}
           >
             Generated Content
@@ -466,10 +466,10 @@ function LibraryPageContent() {
             onClick={() => setActiveTab("campaigns")}
             className="px-5 py-2.5 rounded-full cursor-pointer transition-all"
             style={{
-              fontSize: "13px", fontWeight: 800,
-              background: activeTab === "campaigns" ? "#E8E4DF" : "#222120",
-              color: activeTab === "campaigns" ? "#18171A" : "#5C5856",
-              border: activeTab === "campaigns" ? "none" : "1px solid rgba(255,255,255,0.06)",
+              fontSize: "13px", fontWeight: 500,
+              background: activeTab === "campaigns" ? "var(--foreground)" : "var(--secondary)",
+              color: activeTab === "campaigns" ? "var(--background)" : "var(--text-secondary)",
+              border: activeTab === "campaigns" ? "none" : "1px solid var(--border)",
             }}
           >
             Campaigns
@@ -483,19 +483,19 @@ function LibraryPageContent() {
             {campaignItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "linear-gradient(135deg, #D4956B 0%, #C27A98 100%)", boxShadow: "0 8px 24px rgba(194,122,152,0.15)" }}>
+                  style={{ background: "var(--accent-warm-light)", boxShadow: "var(--shadow-md)" }}>
                   <Sparkles size={28} style={{ color: "#FFF" }} />
                 </div>
-                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "#E8E4DF", marginBottom: "8px" }}>
+                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   No campaigns yet
                 </h2>
-                <p style={{ fontSize: "15px", color: "#9A9590", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
+                <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
                   Create a campaign from the AI Hub using Campaign Lab. Your campaigns will automatically appear here.
                 </p>
                 <Link
                   to="/hub"
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
+                  style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
                 >
                   <Rocket size={14} />
                   Open AI Hub
@@ -516,7 +516,7 @@ function LibraryPageContent() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.05, 0.3) }}
                       className="rounded-xl overflow-hidden cursor-pointer group"
-                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
+                      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                       onClick={() => setOpenCampaignId(item.id)}
                     >
                       {/* Cover image — mosaic of up to 4 thumbnails */}
@@ -548,13 +548,13 @@ function LibraryPageContent() {
                               const PIcon = getPlatformIcon(p);
                               const pColor = getPlatformColor(p);
                               return (
-                                <div key={pi} className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+                                <div key={pi} className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(4px)" }}>
                                   <PIcon size={10} style={{ color: pColor }} />
                                 </div>
                               );
                             })}
                           </div>
-                          <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", fontSize: "10px", fontWeight: 600, color: "#fff" }}>
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(4px)", fontSize: "10px", fontWeight: 600, color: "#fff" }}>
                             {deliverableCount} asset{deliverableCount !== 1 ? "s" : ""}
                           </span>
                         </div>
@@ -562,7 +562,7 @@ function LibraryPageContent() {
 
                       {/* Info */}
                       <div className="p-3.5">
-                        <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
+                        <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>
                           {headline || getItemName(item)}
                         </p>
                         <div className="flex items-center justify-between">
@@ -574,17 +574,17 @@ function LibraryPageContent() {
                               onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
                               disabled={isDownloading}
                               className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
-                              style={{ background: "rgba(255,255,255,0.06)" }}
+                              style={{ background: "var(--border)" }}
                               title="Download all"
                             >
-                              {isDownloading ? <Loader2 size={11} className="animate-spin" style={{ color: "#9A9590" }} /> : <Download size={11} style={{ color: "#9A9590" }} />}
+                              {isDownloading ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : <Download size={11} style={{ color: "var(--text-tertiary)" }} />}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }}
                               className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
-                              style={{ background: "rgba(255,255,255,0.06)" }}
+                              style={{ background: "var(--border)" }}
                             >
-                              <Trash2 size={11} style={{ color: "#9A9590" }} />
+                              <Trash2 size={11} style={{ color: "var(--text-tertiary)" }} />
                             </button>
                           </div>
                         </div>
@@ -607,12 +607,12 @@ function LibraryPageContent() {
                     <button
                       onClick={() => setOpenCampaignId(null)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: "12px", fontWeight: 500, color: "#9A9590" }}
+                      style={{ background: "rgba(17,17,17,0.03)", border: "1px solid rgba(17,17,17,0.04)", fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)" }}
                     >
                       <ChevronRight size={12} className="rotate-180" /> Back
                     </button>
                     <div className="flex-1 min-w-0">
-                      <h3 className="truncate" style={{ fontSize: "16px", fontWeight: 600, color: "#E8E4DF" }}>
+                      <h3 className="truncate" style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)" }}>
                         {headline || getItemName(openItem)}
                       </h3>
                       <div className="flex items-center gap-3 mt-1">
@@ -624,7 +624,7 @@ function LibraryPageContent() {
                             return <PIcon key={pi} size={12} style={{ color: pColor }} />;
                           })}
                         </div>
-                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                           {new Date(openItem.savedAt).toLocaleDateString()}
                         </span>
                       </div>
@@ -633,7 +633,7 @@ function LibraryPageContent() {
                       onClick={() => handleDownloadCampaign(openItem)}
                       disabled={isDownloading}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
-                      style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", color: "#5E6AD2", fontSize: "12px", fontWeight: 600 }}
+                      style={{ background: "rgba(17,17,17,0.1)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 600 }}
                     >
                       {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                       Download All
@@ -642,7 +642,7 @@ function LibraryPageContent() {
 
                   {/* Brief */}
                   {cBrief && (
-                    <div className="mb-5 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="mb-5 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}>
                       <p style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Brief</p>
                       <p style={{ fontSize: "13px", color: "#C4BEB8", lineHeight: 1.6 }}>{cBrief.slice(0, 500)}{cBrief.length > 500 ? "..." : ""}</p>
                     </div>
@@ -663,7 +663,7 @@ function LibraryPageContent() {
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: ai * 0.04 }}
                           className="rounded-xl overflow-hidden group/card"
-                          style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
+                          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                         >
                           {/* Preview area */}
                           <div className="relative" style={{ aspectRatio, background: "#0e0d0c", maxHeight: 280 }}>
@@ -682,11 +682,11 @@ function LibraryPageContent() {
                             ) : (
                               <div className="w-full h-full p-4 overflow-hidden">
                                 {asset.headline && (
-                                  <p className="line-clamp-2 mb-2" style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.3 }}>
+                                  <p className="line-clamp-2 mb-2" style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)", lineHeight: 1.3 }}>
                                     {asset.headline}
                                   </p>
                                 )}
-                                <p className="line-clamp-6" style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.6 }}>
+                                <p className="line-clamp-6" style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
                                   {asset.caption || asset.copy || ""}
                                 </p>
                               </div>
@@ -713,14 +713,14 @@ function LibraryPageContent() {
                           {/* Info section */}
                           <div className="p-4">
                             <div className="flex items-center justify-between mb-2">
-                              <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{asset.label || asset.formatId}</span>
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{asset.label || asset.formatId}</span>
                               {/* Action buttons */}
                               <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
                                 {(asset.caption || asset.copy) && (
                                   <button
                                     onClick={() => copyToClipboard(asset.caption || asset.copy)}
                                     className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                    style={{ background: "rgba(255,255,255,0.04)" }}
+                                    style={{ background: "rgba(17,17,17,0.03)" }}
                                     title="Copy text"
                                   >
                                     <Copy size={12} style={{ color: "#7A7572" }} />
@@ -729,7 +729,7 @@ function LibraryPageContent() {
                                 <button
                                   onClick={() => downloadAssetFile(asset, getItemName(openItem))}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                  style={{ background: "rgba(255,255,255,0.04)" }}
+                                  style={{ background: "rgba(17,17,17,0.03)" }}
                                   title="Download"
                                 >
                                   <Download size={12} style={{ color: "#7A7572" }} />
@@ -749,13 +749,13 @@ function LibraryPageContent() {
 
                             {/* Hashtags */}
                             {asset.hashtags && (
-                              <p className="line-clamp-1 mt-1" style={{ fontSize: "11px", color: "#5E6AD2", lineHeight: 1.4 }}>{asset.hashtags}</p>
+                              <p className="line-clamp-1 mt-1" style={{ fontSize: "11px", color: "var(--accent)", lineHeight: 1.4 }}>{asset.hashtags}</p>
                             )}
 
                             {/* Brand-compliant badge */}
                             <div className="flex items-center gap-1 mt-2">
-                              <Check size={11} style={{ color: "#10b981" }} />
-                              <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 600 }}>Brand-compliant</span>
+                              <Check size={11} style={{ color: "#666666" }} />
+                              <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>Brand-compliant</span>
                             </div>
                           </div>
                         </motion.div>
@@ -774,7 +774,7 @@ function LibraryPageContent() {
           {/* Sidebar — Folders */}
           <div className="w-[220px] flex-shrink-0 hidden md:block">
             <div className="flex items-center justify-between mb-3">
-              <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>
+              <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
                 Collections
               </span>
               <button
@@ -891,7 +891,7 @@ function LibraryPageContent() {
               {/* Type filter pills */}
               <div className="flex items-center gap-1.5">
                 {typeOptions.map((opt) => {
-                  const pillColor = typeBg[opt.id] || "#E8E4DF";
+                  const pillColor = typeBg[opt.id] || "var(--foreground)";
                   const isActive = typeFilter === opt.id;
                   return (
                     <button
@@ -900,9 +900,9 @@ function LibraryPageContent() {
                       className="px-3 py-1.5 rounded-full cursor-pointer transition-all"
                       style={{
                         fontSize: "11px", fontWeight: isActive ? 800 : 600,
-                        background: isActive ? (opt.id === "all" ? "#E8E4DF" : pillColor) : "#222120",
-                        color: isActive ? "#18171A" : "#5C5856",
-                        border: isActive ? "none" : "1px solid rgba(255,255,255,0.06)",
+                        background: isActive ? (opt.id === "all" ? "var(--foreground)" : pillColor) : "var(--secondary)",
+                        color: isActive ? "var(--background)" : "var(--text-secondary)",
+                        border: isActive ? "none" : "1px solid var(--border)",
                       }}
                     >
                       {opt.label}
@@ -986,13 +986,13 @@ function LibraryPageContent() {
             {filteredItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "linear-gradient(135deg, #6C47FF 0%, #EC4899 100%)", boxShadow: "0 8px 24px rgba(108,71,255,0.2)" }}>
+                  style={{ background: "var(--accent-warm-light)", boxShadow: "var(--shadow-md)" }}>
                   <BookOpen size={28} style={{ color: "#FFF" }} />
                 </div>
-                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "#E8E4DF", marginBottom: "8px" }}>
+                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {items.length === 0 ? "Your library is empty" : "No matching items"}
                 </h2>
-                <p style={{ fontSize: "15px", color: "#9A9590", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
+                <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
                   {items.length === 0
                     ? "Generate content in the AI Hub and save your favorites here. They'll be organized and always available."
                     : "Try adjusting your search or filters."}
@@ -1001,7 +1001,7 @@ function LibraryPageContent() {
                   <Link
                     to="/hub"
                     className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                    style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
+                    style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
                   >
                     <Rocket size={14} />
                     Open AI Hub
@@ -1024,10 +1024,10 @@ function LibraryPageContent() {
                       transition={{ delay: Math.min(i * 0.03, 0.3) }}
                       whileHover={{ y: -4, boxShadow: "0 12px 40px rgba(0,0,0,0.12)" }}
                       className="break-inside-avoid rounded-2xl overflow-hidden group cursor-pointer"
-                      style={{ border: "1px solid rgba(255,255,255,0.06)", background: "#201F23", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+                      style={{ border: "1px solid var(--border)", background: "var(--card)", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}
                     >
                       {/* Thumbnail */}
-                      <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "#222120" }} onClick={() => setPreviewItem(item)}>
+                      <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => setPreviewItem(item)}>
                         {url && item.type === "image" ? (
                           <img src={url} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" />
                         ) : url && item.type === "film" ? (
@@ -1040,19 +1040,19 @@ function LibraryPageContent() {
                           <div className="w-full flex flex-col items-center justify-center gap-3 p-5">
                             <Music size={22} style={{ color: typeColor, opacity: 0.5 }} />
                             <audio src={item.preview.audioUrl} controls className="w-full" style={{ height: 32 }} onClick={(e) => e.stopPropagation()} />
-                            <span style={{ fontSize: "10px", fontWeight: 800, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>Sound</span>
+                            <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>Sound</span>
                           </div>
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6">
                             <Icon size={24} style={{ color: typeColor, opacity: 0.4 }} />
-                            <span style={{ fontSize: "10px", fontWeight: 800, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
+                            <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
                             {item.preview?.kind === "text" && (
-                              <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>
+                              <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
                                 {(item.preview as any).excerpt?.slice(0, 200)}
                               </p>
                             )}
                             {item.preview?.kind === "code" && (
-                              <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "#9A9590", lineHeight: 1.4 }}>
+                              <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "var(--text-tertiary)", lineHeight: 1.4 }}>
                                 {(item.preview as any).snippet?.slice(0, 200)}
                               </pre>
                             )}
@@ -1061,12 +1061,12 @@ function LibraryPageContent() {
                         {/* Hover overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform scale-75 group-hover:scale-100 transition-transform">
-                            <Eye size={18} style={{ color: "#18171A" }} />
+                            <Eye size={18} style={{ color: "var(--background)" }} />
                           </div>
                         </div>
                         {/* Type badge */}
                         <div className="absolute top-3 left-3">
-                          <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "10px", fontWeight: 900, background: typeColor, color: "#18171A", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "10px", fontWeight: 900, background: typeColor, color: "var(--background)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                             {getTypeLabel(item.type)}
                           </span>
                         </div>
@@ -1074,31 +1074,31 @@ function LibraryPageContent() {
 
                       {/* Info */}
                       <div className="px-4 py-3">
-                        <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 700, color: "#E8E4DF" }}>
+                        <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 700, color: "var(--foreground)" }}>
                           {getItemName(item)}
                         </p>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <span style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590" }}>{item.model?.name || "AI"}</span>
-                            <span style={{ fontSize: "9px", color: "#5C5856" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)" }}>{item.model?.name || "AI"}</span>
+                            <span style={{ fontSize: "9px", color: "var(--text-secondary)" }}>
                               {new Date(item.savedAt).toLocaleDateString()}
                             </span>
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Download HD">
-                              <Download size={12} style={{ color: "#9A9590" }} />
+                            <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Download HD">
+                              <Download size={12} style={{ color: "var(--text-tertiary)" }} />
                             </button>
                             {(item.preview?.kind === "text" || item.preview?.kind === "code") && (
-                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.preview.kind === "text" ? item.preview.excerpt : item.preview.snippet); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Copy text">
-                                <Copy size={12} style={{ color: "#9A9590" }} />
+                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.preview.kind === "text" ? item.preview.excerpt : item.preview.snippet); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Copy text">
+                                <Copy size={12} style={{ color: "var(--text-tertiary)" }} />
                               </button>
                             )}
                             <button onClick={(e) => { e.stopPropagation(); setMoveTargetItem(item.id); }}
-                              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Move to folder">
-                              <FolderInput size={12} style={{ color: "#9A9590" }} />
+                              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Move to folder">
+                              <FolderInput size={12} style={{ color: "var(--text-tertiary)" }} />
                             </button>
                             <button onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[rgba(196,91,74,0.1)] cursor-pointer" title="Remove">
-                              <Trash2 size={12} style={{ color: "#EF4444" }} />
+                              <Trash2 size={12} style={{ color: "#DC2626" }} />
                             </button>
                           </div>
                         </div>
@@ -1229,7 +1229,7 @@ function LibraryPageContent() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: previewItem.type === "image" || previewItem.type === "film" ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,0.4)" }}
+            style={{ background: previewItem.type === "image" || previewItem.type === "film" ? "rgba(0,0,0,0.95)" : "rgba(0,0,0,0.06)" }}
             onClick={() => setPreviewItem(null)}
           >
             <motion.div
@@ -1270,7 +1270,7 @@ function LibraryPageContent() {
                       <p style={{ fontSize: "14px", color: "var(--foreground)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{previewItem.preview.excerpt}</p>
                     )}
                     {previewItem.preview?.kind === "code" && (
-                      <pre className="font-mono rounded-lg p-4" style={{ fontSize: "12px", color: "#e2e8f0", background: "#1a1a2e", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                      <pre className="font-mono rounded-lg p-4" style={{ fontSize: "12px", color: "#e2e2e2", background: "#1a1a1a", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                         {previewItem.preview.snippet}
                       </pre>
                     )}
@@ -1294,7 +1294,7 @@ function LibraryPageContent() {
                       <button
                         onClick={() => copyToClipboard(previewItem.preview.kind === "text" ? previewItem.preview.excerpt : previewItem.preview.snippet)}
                         className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
-                        style={{ background: "rgba(255,255,255,0.08)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
+                        style={{ background: "rgba(17,17,17,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
                       >
                         <Copy size={14} /> Copy
                       </button>

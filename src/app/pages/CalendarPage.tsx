@@ -45,9 +45,9 @@ interface CalendarEvent {
 const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
   draft: { label: "Draft", bg: "rgba(107,107,123,0.08)", text: "var(--muted-foreground)" },
   scheduled: { label: "Scheduled", bg: "var(--ora-signal-light)", text: "var(--ora-signal)" },
-  published: { label: "Published", bg: "rgba(22,163,74,0.08)", text: "#16a34a" },
-  review: { label: "In review", bg: "rgba(245,158,11,0.08)", text: "#f59e0b" },
-  deploying: { label: "Deploying...", bg: "rgba(59,79,196,0.08)", text: "var(--ora-signal)" },
+  published: { label: "Published", bg: "rgba(17,17,17,0.08)", text: "#666666" },
+  review: { label: "In review", bg: "rgba(17,17,17,0.08)", text: "#999999" },
+  deploying: { label: "Deploying...", bg: "rgba(17,17,17,0.08)", text: "var(--ora-signal)" },
   failed: { label: "Failed", bg: "rgba(212,24,61,0.08)", text: "#d4183d" },
 };
 
@@ -57,8 +57,8 @@ const channelIconMap: Record<string, typeof Linkedin> = {
 };
 
 const channelColors: Record<string, string> = {
-  LinkedIn: "#0077b5", Email: "#ea4335", "Twitter/X": "#1da1f2", Instagram: "#e1306c",
-  Facebook: "#1877F2", TikTok: "#00f2ea", YouTube: "#FF0000", Pinterest: "#E60023",
+  LinkedIn: "#666666", Email: "#666666", "Twitter/X": "#666666", Instagram: "#666666",
+  Facebook: "#666666", TikTok: "#666666", YouTube: "#666666", Pinterest: "#666666",
 };
 
 const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -119,7 +119,7 @@ function CalendarPageContent() {
       const headers: Record<string, string> = { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` };
       const eventData = {
         title: newTitle, channel: newChannel, channelIcon: newChannel, time: newTime,
-        status: "draft" as ContentStatus, score: 0, color: channelColors[newChannel] || "#0077b5",
+        status: "draft" as ContentStatus, score: 0, color: channelColors[newChannel] || "#666666",
         day: selectedDay, month: currentMonth, year: currentYear,
         _token: token || undefined,
       };
@@ -273,7 +273,7 @@ function CalendarPageContent() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-foreground" style={{ fontSize: "28px", fontWeight: 500, letterSpacing: "-0.03em" }}>Content Calendar</h1>
+                <h1 className="text-foreground" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>Content Calendar</h1>
                 {stats.total > 0 && (
                   <span className="px-2.5 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)", background: "var(--ora-signal-light)" }}>{stats.total} pieces</span>
                 )}
@@ -287,7 +287,7 @@ function CalendarPageContent() {
                   disabled={deployingAll}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-lg transition-all cursor-pointer"
                   style={{
-                    background: deployingAll ? "rgba(59,79,196,0.08)" : "var(--ora-signal)",
+                    background: deployingAll ? "rgba(17,17,17,0.08)" : "var(--ora-signal)",
                     color: deployingAll ? "var(--ora-signal)" : "#fff",
                     fontSize: "14px", fontWeight: 500,
                     opacity: deployingAll ? 0.7 : 1,
@@ -457,7 +457,7 @@ function CalendarPageContent() {
                                   </div>
                                   <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{event.channel}</span>
                                   {contentAvailable && (
-                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 500, background: "rgba(22,163,74,0.08)", color: "#16a34a" }}>
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 500, background: "rgba(17,17,17,0.08)", color: "#666666" }}>
                                       <Eye size={8} /> Preview
                                     </span>
                                   )}
@@ -587,8 +587,8 @@ function CalendarPageContent() {
                                                 {event.assetType && (
                                                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded" style={{
                                                     fontSize: "9px", fontWeight: 600,
-                                                    background: event.assetType === "video" ? "rgba(239,68,68,0.08)" : event.assetType === "image" ? "rgba(168,85,247,0.08)" : "rgba(107,107,123,0.08)",
-                                                    color: event.assetType === "video" ? "#ef4444" : event.assetType === "image" ? "#a855f7" : "var(--muted-foreground)",
+                                                    background: event.assetType === "video" ? "rgba(17,17,17,0.08)" : event.assetType === "image" ? "rgba(17,17,17,0.08)" : "rgba(107,107,123,0.08)",
+                                                    color: event.assetType === "video" ? "#DC2626" : event.assetType === "image" ? "#666666" : "var(--muted-foreground)",
                                                   }}>
                                                     {event.assetType === "video" ? <Video size={8} /> : event.assetType === "image" ? <Image size={8} /> : <Type size={8} />}
                                                     {event.assetType}
@@ -610,7 +610,7 @@ function CalendarPageContent() {
                                               disabled={isDeploying}
                                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer"
                                               style={{
-                                                background: isDeploying ? "rgba(59,79,196,0.08)" : "var(--ora-signal)",
+                                                background: isDeploying ? "rgba(17,17,17,0.08)" : "var(--ora-signal)",
                                                 color: isDeploying ? "var(--ora-signal)" : "#fff",
                                                 fontSize: "11px", fontWeight: 600,
                                                 opacity: isDeploying ? 0.7 : 1,
@@ -621,7 +621,7 @@ function CalendarPageContent() {
                                             </button>
                                           )}
                                           {event.status === "published" && (
-                                            <span className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: "11px", fontWeight: 600, background: "rgba(22,163,74,0.08)", color: "#16a34a" }}>
+                                            <span className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: "11px", fontWeight: 600, background: "rgba(17,17,17,0.08)", color: "#666666" }}>
                                               <CheckCircle2 size={11} /> Published
                                             </span>
                                           )}

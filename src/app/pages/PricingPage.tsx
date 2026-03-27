@@ -120,9 +120,9 @@ export function PricingPage() {
                 fontWeight: 500,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
-                color: "#9A9590",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.06)",
+                color: "var(--text-tertiary)",
+                background: "rgba(26,23,20,0.03)",
+                border: "1px solid var(--border)",
               }}
             >
               Pricing
@@ -133,11 +133,11 @@ export function PricingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.06 }}
             style={{
-              fontSize: "clamp(2rem, 4vw, 3rem)",
-              fontWeight: 500,
-              letterSpacing: "-0.035em",
-              lineHeight: 1.12,
-              color: "#E8E4DF",
+              fontSize: "clamp(2rem, 4.5vw, 3.5rem)",
+              fontWeight: 300,
+              letterSpacing: "-0.04em",
+              lineHeight: 1.08,
+              color: "var(--foreground)",
             }}
             className="mb-5"
           >
@@ -149,7 +149,7 @@ export function PricingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12 }}
             className="max-w-[520px] mx-auto mb-4"
-            style={{ fontSize: "16px", lineHeight: 1.55, color: "#9A9590" }}
+            style={{ fontSize: "16px", lineHeight: 1.55, color: "var(--text-tertiary)" }}
           >
             Pay for credits, use any model. No per-model pricing, no hidden fees. Credits never expire.
           </motion.p>
@@ -158,7 +158,7 @@ export function PricingPage() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.18 }}
             className="text-muted-foreground/60"
-            style={{ fontSize: "13px", color: "#5C5856" }}
+            style={{ fontSize: "13px", color: "var(--text-secondary)" }}
           >
             Unlimited rollover. Cancel anytime.
           </motion.p>
@@ -180,7 +180,7 @@ export function PricingPage() {
                 }`}
                 style={{
                   boxShadow: plan.highlighted
-                    ? "0 1px 3px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.2)"
+                    ? "0 1px 3px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.03)"
                     : "0 1px 3px rgba(0,0,0,0.06)",
                 }}
               >
@@ -189,8 +189,8 @@ export function PricingPage() {
                     <span
                       className="text-white px-3 py-1 rounded-full"
                       style={{
-                        background: "rgba(255,255,255,0.10)",
-                        color: "#E8E4DF",
+                        background: "var(--border-strong)",
+                        color: "var(--foreground)",
                         fontSize: "10px",
                         fontWeight: 500,
                         letterSpacing: "0.05em",
@@ -219,8 +219,8 @@ export function PricingPage() {
                       className="text-foreground"
                       style={{
                         fontSize: "40px",
-                        fontWeight: 500,
-                        letterSpacing: "-0.03em",
+                        fontWeight: 300,
+                        letterSpacing: "-0.04em",
                         lineHeight: 1,
                       }}
                     >
@@ -282,16 +282,16 @@ export function PricingPage() {
                 <div className="p-7 pt-8">
                   <Link
                     to={plan.ctaHref}
-                    className={`group flex items-center justify-center gap-2 w-full py-3 rounded-xl transition-all ${
+                    className={`group flex items-center justify-center gap-2 w-full py-3 rounded-full transition-all ${
                       plan.highlighted
                         ? "hover:opacity-90"
                         : "bg-secondary text-foreground hover:bg-muted border border-border"
                     }`}
                     style={{
                       background: plan.highlighted
-                        ? "#E8E4DF"
+                        ? "var(--foreground)"
                         : undefined,
-                      color: plan.highlighted ? "#131211" : undefined,
+                      color: plan.highlighted ? "var(--background)" : undefined,
                       fontSize: "14px",
                       fontWeight: 500,
                     }}

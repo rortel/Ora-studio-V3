@@ -49,8 +49,8 @@ export function TemplateGallery({ open, onOpenChange, formatId, currentTemplateI
         className="relative group rounded-lg overflow-hidden cursor-pointer transition-all"
         style={{
           aspectRatio: tmpl.aspectRatio.replace(":", "/"),
-          border: isSelected ? "2px solid var(--ora-signal)" : "2px solid rgba(255,255,255,0.06)",
-          background: "#222120",
+          border: isSelected ? "2px solid var(--ora-signal)" : "2px solid var(--border)",
+          background: "var(--secondary)",
         }}
       >
         {/* Mini template visualization */}
@@ -133,9 +133,9 @@ export function TemplateGallery({ open, onOpenChange, formatId, currentTemplateI
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg" style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <DialogContent className="max-w-lg" style={{ background: "#201F23", border: "1px solid rgba(26,23,20,0.04)" }}>
         <DialogHeader>
-          <DialogTitle style={{ color: "#E8E4DF", fontSize: "16px" }}>
+          <DialogTitle style={{ color: "var(--foreground)", fontSize: "16px" }}>
             <LayoutGrid size={14} className="inline mr-2" style={{ color: "var(--ora-signal)" }} />
             Template Gallery
           </DialogTitle>
@@ -150,9 +150,9 @@ export function TemplateGallery({ open, onOpenChange, formatId, currentTemplateI
             onClick={() => setFilterCategory(null)}
             className="px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-all"
             style={{
-              background: !filterCategory ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
-              color: !filterCategory ? "#fff" : "#9A9590",
-              border: `1px solid ${!filterCategory ? "var(--ora-signal)" : "rgba(255,255,255,0.06)"}`,
+              background: !filterCategory ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+              color: !filterCategory ? "#fff" : "var(--text-tertiary)",
+              border: `1px solid ${!filterCategory ? "var(--ora-signal)" : "var(--border)"}`,
             }}
           >All</button>
           {categories.map(cat => (
@@ -161,9 +161,9 @@ export function TemplateGallery({ open, onOpenChange, formatId, currentTemplateI
               onClick={() => setFilterCategory(cat)}
               className="px-2.5 py-1 rounded-full text-xs font-medium cursor-pointer transition-all"
               style={{
-                background: filterCategory === cat ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
-                color: filterCategory === cat ? "#fff" : "#9A9590",
-                border: `1px solid ${filterCategory === cat ? "var(--ora-signal)" : "rgba(255,255,255,0.06)"}`,
+                background: filterCategory === cat ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+                color: filterCategory === cat ? "#fff" : "var(--text-tertiary)",
+                border: `1px solid ${filterCategory === cat ? "var(--ora-signal)" : "var(--border)"}`,
               }}
             >{CATEGORY_LABELS[cat] || cat}</button>
           ))}
@@ -177,8 +177,8 @@ export function TemplateGallery({ open, onOpenChange, formatId, currentTemplateI
             className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex items-center justify-center"
             style={{
               aspectRatio: "16/9",
-              border: !currentTemplateId ? "2px solid var(--ora-signal)" : "2px solid rgba(255,255,255,0.06)",
-              background: "#222120",
+              border: !currentTemplateId ? "2px solid var(--ora-signal)" : "2px solid var(--border)",
+              background: "var(--secondary)",
             }}
           >
             <span style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572" }}>Raw</span>

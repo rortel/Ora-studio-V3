@@ -24,7 +24,7 @@ export function NotFoundPage() {
           className="text-foreground mb-3"
           style={{
             fontSize: 'clamp(2rem, 4vw, 3rem)',
-            fontWeight: 800,
+            fontWeight: 500,
             letterSpacing: '-0.035em',
             lineHeight: 1.12,
             color: '#FFFFFF',

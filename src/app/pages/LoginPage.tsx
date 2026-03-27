@@ -245,14 +245,14 @@ export function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl p-7" style={{ background: '#1a1918', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 16px 48px rgba(0,0,0,0.5)' }}>
+        <div className="rounded-2xl p-7" style={{ background: 'var(--card)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,0.08)' }}>
           <h1
             className="text-center mb-2"
-            style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '-0.02em', color: "#FAFAFA" }}
+            style={{ fontSize: '24px', fontWeight: 300, letterSpacing: '-0.04em', color: 'var(--text-primary)' }}
           >
             {titles[mode].heading}
           </h1>
-          <p className="text-center mb-7" style={{ fontSize: '14px', color: "#71717A" }}>
+          <p className="text-center mb-7" style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
             {titles[mode].sub}
           </p>
 
@@ -273,10 +273,10 @@ export function LoginPage() {
           {success && (
             <div
               className="flex items-start gap-2.5 mb-5 p-3 rounded-lg"
-              style={{ background: "rgba(22,163,74,0.06)", border: "1px solid rgba(22,163,74,0.1)" }}
+              style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.1)" }}
             >
-              <CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#16a34a" }} />
-              <span style={{ fontSize: "13px", lineHeight: 1.45, color: "#16a34a" }}>
+              <CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#666666" }} />
+              <span style={{ fontSize: "13px", lineHeight: 1.45, color: "#666666" }}>
                 {success}
               </span>
             </div>
@@ -288,23 +288,23 @@ export function LoginPage() {
               <button
                 onClick={handleGoogleSignIn}
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2.5 border py-2.5 rounded-lg text-foreground hover:bg-secondary transition-colors mb-5 cursor-pointer disabled:opacity-50"
-                style={{ fontSize: '14px', fontWeight: 450, borderColor: 'rgba(255,255,255,0.06)' }}
+                className="w-full flex items-center justify-center gap-2.5 border py-2.5 rounded-full text-foreground hover:bg-secondary transition-colors mb-5 cursor-pointer disabled:opacity-50"
+                style={{ fontSize: '14px', fontWeight: 450, borderColor: 'var(--border)' }}
               >
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-                  <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                  <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#666666"/>
+                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#888888"/>
+                  <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#AAAAAA"/>
+                  <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#666666"/>
                 </svg>
                 Continue with Google
               </button>
 
               {/* Divider */}
               <div className="flex items-center gap-3 mb-5">
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                <span style={{ fontSize: '12px', color: '#5C5856' }}>or</span>
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>or</span>
+                <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
               </div>
             </>
           )}
@@ -373,8 +373,8 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl hover:scale-[1.02] transition-all cursor-pointer disabled:opacity-60"
-              style={{ fontSize: '14px', fontWeight: 500, color: '#131211', background: '#E8E4DF' }}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-full hover:shadow-md active:scale-[0.98] transition-all cursor-pointer disabled:opacity-60"
+              style={{ fontSize: '14px', fontWeight: 500, color: 'var(--background)', background: 'var(--foreground)' }}
             >
               {loading ? (
                 <>

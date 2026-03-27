@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 function PageLoader() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+      <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
     </div>
   );
 }
@@ -28,19 +28,19 @@ export function RootLayout() {
   useEffect(() => { if (!location.hash && !isHub) window.scrollTo(0, 0); }, [location.pathname]);
 
   return (
-    <div className="min-h-screen" style={{ background: "#131211", color: "#E8E4DF" }}>
+    <div className="min-h-screen bg-background text-foreground">
       <Toaster
         position="bottom-center"
         toastOptions={{
           style: {
-            background: "#222120",
-            color: "#E8E4DF",
-            border: "1px solid rgba(255,255,255,0.06)",
+            background: "var(--card)",
+            color: "var(--foreground)",
+            border: "1px solid var(--border)",
             fontSize: "13px",
             fontFamily: "var(--font-family)",
             fontWeight: 500,
-            borderRadius: "0.75rem",
-            boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+            borderRadius: "var(--radius)",
+            boxShadow: "var(--shadow-lg)",
           },
         }}
       />
@@ -50,7 +50,7 @@ export function RootLayout() {
         <>
           <AppSidebar />
           {/* Desktop: margin-left for sidebar. Mobile: no margin, but padding-bottom for tab bar */}
-          <main className="min-h-screen md:ml-[56px] pb-[64px] md:pb-0">
+          <main className="min-h-screen md:ml-[52px] pb-[64px] md:pb-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
@@ -71,7 +71,7 @@ export function RootLayout() {
         /* -- Marketing view: top navbar + content + footer -- */
         <>
           <Navbar />
-          <main className="pt-14">
+          <main className="pt-16">
             <Suspense fallback={<PageLoader />}>
               <Outlet />
             </Suspense>

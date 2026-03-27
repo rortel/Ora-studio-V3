@@ -3,68 +3,64 @@
 :root {
   --font-size: 16px;
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* ━━━ ORA — Warm Dark Studio ━━━
-     A creative studio palette: warm greys lifted from pure black,
-     with a vibrant accent that says "pro + creative".
+  /* ━━━ ORA — Monochrome Premium ━━━
+     Noir, blanc, nuances de gris. Net et précis.
   */
-  --background: #18171A;
-  --foreground: #EDEDEC;
-  --card: #201F23;
-  --card-foreground: #EDEDEC;
-  --popover: #201F23;
-  --popover-foreground: #EDEDEC;
+  --background: #FAFAFA;
+  --foreground: #111111;
+  --card: #FFFFFF;
+  --card-foreground: #111111;
+  --popover: #FFFFFF;
+  --popover-foreground: #111111;
 
-  --primary: #EDEDEC;
-  --primary-foreground: #18171A;
+  --primary: #111111;
+  --primary-foreground: #FFFFFF;
 
-  --secondary: #28272B;
-  --secondary-foreground: #EDEDEC;
+  --secondary: #F5F5F5;
+  --secondary-foreground: #111111;
 
-  --muted: #302F34;
-  --muted-foreground: #A09B96;
+  --muted: #F5F5F5;
+  --muted-foreground: #999999;
 
-  --accent: #302F34;
-  --accent-foreground: #EDEDEC;
+  --accent: #111111;
+  --accent-foreground: #FFFFFF;
 
   /* ── System states ── */
-  --ora-olive: #5FBF6A;
-  --ora-brick: #E05A4F;
-  --ora-ocre: #E0A84C;
+  --ora-olive: #111111;
+  --ora-brick: #DC2626;
+  --ora-ocre: #111111;
 
-  /* ── Brand accent — vibrant warm violet ── */
-  --ora-signal: #8B6CF7;
-  --ora-signal-light: rgba(139, 108, 247, 0.12);
-  --ora-signal-medium: rgba(139, 108, 247, 0.22);
-  --ora-signal-ring: rgba(139, 108, 247, 0.35);
+  /* ── Legacy compatibility ── */
+  --ora-signal: #111111;
+  --ora-signal-light: rgba(17, 17, 17, 0.04);
+  --ora-signal-medium: rgba(17, 17, 17, 0.08);
+  --ora-signal-ring: rgba(17, 17, 17, 0.12);
 
-  /* ── Secondary accent — warm amber (for highlights, badges, secondary CTAs) ── */
-  --ora-amber: #E8A84C;
-  --ora-amber-light: rgba(232, 168, 76, 0.12);
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
 
-  --destructive: #E05A4F;
-  --destructive-foreground: #EDEDEC;
-
-  /* Borders — warm white at low opacity */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --border-accent: rgba(255, 255, 255, 0.22);
+  /* Borders — neutral */
+  --border: #EBEBEB;
+  --border-strong: #D4D4D4;
+  --border-accent: #C0C0C0;
   --input: transparent;
-  --input-background: #28272B;
-  --switch-background: #403F44;
+  --input-background: #F5F5F5;
+  --switch-background: #D4D4D4;
 
   --font-weight-medium: 500;
   --font-weight-normal: 400;
 
-  --ring: rgba(139, 108, 247, 0.3);
+  --ring: rgba(17, 17, 17, 0.12);
 
-  --chart-1: #8B6CF7;
-  --chart-2: #E8A84C;
-  --chart-3: #5FBF6A;
-  --chart-4: #4CC3E0;
-  --chart-5: #E05A4F;
+  --chart-1: #111111;
+  --chart-2: #666666;
+  --chart-3: #999999;
+  --chart-4: #BBBBBB;
+  --chart-5: #DDDDDD;
 
-  --radius: 0.875rem;
+  --radius: 0.75rem;
 
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -74,31 +70,41 @@
   --hover-scale: scale(1.02);
   --active-scale: scale(0.98);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.35);
-  --shadow-xl: 0 10px 40px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 8px 32px rgba(0, 0, 0, 0.10);
 
-  --sidebar: #141316;
-  --sidebar-foreground: #EDEDEC;
-  --sidebar-primary: #EDEDEC;
-  --sidebar-primary-foreground: #141316;
-  --sidebar-accent: #28272B;
-  --sidebar-accent-foreground: #EDEDEC;
-  --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: rgba(139, 108, 247, 0.25);
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #111111;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F5F5F5;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #EBEBEB;
+  --sidebar-ring: rgba(17, 17, 17, 0.12);
 
-  /* ── Surface levels — more breathing room between layers ── */
-  --surface-0: #18171A;
-  --surface-1: #201F23;
-  --surface-2: #28272B;
-  --surface-3: #302F34;
-  --surface-4: #3A393E;
+  /* ── Surface levels ── */
+  --surface-0: #FAFAFA;
+  --surface-1: #FFFFFF;
+  --surface-2: #F5F5F5;
+  --surface-3: #EBEBEB;
+  --surface-4: #D4D4D4;
 
-  /* ── Text levels — warmer and more readable ── */
-  --text-primary: #EDEDEC;
-  --text-secondary: #A09B96;
-  --text-tertiary: #6B6660;
+  /* ── Text levels ── */
+  --text-primary: #111111;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+
+  /* ── Accent palette (now grayscale) ── */
+  --accent-warm: #111111;
+  --accent-warm-light: rgba(17, 17, 17, 0.06);
+  --accent-warm-medium: rgba(17, 17, 17, 0.12);
+  --accent-warm-ring: rgba(17, 17, 17, 0.20);
+
+  /* ── Dark sections (footer, dark bands) ── */
+  --dark-bg: #111111;
+  --dark-fg: #F5F5F5;
 
   /* ── Color mappings for Tailwind ── */
   --color-ora-olive: var(--ora-olive);
@@ -108,6 +114,7 @@
 
 @theme inline {
   --font-family-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -143,6 +150,11 @@
   --color-ora-signal-medium: var(--ora-signal-medium);
   --color-ora-signal-ring: var(--ora-signal-ring);
 
+  --color-accent-warm: var(--accent-warm);
+  --color-accent-warm-light: var(--accent-warm-light);
+  --color-accent-warm-medium: var(--accent-warm-medium);
+  --color-accent-warm-ring: var(--accent-warm-ring);
+
   --color-surface-0: var(--surface-0);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
@@ -152,6 +164,9 @@
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
+
+  --color-dark-bg: var(--dark-bg);
+  --color-dark-fg: var(--dark-fg);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -185,55 +200,107 @@
     scroll-behavior: smooth;
   }
 
-  h1 { font-size: var(--text-2xl); font-weight: 500; line-height: 1.08; letter-spacing: -0.035em; }
-  h2 { font-size: var(--text-xl); font-weight: 500; line-height: 1.1; letter-spacing: -0.03em; }
-  h3 { font-size: var(--text-lg); font-weight: 500; line-height: 1.2; letter-spacing: -0.015em; }
-  h4 { font-size: var(--text-base); font-weight: 500; line-height: 1.35; }
-  label { font-size: var(--text-base); font-weight: 500; line-height: 1.5; }
-  button { font-size: var(--text-base); font-weight: 500; line-height: 1.5; }
-  input { font-size: var(--text-base); font-weight: var(--font-weight-normal); line-height: 1.5; color: var(--foreground); }
+  h1 { font-size: var(--text-2xl); font-weight: 300; line-height: 1.05; letter-spacing: -0.04em; color: var(--text-primary); }
+  h2 { font-size: var(--text-xl); font-weight: 300; line-height: 1.08; letter-spacing: -0.04em; color: var(--text-primary); }
+  h3 { font-size: var(--text-lg); font-weight: 400; line-height: 1.2; letter-spacing: -0.02em; color: var(--text-primary); }
+  h4 { font-size: var(--text-base); font-weight: 400; line-height: 1.35; letter-spacing: -0.01em; color: var(--text-primary); }
+  label { font-size: var(--text-base); font-weight: 400; line-height: 1.5; }
+  button { font-size: var(--text-base); font-weight: 500; line-height: 1.5; letter-spacing: -0.01em; }
+  input { font-size: var(--text-base); font-weight: var(--font-weight-normal); line-height: 1.5; color: var(--foreground); letter-spacing: -0.01em; }
 
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); border-radius: 99px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.14); }
 
   @keyframes ora-marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
   @keyframes ora-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes ora-pulse-warm { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+}
 
-  /* ── Touch-friendly mobile targets ── */
-  @media (max-width: 768px) {
-    button, a, [role="button"] {
-      min-height: 44px;
-      min-width: 44px;
-    }
-  }
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   UTILITY CLASSES — Monochrome Premium
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-  /* ── Smooth card surface ── */
-  .ora-card {
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    transition: border-color 200ms ease, box-shadow 200ms ease;
-  }
-  .ora-card:hover {
-    border-color: var(--border-strong);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  }
+.ora-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+.ora-card:hover {
+  box-shadow: var(--shadow-md);
+}
 
-  /* ── Accent button ── */
-  .ora-btn-accent {
-    background: var(--ora-signal);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    font-weight: 600;
-    font-size: 13px;
-    padding: 10px 20px;
-    cursor: pointer;
-    transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
-    box-shadow: 0 2px 8px rgba(139, 108, 247, 0.25);
-  }
-  .ora-btn-accent:hover { opacity: 0.92; box-shadow: 0 4px 16px rgba(139, 108, 247, 0.35); }
-  .ora-btn-accent:active { transform: scale(0.97); }
+.ora-btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 9999px;
+  padding: 0.625rem 1.5rem;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  transition: all var(--transition-fast);
+}
+.ora-btn-primary:hover {
+  box-shadow: var(--shadow-md);
+}
+.ora-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.ora-btn-accent {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-radius: 9999px;
+  padding: 0.625rem 1.5rem;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  transition: all var(--transition-fast);
+}
+.ora-btn-accent:hover {
+  box-shadow: var(--shadow-md);
+}
+.ora-btn-accent:active {
+  transform: scale(0.98);
+}
+
+.ora-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 9999px;
+  padding: 0.625rem 1.5rem;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  transition: all var(--transition-fast);
+}
+.ora-btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+}
+
+.ora-section-title {
+  font-family: var(--font-family);
+  font-size: 2rem;
+  font-weight: 300;
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+
+.ora-section-subtitle {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  max-width: 440px;
+  letter-spacing: -0.01em;
+}
+
+/* ── Dark section override (for footer, dark bands) ── */
+.ora-dark-section {
+  background: var(--dark-bg);
+  color: var(--dark-fg);
 }

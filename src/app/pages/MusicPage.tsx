@@ -384,7 +384,7 @@ function MusicPageContent() {
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
       </div>
     );
   }
@@ -392,19 +392,19 @@ function MusicPageContent() {
   const playingProgress = totalDuration ? (currentTime / totalDuration) * 100 : 0;
 
   return (
-    <div className="min-h-screen" style={{ background: "#18171A", paddingBottom: currentTrack ? 100 : 0 }}>
+    <div className="min-h-screen" style={{ background: "var(--background)", paddingBottom: currentTrack ? 100 : 0 }}>
       <div className="max-w-[1400px] mx-auto px-6 py-8 md:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "#E8E4DF" }}>
+            <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "var(--foreground)" }}>
               Music Studio
             </h1>
-            <p className="mt-2" style={{ fontSize: "15px", color: "#9A9590", fontWeight: 400 }}>
+            <p className="mt-2" style={{ fontSize: "15px", color: "var(--text-tertiary)", fontWeight: 400 }}>
               {tracks.length} track{tracks.length !== 1 ? "s" : ""}
               {credits && (
-                <span className="ml-3 px-2 py-0.5 rounded-md" style={{ background: "#222120", fontSize: "12px", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <CreditCard size={10} className="inline mr-1" style={{ color: "#5E6AD2" }} />
+                <span className="ml-3 px-2 py-0.5 rounded-md" style={{ background: "var(--secondary)", fontSize: "12px", border: "1px solid var(--border)" }}>
+                  <CreditCard size={10} className="inline mr-1" style={{ color: "var(--accent)" }} />
                   {credits.creditsLeft ?? "?"} credits
                 </span>
               )}
@@ -413,7 +413,7 @@ function MusicPageContent() {
           <Link
             to="/hub"
             className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}
+            style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
             Generate new
@@ -425,7 +425,7 @@ function MusicPageContent() {
           <div className="w-[220px] flex-shrink-0 hidden md:block">
             {/* Navigation */}
             <div className="mb-6">
-              <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>
+              <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
                 Library
               </span>
               <div className="mt-2 space-y-0.5">
@@ -437,18 +437,18 @@ function MusicPageContent() {
             {/* Playlists */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>
+                <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
                   Playlists
                 </span>
                 <button onClick={() => setShowNewPlaylist(true)} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/5 cursor-pointer transition-colors">
-                  <FolderPlus size={13} style={{ color: "#9A9590" }} />
+                  <FolderPlus size={13} style={{ color: "var(--text-tertiary)" }} />
                 </button>
               </div>
 
               <AnimatePresence>
                 {showNewPlaylist && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mb-1">
-                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "#222120" }}>
+                    <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--secondary)" }}>
                       <input
                         value={newPlaylistName}
                         onChange={e => setNewPlaylistName(e.target.value)}
@@ -456,10 +456,10 @@ function MusicPageContent() {
                         placeholder="Playlist name..."
                         autoFocus
                         className="flex-1 bg-transparent border-none outline-none min-w-0"
-                        style={{ fontSize: "12px", color: "#E8E4DF" }}
+                        style={{ fontSize: "12px", color: "var(--foreground)" }}
                       />
-                      <button onClick={createPlaylist} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "#5E6AD2" }}><Check size={11} /></button>
-                      <button onClick={() => { setShowNewPlaylist(false); setNewPlaylistName(""); }} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "#9A9590" }}><X size={11} /></button>
+                      <button onClick={createPlaylist} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "var(--accent)" }}><Check size={11} /></button>
+                      <button onClick={() => { setShowNewPlaylist(false); setNewPlaylistName(""); }} className="w-5 h-5 rounded flex items-center justify-center cursor-pointer" style={{ color: "var(--text-tertiary)" }}><X size={11} /></button>
                     </div>
                   </motion.div>
                 )}
@@ -469,7 +469,7 @@ function MusicPageContent() {
                 {playlists.map(pl => (
                   <div key={pl.id} className="group relative">
                     {editingPlaylistId === pl.id ? (
-                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "#222120" }}>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--secondary)" }}>
                         <input
                           value={editPlaylistName}
                           onChange={e => setEditPlaylistName(e.target.value)}
@@ -484,7 +484,7 @@ function MusicPageContent() {
                           }}
                           autoFocus
                           className="flex-1 bg-transparent border-none outline-none min-w-0"
-                          style={{ fontSize: "12px", color: "#E8E4DF" }}
+                          style={{ fontSize: "12px", color: "var(--foreground)" }}
                         />
                       </div>
                     ) : (
@@ -498,16 +498,16 @@ function MusicPageContent() {
                     )}
                     <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
                       <button onClick={e => { e.stopPropagation(); setEditingPlaylistId(pl.id); setEditPlaylistName(pl.name); }} className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 cursor-pointer">
-                        <Pencil size={9} style={{ color: "#9A9590" }} />
+                        <Pencil size={9} style={{ color: "var(--text-tertiary)" }} />
                       </button>
                       <button onClick={e => { e.stopPropagation(); deletePlaylist(pl.id); }} className="w-5 h-5 rounded flex items-center justify-center hover:bg-white/10 cursor-pointer">
-                        <Trash2 size={9} style={{ color: "#9A9590" }} />
+                        <Trash2 size={9} style={{ color: "var(--text-tertiary)" }} />
                       </button>
                     </div>
                   </div>
                 ))}
                 {playlists.length === 0 && !showNewPlaylist && (
-                  <p style={{ fontSize: "11px", color: "#5C5856", padding: "4px 10px" }}>No playlists yet</p>
+                  <p style={{ fontSize: "11px", color: "var(--text-secondary)", padding: "4px 10px" }}>No playlists yet</p>
                 )}
               </div>
             </div>
@@ -518,13 +518,13 @@ function MusicPageContent() {
             {/* Search + Sort bar */}
             <div className="flex items-center gap-3 mb-6">
               <div className="flex-1 relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#5C5856" }} />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-secondary)" }} />
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search tracks..."
                   className="w-full pl-9 pr-4 py-2.5 rounded-lg border-none outline-none"
-                  style={{ background: "#201F23", color: "#E8E4DF", fontSize: "13px", border: "1px solid rgba(255,255,255,0.06)" }}
+                  style={{ background: "var(--card)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }}
                 />
               </div>
               <div className="flex items-center gap-1">
@@ -535,9 +535,9 @@ function MusicPageContent() {
                     className="px-3 py-2 rounded-lg cursor-pointer transition-all"
                     style={{
                       fontSize: "12px", fontWeight: sortMode === s ? 600 : 400,
-                      background: sortMode === s ? "#222120" : "transparent",
-                      color: sortMode === s ? "#E8E4DF" : "#5C5856",
-                      border: sortMode === s ? "1px solid rgba(255,255,255,0.06)" : "1px solid transparent",
+                      background: sortMode === s ? "var(--secondary)" : "transparent",
+                      color: sortMode === s ? "var(--foreground)" : "var(--text-secondary)",
+                      border: sortMode === s ? "1px solid var(--border)" : "1px solid transparent",
                     }}
                   >
                     {s === "recent" ? "Recent" : s === "title" ? "Title" : "Duration"}
@@ -550,24 +550,24 @@ function MusicPageContent() {
             {filteredTracks.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "linear-gradient(135deg, #5E6AD2 0%, #7B84E0 100%)", boxShadow: "0 8px 24px rgba(94,106,210,0.15)" }}>
+                  style={{ background: "linear-gradient(135deg, var(--accent) 0%, #444444 100%)", boxShadow: "0 8px 24px rgba(17,17,17,0.15)" }}>
                   <Music size={28} style={{ color: "#FFF" }} />
                 </div>
-                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "#E8E4DF", marginBottom: "8px" }}>
+                <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {view === "favorites" ? "No favorites yet" : view === "playlist" ? "Playlist is empty" : "No tracks yet"}
                 </h2>
-                <p style={{ fontSize: "15px", color: "#9A9590", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
+                <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
                   Generate audio from the Hub to start building your music library.
                 </p>
                 <Link to="/hub" className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "#E8E4DF", color: "#18171A", fontSize: "14px", fontWeight: 500 }}>
+                  style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}>
                   <Plus size={14} /> Open AI Hub
                 </Link>
               </div>
             ) : (
               <div className="space-y-1">
                 {/* Table header */}
-                <div className="flex items-center gap-3 px-3 py-2" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "#5C5856" }}>
+                <div className="flex items-center gap-3 px-3 py-2" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-secondary)" }}>
                   <div className="w-8" />
                   <div className="w-10" />
                   <div className="flex-1">Title</div>
@@ -588,42 +588,42 @@ function MusicPageContent() {
                       transition={{ delay: Math.min(i * 0.02, 0.3) }}
                       className="group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all"
                       style={{
-                        background: isActive ? "rgba(94,106,210,0.08)" : "transparent",
-                        border: isActive ? "1px solid rgba(94,106,210,0.15)" : "1px solid transparent",
+                        background: isActive ? "rgba(17,17,17,0.08)" : "transparent",
+                        border: isActive ? "1px solid rgba(17,17,17,0.15)" : "1px solid transparent",
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.background = isActive ? "rgba(94,106,210,0.08)" : "rgba(255,255,255,0.02)")}
-                      onMouseLeave={e => (e.currentTarget.style.background = isActive ? "rgba(94,106,210,0.08)" : "transparent")}
+                      onMouseEnter={e => (e.currentTarget.style.background = isActive ? "rgba(17,17,17,0.08)" : "rgba(255,255,255,0.02)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = isActive ? "rgba(17,17,17,0.08)" : "transparent")}
                       onDoubleClick={() => playTrack(track, filteredTracks)}
                     >
                       {/* Play button */}
                       <button
                         onClick={() => playTrack(track, filteredTracks)}
                         className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all flex-shrink-0"
-                        style={{ background: isActive && isPlaying ? "#5E6AD2" : "rgba(255,255,255,0.05)" }}
+                        style={{ background: isActive && isPlaying ? "var(--accent)" : "rgba(255,255,255,0.05)" }}
                       >
-                        {isActive && isPlaying ? <Pause size={12} style={{ color: "#fff" }} /> : <Play size={12} style={{ color: isActive ? "#5E6AD2" : "#9A9590", marginLeft: 1 }} />}
+                        {isActive && isPlaying ? <Pause size={12} style={{ color: "#fff" }} /> : <Play size={12} style={{ color: isActive ? "var(--accent)" : "var(--text-tertiary)", marginLeft: 1 }} />}
                       </button>
 
                       {/* Cover */}
-                      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style={{ background: "#222120" }}>
+                      <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0" style={{ background: "var(--secondary)" }}>
                         {track.imageUrl ? (
                           <img src={track.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center"><Music size={14} style={{ color: "#5C5856" }} /></div>
+                          <div className="w-full h-full flex items-center justify-center"><Music size={14} style={{ color: "var(--text-secondary)" }} /></div>
                         )}
                       </div>
 
                       {/* Title + prompt */}
                       <div className="flex-1 min-w-0">
-                        <div className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: isActive ? "#5E6AD2" : "#E8E4DF" }}>{track.title}</div>
-                        <div className="truncate" style={{ fontSize: "11px", color: "#5C5856" }}>{track.prompt.slice(0, 60)}</div>
+                        <div className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: isActive ? "var(--accent)" : "var(--foreground)" }}>{track.title}</div>
+                        <div className="truncate" style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{track.prompt.slice(0, 60)}</div>
                       </div>
 
                       {/* Model */}
-                      <div className="w-[120px] hidden lg:block truncate" style={{ fontSize: "12px", color: "#5C5856" }}>{track.model}</div>
+                      <div className="w-[120px] hidden lg:block truncate" style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{track.model}</div>
 
                       {/* Duration */}
-                      <div className="w-[60px] text-right" style={{ fontSize: "12px", color: "#9A9590" }}>{track.duration}</div>
+                      <div className="w-[60px] text-right" style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>{track.duration}</div>
 
                       {/* Favorite */}
                       <button
@@ -631,7 +631,7 @@ function MusicPageContent() {
                         className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all opacity-0 group-hover:opacity-100"
                         style={{ opacity: isFav ? 1 : undefined }}
                       >
-                        <Heart size={14} fill={isFav ? "#5E6AD2" : "none"} style={{ color: isFav ? "#5E6AD2" : "#5C5856" }} />
+                        <Heart size={14} fill={isFav ? "var(--accent)" : "none"} style={{ color: isFav ? "var(--accent)" : "var(--text-secondary)" }} />
                       </button>
 
                       {/* More */}
@@ -639,7 +639,7 @@ function MusicPageContent() {
                         onClick={e => { e.stopPropagation(); setContextTrack(track); setContextPos({ x: e.clientX, y: e.clientY }); }}
                         className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all opacity-0 group-hover:opacity-100"
                       >
-                        <MoreHorizontal size={14} style={{ color: "#5C5856" }} />
+                        <MoreHorizontal size={14} style={{ color: "var(--text-secondary)" }} />
                       </button>
                     </motion.div>
                   );
@@ -660,13 +660,13 @@ function MusicPageContent() {
             className="fixed z-[100] rounded-xl overflow-hidden"
             style={{
               left: contextPos.x, top: contextPos.y,
-              background: "#222120", border: "1px solid rgba(255,255,255,0.08)",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.5)", minWidth: 200,
+              background: "var(--secondary)", border: "1px solid rgba(26,23,20,0.04)",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.08)", minWidth: 200,
             }}
           >
             <CtxItem icon={Play} label="Play" onClick={() => playTrack(contextTrack, filteredTracks)} />
             <CtxItem icon={Heart} label={favorites.includes(contextTrack.id) ? "Remove from favorites" : "Add to favorites"} onClick={() => toggleFavorite(contextTrack.id || contextTrack.libraryId)} />
-            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 0" }} />
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             {/* Add to playlist submenu */}
             {playlists.length > 0 && playlists.map(pl => (
               <CtxItem key={pl.id} icon={ListMusic} label={`Add to "${pl.name}"`} onClick={() => addToPlaylist(pl.id, contextTrack.id || contextTrack.libraryId)} />
@@ -674,7 +674,7 @@ function MusicPageContent() {
             {view === "playlist" && activePlaylistId && (
               <CtxItem icon={X} label="Remove from playlist" onClick={() => removeFromPlaylist(activePlaylistId, contextTrack.id || contextTrack.libraryId)} />
             )}
-            <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 0" }} />
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             <CtxItem icon={Download} label="Download MP3" onClick={() => downloadTrack(contextTrack, "mp3")} />
             {contextTrack.sunoTaskId && contextTrack.sunoAudioId && (
               <>
@@ -701,26 +701,26 @@ function MusicPageContent() {
             onClick={() => setExtendTrack(null)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="rounded-2xl p-6 w-full max-w-md"
-              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
+              style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
-              <h3 style={{ fontSize: "18px", fontWeight: 500, color: "#E8E4DF", marginBottom: "4px" }}>Extend Track</h3>
-              <p style={{ fontSize: "13px", color: "#9A9590", marginBottom: "16px" }}>Continue "{extendTrack.title}" from a specific point</p>
+              <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", marginBottom: "4px" }}>Extend Track</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "16px" }}>Continue "{extendTrack.title}" from a specific point</p>
               <div className="space-y-3">
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: 500, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.08em" }}>Continue at (seconds)</label>
+                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Continue at (seconds)</label>
                   <input value={extendAt} onChange={e => setExtendAt(e.target.value)} placeholder="e.g. 30" type="number"
                     className="w-full mt-1 px-3 py-2 rounded-lg border-none outline-none"
-                    style={{ background: "#222120", color: "#E8E4DF", fontSize: "13px", border: "1px solid rgba(255,255,255,0.06)" }} />
+                    style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: 500, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.08em" }}>Prompt (optional)</label>
+                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Prompt (optional)</label>
                   <input value={extendPrompt} onChange={e => setExtendPrompt(e.target.value)} placeholder="Describe how to continue..."
                     className="w-full mt-1 px-3 py-2 rounded-lg border-none outline-none"
-                    style={{ background: "#222120", color: "#E8E4DF", fontSize: "13px", border: "1px solid rgba(255,255,255,0.06)" }} />
+                    style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }} />
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button onClick={() => setExtendTrack(null)} className="flex-1 py-2.5 rounded-lg cursor-pointer"
-                    style={{ background: "#222120", color: "#9A9590", fontSize: "13px", fontWeight: 500, border: "1px solid rgba(255,255,255,0.06)" }}>
+                    style={{ background: "var(--secondary)", color: "var(--text-tertiary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border)" }}>
                     Cancel
                   </button>
                   <button
@@ -734,7 +734,7 @@ function MusicPageContent() {
                       setExtendTrack(null);
                     }}
                     className="flex-1 py-2.5 rounded-lg cursor-pointer flex items-center justify-center gap-2"
-                    style={{ background: "#5E6AD2", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
+                    style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
                     {actionLoading === "extend" ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpFromLine size={14} />}
                     Extend
                   </button>
@@ -753,26 +753,26 @@ function MusicPageContent() {
             onClick={() => { setLyricsTrack(null); setLyricsContent(""); }}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-auto"
-              style={{ background: "#201F23", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
+              style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 style={{ fontSize: "18px", fontWeight: 500, color: "#E8E4DF" }}>Lyrics</h3>
+                <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)" }}>Lyrics</h3>
                 <button onClick={() => { setLyricsTrack(null); setLyricsContent(""); }} className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/5">
-                  <X size={16} style={{ color: "#9A9590" }} />
+                  <X size={16} style={{ color: "var(--text-tertiary)" }} />
                 </button>
               </div>
-              <p style={{ fontSize: "13px", color: "#9A9590", marginBottom: "12px" }}>{lyricsTrack.title}</p>
+              <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "12px" }}>{lyricsTrack.title}</p>
               {lyricsLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 size={20} className="animate-spin" style={{ color: "#5E6AD2" }} />
-                  <span className="ml-2" style={{ fontSize: "13px", color: "#9A9590" }}>Generating lyrics...</span>
+                  <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+                  <span className="ml-2" style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>Generating lyrics...</span>
                 </div>
               ) : lyricsContent ? (
-                <pre style={{ fontSize: "14px", color: "#E8E4DF", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+                <pre style={{ fontSize: "14px", color: "var(--foreground)", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
                   {lyricsContent}
                 </pre>
               ) : (
-                <p style={{ fontSize: "13px", color: "#5C5856" }}>No lyrics generated yet.</p>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>No lyrics generated yet.</p>
               )}
             </motion.div>
           </motion.div>
@@ -787,12 +787,12 @@ function MusicPageContent() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 300, opacity: 0 }}
             className="fixed right-0 top-0 bottom-[80px] w-[320px] z-[90] overflow-auto"
-            style={{ background: "#201F23", borderLeft: "1px solid rgba(255,255,255,0.06)", boxShadow: "-8px 0 24px rgba(0,0,0,0.3)" }}
+            style={{ background: "var(--card)", borderLeft: "1px solid var(--border)", boxShadow: "-8px 0 24px rgba(0,0,0,0.05)" }}
           >
-            <div className="flex items-center justify-between p-4 sticky top-0" style={{ background: "#201F23", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontSize: "14px", fontWeight: 500, color: "#E8E4DF" }}>Queue ({queue.length})</span>
+            <div className="flex items-center justify-between p-4 sticky top-0" style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Queue ({queue.length})</span>
               <button onClick={() => setShowQueue(false)} className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/5">
-                <X size={14} style={{ color: "#9A9590" }} />
+                <X size={14} style={{ color: "var(--text-tertiary)" }} />
               </button>
             </div>
             <div className="p-2">
@@ -800,13 +800,13 @@ function MusicPageContent() {
                 const isQActive = t.id === currentTrack.id;
                 return (
                   <div key={t.id + i} onClick={() => playTrack(t)} className="flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all hover:bg-white/3"
-                    style={{ background: isQActive ? "rgba(94,106,210,0.08)" : "transparent" }}>
-                    <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0" style={{ background: "#222120" }}>
-                      {t.imageUrl ? <img src={t.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" /> : <div className="w-full h-full flex items-center justify-center"><Music size={10} style={{ color: "#5C5856" }} /></div>}
+                    style={{ background: isQActive ? "rgba(17,17,17,0.08)" : "transparent" }}>
+                    <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0" style={{ background: "var(--secondary)" }}>
+                      {t.imageUrl ? <img src={t.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" /> : <div className="w-full h-full flex items-center justify-center"><Music size={10} style={{ color: "var(--text-secondary)" }} /></div>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="truncate" style={{ fontSize: "12px", fontWeight: 500, color: isQActive ? "#5E6AD2" : "#E8E4DF" }}>{t.title}</div>
-                      <div className="truncate" style={{ fontSize: "10px", color: "#5C5856" }}>{t.duration}</div>
+                      <div className="truncate" style={{ fontSize: "12px", fontWeight: 500, color: isQActive ? "var(--accent)" : "var(--foreground)" }}>{t.title}</div>
+                      <div className="truncate" style={{ fontSize: "10px", color: "var(--text-secondary)" }}>{t.duration}</div>
                     </div>
                   </div>
                 );
@@ -818,73 +818,73 @@ function MusicPageContent() {
 
       {/* Persistent Player Bar */}
       {currentTrack && (
-        <div className="fixed bottom-0 left-0 right-0 z-[80] md:ml-[56px]"
-          style={{ background: "#201F23", borderTop: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 -4px 24px rgba(0,0,0,0.3)" }}>
+        <div className="fixed bottom-0 left-0 right-0 z-[80] md:ml-[48px]"
+          style={{ background: "var(--card)", borderTop: "1px solid rgba(26,23,20,0.04)", boxShadow: "0 -4px 24px rgba(0,0,0,0.05)" }}>
           {/* Progress bar */}
-          <div ref={progressRef} className="h-1 w-full cursor-pointer group relative" style={{ background: "rgba(255,255,255,0.06)" }}
+          <div ref={progressRef} className="h-1 w-full cursor-pointer group relative" style={{ background: "var(--border)" }}
             onClick={handleSeek}>
-            <div className="h-full transition-all" style={{ width: `${playingProgress}%`, background: "#5E6AD2" }} />
+            <div className="h-full transition-all" style={{ width: `${playingProgress}%`, background: "var(--accent)" }} />
             <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ left: `${playingProgress}%`, transform: `translate(-50%, -50%)`, background: "#5E6AD2" }} />
+              style={{ left: `${playingProgress}%`, transform: `translate(-50%, -50%)`, background: "var(--accent)" }} />
           </div>
 
           <div className="flex items-center gap-4 px-4 py-3">
             {/* Track info */}
             <div className="flex items-center gap-3 w-[240px] flex-shrink-0">
-              <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0" style={{ background: "#222120" }}>
+              <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0" style={{ background: "var(--secondary)" }}>
                 {currentTrack.imageUrl ? (
                   <img src={currentTrack.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center"><Music size={16} style={{ color: "#5C5856" }} /></div>
+                  <div className="w-full h-full flex items-center justify-center"><Music size={16} style={{ color: "var(--text-secondary)" }} /></div>
                 )}
               </div>
               <div className="min-w-0">
-                <div className="truncate" style={{ fontSize: "13px", fontWeight: 500, color: "#E8E4DF" }}>{currentTrack.title}</div>
-                <div className="truncate" style={{ fontSize: "11px", color: "#5C5856" }}>{currentTrack.model}</div>
+                <div className="truncate" style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{currentTrack.title}</div>
+                <div className="truncate" style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{currentTrack.model}</div>
               </div>
               <button onClick={() => toggleFavorite(currentTrack.id || currentTrack.libraryId)} className="cursor-pointer flex-shrink-0">
-                <Heart size={16} fill={favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#5E6AD2" : "none"}
-                  style={{ color: favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "#5E6AD2" : "#5C5856" }} />
+                <Heart size={16} fill={favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "var(--accent)" : "none"}
+                  style={{ color: favorites.includes(currentTrack.id) || favorites.includes(currentTrack.libraryId) ? "var(--accent)" : "var(--text-secondary)" }} />
               </button>
             </div>
 
             {/* Controls */}
             <div className="flex-1 flex items-center justify-center gap-4">
-              <button onClick={() => setIsShuffle(!isShuffle)} className="cursor-pointer" style={{ color: isShuffle ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsShuffle(!isShuffle)} className="cursor-pointer" style={{ color: isShuffle ? "var(--accent)" : "var(--text-secondary)" }}>
                 <Shuffle size={16} />
               </button>
-              <button onClick={handlePrev} className="cursor-pointer" style={{ color: "#9A9590" }}>
+              <button onClick={handlePrev} className="cursor-pointer" style={{ color: "var(--text-tertiary)" }}>
                 <SkipBack size={18} />
               </button>
               <button
                 onClick={() => { if (audioRef.current) { if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); } else { audioRef.current.play(); setIsPlaying(true); } } }}
                 className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer"
-                style={{ background: "#E8E4DF" }}>
-                {isPlaying ? <Pause size={18} style={{ color: "#18171A" }} /> : <Play size={18} style={{ color: "#18171A", marginLeft: 2 }} />}
+                style={{ background: "var(--foreground)" }}>
+                {isPlaying ? <Pause size={18} style={{ color: "var(--background)" }} /> : <Play size={18} style={{ color: "var(--background)", marginLeft: 2 }} />}
               </button>
-              <button onClick={handleNext} className="cursor-pointer" style={{ color: "#9A9590" }}>
+              <button onClick={handleNext} className="cursor-pointer" style={{ color: "var(--text-tertiary)" }}>
                 <SkipForward size={18} />
               </button>
-              <button onClick={() => setIsRepeat(!isRepeat)} className="cursor-pointer" style={{ color: isRepeat ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsRepeat(!isRepeat)} className="cursor-pointer" style={{ color: isRepeat ? "var(--accent)" : "var(--text-secondary)" }}>
                 <Repeat size={16} />
               </button>
             </div>
 
             {/* Time + Volume + Queue */}
             <div className="flex items-center gap-3 w-[240px] flex-shrink-0 justify-end">
-              <span style={{ fontSize: "11px", color: "#5C5856", fontVariantNumeric: "tabular-nums" }}>
+              <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums" }}>
                 {formatTime(currentTime)} / {formatTime(totalDuration)}
               </span>
-              <button onClick={() => setIsMuted(!isMuted)} className="cursor-pointer" style={{ color: isMuted ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setIsMuted(!isMuted)} className="cursor-pointer" style={{ color: isMuted ? "var(--accent)" : "var(--text-secondary)" }}>
                 {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
               <input
                 type="range" min={0} max={1} step={0.01} value={isMuted ? 0 : volume}
                 onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(false); }}
-                className="w-20 accent-[#5E6AD2]"
+                className="w-20 accent-[var(--accent)]"
                 style={{ height: 3 }}
               />
-              <button onClick={() => setShowQueue(!showQueue)} className="cursor-pointer" style={{ color: showQueue ? "#5E6AD2" : "#5C5856" }}>
+              <button onClick={() => setShowQueue(!showQueue)} className="cursor-pointer" style={{ color: showQueue ? "var(--accent)" : "var(--text-secondary)" }}>
                 <ListMusic size={16} />
               </button>
             </div>
@@ -907,13 +907,13 @@ function SidebarBtn({ icon: Icon, label, count, active, onClick }: {
       onClick={onClick}
       className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-colors cursor-pointer"
       style={{
-        background: active ? "rgba(94,106,210,0.08)" : "transparent",
-        color: active ? "#5E6AD2" : "#9A9590",
+        background: active ? "rgba(17,17,17,0.08)" : "transparent",
+        color: active ? "var(--accent)" : "var(--text-tertiary)",
       }}
     >
       <Icon size={14} />
       <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: active ? 500 : 400 }}>{label}</span>
-      <span style={{ fontSize: "10px", color: active ? "#5E6AD2" : "#5C5856" }}>{count}</span>
+      <span style={{ fontSize: "10px", color: active ? "var(--accent)" : "var(--text-secondary)" }}>{count}</span>
     </button>
   );
 }
@@ -925,9 +925,9 @@ function CtxItem({ icon: Icon, label, onClick, loading }: {
     <button
       onClick={onClick}
       className="w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition-colors hover:bg-white/5"
-      style={{ fontSize: "13px", color: "#E8E4DF" }}
+      style={{ fontSize: "13px", color: "var(--foreground)" }}
     >
-      {loading ? <Loader2 size={14} className="animate-spin" style={{ color: "#5E6AD2" }} /> : <Icon size={14} style={{ color: "#9A9590" }} />}
+      {loading ? <Loader2 size={14} className="animate-spin" style={{ color: "var(--accent)" }} /> : <Icon size={14} style={{ color: "var(--text-tertiary)" }} />}
       {label}
     </button>
   );
