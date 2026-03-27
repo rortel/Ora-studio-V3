@@ -7576,8 +7576,8 @@ app.post("/vault/images/categorize-upload", handlePdfImagesUpload);
 // ══════════════════════════════════════════════════════════════
 
 const ADOBE_PDF_BASE = "https://pdf-services-ue1.adobe.io";
-const ADOBE_CLIENT_ID = "d6890391165b4093bda02311fd832319";
-const ADOBE_CLIENT_SECRET = "p8e-orPI42CVOfc3Nd0JITy9MNr6_MvoTcIa";
+const ADOBE_CLIENT_ID = Deno.env.get("ADOBE_CLIENT_ID") || "";
+const ADOBE_CLIENT_SECRET = Deno.env.get("ADOBE_CLIENT_SECRET") || "";
 
 async function getAdobeAccessToken(): Promise<string> {
   const res = await fetch(`${ADOBE_PDF_BASE}/token`, {
