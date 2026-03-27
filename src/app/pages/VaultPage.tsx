@@ -612,81 +612,39 @@ function VaultPageContent() {
           }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
-        // Extract images from PDF: raster images + rendered pages → AI categorization
+        // Extract images from PDF via Adobe PDF Extract API (extracts individual figures: logos, photos, pictos)
         if (dnaOk && isPDF) {
           try {
-            const pdfName = file.name.replace(/\.pdf$/i, "");
+            setAnalyzeProgress("Extracting visual assets from PDF (Adobe Extract)...");
+            console.log("[Vault] Sending PDF to Adobe Extract API for figure extraction...");
 
-            // ─── Layer 1: Extract ACTUAL embedded images (photos, logos as bitmaps) ───
-            setAnalyzeProgress("Extracting images from PDF...");
-            console.log("[Vault] Layer 1: Extracting embedded raster images...");
-            const rasterResults = await extractPdfRasterImages(file);
-            console.log(`[Vault] Raster: ${rasterResults.length} images found`);
+            const extractForm = new FormData();
+            extractForm.append("file", file);
+            extractForm.append("_token", token());
+            extractForm.append("brand_name", vault.company_name || "");
 
-            // Upload raster images directly — these are real extracted assets
-            const rasterBlobs: { blob: Blob; name: string }[] = rasterResults.map((r, idx) =>
-              ({ blob: r.blob, name: `${pdfName}_img_p${r.page}_${r.w}x${r.h}.png` })
-            );
+            const extractRes = await fetch(apiUrl("/vault/adobe-extract"), {
+              method: "POST",
+              headers: apiHeaders(false),
+              body: extractForm,
+            });
 
-            // ─── Layer 2: Render pages as JPEG for AI visual classification ───
-            // Only upload pages the AI classifies as visual assets (logo, photo, picto, mockup)
-            // Text-only pages, TOC, blank pages → skipped by backend AI
-            setAnalyzeProgress("Rendering PDF pages for visual analysis...");
-            console.log("[Vault] Layer 2: Rendering PDF pages...");
-            const pageBlobs = await renderPdfPages(file, 30, 2); // scale 2 for better AI detection
-            console.log(`[Vault] Pages: ${pageBlobs.length} rendered`);
-
-            // Tag page renders differently so backend knows they're full pages (may skip more)
-            const pageItems: { blob: Blob; name: string }[] = pageBlobs.map((blob, idx) =>
-              ({ blob, name: `${pdfName}_page_${idx + 1}.jpg` })
-            );
-
-            const allBlobs = [...rasterBlobs, ...pageItems];
-
-            if (allBlobs.length > 0) {
-              setAnalyzeProgress(`Analyzing ${allBlobs.length} visual assets with AI...`);
-              console.log(`[Vault] Sending ${rasterBlobs.length} extracted images + ${pageItems.length} page renders for AI classification...`);
-
-              // Fire all requests in parallel (browser limits concurrency to ~6)
-              const results = await Promise.allSettled(allBlobs.map(async ({ blob, name }) => {
-                const form = new FormData();
-                form.append("files", blob, name);
-                form.append("_token", token());
-                form.append("brand_name", vault.company_name || "");
-                form.append("source", "pdf-charter");
-                const res = await fetch(apiUrl("/vault/pdf-images-upload"), { method: "POST", headers: apiHeaders(false), body: form });
-                if (!res.ok) {
-                  const errText = await res.text().catch(() => res.statusText);
-                  throw new Error(`${res.status}: ${errText}`);
-                }
-                return res.json();
-              }));
-
-              let totalUploaded = 0;
-              let totalSkipped = 0;
-              let totalFailed = 0;
-              for (const r of results) {
-                if (r.status === "fulfilled" && r.value?.success) {
-                  totalUploaded += r.value.stats?.uploaded || 0;
-                  totalSkipped += r.value.stats?.skipped || 0;
-                } else if (r.status === "fulfilled" && !r.value?.success) {
-                  totalSkipped += r.value.stats?.skipped || 0;
-                  totalFailed++;
-                } else {
-                  totalFailed++;
-                }
-              }
-              console.log(`[Vault] PDF assets: ${totalUploaded} uploaded, ${totalSkipped} skipped by AI, ${totalFailed} failed`);
-              if (totalUploaded > 0) {
-                setAnalyzeProgress(`${totalUploaded} visual asset${totalUploaded > 1 ? "s" : ""} added to Image Bank`);
+            if (extractRes.ok) {
+              const extractData = await extractRes.json();
+              console.log(`[Vault] Adobe Extract: ${JSON.stringify(extractData.stats)}, elapsed=${extractData._elapsed}ms`);
+              if (extractData.stats?.uploaded > 0) {
+                setAnalyzeProgress(`${extractData.stats.uploaded} visual asset${extractData.stats.uploaded > 1 ? "s" : ""} extracted and added to Image Bank`);
               } else {
-                setAnalyzeProgress("No visual assets detected in PDF pages");
+                setAnalyzeProgress("No extractable visual assets found in PDF");
               }
             } else {
-              console.log("[Vault] No extractable visual assets found in PDF");
+              const errText = await extractRes.text().catch(() => extractRes.statusText);
+              console.warn(`[Vault] Adobe Extract failed (${extractRes.status}): ${errText}`);
+              setAnalyzeProgress("Image extraction unavailable — brand DNA saved successfully");
             }
           } catch (err: any) {
             console.warn("[Vault] PDF image extraction error:", err?.message || err);
+            setAnalyzeProgress("Image extraction error — brand DNA saved successfully");
           }
         }
 
