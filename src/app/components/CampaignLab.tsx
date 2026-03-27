@@ -293,6 +293,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [campaignDuration, setCampaignDuration] = useState("");
   const [selectedFormats, setSelectedFormats] = useState<string[]>(["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [scanningUrl, setScanningUrl] = useState(false);
+  const [scannedProduct, setScannedProduct] = useState<{ name: string; description: string; price?: string; currency?: string; category?: string; features?: string[] } | null>(null);
   const [vault, setVault] = useState<BrandVault | null>(null);
   const [vaultLoading, setVaultLoading] = useState(true);
 
@@ -566,6 +568,50 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
     console.log(`[CampaignLab] Upload: ${urls.length}/${refPhotos.length} refs ready`);
     return urls;
+  };
+
+  // ── Helper: Scan product/service URL → extract info and pre-fill brief ──
+  const handleScanUrl = async (url?: string) => {
+    const targetUrl = (url || productUrls || "").trim();
+    if (!targetUrl) return;
+    // Basic URL validation
+    if (!/^https?:\/\/.+\..+/.test(targetUrl)) {
+      toast.error("Enter a valid URL (https://...)");
+      return;
+    }
+    setScanningUrl(true);
+    try {
+      console.log(`[CampaignLab] Scanning URL: ${targetUrl}`);
+      const data = await serverPost("/products/scrape-url", { url: targetUrl }, 20_000);
+      if (data.success && data.product) {
+        const p = data.product;
+        setScannedProduct(p);
+        console.log(`[CampaignLab] URL scanned: name="${p.name}", features=${p.features?.length}`);
+
+        // Auto-fill brief if empty
+        if (!brief.trim() && p.name) {
+          const parts: string[] = [];
+          parts.push(`Promote ${p.name}.`);
+          if (p.description) parts.push(p.description);
+          if (p.price && p.currency) parts.push(`Price: ${p.price} ${p.currency}.`);
+          setBrief(parts.join(" "));
+        }
+
+        // Auto-fill key messages from features
+        if (!keyMessages.trim() && p.features?.length) {
+          setKeyMessages(p.features.map((f: string) => `- ${f}`).join("\n"));
+        }
+
+        toast.success(`${p.name || "Page"} scanned — brief pre-filled`);
+      } else {
+        toast.error("Could not extract info from this page");
+      }
+    } catch (err: any) {
+      console.warn("[CampaignLab] URL scan failed:", err?.message);
+      toast.error("Scan failed — check the URL");
+    } finally {
+      setScanningUrl(false);
+    }
   };
 
   // ── Helper: Vision Analysis of ref photos → Visual DNA ──
@@ -1952,6 +1998,80 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
               </div>
 
+              {/* ── Product / Service URL with auto-scan ── */}
+              <div>
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Link2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#5C5856" }} />
+                    <input
+                      value={productUrls}
+                      onChange={e => { setProductUrls(e.target.value); setScannedProduct(null); }}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScanUrl(); } }}
+                      placeholder="Paste your product or service page URL..."
+                      className="w-full rounded-xl pl-10 pr-4 py-3 transition-all"
+                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "14px", outline: "none" }}
+                      onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
+                      onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                    />
+                  </div>
+                  {productUrls.trim() && !scannedProduct && (
+                    <button
+                      onClick={() => handleScanUrl()}
+                      disabled={scanningUrl}
+                      className="flex items-center gap-2 px-4 py-3 rounded-xl transition-all cursor-pointer"
+                      style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "13px", fontWeight: 600, opacity: scanningUrl ? 0.6 : 1 }}
+                    >
+                      {scanningUrl ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                      {scanningUrl ? "Scanning..." : "Scan"}
+                    </button>
+                  )}
+                </div>
+                {/* Scanned product summary */}
+                {scannedProduct && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-2 rounded-xl px-4 py-3 flex items-start gap-3"
+                    style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}
+                  >
+                    <Check size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#10b981" }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{scannedProduct.name}</span>
+                        {scannedProduct.price && (
+                          <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 600 }}>
+                            {scannedProduct.price} {scannedProduct.currency || ""}
+                          </span>
+                        )}
+                      </div>
+                      {scannedProduct.description && (
+                        <p className="mt-1 line-clamp-2" style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.5 }}>
+                          {scannedProduct.description}
+                        </p>
+                      )}
+                      {scannedProduct.features && scannedProduct.features.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {scannedProduct.features.slice(0, 4).map((f, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#10b981", background: "rgba(16,185,129,0.1)" }}>
+                              {f}
+                            </span>
+                          ))}
+                          {scannedProduct.features.length > 4 && (
+                            <span style={{ fontSize: "10px", color: "#5C5856" }}>+{scannedProduct.features.length - 4} more</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setScannedProduct(null); setProductUrls(""); setBrief(""); setKeyMessages(""); }}
+                      className="p-1 rounded-md cursor-pointer" style={{ color: "#5C5856" }}
+                    >
+                      <X size={12} />
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+
               {/* ── Product Selector (only if products exist) ── */}
               {products.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -2359,22 +2479,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           </div>
                         </div>
 
-                        {/* Product URLs */}
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Link2 size={12} style={{ color: "#7A7572" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Product URL</span>
-                          </div>
-                          <input
-                            value={productUrls}
-                            onChange={e => setProductUrls(e.target.value)}
-                            placeholder="https://yoursite.com/product-page"
-                            className="w-full rounded-xl px-4 py-2.5 transition-all"
-                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
-                          />
-                        </div>
+                        {/* Product URLs — kept in advanced for manual override */}
 
                       </div>
                     </motion.div>
