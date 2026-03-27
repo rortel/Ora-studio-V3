@@ -7571,6 +7571,281 @@ No markdown, no backticks.`;
 app.post("/vault/pdf-images-upload", handlePdfImagesUpload);
 app.post("/vault/images/categorize-upload", handlePdfImagesUpload);
 
+// ══════════════════════════════════════════════════════════════
+// ADOBE PDF EXTRACT — Extract figures (logos, photos, pictos) from PDF
+// ══════════════════════════════════════════════════════════════
+
+const ADOBE_PDF_BASE = "https://pdf-services-ue1.adobe.io";
+const ADOBE_CLIENT_ID = "d6890391165b4093bda02311fd832319";
+const ADOBE_CLIENT_SECRET = "p8e-orPI42CVOfc3Nd0JITy9MNr6_MvoTcIa";
+
+async function getAdobeAccessToken(): Promise<string> {
+  const res = await fetch(`${ADOBE_PDF_BASE}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `client_id=${ADOBE_CLIENT_ID}&client_secret=${ADOBE_CLIENT_SECRET}`,
+  });
+  if (!res.ok) throw new Error(`Adobe auth failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data.access_token;
+}
+
+function adobeHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    "x-api-key": ADOBE_CLIENT_ID,
+    "Content-Type": "application/json",
+  };
+}
+
+app.post("/vault/adobe-extract", async (c) => {
+  const t0 = Date.now();
+  try {
+    await ensureImageBankBucket();
+    const sb = supabaseAdmin();
+    const formData = await c.req.formData();
+    const file = formData.get("file") as File;
+    const formToken = formData.get("_token") as string || "";
+    const brandName = formData.get("brand_name") as string || "";
+
+    const jwt = decodeJwtPayload(formToken);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    if (!file || file.size === 0) return c.json({ success: false, error: "No PDF file" }, 400);
+    console.log(`[adobe-extract] Start: ${file.name} (${(file.size/1024).toFixed(0)}KB) user=${userId}`);
+
+    // Step 1: Get Adobe access token
+    console.log("[adobe-extract] Getting access token...");
+    const adobeToken = await getAdobeAccessToken();
+    console.log("[adobe-extract] Token obtained");
+
+    // Step 2: Create upload asset
+    const createRes = await fetch(`${ADOBE_PDF_BASE}/assets`, {
+      method: "POST",
+      headers: adobeHeaders(adobeToken),
+      body: JSON.stringify({ mediaType: "application/pdf" }),
+    });
+    if (!createRes.ok) throw new Error(`Adobe create asset failed: ${createRes.status}`);
+    const { uploadUri, assetID } = await createRes.json();
+    console.log(`[adobe-extract] Asset created: ${assetID}`);
+
+    // Step 3: Upload PDF to Adobe
+    const pdfBytes = await file.arrayBuffer();
+    const uploadRes = await fetch(uploadUri, {
+      method: "PUT",
+      headers: { "Content-Type": "application/pdf" },
+      body: pdfBytes,
+    });
+    if (!uploadRes.ok) throw new Error(`Adobe upload failed: ${uploadRes.status}`);
+    console.log("[adobe-extract] PDF uploaded to Adobe");
+
+    // Step 4: Start extraction job (text + figures)
+    const extractRes = await fetch(`${ADOBE_PDF_BASE}/operation/extractpdf`, {
+      method: "POST",
+      headers: adobeHeaders(adobeToken),
+      body: JSON.stringify({
+        assetID,
+        elementsToExtract: ["text", "tables"],
+        renditionsToExtract: ["figures", "tables"],
+      }),
+    });
+    if (!extractRes.ok) throw new Error(`Adobe extract failed: ${extractRes.status} ${await extractRes.text()}`);
+    const pollingUrl = extractRes.headers.get("location") || extractRes.headers.get("x-request-id");
+    if (!pollingUrl) throw new Error("No polling URL from Adobe");
+    console.log(`[adobe-extract] Job started, polling: ${pollingUrl}`);
+
+    // Step 5: Poll for completion (max 120s)
+    let downloadUri = "";
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await new Promise(r => setTimeout(r, 2000)); // wait 2s between polls
+      const pollRes = await fetch(pollingUrl, {
+        headers: { Authorization: `Bearer ${adobeToken}`, "x-api-key": ADOBE_CLIENT_ID },
+      });
+      if (!pollRes.ok) { console.log(`[adobe-extract] Poll ${attempt}: ${pollRes.status}`); continue; }
+      const pollData = await pollRes.json();
+      console.log(`[adobe-extract] Poll ${attempt}: ${pollData.status}`);
+      if (pollData.status === "done") {
+        downloadUri = pollData.resource?.downloadUri || pollData.content?.downloadUri || "";
+        break;
+      }
+      if (pollData.status === "failed") throw new Error(`Adobe extraction failed: ${JSON.stringify(pollData)}`);
+    }
+    if (!downloadUri) throw new Error("Adobe extraction timed out or no download URI");
+    console.log(`[adobe-extract] Job done, downloading ZIP...`);
+
+    // Step 6: Download ZIP result
+    const zipRes = await fetch(downloadUri);
+    if (!zipRes.ok) throw new Error(`Adobe ZIP download failed: ${zipRes.status}`);
+    const zipBytes = new Uint8Array(await zipRes.arrayBuffer());
+    console.log(`[adobe-extract] ZIP downloaded: ${(zipBytes.length/1024).toFixed(0)}KB`);
+
+    // Step 7: Parse ZIP to extract figure PNGs
+    // Minimal ZIP parser — extracts files from uncompressed/deflate ZIP entries
+    const figures: { name: string; data: Uint8Array }[] = [];
+    const structuredJson: string[] = [];
+    let pos = 0;
+    const view = new DataView(zipBytes.buffer);
+
+    while (pos + 30 <= zipBytes.length) {
+      const sig = view.getUint32(pos, true);
+      if (sig !== 0x04034b50) break; // PK\3\4 local file header
+      const method = view.getUint16(pos + 8, true);
+      const compSize = view.getUint32(pos + 18, true);
+      const uncompSize = view.getUint32(pos + 22, true);
+      const nameLen = view.getUint16(pos + 26, true);
+      const extraLen = view.getUint16(pos + 28, true);
+      const fileName = new TextDecoder().decode(zipBytes.slice(pos + 30, pos + 30 + nameLen));
+      const dataStart = pos + 30 + nameLen + extraLen;
+      const rawData = zipBytes.slice(dataStart, dataStart + compSize);
+
+      let fileData: Uint8Array;
+      if (method === 0) {
+        fileData = rawData; // stored (no compression)
+      } else if (method === 8) {
+        // Deflate — use DecompressionStream
+        try {
+          const ds = new DecompressionStream("raw");
+          const writer = ds.writable.getWriter();
+          writer.write(rawData);
+          writer.close();
+          const reader = ds.readable.getReader();
+          const chunks: Uint8Array[] = [];
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+          }
+          const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+          fileData = new Uint8Array(totalLen);
+          let offset = 0;
+          for (const chunk of chunks) { fileData.set(chunk, offset); offset += chunk.length; }
+        } catch {
+          pos = dataStart + compSize;
+          continue; // skip files we can't decompress
+        }
+      } else {
+        pos = dataStart + compSize;
+        continue; // skip unknown compression
+      }
+
+      // Check if it's a figure image
+      const lowerName = fileName.toLowerCase();
+      if ((lowerName.startsWith("figures/") || lowerName.includes("/figures/")) &&
+          (lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg"))) {
+        if (fileData.length > 2000) { // skip tiny images
+          figures.push({ name: fileName.split("/").pop() || fileName, data: fileData });
+          console.log(`[adobe-extract] Figure: ${fileName} (${(fileData.length/1024).toFixed(0)}KB)`);
+        }
+      }
+      // Also grab structuredData.json for text extraction
+      if (lowerName.endsWith("structureddata.json")) {
+        structuredJson.push(new TextDecoder().decode(fileData));
+      }
+
+      pos = dataStart + compSize;
+    }
+
+    console.log(`[adobe-extract] Found ${figures.length} figures in ZIP`);
+    if (figures.length === 0) {
+      return c.json({ success: true, images: [], stats: { uploaded: 0, skipped: 0, failed: 0 }, message: "No figures found in PDF" });
+    }
+
+    // Step 8: Categorize + upload each figure in parallel
+    const categorizationPromptAdobe = `You are a brand asset classifier. This image was extracted as a "figure" from a brand guidelines PDF${brandName ? ` for "${brandName}"` : ""}.
+
+Classify into EXACTLY ONE category:
+- "logo" — logo, logomark, logotype, monogram, avatar, favicon
+- "graphic-element" — icon, pictogram, symbol, decorative brand element
+- "pattern" — pattern, texture, repeated motif
+- "photo" — any photograph (mood, people, product, lifestyle)
+- "mockup" — business card, press ad, vehicle, signage, stationery mockup
+- "color-swatch" — color palette, gradient
+- "overlay" — brand lockup, watermark, badge
+- "skip" — noise, tiny decoration, blank, unidentifiable, or just text
+
+Return ONLY: {"category":"...","tags":["tag1","tag2"],"description":"one-line"}`;
+
+    const results = await Promise.all(figures.map(async (fig) => {
+      try {
+        const ext = fig.name.split(".").pop() || "png";
+        const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+
+        // AI categorization
+        let category = "general";
+        let tags: string[] = [];
+        let description = "";
+        try {
+          let binary = "";
+          for (let i = 0; i < fig.data.length; i++) binary += String.fromCharCode(fig.data[i]);
+          const imgBase64 = btoa(binary);
+          const dataUri = `data:${mimeType};base64,${imgBase64}`;
+
+          const aiRes = await fetchWithTimeout(`${MISTRAL_BASE}/chat/completions`, {
+            method: "POST",
+            headers: mistralHeaders(),
+            body: JSON.stringify({
+              model: "pixtral-large-latest",
+              messages: [{ role: "user", content: [
+                { type: "text", text: categorizationPromptAdobe },
+                { type: "image_url", image_url: { url: dataUri } },
+              ] }],
+              max_tokens: 200,
+              temperature: 0.1,
+              response_format: { type: "json_object" },
+            }),
+          }, 25_000);
+
+          if (aiRes.ok) {
+            const data = await aiRes.json();
+            const raw = data.choices?.[0]?.message?.content || "";
+            try {
+              const parsed = JSON.parse(raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim());
+              if (parsed.category === "skip") {
+                console.log(`[adobe-extract] Skip: ${fig.name} — ${parsed.description || "skip"}`);
+                return { fileName: fig.name, success: false, skipped: true };
+              }
+              category = parsed.category || "general";
+              tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+              description = parsed.description || "";
+            } catch { /* use defaults */ }
+          }
+        } catch (e: any) { console.log(`[adobe-extract] Vision err ${fig.name}: ${e.message}`); }
+
+        // Upload to storage
+        const imageId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const storagePath = `${userId}/${imageId}.${ext}`;
+        const { error: uploadError } = await sb.storage
+          .from(IMAGE_BANK_BUCKET)
+          .upload(storagePath, fig.data.buffer, { contentType: mimeType, upsert: false });
+        if (uploadError) return { fileName: fig.name, success: false, error: uploadError.message };
+
+        const meta = {
+          id: imageId, fileName: fig.name, storagePath, fileSize: fig.data.length,
+          mimeType, tags, category, description, source: "pdf-adobe-extract",
+          uploadedAt: new Date().toISOString(),
+        };
+        await kv.set(`brand-image:${userId}:${imageId}`, meta);
+        const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(storagePath, 86400);
+        console.log(`[adobe-extract] ✓ ${fig.name} → ${category} [${tags.join(",")}]`);
+        return { ...meta, success: true, signedUrl: signedData?.signedUrl || "" };
+      } catch (e: any) {
+        return { fileName: fig.name, success: false, error: e.message };
+      }
+    }));
+
+    const ok = results.filter(r => r.success).length;
+    const skipped = results.filter(r => r.skipped).length;
+    const failed = results.length - ok - skipped;
+    console.log(`[adobe-extract] Done: ${ok} uploaded, ${skipped} skipped, ${failed} failed (${Date.now() - t0}ms)`);
+    return c.json({ success: true, images: results, stats: { uploaded: ok, skipped, failed }, _elapsed: Date.now() - t0 });
+
+  } catch (err: any) {
+    console.log(`[adobe-extract] ERROR: ${err?.message || err}`);
+    return c.json({ success: false, error: `Adobe extract failed: ${err?.message || err}` }, 500);
+  }
+});
+
 // GET /vault/images — List all brand images for the user (with signed URLs)
 app.get("/vault/images", async (c) => {
   const t0 = Date.now();
