@@ -189,9 +189,7 @@ function AnalyticsPageContent() {
     <div className="min-h-screen">
       <div className="border-b border-border bg-card">
         <div className="max-w-[1200px] mx-auto px-6 py-5">
-          <Link to="/hub" className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors mb-4" style={{ fontSize: "13px" }}>
-            <ArrowLeft size={14} /> Back to Hub
-          </Link>
+          {/* Navigation handled by sidebar */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-foreground mb-1" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>Analytics</h1>
