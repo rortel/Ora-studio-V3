@@ -166,7 +166,7 @@ function LibraryPageContent() {
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const [contextMenu, setContextMenu] = useState<{ itemId: string; x: number; y: number } | null>(null);
   const [moveTargetItem, setMoveTargetItem] = useState<string | null>(null);
-  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>("__auto__"); // auto-expand first campaign
   const [downloadingCampaign, setDownloadingCampaign] = useState<string | null>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
@@ -203,6 +203,15 @@ function LibraryPageContent() {
   }, [serverPost]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Auto-expand first campaign on load
+  useEffect(() => {
+    if (expandedCampaignId === "__auto__" && items.length > 0) {
+      const firstCampaign = items.find((it: any) => it.type === "campaign");
+      if (firstCampaign) setExpandedCampaignId(firstCampaign.id);
+      else setExpandedCampaignId(null);
+    }
+  }, [items, expandedCampaignId]);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -581,8 +590,11 @@ function LibraryPageContent() {
                                 <Trash2 size={13} />
                               </button>
                               {/* Expand chevron */}
-                              <div className="w-7 h-7 flex items-center justify-center text-muted-foreground">
-                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <div className="flex items-center gap-1 px-2 py-1 rounded-md transition-colors" style={{ background: isExpanded ? "rgba(94,106,210,0.08)" : "transparent" }}>
+                                {!isExpanded && <span style={{ fontSize: "10px", color: "#5E6AD2", fontWeight: 500 }}>See assets</span>}
+                                <div className="w-5 h-5 flex items-center justify-center" style={{ color: "#5E6AD2" }}>
+                                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                </div>
                               </div>
                             </div>
                           </div>
