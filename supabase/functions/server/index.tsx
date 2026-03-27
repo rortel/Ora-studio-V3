@@ -7458,29 +7458,32 @@ const handlePdfImagesUpload = async (c: any) => {
     const isCharterSource = pdfSource === "pdf-charter";
     console.log(`[categorize-upload] ${files.length} assets from PDF for user=${userId}, brand=${brandName}, source=${pdfSource}`);
 
-    const categorizationPrompt = `You are a brand asset classifier. Analyze this image from a brand guidelines PDF${brandName ? ` for "${brandName}"` : ""}.
+    const categorizationPrompt = `You are a VERY STRICT brand asset classifier for a brand guidelines PDF${brandName ? ` ("${brandName}")` : ""}.
 
-Your goal: identify ONLY pages/images containing actual VISUAL ASSETS worth saving to an image library.
-Be STRICT — most brand book pages are text/layout and should be SKIPPED.
+TASK: Decide if this page contains a reusable visual asset (logo, photo, icon, mockup). Most pages should be SKIPPED.
 
-Classify into EXACTLY ONE category:
+KEEP — only if the visual asset is the DOMINANT element (covers >60% of the page area):
+- "logo" — page where the MAIN CONTENT is one or more logo graphics displayed large and clear (not a small logo in a corner or header)
+- "graphic-element" — page where ACTUAL icons/pictograms/symbols are displayed as the main content, large and clear
+- "pattern" — page showing a large pattern or texture as the main visual
+- "photo" — page dominated by a photograph (mood, people, product, lifestyle)
+- "mockup" — page showing a large mockup (business card, vehicle, signage, stationery)
 
-KEEP (visual assets worth saving):
-- "logo" — page showing the actual logo, logomark, logotype, monogram, avatar, favicon, or clear logo variants (color, B&W, reversed). Must prominently display the logo graphic itself.
-- "graphic-element" — page showing actual icons, pictograms, symbols, decorative brand elements. The icons/pictos must be clearly visible.
-- "pattern" — actual patterns, textures, repeated graphical motifs
-- "photo-mood" — aspirational/mood photography, lifestyle, atmospheric visuals
-- "photo-product" — product photos, technical images, close-ups
-- "photo-people" — people photography, team, workplace, human subjects
-- "mockup" — business card, press ad, vehicle branding, signage, stationery mockups showing the brand applied
-- "overlay" — brand lockup, watermark, stamp, badge
+SKIP — everything else:
+- "skip" — This is the DEFAULT. Skip if: page has ANY text explaining rules/guidelines, page shows color palettes/codes, page shows typography specimens, page is a section divider/title page, page is table of contents, page has a logo but mostly to illustrate usage rules (do's/don'ts with text annotations), page shows brand positioning/strategy/values text, page is mostly dark/colored background with some text, page has small decorative elements but is mainly layout.
 
-SKIP (not visual assets — do NOT save):
-- "skip" — ANY page that is primarily text, even if it has small decorative elements. This includes: table of contents, section dividers, brand guidelines text, usage rules described in text, color codes listed as text, typography specifications as text, mission/vision text, positioning text, brand strategy, "do's and don'ts" pages with mostly text annotations, blank/near-blank pages, pages with only a page number or small logo in corner.
+CRITICAL RULES:
+1. When in doubt, choose "skip". Be aggressive about skipping.
+2. A page showing "logo + text explaining logo rules" = SKIP (it's a guideline page, not a reusable asset)
+3. A page showing "just the logo variants on a clean background" = KEEP as "logo"
+4. A page with a photo AND explanatory text = SKIP (guideline page)
+5. A page that IS a full-bleed photograph = KEEP as "photo"
+6. Section dividers with colored backgrounds = SKIP
+7. Pages with brand signature/tagline text = SKIP
 
-RULE: If >50% of the page is text/whitespace, classify as "skip". Only keep pages where a CLEAR visual asset (logo, photo, icon, mockup, pattern) is the dominant element.
+You should keep approximately 20-30% of pages from a typical brand book.
 
-Return ONLY: {"category":"...","tags":["tag1","tag2"],"description":"one-line description"}
+Return ONLY: {"category":"...","tags":["tag1","tag2"],"description":"one-line"}
 No markdown, no backticks.`;
 
     // Process ALL files in parallel (classify + upload concurrently)
