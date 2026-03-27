@@ -378,6 +378,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         });
         const data = await res.json();
         if (data.vault) {
+          // Sync: VaultPage uses company_name, CampaignLab uses brandName — ensure both exist
+          if (data.vault.company_name && !data.vault.brandName) data.vault.brandName = data.vault.company_name;
+          if (data.vault.brandName && !data.vault.company_name) data.vault.company_name = data.vault.brandName;
+          // If both exist but differ, company_name wins (it's what VaultPage writes)
+          if (data.vault.company_name && data.vault.brandName && data.vault.company_name !== data.vault.brandName) {
+            data.vault.brandName = data.vault.company_name;
+          }
           const vaultLogo = data.vault.logoUrl || data.vault.logo_url || null;
           console.log(`[CampaignLab] Vault loaded (attempt ${attempt}):`, data.vault.brandName || "unnamed", "logo:", vaultLogo ? vaultLogo.slice(0, 80) : "NONE");
           setVault(data.vault);
@@ -2492,7 +2499,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <div className="flex items-center gap-2">
                   <Shield size={13} style={{ color: vault ? "#10b981" : "#5C5856" }} />
                   <span style={{ fontSize: "12px", fontWeight: 600, color: vault ? "#10b981" : "#7A7572" }}>
-                    {vaultLoading ? "Loading Vault..." : vault ? `${vault.brandName || "Brand Vault"} active` : "No Brand Vault"}
+                    {vaultLoading ? "Loading Vault..." : vault ? `${vault.brandName || vault.company_name || "Brand Vault"} active` : "No Brand Vault"}
                   </span>
                   {vault && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", color: "var(--ora-signal)", background: "rgba(59,79,196,0.08)" }}>
@@ -2643,7 +2650,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </h3>
                   <p style={{ fontSize: "13px", color: "#7A7572", marginTop: 2 }}>
                     {assets.filter(a => a.status === "ready").length}/{assets.length} assets generated
-                    {vault?.brandName ? ` for ${vault.brandName}` : ""}
+                    {(vault?.brandName || vault?.company_name) ? ` for ${vault.brandName || vault.company_name}` : ""}
                     {Object.values(deployingAssets).filter(s => s === "deployed" || s === "scheduled").length > 0 && (
                       <span style={{ color: "#10b981", marginLeft: 8 }}>
                         {Object.values(deployingAssets).filter(s => s === "deployed" || s === "scheduled").length} deployed
