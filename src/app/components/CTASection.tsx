@@ -1,95 +1,79 @@
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
-import { AuraDecoration } from "./OraLogo";
 
 export function CTASection() {
   return (
-    <section className="py-20 md:py-32" style={{ background: "#131211" }}>
-      <div className="max-w-[1200px] mx-auto px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
+    <section className="py-32 md:py-44" style={{ background: "#FAFAFA" }}>
+      <div className="max-w-[900px] mx-auto px-6 text-center">
+        <motion.h2
+          initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
-          className="rounded-2xl p-12 md:p-20 relative overflow-hidden"
+          transition={{ duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
           style={{
-            background: "#1a1918",
-            border: "1px solid rgba(255,255,255,0.06)",
+            fontSize: "clamp(3rem, 6vw, 5.5rem)",
+            fontWeight: 300,
+            lineHeight: 1.05,
+            letterSpacing: "-0.04em",
+            color: "#111111",
+            fontFamily: "'Inter', sans-serif",
+            marginBottom: 24,
           }}
         >
-          {/* Aura decorations */}
-          <div className="absolute -top-32 -right-32 pointer-events-none opacity-20">
-            <AuraDecoration size={400} color="#E8E4DF" />
-          </div>
+          Ready to start?
+        </motion.h2>
 
-          <div className="relative z-10 max-w-[520px]">
-            <motion.h2
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-              style={{
-                fontSize: "clamp(2rem, 4vw, 3rem)",
-                fontWeight: 500,
-                lineHeight: 1.1,
-                letterSpacing: "-0.03em",
-                color: "#E8E4DF",
-                marginBottom: 16,
-              }}
-            >
-              Start creating.
-            </motion.h2>
-            <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.18 }}
-              className="mb-10"
-              style={{
-                fontSize: "16px",
-                lineHeight: 1.6,
-                color: "#9A9590",
-                fontWeight: 400,
-              }}
-            >
-              50 free credits. No card required.
-              Pick a model, type a prompt, get your first output in under a minute.
-            </motion.p>
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.26 }}
-              className="flex flex-wrap items-center gap-3"
-            >
-              <Link
-                to="/login?mode=signup"
-                className="group inline-flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-                style={{
-                  background: "#E8E4DF",
-                  color: "#131211",
-                  fontSize: "14px",
-                  fontWeight: 500,
-                }}
-              >
-                Start free
-                <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg transition-all"
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 400,
-                  color: "#9A9590",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                }}
-              >
-                View pricing
-              </Link>
-            </motion.div>
-          </div>
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.1 }}
+          style={{
+            fontSize: "16px",
+            lineHeight: 1.6,
+            fontFamily: "'Inter', sans-serif",
+            color: "#9A9590",
+            fontWeight: 400,
+            marginBottom: 36,
+          }}
+        >
+          50 free credits. No card required.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
+          className="flex items-center justify-center gap-3"
+        >
+          <Link
+            to="/login?mode=signup"
+            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg active:scale-[0.98]"
+            style={{
+              background: "#111111",
+              color: "#FFFFFF",
+              fontSize: "14px",
+              fontWeight: 500,
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            Start creating
+            <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+          <Link
+            to="/pricing"
+            className="inline-flex items-center gap-1.5 px-5 py-3.5 rounded-full transition-all hover:bg-black/[0.03]"
+            style={{
+              fontSize: "14px",
+              fontWeight: 400,
+              fontFamily: "'Inter', sans-serif",
+              color: "#9A9590",
+            }}
+          >
+            View pricing
+          </Link>
         </motion.div>
       </div>
     </section>

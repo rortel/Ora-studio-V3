@@ -41,7 +41,7 @@ const agents: AgentDef[] = [
     displayName: "Brand Analyst",
     role: "Builds and maintains the Brand Vault",
     layer: "intelligence",
-    color: "#8B5CF6",
+    color: "#666666",
     expertise: ["Brand audit", "Competitive analysis", "Identity mapping", "Tone analysis", "Visual extraction"],
     description: "15 years at Wolff Olins, Pentagram, Landor. Deconstructs brands to DNA level. Extracts exact hex colors, exact font names, exact recurring phrases. Scores confidence 0-100 based on data depth.",
     signature: "If data is missing, I leave it empty. I never fabricate.",
@@ -51,7 +51,7 @@ const agents: AgentDef[] = [
     displayName: "Strategic Planner",
     role: "Content strategy aligned to business objectives",
     layer: "intelligence",
-    color: "#EC4899",
+    color: "#111111",
     expertise: ["Strategic planning", "Trend analysis", "Editorial calendar", "Competitive intelligence"],
     description: "Ex BBDO strategy, Ogilvy consulting, McKinsey marketing practice. Designs content strategies using the Content Pyramid (10% thought leadership, 30% expertise, 60% presence) and Objective Matrix (awareness, authority, trust, conversion).",
     signature: "Every piece of content must trace back to a reason it exists.",
@@ -61,7 +61,7 @@ const agents: AgentDef[] = [
     displayName: "Audience Analyst",
     role: "Deep audience intelligence and engagement patterns",
     layer: "intelligence",
-    color: "#06B6D4",
+    color: "#666666",
     expertise: ["Audience research", "Persona development", "Behavioral analysis"],
     description: "Ex Nielsen, Kantar. Goes beyond demographics into psychographics -- motivation, behavior, emotional triggers. Identifies content formats that drive engagement for each audience type and flags messaging-audience mismatches.",
     signature: "Focus on motivation, behavior, emotional triggers. Demographics are just the start.",
@@ -71,7 +71,7 @@ const agents: AgentDef[] = [
     displayName: "Creative Director",
     role: "Defines creative direction, supervises all creative output",
     layer: "creation",
-    color: "#F97316",
+    color: "#111111",
     expertise: ["Creative direction", "Concept development", "Campaign architecture", "Brand storytelling"],
     description: "20 years at Wieden+Kennedy, Droga5, 72andSunny. Cannes Lions Grand Prix winner. Thinks in concepts, not executions. Always proposes 3 creative routes with tension analysis. Kills any idea a competitor could use.",
     signature: "The best ideas feel like they could only exist for one brand.",
@@ -81,7 +81,7 @@ const agents: AgentDef[] = [
     displayName: "Copywriter",
     role: "Writes all text content in the brand voice",
     layer: "creation",
-    color: "#22C55E",
+    color: "#666666",
     expertise: ["Copywriting", "Brand voice", "Storytelling", "Headlines", "CTAs", "Hooks"],
     description: "15 years at Publicis, BETC, Wieden+Kennedy. Respects vault tone scores to the decimal -- formality, warmth, boldness, technicality, humor. Platform-native rules for LinkedIn, Instagram, Twitter, Email, Blog, Video.",
     signature: "If a competitor could use this exact text, I rewrite.",
@@ -91,7 +91,7 @@ const agents: AgentDef[] = [
     displayName: "Art Director",
     role: "Visual direction and image generation within brand codes",
     layer: "creation",
-    color: "#EAB308",
+    color: "#999999",
     expertise: ["Art direction", "Visual storytelling", "Imagen 3", "Moodboards"],
     description: "Ex Mother, Marcel, Sid Lee. Provides visual direction AND generates key visuals via Imagen 3. Never suggests colors outside the palette. Max 3 visuals per direction with typography treatment and layout direction.",
     signature: "If it looks stock-photo-generic, I reject it.",
@@ -101,7 +101,7 @@ const agents: AgentDef[] = [
     displayName: "Photographer",
     role: "AI image generation within brand visual codes",
     layer: "creation",
-    color: "#3B82F6",
+    color: "#666666",
     expertise: ["AI image generation", "Photo direction", "Platform adaptation", "Imagen 3"],
     description: "Expert in AI image generation prompt engineering. Weaves brand colors into lighting, includes vault mood keywords, excludes vault avoid keywords. Generates via Imagen 3 with automatic Supabase Storage upload.",
     signature: "Specific beats generic. Camera angle, lighting, subject, action, colors.",
@@ -111,7 +111,7 @@ const agents: AgentDef[] = [
     displayName: "Video Maker",
     role: "Video scripts + AI video/thumbnail generation",
     layer: "creation",
-    color: "#EF4444",
+    color: "#DC2626",
     expertise: ["Video scripting", "Storyboarding", "Short-form", "Veo 2", "AI video"],
     description: "Ex Brut, Konbini, TikTok-first brands. Creates complete video briefs with hook/body/CTA timestamps, AI-ready prompts for Veo 2, and thumbnail generation. Each script includes short/medium/long versions.",
     signature: "80% watch without sound. Captions are not optional.",
@@ -121,7 +121,7 @@ const agents: AgentDef[] = [
     displayName: "SEO Strategist",
     role: "Search optimization preserving brand voice",
     layer: "optimization",
-    color: "#22C55E",
+    color: "#666666",
     expertise: ["SEO", "Keyword strategy", "Content gaps", "Search intent"],
     description: "Ex Moz, Semrush. Optimizes for search WITHOUT killing brand voice. Outputs title tags, meta descriptions, H-structure, primary/secondary/semantic keywords, and content gaps vs competitors. Intent over volume.",
     signature: "Keywords natural. Brand voice sacred. Search intent over volume.",
@@ -131,7 +131,7 @@ const agents: AgentDef[] = [
     displayName: "Social Optimizer",
     role: "Platform-specific content adaptation",
     layer: "optimization",
-    color: "#06B6D4",
+    color: "#666666",
     expertise: ["Social media", "Platform algorithms", "Content adaptation"],
     description: "Ex We Are Social, VaynerMedia. Same message, different expression. Adapts formality per platform (LinkedIn +1, Instagram -1, TikTok -2), respects character limits, hashtag counts, and platform-native conventions.",
     signature: "Same message, different expression. Never copy-paste across platforms.",
@@ -141,7 +141,7 @@ const agents: AgentDef[] = [
     displayName: "Hashtag & Timing",
     role: "Strategic hashtags and optimal publishing times",
     layer: "optimization",
-    color: "#F97316",
+    color: "#111111",
     expertise: ["Hashtag strategy", "Trend detection", "Publishing timing"],
     description: "Generates 4-tier hashtag sets: brand-owned (1-2), niche-sector (5-10), trending-timely (2-3), and community-used (2-3). Per-platform counts (LinkedIn 3-5, Instagram 20-30, X 1-2). Optimal posting windows per platform.",
     signature: "Relevance over reach. Platform-specific counts, not blanket hashtags.",
@@ -151,7 +151,7 @@ const agents: AgentDef[] = [
     displayName: "Campaign Multiplier",
     role: "One content piece into full multi-channel campaign",
     layer: "optimization",
-    color: "#EC4899",
+    color: "#111111",
     expertise: ["Content repurposing", "Multi-channel", "Format adaptation", "Shockwave"],
     description: "Creates a SHOCKWAVE from one piece: 1 newsletter, 5 LinkedIn posts (different angles), 3 Instagram formats (carousel/single/story), 3 tweets, 1 video script, 1 blog outline. Each piece stands alone. Each piece is brand-compliant.",
     signature: "From 1 input, produce everything. Each piece stands alone.",
@@ -161,7 +161,7 @@ const agents: AgentDef[] = [
     displayName: "Compliance Guard",
     role: "Validates ALL output -- nothing ships below 90/100",
     layer: "compliance",
-    color: "#6D9B7E",
+    color: "#666666",
     expertise: ["Brand compliance", "Quality assurance", "Tone validation", "Auto-fix"],
     description: "The last checkpoint before content goes live. Scores on a 100-point rubric: Tone (30), Vocabulary (25), Structure (20), Brand (15), Platform (10). Auto-fixes below 90. Banned words = instant -5 penalty. Mathematically verifiable scores.",
     signature: "The same content scored twice must get the same score, plus or minus 2 points.",
@@ -173,28 +173,28 @@ const layers = [
     id: "intelligence",
     name: "Intelligence",
     subtitle: "Understand the brand DNA, map the audience, plan the strategy",
-    color: "#8B5CF6",
+    color: "#666666",
     icon: Brain,
   },
   {
     id: "creation",
     name: "Creation",
     subtitle: "Write, design, shoot, film -- every asset vault-calibrated",
-    color: "#F97316",
+    color: "#111111",
     icon: Paintbrush,
   },
   {
     id: "optimization",
     name: "Optimization",
     subtitle: "Adapt to platforms, optimize for search, multiply to every channel",
-    color: "#06B6D4",
+    color: "#666666",
     icon: Repeat,
   },
   {
     id: "compliance",
     name: "Compliance",
     subtitle: "Score, validate, auto-fix -- nothing ships below 90/100",
-    color: "#6D9B7E",
+    color: "#666666",
     icon: Shield,
   },
 ];
@@ -265,7 +265,7 @@ export function AgentsPage() {
               className="mb-5"
               style={{
                 fontSize: "clamp(2rem, 4.5vw, 3.25rem)",
-                fontWeight: 800,
+                fontWeight: 500,
                 letterSpacing: "-0.035em",
                 lineHeight: 1.1,
                 color: "#FFFFFF",
@@ -348,7 +348,7 @@ export function AgentsPage() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               className="flex-shrink-0 md:w-48 bg-card border border-ora-signal/30 rounded-xl p-5 flex flex-col items-center justify-center text-center"
-              style={{ boxShadow: "0 1px 3px rgba(59,79,196,0.08)" }}
+              style={{ boxShadow: "0 1px 3px rgba(17,17,17,0.08)" }}
             >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
@@ -414,11 +414,11 @@ export function AgentsPage() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="flex-shrink-0 md:w-48 bg-card border border-green-500/20 rounded-xl p-5 flex flex-col items-center justify-center text-center"
-              style={{ boxShadow: "0 1px 3px rgba(16,185,129,0.06)" }}
+              className="flex-shrink-0 md:w-48 bg-card border border-[var(--border)] rounded-xl p-5 flex flex-col items-center justify-center text-center"
+              style={{ boxShadow: "0 1px 3px rgba(17,17,17,0.06)" }}
             >
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "rgba(16,185,129,0.12)" }}>
-                <CheckCircle2 size={18} style={{ color: "#6D9B7E" }} />
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "rgba(17,17,17,0.12)" }}>
+                <CheckCircle2 size={18} style={{ color: "#666666" }} />
               </div>
               <span style={{ fontSize: "14px", fontWeight: 500 }}>90+ / 100</span>
               <span className="text-muted-foreground mt-1" style={{ fontSize: "11px" }}>
@@ -695,8 +695,8 @@ export function AgentsPage() {
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(16,185,129,0.12)" }}>
-                    <CheckCircle2 size={12} style={{ color: "#6D9B7E" }} />
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(17,17,17,0.12)" }}>
+                    <CheckCircle2 size={12} style={{ color: "#666666" }} />
                   </div>
                   <div>
                     <span style={{ fontSize: "13px", fontWeight: 500 }}>Score 90+ ? Ship it.</span>
@@ -783,11 +783,11 @@ export function AgentsPage() {
             className="mt-8 flex flex-wrap items-center justify-center gap-4"
           >
             {[
-              { grade: "A+", range: "95-100", color: "#6D9B7E" },
-              { grade: "A", range: "90-94", color: "#22C55E" },
-              { grade: "B", range: "80-89", color: "#EAB308" },
-              { grade: "C", range: "70-79", color: "#F97316" },
-              { grade: "D", range: "60-69", color: "#C45050" },
+              { grade: "A+", range: "95-100", color: "#666666" },
+              { grade: "A", range: "90-94", color: "#666666" },
+              { grade: "B", range: "80-89", color: "#999999" },
+              { grade: "C", range: "70-79", color: "#111111" },
+              { grade: "D", range: "60-69", color: "#DC2626" },
               { grade: "F", range: "<60", color: "#DC2626" },
             ].map((g) => (
               <div

@@ -46,10 +46,10 @@ export const contentTypes: ContentTypeOption[] = [
 ];
 
 const palettes = [
-  ["#3b4fc4", "#6b7ec9", "#c4cbe0", "#e8ebf4"],
-  ["#1a1a2e", "#4a5568", "#9ba8d4", "#f4f4f6"],
-  ["#2d3a8c", "#5a6abf", "#8b9ad4", "#d4daf0"],
-  ["#1e293b", "#334155", "#64748b", "#cbd5e1"],
+  ["#111111", "#444444", "#999999", "#e8e8e8"],
+  ["#1a1a1a", "#4a4a4a", "#9b9b9b", "#f4f4f6"],
+  ["#2d2d2d", "#5a5a5a", "#8b8b8b", "#d4d4d4"],
+  ["#1e1e1e", "#333333", "#666666", "#cccccc"],
 ];
 
 export function generateMockPreviews(type: ContentType, prompt: string, models: AIModel[]): GeneratedItem[] {

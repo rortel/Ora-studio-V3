@@ -9,20 +9,32 @@ export function SocialProof() {
 
   return (
     <section
-      className="py-6 overflow-hidden"
-      style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      className="py-5 overflow-hidden"
+      style={{ background: "#FAFAFA" }}
     >
       <div className="relative">
-        <div className="absolute left-0 top-0 bottom-0 w-24 z-10" style={{ background: "linear-gradient(90deg, #131211 0%, transparent 100%)" }} />
-        <div className="absolute right-0 top-0 bottom-0 w-24 z-10" style={{ background: "linear-gradient(270deg, #131211 0%, transparent 100%)" }} />
+        <div
+          className="absolute left-0 top-0 bottom-0 w-24 z-10"
+          style={{ background: "linear-gradient(90deg, #FAFAFA, transparent)" }}
+        />
+        <div
+          className="absolute right-0 top-0 bottom-0 w-24 z-10"
+          style={{ background: "linear-gradient(270deg, #FAFAFA, transparent)" }}
+        />
         <div
           className="flex items-center gap-10 whitespace-nowrap"
-          style={{ animation: "ora-marquee 60s linear infinite" }}
+          style={{ animation: "ora-marquee 50s linear infinite" }}
         >
           {doubled.map((name, i) => (
             <span
               key={`${name}-${i}`}
-              style={{ fontSize: "13px", fontWeight: 400, color: "#5C5856", letterSpacing: "-0.01em" }}
+              style={{
+                fontSize: "12px",
+                fontWeight: 400,
+                fontFamily: "'Inter', sans-serif",
+                color: "#BBBBBB",
+                letterSpacing: "-0.01em",
+              }}
             >
               {name}
             </span>

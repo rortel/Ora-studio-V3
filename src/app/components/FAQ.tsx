@@ -15,24 +15,38 @@ export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="py-20 md:py-28" style={{ background: "#1a1918" }}>
-      <div className="max-w-[720px] mx-auto px-6">
+    <section id="faq" className="py-28 md:py-36" style={{ background: "#FAFAFA" }}>
+      <div className="max-w-[680px] mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mb-10"
+          className="mb-16 text-center"
         >
-          <h2
+          <p
             style={{
-              fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)",
+              fontSize: "12px",
               fontWeight: 500,
-              lineHeight: 1.1,
-              letterSpacing: "-0.03em",
-              color: "#E8E4DF",
+              fontFamily: "'Inter', sans-serif",
+              color: "#9A9590",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 16,
             }}
           >
             FAQ
+          </p>
+          <h2
+            style={{
+              fontSize: "clamp(2rem, 4vw, 3.5rem)",
+              fontWeight: 300,
+              lineHeight: 1.1,
+              letterSpacing: "-0.04em",
+              color: "#111111",
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            Questions & answers
           </h2>
         </motion.div>
 
@@ -42,11 +56,11 @@ export function FAQ() {
             return (
               <motion.div
                 key={i}
-                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
-                initial={{ opacity: 0, y: 10 }}
+                style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+                initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.04 }}
+                transition={{ delay: i * 0.03 }}
               >
                 <button
                   onClick={() => setOpen(isOpen ? null : i)}
@@ -55,23 +69,23 @@ export function FAQ() {
                   <span
                     style={{
                       fontSize: "15px",
-                      fontWeight: 500,
-                      color: "#E8E4DF",
+                      fontWeight: 400,
+                      fontFamily: "'Inter', sans-serif",
+                      color: "#111111",
                       paddingRight: "1rem",
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     {f.q}
                   </span>
                   <span
                     className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center"
-                    style={{
-                      background: isOpen ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.04)",
-                    }}
+                    style={{ background: isOpen ? "rgba(0,0,0,0.04)" : "transparent" }}
                   >
                     {isOpen ? (
-                      <Minus size={12} style={{ color: "#E8E4DF" }} />
+                      <Minus size={13} style={{ color: "#111111" }} strokeWidth={1.5} />
                     ) : (
-                      <Plus size={12} style={{ color: "#5C5856" }} />
+                      <Plus size={13} style={{ color: "#9A9590" }} strokeWidth={1.5} />
                     )}
                   </span>
                 </button>
@@ -86,7 +100,12 @@ export function FAQ() {
                     >
                       <p
                         className="pb-5"
-                        style={{ fontSize: "14px", lineHeight: 1.65, color: "#9A9590" }}
+                        style={{
+                          fontSize: "14px",
+                          lineHeight: 1.65,
+                          fontFamily: "'Inter', sans-serif",
+                          color: "#9A9590",
+                        }}
                       >
                         {f.a}
                       </p>

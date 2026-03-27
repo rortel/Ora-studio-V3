@@ -63,9 +63,9 @@ export function TemplateEngine({ template, asset, vault, brandLogoUrl, width, on
     if (!color.startsWith("vault:")) return color;
     const role = color.slice(6);
     const colors = vault?.colors as { hex: string; name: string; role: string }[] | undefined;
-    if (!colors?.length) return "#3B4FC4";
+    if (!colors?.length) return "#111111";
     const match = colors.find(c => c.role?.toLowerCase() === role || c.name?.toLowerCase() === role);
-    return match?.hex || colors[0]?.hex || "#3B4FC4";
+    return match?.hex || colors[0]?.hex || "#111111";
   }, [vault]);
 
   // ── Common props (rotation, stroke, shadow, opacity) for all layer types ──
@@ -391,7 +391,7 @@ export function TemplateEngine({ template, asset, vault, brandLogoUrl, width, on
         <button
           onClick={handleExport}
           className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
-          style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+          style={{ background: "var(--ora-signal, #111111)", color: "#fff", fontSize: "12px", fontWeight: 600 }}
         >
           <Download size={12} /> Export PNG
         </button>

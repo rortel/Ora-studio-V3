@@ -29,10 +29,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
       return (
         <div style={{
           minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#131211", color: "#E8E4DF", padding: 32, fontFamily: "Inter, system-ui, sans-serif",
+          background: "var(--background)", color: "var(--foreground)", padding: 32, fontFamily: "Inter, system-ui, sans-serif",
         }}>
           <div style={{ maxWidth: 560, width: "100%" }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: "#C45B4A", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#DC2626", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
               Runtime Error
             </p>
             <h1 style={{ fontSize: 20, fontWeight: 500, marginBottom: 16, letterSpacing: "-0.02em" }}>
@@ -40,7 +40,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
             </h1>
             <pre style={{
               fontSize: 11, lineHeight: 1.5, color: "#9A9590", whiteSpace: "pre-wrap", wordBreak: "break-word",
-              background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: 16,
+              background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 16,
               maxHeight: 300, overflow: "auto",
             }}>
               {this.state.error.stack}
@@ -49,7 +49,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
             <button
               onClick={() => window.location.reload()}
               style={{
-                marginTop: 16, padding: "10px 20px", background: "#E8E4DF", color: "#131211",
+                marginTop: 16, padding: "10px 20px", background: "var(--foreground)", color: "var(--background)",
                 border: "none", borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: "pointer",
               }}
             >

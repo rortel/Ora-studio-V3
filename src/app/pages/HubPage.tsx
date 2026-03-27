@@ -140,10 +140,10 @@ const contentTypes: { id: ContentType; label: string; icon: typeof ImageIcon }[]
    ═══════════════════════════════════ */
 
 const palettes = [
-  ["#7C3AED", "#8B5CF6", "#A78BFA", "#C4B5FD"],
-  ["#22D3EE", "#06B6D4", "#0891B2", "#155E75"],
-  ["#A3E635", "#84CC16", "#65A30D", "#4D7C0F"],
-  ["#FB923C", "#F97316", "#EA580C", "#9A3412"],
+  ["#111111", "#444444", "#888888", "#CCCCCC"],
+  ["#666666", "#8A8279", "#999999", "#BBBBBB"],
+  ["#111111", "#444444", "#888888", "#CCCCCC"],
+  ["#111111", "#3D3833", "#5C5550", "#7A756E"],
 ];
 
 function generateMockPreviews(type: ContentType, prompt: string, models: AIModel[]): GeneratedItem[] {
@@ -1309,60 +1309,35 @@ function HubPageContent() {
   return (
     <div className="flex flex-col bg-background relative h-[calc(100dvh-56px)] md:h-screen">
 
-      {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between px-5 h-12 border-b bg-card flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Zap size={15} style={{ color: "#E8E4DF" }} />
-            <span style={{ fontSize: "14px", fontWeight: 500, color: "#E8E4DF", letterSpacing: "-0.02em" }}>
-              Hub
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            {tabDef.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    // When switching to Library, auto-select campaign tab if there are campaign items
-                    if (tab.id === "library" && library.some(l => l.source === "campaign")) {
-                      setLibraryTab("campaign");
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${isActive ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
-                  style={{ fontSize: "12px", fontWeight: isActive ? 600 : 400 }}
-                >
-                  <Icon size={13} />
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span
-                      className={`px-1.5 py-0.5 rounded-full ${isActive ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
-                      style={{ fontSize: "9px", fontWeight: 600, minWidth: 18, textAlign: "center", display: "inline-block" }}
-                    >
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+      {/* ═══ TOP BAR — minimal ═══ */}
+      <div className="flex items-center justify-between px-5 h-12 border-b bg-card flex-shrink-0" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-2">
+          <Zap size={15} style={{ color: "var(--foreground)" }} />
+          <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
+            Studio
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <Link
-            to="/hub/vault"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
-            style={{ fontSize: "12px", fontWeight: 400 }}
-          >
-            Brand Vault <ArrowRight size={11} />
-          </Link>
-          <div className="w-px h-4 bg-border" />
+          {compareItems.length > 0 && (
+            <button
+              onClick={() => setActiveTab(activeTab === "compare" ? "generate" : "compare")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${activeTab === "compare" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
+              style={{ fontSize: "12px", fontWeight: activeTab === "compare" ? 600 : 400 }}
+            >
+              <Columns2 size={13} />
+              Compare
+              <span
+                className={`px-1.5 py-0.5 rounded-full ${activeTab === "compare" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
+                style={{ fontSize: "9px", fontWeight: 600, minWidth: 18, textAlign: "center", display: "inline-block" }}
+              >
+                {compareItems.length}
+              </span>
+            </button>
+          )}
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-ora-signal-light">
             <span className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
-            <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>4 models connected</span>
+            <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>{activeModels.length} models</span>
           </div>
         </div>
       </div>
@@ -1457,7 +1432,7 @@ function HubPageContent() {
             {contentTypes.map((ct) => {
               const Icon = ct.icon;
               const isActive = contentType === ct.id;
-              const typeColorMap: Record<string, string> = { image: "#5E6AD2", text: "#C27A98", film: "#D4956B", sound: "#C9A84C", campaign: "#C27A98" };
+              const typeColorMap: Record<string, string> = { image: "var(--accent)", text: "#888888", film: "#444444", sound: "#999999", campaign: "#888888" };
               const tc = typeColorMap[ct.id] || "#888";
               return (
                 <button
@@ -1467,8 +1442,8 @@ function HubPageContent() {
                   style={{
                     fontSize: "12px", fontWeight: isActive ? 600 : 400,
                     background: isActive ? tc : "transparent",
-                    color: isActive ? "#131211" : "#5C5856",
-                    border: isActive ? "none" : "1px solid rgba(255,255,255,0.06)",
+                    color: isActive ? "var(--background)" : "var(--text-secondary)",
+                    border: isActive ? "none" : "1px solid var(--border)",
                   }}
                 >
                   <Icon size={12} />
@@ -1547,8 +1522,8 @@ function HubPageContent() {
                         <span className="ml-1.5" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{m.provider}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        {m.speed === "fast" && <Zap size={9} className="text-green-500" />}
-                        {m.speed === "medium" && <Clock size={9} className="text-amber-500" />}
+                        {m.speed === "fast" && <Zap size={9} className="text-[var(--text-secondary)]" />}
+                        {m.speed === "medium" && <Clock size={9} className="text-[var(--text-tertiary)]" />}
                         {m.speed === "slow" && <Clock size={9} className="text-muted-foreground" />}
                       </div>
                     </button>
@@ -1660,7 +1635,7 @@ function HubPageContent() {
         <div className="px-4 pb-4 pt-1">
           <div
             className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-all focus-within:ring-1 focus-within:ring-white/10"
-            style={{ background: "#222120", border: refImage ? "1.5px solid rgba(255,255,255,0.16)" : "1px solid rgba(255,255,255,0.06)" }}
+            style={{ background: "var(--secondary)", border: refImage ? "1.5px solid var(--border-accent)" : "1px solid var(--border)" }}
             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files?.[0]; if (file && (file.type.startsWith("image/") || file.type === "application/pdf")) handleRefUpload(file); }}
           >
@@ -1979,14 +1954,14 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
     return (
       <div className="flex flex-col items-center justify-center py-24 px-6">
         <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-          style={{ background: "linear-gradient(135deg, #D4956B 0%, #C27A98 50%, #5E6AD2 100%)", boxShadow: "0 8px 24px rgba(94,106,210,0.15)" }}>
-          <Sparkles size={28} style={{ color: "#E8E4DF" }} />
+          style={{ background: "var(--accent-warm-light)", boxShadow: "var(--shadow-md)" }}>
+          <Sparkles size={28} style={{ color: "var(--foreground)" }} />
         </div>
-        <h2 className="mb-3" style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "#E8E4DF" }}>
+        <h2 className="mb-3" style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "var(--foreground)" }}>
           Generate anything
         </h2>
-        <p className="text-center max-w-[420px] mb-8" style={{ fontSize: "15px", lineHeight: 1.55, color: "#9A9590" }}>
-          Type what you need below. Select models to compare, then hit Enter. ORA generates from <span style={{ fontWeight: 600, color: "#E8E4DF" }}>{activeModels.length} model{activeModels.length > 1 ? "s" : ""}</span> — you pick the best.
+        <p className="text-center max-w-[420px] mb-8" style={{ fontSize: "15px", lineHeight: 1.55, color: "var(--text-tertiary)" }}>
+          Type what you need below. Select models to compare, then hit Enter. ORA generates from <span style={{ fontWeight: 600, color: "var(--foreground)" }}>{activeModels.length} model{activeModels.length > 1 ? "s" : ""}</span> — you pick the best.
         </p>
         <div className="flex flex-wrap justify-center gap-2 max-w-[500px]">
           {getSuggestions(contentType).map((s) => (
@@ -1994,7 +1969,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
               key={s}
               whileHover={{ scale: 1.05, y: -2 }}
               className="px-3.5 py-2 rounded-full cursor-default"
-              style={{ border: "1px solid rgba(255,255,255,0.10)", fontSize: "12px", fontWeight: 700, color: "#9A9590", background: "#222120" }}
+              style={{ border: "1px solid var(--border-strong)", fontSize: "12px", fontWeight: 700, color: "var(--text-tertiary)", background: "var(--secondary)" }}
             >
               {s}
             </motion.span>
@@ -2014,13 +1989,13 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <div className="grid grid-cols-2 gap-3 mb-8" style={{ maxWidth: 480 }}>
             {activeModels.slice(0, 4).map((model, i) => (
               <motion.div key={model.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.1 }}
-                className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
+                className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(17,17,17,0.04)" }}>
                 <div className="aspect-[4/3] flex items-center justify-center relative" style={{ background: "rgba(255,255,255,0.03)" }}>
                   <motion.div animate={{ opacity: [0.15, 0.5, 0.15] }} transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}>
                     <Sparkles size={20} style={{ color: "var(--ora-signal)" }} />
                   </motion.div>
                   <div className="absolute bottom-2 left-2 right-2">
-                    <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <div className="h-0.5 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
                       <motion.div initial={{ width: "0%" }} animate={{ width: "100%" }}
                         transition={{ duration: 6 + i * 1.5, ease: "easeInOut" }}
                         className="h-full rounded-full" style={{ background: "var(--ora-signal)" }} />
@@ -2104,12 +2079,12 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <div className="flex items-center gap-2.5">
             <span style={{ fontSize: "13px", fontWeight: 500, color: "#fff" }}>{currentItem.model.name}</span>
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)" }}>{currentItem.model.provider}</span>
-            {currentItem.model.speed === "fast" && <Zap size={10} className="text-green-400" />}
+            {currentItem.model.speed === "fast" && <Zap size={10} className="text-[var(--text-secondary)]" />}
           </div>
           <div className="flex items-center gap-3">
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{currentItem.timestamp}</span>
             {generations.length > 1 && (
-              <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "11px", fontWeight: 500, color: "#fff", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(12px)" }}>
+              <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "11px", fontWeight: 500, color: "#fff", background: "var(--border-accent)", backdropFilter: "blur(12px)" }}>
                 {safeIndex + 1} / {generations.length}
               </span>
             )}
@@ -2180,7 +2155,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
                     {imgUrl ? (
                       <img src={imgUrl} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.06)" }}>
+                      <div className="w-full h-full flex items-center justify-center" style={{ background: "var(--border)" }}>
                         <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.3)", fontWeight: 500 }}>{item.model.name.slice(0, 6)}</span>
                       </div>
                     )}
@@ -2194,7 +2169,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <div className="flex items-center justify-center gap-2 px-4 pb-4 pt-1">
             <button onClick={() => onSave(currentItem)}
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${currentItem.saved ? "text-white" : "text-white/70 hover:text-white"}`}
-              style={{ background: currentItem.saved ? "rgba(59,79,196,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
+              style={{ background: currentItem.saved ? "rgba(17,17,17,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               {currentItem.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
               {currentItem.saved ? "Saved" : "Save to Library"}
             </button>
@@ -2207,7 +2182,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
             )}
             <button onClick={() => onCompareAll(generations)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
-              style={{ background: generations.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
+              style={{ background: generations.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(17,17,17,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               <Columns2 size={14} /> Compare All ({generations.length})
             </button>
             {currentItem.type === "image" && currentItem.preview.kind === "image" && (currentItem.preview.imageUrl) && onAnimate && (
@@ -2300,7 +2275,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
         </div>
         {/* Type badge */}
         <div className="absolute top-4 left-4 px-3 py-1.5 rounded-full backdrop-blur-md" style={{ background: "rgba(255,255,255,0.9)", border: "2px solid rgba(0,0,0,0.1)" }}>
-          <span style={{ fontSize: "11px", fontWeight: 600, color: "#E8E4DF", textTransform: "uppercase", letterSpacing: "0.05em" }}>{item.type}</span>
+          <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{item.type}</span>
         </div>
       </div>
 
@@ -2310,8 +2285,8 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
           <div className="flex items-center gap-2">
             <span style={{ fontSize: "15px", fontWeight: 700, color: "var(--foreground)" }}>{item.model.name}</span>
             {item.model.speed === "fast" && (
-              <div className="px-2 py-0.5 rounded-full bg-gradient-to-r from-[#10B981] to-[#059669]">
-                <span style={{ fontSize: "9px", fontWeight: 800, color: "white", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fast</span>
+              <div className="px-2 py-0.5 rounded-full bg-[var(--accent)]">
+                <span style={{ fontSize: "9px", fontWeight: 500, color: "white", textTransform: "uppercase", letterSpacing: "0.06em" }}>Fast</span>
               </div>
             )}
           </div>
@@ -2320,7 +2295,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); onSave(); }}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#5E6AD2] to-[#4B51A8] text-white shadow-lg" : "bg-[#222120] text-foreground hover:bg-[#2a2928] hover:scale-105"}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-[var(--secondary)] text-foreground hover:bg-[var(--surface-3)] hover:scale-105"}`}
             style={{ fontSize: "12px", fontWeight: 700 }}
           >
             {item.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
@@ -2464,18 +2439,18 @@ function PreviewRenderer({ preview, large = false }: { preview: GenerationPrevie
 
     case "code":
       return (
-        <div className="w-full h-full p-3 font-mono overflow-hidden" style={{ background: "#1a1a2e" }}>
+        <div className="w-full h-full p-3 font-mono overflow-hidden" style={{ background: "#1a1a1a" }}>
           <div className="flex items-center gap-1 mb-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-400/50" />
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-400/50" />
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
             <span className="ml-2" style={{ fontSize: "8px", color: "rgba(255,255,255,0.3)" }}>{preview.language}</span>
           </div>
           <pre className="text-white/70 whitespace-pre-wrap" style={{ fontSize: large ? "11px" : "8px", lineHeight: 1.5 }}>
             {preview.snippet}
           </pre>
           <div className="mt-auto pt-1">
-            <span style={{ fontSize: "8px", color: "rgba(255,255,255,0.25)" }}>{preview.lines} lines</span>
+            <span style={{ fontSize: "8px", color: "rgba(17,17,17,0.18)" }}>{preview.lines} lines</span>
           </div>
         </div>
       );
@@ -2862,16 +2837,16 @@ function CompareView({ items, onRemove, onSave, onExport }: {
               <img src={(items[1].preview as any).imageUrl || (items[1].preview as any).palette?.[0]} alt="" className="w-full h-full object-contain" style={{ background: "#f5f5f7" }} />
             </div>
             {/* Slider line */}
-            <div className="absolute top-0 bottom-0 w-0.5 bg-white z-10" style={{ left: `${sliderPosition}%`, boxShadow: "0 0 8px rgba(0,0,0,0.3)" }}>
-              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-white flex items-center justify-center" style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+            <div className="absolute top-0 bottom-0 w-0.5 bg-white z-10" style={{ left: `${sliderPosition}%`, boxShadow: "0 0 8px rgba(0,0,0,0.05)" }}>
+              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-white flex items-center justify-center" style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
                 <ChevronLeft size={10} style={{ color: "#666" }} /><ChevronRight size={10} style={{ color: "#666" }} />
               </div>
             </div>
             {/* Labels */}
-            <div className="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-lg" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
+            <div className="absolute top-3 left-3 z-20 px-2.5 py-1 rounded-lg" style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(8px)" }}>
               <span style={{ fontSize: "11px", fontWeight: 500, color: "#fff" }}>{items[0].model.name}</span>
             </div>
-            <div className="absolute top-3 right-3 z-20 px-2.5 py-1 rounded-lg" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}>
+            <div className="absolute top-3 right-3 z-20 px-2.5 py-1 rounded-lg" style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(8px)" }}>
               <span style={{ fontSize: "11px", fontWeight: 500, color: "#fff" }}>{items[1].model.name}</span>
             </div>
           </div>
@@ -2908,7 +2883,7 @@ function CompareView({ items, onRemove, onSave, onExport }: {
                   <div className="flex items-center gap-2 mb-2">
                     <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{item.model.name}</span>
                     <span className="px-1.5 py-0.5 rounded bg-secondary" style={{ fontSize: "9px", fontWeight: 500, color: "var(--muted-foreground)" }}>{item.model.provider}</span>
-                    {item.model.speed === "fast" && <Zap size={9} className="text-green-500" />}
+                    {item.model.speed === "fast" && <Zap size={9} className="text-[var(--text-secondary)]" />}
                   </div>
                   <div className="flex items-center gap-1.5 mb-2">
                     <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>Quality</span>
@@ -2971,12 +2946,12 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
         style={{ background: "rgba(0,0,0,0.98)" }}
       >
         {/* Enhanced Top bar */}
-        <div className="flex items-center justify-between px-8 py-5 flex-shrink-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.4) 0%, transparent 100%)" }}>
+        <div className="flex items-center justify-between px-8 py-5 flex-shrink-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.06) 0%, transparent 100%)" }}>
           <div className="flex items-center gap-4">
-            <span style={{ fontSize: "18px", fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>{item.model.name}</span>
+            <span style={{ fontSize: "18px", fontWeight: 500, color: "#fff", letterSpacing: "-0.01em" }}>{item.model.name}</span>
             <span style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{item.model.provider}</span>
             {item.model.speed === "fast" && (
-              <div className="px-2.5 py-1 rounded-full bg-gradient-to-r from-[#10B981] to-[#059669] flex items-center gap-1">
+              <div className="px-2.5 py-1 rounded-full bg-[var(--accent)] flex items-center gap-1">
                 <Zap size={12} fill="white" color="white" />
                 <span style={{ fontSize: "10px", fontWeight: 900, color: "white", textTransform: "uppercase", letterSpacing: "0.04em" }}>Fast</span>
               </div>
@@ -2984,14 +2959,14 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={onSave}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-gradient-to-r from-[#5E6AD2] to-[#4B51A8] text-white shadow-lg" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
-              style={{ fontSize: "15px", fontWeight: 800 }}>
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
+              style={{ fontSize: "15px", fontWeight: 500 }}>
               {item.saved ? <Check size={16} /> : <Heart size={16} />}
               {item.saved ? "Saved" : "Save"}
             </button>
             <button onClick={onExport}
               className="flex items-center gap-2.5 px-6 py-3 rounded-xl bg-white/10 text-white/70 hover:text-white hover:bg-white/20 cursor-pointer transition-all"
-              style={{ fontSize: "15px", fontWeight: 800 }}>
+              style={{ fontSize: "15px", fontWeight: 500 }}>
               <Download size={16} /> Export
             </button>
             <button onClick={onClose}
@@ -3027,7 +3002,7 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
         </div>
 
         {/* Enhanced Bottom: prompt */}
-        <div className="flex-shrink-0 px-8 pb-6 text-center" style={{ background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.4) 100%)" }}>
+        <div className="flex-shrink-0 px-8 pb-6 text-center" style={{ background: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.06) 100%)" }}>
           <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.5)", lineHeight: 1.6, fontWeight: 500, fontStyle: "italic" }}>
             "{item.prompt}"
           </p>

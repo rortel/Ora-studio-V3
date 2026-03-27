@@ -245,7 +245,7 @@ function AdminPageContent() {
     return (
       <div className="min-h-screen flex items-center justify-center px-6">
         <div className="text-center max-w-[400px]">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(212,24,61,0.08)" }}>
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(17,17,17,0.08)" }}>
             <Shield size={22} style={{ color: "var(--destructive)" }} />
           </div>
           <h2 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", marginBottom: "8px" }}>
@@ -312,7 +312,7 @@ function AdminPageContent() {
 
         {/* Error banner */}
         {error && (
-          <div className="mb-6 p-4 rounded-xl border flex items-start gap-3" style={{ borderColor: "rgba(212,24,61,0.15)", background: "rgba(212,24,61,0.04)" }}>
+          <div className="mb-6 p-4 rounded-xl border flex items-start gap-3" style={{ borderColor: "rgba(17,17,17,0.15)", background: "rgba(17,17,17,0.04)" }}>
             <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: "var(--destructive)" }} />
             <p style={{ fontSize: "13px", color: "var(--destructive)", lineHeight: 1.5 }}>{error}</p>
           </div>
@@ -389,8 +389,8 @@ function AdminPageContent() {
 function OverviewTab({ overview }: { overview: AdminOverview }) {
   const kpis = [
     { label: "Total Users", value: overview.totalUsers, icon: Users, color: "var(--ora-signal)" },
-    { label: "MRR", value: `${overview.mrr}`, prefix: "EUR ", icon: DollarSign, color: "#16a34a" },
-    { label: "Credits Used", value: overview.totalCreditsUsed, icon: Zap, color: "#f59e0b" },
+    { label: "MRR", value: `${overview.mrr}`, prefix: "EUR ", icon: DollarSign, color: "#666666" },
+    { label: "Credits Used", value: overview.totalCreditsUsed, icon: Zap, color: "#999999" },
     { label: "Credits Allocated", value: overview.totalCreditsAllocated, icon: BarChart3, color: "var(--accent)" },
   ];
 
@@ -427,9 +427,9 @@ function OverviewTab({ overview }: { overview: AdminOverview }) {
         <div className="grid grid-cols-4 gap-4">
           {[
             { plan: "Free (legacy)", count: overview.planCounts.free, color: "var(--muted-foreground)" },
-            { plan: "Starter", count: overview.planCounts.starter || 0, color: "#f59e0b" },
+            { plan: "Starter", count: overview.planCounts.starter || 0, color: "#999999" },
             { plan: "Pro", count: overview.planCounts.generate, color: "var(--ora-signal)" },
-            { plan: "Business", count: overview.planCounts.studio, color: "#16a34a" },
+            { plan: "Business", count: overview.planCounts.studio, color: "#666666" },
           ].map((p) => (
             <div key={p.plan} className="text-center">
               <span style={{ fontSize: "32px", fontWeight: 500, color: p.color }}>{p.count}</span>
@@ -440,9 +440,9 @@ function OverviewTab({ overview }: { overview: AdminOverview }) {
         {overview.totalUsers > 0 && (
           <div className="mt-4 h-2 rounded-full bg-secondary overflow-hidden flex">
             {overview.planCounts.free > 0 && <div style={{ width: `${(overview.planCounts.free / overview.totalUsers) * 100}%`, background: "var(--muted-foreground)" }} />}
-            {(overview.planCounts as any).starter > 0 && <div style={{ width: `${((overview.planCounts as any).starter / overview.totalUsers) * 100}%`, background: "#f59e0b" }} />}
+            {(overview.planCounts as any).starter > 0 && <div style={{ width: `${((overview.planCounts as any).starter / overview.totalUsers) * 100}%`, background: "#999999" }} />}
             {overview.planCounts.generate > 0 && <div style={{ width: `${(overview.planCounts.generate / overview.totalUsers) * 100}%`, background: "var(--ora-signal)" }} />}
-            {overview.planCounts.studio > 0 && <div style={{ width: `${(overview.planCounts.studio / overview.totalUsers) * 100}%`, background: "#16a34a" }} />}
+            {overview.planCounts.studio > 0 && <div style={{ width: `${(overview.planCounts.studio / overview.totalUsers) * 100}%`, background: "#666666" }} />}
           </div>
         )}
       </div>
@@ -469,7 +469,7 @@ function UsersTab({ users, search, setSearch, editingUser, setEditingUser, editP
   editingUser: string | null; setEditingUser: (id: string | null) => void;
   editPlan: string; setEditPlan: (p: string) => void; onPlanChange: (userId: string) => void;
 }) {
-  const planBadgeColor: Record<string, string> = { free: "var(--muted-foreground)", starter: "#f59e0b", generate: "var(--ora-signal)", studio: "#16a34a" };
+  const planBadgeColor: Record<string, string> = { free: "var(--muted-foreground)", starter: "#999999", generate: "var(--ora-signal)", studio: "#666666" };
 
   return (
     <div className="space-y-4">
@@ -578,7 +578,7 @@ function FinancialTab({ overview, users }: { overview: AdminOverview; users: Adm
         <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", marginBottom: "16px" }}>Revenue Breakdown</h3>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#f59e0b" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Starter (EUR 29/mo)</span></div>
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#999999" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Starter (EUR 29/mo)</span></div>
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{(overview.planCounts as any).starter || 0} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {(overview as any).starterRevenue || 0}</span></div>
           </div>
           <div className="flex items-center justify-between">
@@ -586,7 +586,7 @@ function FinancialTab({ overview, users }: { overview: AdminOverview; users: Adm
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{overview.planCounts.generate} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {overview.generateRevenue}</span></div>
           </div>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#16a34a" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Business (EUR 149/mo)</span></div>
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#666666" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Business (EUR 149/mo)</span></div>
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{overview.planCounts.studio} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {overview.studioRevenue}</span></div>
           </div>
           <div className="border-t border-border pt-3 flex items-center justify-between">
@@ -603,7 +603,7 @@ function FinancialTab({ overview, users }: { overview: AdminOverview; users: Adm
           <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>of allocated credits consumed</span>
         </div>
         <div className="h-3 bg-secondary rounded-full overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Number(creditUtilization))}%`, background: Number(creditUtilization) > 80 ? "#f59e0b" : "var(--ora-signal)" }} />
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Number(creditUtilization))}%`, background: Number(creditUtilization) > 80 ? "#999999" : "var(--ora-signal)" }} />
         </div>
         <div className="flex items-center justify-between mt-2">
           <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{overview.totalCreditsUsed.toLocaleString()} used</span>
@@ -617,11 +617,11 @@ function FinancialTab({ overview, users }: { overview: AdminOverview; users: Adm
 /* ─── COSTS TAB (API Cost Tracking) ─── */
 
 const PROVIDER_COLORS: Record<string, string> = {
-  runware: "#10b981", apipod: "#3b4fc4", fal: "#f59e0b", replicate: "#8b5cf6",
-  luma: "#06b6d4", higgsfield: "#ec4899", kling: "#f97316", unknown: "#6b7280",
+  runware: "#666666", apipod: "#444444", fal: "#999999", replicate: "#888888",
+  luma: "#555555", higgsfield: "#777777", kling: "#999999", unknown: "#AAAAAA",
 };
 const TYPE_COLORS: Record<string, string> = {
-  text: "#3b4fc4", image: "#10b981", video: "#f59e0b", audio: "#8b5cf6",
+  text: "#444444", image: "#666666", video: "#999999", audio: "#888888",
 };
 
 // Fixed infrastructure costs (EUR/month)
@@ -659,13 +659,13 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
   const pieData = Object.entries(byProvider).map(([name, d]: [string, any]) => ({
     name: name.charAt(0).toUpperCase() + name.slice(1),
     value: Math.round(d.totalCostEur * 100) / 100,
-    color: PROVIDER_COLORS[name] || "#6b7280",
+    color: PROVIDER_COLORS[name] || "#AAAAAA",
   })).filter(d => d.value > 0);
 
   return (
     <div className="space-y-6">
       {!costsData && (
-        <div className="p-4 rounded-xl border flex items-start gap-3" style={{ borderColor: "rgba(212,24,61,0.15)", background: "rgba(212,24,61,0.04)" }}>
+        <div className="p-4 rounded-xl border flex items-start gap-3" style={{ borderColor: "rgba(17,17,17,0.15)", background: "rgba(17,17,17,0.04)" }}>
           <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: "var(--destructive)" }} />
           <p style={{ fontSize: "13px", color: "var(--destructive)", lineHeight: 1.5 }}>No cost data loaded. Click Refresh to reload.</p>
         </div>
@@ -675,8 +675,8 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: "Total Cost", value: `EUR ${total.costEur.toFixed(2)}`, sub: "API provider spend", color: "var(--destructive)" },
-          { label: "Total Revenue", value: `EUR ${total.revenueEur.toFixed(2)}`, sub: "Credits consumed", color: "#16a34a" },
-          { label: "Net Margin", value: `EUR ${total.marginEur.toFixed(2)}`, sub: `${marginPct}% margin`, color: total.marginEur >= 0 ? "#16a34a" : "var(--destructive)" },
+          { label: "Total Revenue", value: `EUR ${total.revenueEur.toFixed(2)}`, sub: "Credits consumed", color: "#666666" },
+          { label: "Net Margin", value: `EUR ${total.marginEur.toFixed(2)}`, sub: `${marginPct}% margin`, color: total.marginEur >= 0 ? "#666666" : "var(--destructive)" },
           { label: "Generations", value: `${total.count}`, sub: "Total API calls", color: "var(--ora-signal)" },
           { label: "Avg Cost/Gen", value: `EUR ${total.count > 0 ? (total.costEur / total.count).toFixed(4) : "0"}`, sub: "Per generation", color: "var(--accent)" },
         ].map((kpi, i) => (
@@ -708,11 +708,11 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
             </div>
             <div className="flex items-center justify-between">
               <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>MRR</span>
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "#16a34a" }}>+EUR {overview.mrr}</span>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#666666" }}>+EUR {overview.mrr}</span>
             </div>
             <div className="border-t border-border pt-3 flex items-center justify-between">
               <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>Net P&L</span>
-              <span style={{ fontSize: "16px", fontWeight: 600, color: netAfterFixed >= 0 ? "#16a34a" : "var(--destructive)" }}>
+              <span style={{ fontSize: "16px", fontWeight: 600, color: netAfterFixed >= 0 ? "#666666" : "var(--destructive)" }}>
                 {netAfterFixed >= 0 ? "+" : ""}EUR {netAfterFixed.toFixed(2)}
               </span>
             </div>
@@ -725,12 +725,12 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
             {FIXED_COSTS.map((c) => (
               <div key={c.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#16a34a" }} />
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
                   <span style={{ fontSize: "13px", color: "var(--foreground)" }}>{c.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>EUR {c.cost}</span>
-                  <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, color: "#16a34a", background: "rgba(22,163,74,0.08)" }}>
+                  <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, color: "#666666", background: "rgba(17,17,17,0.08)" }}>
                     CONFIRMED
                   </span>
                 </div>
@@ -756,22 +756,22 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                   <div key={name}>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ background: PROVIDER_COLORS[name] || "#6b7280" }} />
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ background: PROVIDER_COLORS[name] || "#AAAAAA" }} />
                         <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)", textTransform: "capitalize" }}>{name}</span>
                         <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>({d.count} calls)</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span style={{ fontSize: "12px", color: "var(--destructive)" }}>-EUR {d.totalCostEur.toFixed(4)}</span>
-                        <span style={{ fontSize: "12px", color: "#16a34a" }}>+EUR {d.totalRevenue.toFixed(2)}</span>
+                        <span style={{ fontSize: "12px", color: "#666666" }}>+EUR {d.totalRevenue.toFixed(2)}</span>
                       </div>
                     </div>
                     <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: PROVIDER_COLORS[name] || "#6b7280" }} />
+                      <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: PROVIDER_COLORS[name] || "#AAAAAA" }} />
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{d.avgLatency}ms avg</span>
                       <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{d.successCount} ok / {d.failCount} fail</span>
-                      <span style={{ fontSize: "10px", fontWeight: 500, color: d.totalMargin >= 0 ? "#16a34a" : "var(--destructive)" }}>
+                      <span style={{ fontSize: "10px", fontWeight: 500, color: d.totalMargin >= 0 ? "#666666" : "var(--destructive)" }}>
                         Margin: EUR {d.totalMargin.toFixed(4)}
                       </span>
                     </div>
@@ -853,11 +853,11 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                   </div>
                   <div className="flex justify-between">
                     <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>Revenue</span>
-                    <span style={{ fontSize: "10px", color: "#16a34a" }}>EUR {(d.totalRevenue || 0).toFixed(2)}</span>
+                    <span style={{ fontSize: "10px", color: "#666666" }}>EUR {(d.totalRevenue || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between border-t border-border pt-1">
                     <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)" }}>Margin</span>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: (d.totalMargin || 0) >= 0 ? "#16a34a" : "var(--destructive)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: (d.totalMargin || 0) >= 0 ? "#666666" : "var(--destructive)" }}>
                       EUR {(d.totalMargin || 0).toFixed(4)}
                     </span>
                   </div>
@@ -875,7 +875,7 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
           {/* Legend */}
           <div className="flex items-center gap-5 mb-4">
             <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: "var(--destructive)" }} /><span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Cost</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: "#16a34a" }} /><span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Revenue</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-sm" style={{ background: "#666666" }} /><span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Revenue</span></div>
           </div>
           {/* Bar chart */}
           <div className="flex items-end gap-1" style={{ height: "200px" }}>
@@ -885,7 +885,7 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                 <div key={i} className="flex-1 flex flex-col items-center gap-0.5" style={{ height: "100%" }}>
                   <div className="flex-1 w-full flex items-end justify-center gap-0.5">
                     <div className="rounded-t-sm" style={{ width: "40%", height: `${Math.max(2, (d.cost / maxVal) * 100)}%`, background: "var(--destructive)", opacity: 0.8, minHeight: d.cost > 0 ? "4px" : "0" }} title={`Cost: EUR ${d.cost.toFixed(4)}`} />
-                    <div className="rounded-t-sm" style={{ width: "40%", height: `${Math.max(2, (d.revenue / maxVal) * 100)}%`, background: "#16a34a", opacity: 0.8, minHeight: d.revenue > 0 ? "4px" : "0" }} title={`Rev: EUR ${d.revenue.toFixed(4)}`} />
+                    <div className="rounded-t-sm" style={{ width: "40%", height: `${Math.max(2, (d.revenue / maxVal) * 100)}%`, background: "#666666", opacity: 0.8, minHeight: d.revenue > 0 ? "4px" : "0" }} title={`Rev: EUR ${d.revenue.toFixed(4)}`} />
                   </div>
                   <span style={{ fontSize: "9px", color: "var(--muted-foreground)", writingMode: "horizontal-tb" }}>{d.day}</span>
                 </div>
@@ -964,11 +964,11 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                   <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--foreground)" }}>{entry.model}</td>
                   <td className="px-3 py-2" style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--muted-foreground)" }}>{entry.provider}</td>
                   <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--destructive)" }}>EUR {(entry.costEur || 0).toFixed(4)}</td>
-                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "#16a34a" }}>EUR {(entry.revenueEur || 0).toFixed(2)}</td>
-                  <td className="px-3 py-2" style={{ fontSize: "11px", fontWeight: 500, color: (entry.marginEur || 0) >= 0 ? "#16a34a" : "var(--destructive)" }}>EUR {(entry.marginEur || 0).toFixed(4)}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "#666666" }}>EUR {(entry.revenueEur || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", fontWeight: 500, color: (entry.marginEur || 0) >= 0 ? "#666666" : "var(--destructive)" }}>EUR {(entry.marginEur || 0).toFixed(4)}</td>
                   <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{entry.latencyMs}ms</td>
                   <td className="px-3 py-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: entry.success ? "#16a34a" : "var(--destructive)" }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: entry.success ? "#666666" : "var(--destructive)" }} />
                   </td>
                 </tr>
               ))}
@@ -1148,8 +1148,8 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
   }, []);
 
   const statusColor = (status: string) => {
-    if (status === "OK") return "#16a34a";
-    if (status === "SKIP") return "#f59e0b";
+    if (status === "OK") return "#666666";
+    if (status === "SKIP") return "#999999";
     return "var(--destructive)";
   };
 
@@ -1186,10 +1186,10 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
           </button>
         </div>
         {healthStatus === "ok" && (
-          <div className="p-3 rounded-lg" style={{ background: "rgba(22,163,74,0.06)" }}>
+          <div className="p-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)" }}>
             <div className="flex items-center gap-2">
               {statusDot("OK")}
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "#16a34a" }}>Server OK</span>
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "#666666" }}>Server OK</span>
               <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>({healthMs}ms)</span>
             </div>
             {healthBody && (
@@ -1200,7 +1200,7 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
           </div>
         )}
         {healthStatus === "fail" && (
-          <div className="p-3 rounded-lg" style={{ background: "rgba(212,24,61,0.06)" }}>
+          <div className="p-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)" }}>
             <div className="flex items-center gap-2">
               {statusDot("FAIL")}
               <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--destructive)" }}>Server unreachable</span>
@@ -1245,10 +1245,10 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
               return (
                 <div key={key} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full" style={{ background: isSet ? "#16a34a" : "var(--destructive)" }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: isSet ? "#666666" : "var(--destructive)" }} />
                     <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)", textTransform: "uppercase" }}>{key}</span>
                   </div>
-                  <span style={{ fontSize: "11px", color: isSet ? "#16a34a" : "var(--destructive)", fontFamily: "monospace" }}>{val || "NOT SET"}</span>
+                  <span style={{ fontSize: "11px", color: isSet ? "#666666" : "var(--destructive)", fontFamily: "monospace" }}>{val || "NOT SET"}</span>
                 </div>
               );
             })}
@@ -1353,7 +1353,7 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
           ))}
         </div>
         {genTest && (
-          <div className="p-4 rounded-lg border border-border" style={{ background: genTest.result.success ? "rgba(22,163,74,0.04)" : "rgba(212,24,61,0.04)" }}>
+          <div className="p-4 rounded-lg border border-border" style={{ background: genTest.result.success ? "rgba(17,17,17,0.04)" : "rgba(17,17,17,0.04)" }}>
             <div className="flex items-center gap-2 mb-2">
               {statusDot(genTest.result.success ? "OK" : "FAIL")}
               <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
@@ -1393,7 +1393,7 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
 function LogEntry({ log, expanded = false }: { log: SystemLog; expanded?: boolean }) {
   const [open, setOpen] = useState(false);
   const typeColors: Record<string, string> = {
-    signup: "#16a34a", generation: "var(--ora-signal)", admin_plan_change: "#f59e0b", error: "var(--destructive)",
+    signup: "#666666", generation: "var(--ora-signal)", admin_plan_change: "#999999", error: "var(--destructive)",
   };
 
   return (

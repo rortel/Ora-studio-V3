@@ -181,17 +181,17 @@ const mockLibraryAgency: LibraryAsset[] = [
 
 const mockActivityFree: ActivityItem[] = [
   { id: "act1", action: "Generated image", detail: "Abstract pattern via AI Hub", timestamp: "2h ago", icon: ImageIcon, iconColor: "var(--ora-signal)" },
-  { id: "act2", action: "Generated text", detail: "Product description draft", timestamp: "Yesterday", icon: FileText, iconColor: "#6b7ec9" },
+  { id: "act2", action: "Generated text", detail: "Product description draft", timestamp: "Yesterday", icon: FileText, iconColor: "#666666" },
   { id: "act3", action: "Signed up", detail: "Welcome to ORA", timestamp: "2 days ago", icon: Sparkles, iconColor: "var(--ora-signal)" },
 ];
 
 const mockActivityAgency: ActivityItem[] = [
   { id: "act1", action: "Ran flow", detail: "Product Launch Campaign — 4 steps completed", timestamp: "32m ago", icon: GitBranch, iconColor: "var(--ora-signal)" },
-  { id: "act2", action: "Remixed content", detail: "Competitor ad → 4 brand-compliant formats", timestamp: "1h ago", icon: RefreshCcw, iconColor: "#6b7ec9" },
-  { id: "act3", action: "Exported campaign", detail: "Q2 Launch — LinkedIn + Email + Ad + Stories", timestamp: "2h ago", icon: Download, iconColor: "#16a34a" },
-  { id: "act4", action: "Brand score: 96/100", detail: "Newsletter copy validated by Compliance Guard", timestamp: "3h ago", icon: Shield, iconColor: "#16a34a" },
+  { id: "act2", action: "Remixed content", detail: "Competitor ad → 4 brand-compliant formats", timestamp: "1h ago", icon: RefreshCcw, iconColor: "#666666" },
+  { id: "act3", action: "Exported campaign", detail: "Q2 Launch — LinkedIn + Email + Ad + Stories", timestamp: "2h ago", icon: Download, iconColor: "#666666" },
+  { id: "act4", action: "Brand score: 96/100", detail: "Newsletter copy validated by Compliance Guard", timestamp: "3h ago", icon: Shield, iconColor: "#666666" },
   { id: "act5", action: "Generated visuals", detail: "4 variants via AI Hub (Flux Pro, DALL-E 3)", timestamp: "Yesterday", icon: ImageIcon, iconColor: "var(--ora-signal)" },
-  { id: "act6", action: "Updated Brand Vault", detail: "Added 12 new approved terms", timestamp: "Yesterday", icon: BookOpen, iconColor: "#d97706" },
+  { id: "act6", action: "Updated Brand Vault", detail: "Added 12 new approved terms", timestamp: "Yesterday", icon: BookOpen, iconColor: "#999999" },
   { id: "act7", action: "Team invite sent", detail: "sarah@acmecorp.com — Editor role", timestamp: "2 days ago", icon: Users, iconColor: "#4a5568" },
 ];
 
@@ -286,10 +286,10 @@ function ProfilePageContent() {
           // Build activity from most recent library items
           const typeActions: Record<string, { action: string; icon: typeof Sparkles; iconColor: string }> = {
             image: { action: "Generated image", icon: ImageIcon, iconColor: "var(--ora-signal)" },
-            text: { action: "Generated text", icon: FileText, iconColor: "#6b7ec9" },
-            code: { action: "Generated code", icon: Code2, iconColor: "#16a34a" },
-            film: { action: "Generated video", icon: Film, iconColor: "#d97706" },
-            sound: { action: "Generated audio", icon: Music, iconColor: "#c026d3" },
+            text: { action: "Generated text", icon: FileText, iconColor: "#666666" },
+            code: { action: "Generated code", icon: Code2, iconColor: "#666666" },
+            film: { action: "Generated video", icon: Film, iconColor: "#999999" },
+            sound: { action: "Generated audio", icon: Music, iconColor: "#888888" },
           };
           const acts: ActivityItem[] = items.slice(0, 8).map((item, i) => {
             const cfg = typeActions[item.type] || typeActions.text;
@@ -357,7 +357,7 @@ function ProfilePageContent() {
           {authCtxUser && (
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
                 <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
                   Signed in as {authCtxUser.email}
                 </span>
@@ -731,9 +731,9 @@ function TeamTab() {
             <span className="flex items-center px-2 py-0.5 rounded bg-secondary self-center justify-self-start" style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)" }}>{member.role}</span>
             <div className="flex items-center">
               {member.status === "active" ? (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#16a34a" }}><span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Active</span>
+                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#666666" }}><span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" /> Active</span>
               ) : (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#d97706" }}><Clock size={9} /> Invited</span>
+                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#999999" }}><Clock size={9} /> Invited</span>
               )}
             </div>
           </div>
@@ -748,10 +748,10 @@ function TeamTab() {
    ═══════════════════════════════════ */
 
 const SOCIAL_PLATFORMS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#0077B5" },
-  { id: "instagram", label: "Instagram", icon: Instagram, color: "#E1306C" },
-  { id: "facebook", label: "Facebook", icon: Facebook, color: "#1877F2" },
-  { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#1DA1F2" },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#666666" },
+  { id: "instagram", label: "Instagram", icon: Instagram, color: "#666666" },
+  { id: "facebook", label: "Facebook", icon: Facebook, color: "#666666" },
+  { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#666666" },
 ];
 
 function SocialAccountsSection() {
@@ -852,8 +852,8 @@ function SocialAccountsSection() {
               </div>
               {connected ? (
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.08)", fontSize: "10px", fontWeight: 600, color: "#10b981" }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#10b981" }} />
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(17,17,17,0.08)", fontSize: "10px", fontWeight: 600, color: "#666666" }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
                     Connected
                   </span>
                   <button

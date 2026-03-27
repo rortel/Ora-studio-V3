@@ -1,73 +1,52 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Menu, X, Shield, LogOut, User } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { motion, AnimatePresence } from "motion/react";
 import { OraLogo } from "./OraLogo";
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const avatarMenuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
-  const isHub = location.pathname.startsWith("/hub");
-  const isLanding = location.pathname === "/";
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     function handleScroll() {
-      setScrolled(window.scrollY > 60);
+      setScrolled(window.scrollY > 20);
     }
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as Node)) setAvatarMenuOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
+  const isHome = location.pathname === "/";
+  // On homepage: white text when at top (over video), dark text when scrolled
+  const lightMode = isHome && !scrolled;
 
-  const marketingLinks = [
+  const links = [
     { label: "Models", href: "/models" },
     { label: "Pricing", href: "/pricing" },
   ];
-  const hubLinks = [
-    { label: "Hub", href: "/hub" },
-    { label: "Library", href: "/hub/library" },
-    { label: "Brand Vault", href: "/hub/vault" },
-    { label: "Analytics", href: "/hub/analytics" },
-    { label: "Calendar", href: "/hub/calendar" },
-  ];
-  const links = isHub ? hubLinks : marketingLinks;
-  const userInitial = profile?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U";
-
-  const handleSignOut = async () => { setAvatarMenuOpen(false); await signOut(); navigate("/"); };
 
   return (
     <>
       <nav
-        className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl transition-all duration-500"
+        className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
         style={{
-          background: isLanding && !scrolled
-            ? "rgba(19,18,17,0.2)"
-            : "rgba(19,18,17,0.85)",
-          borderBottom: isLanding && !scrolled
-            ? "1px solid transparent"
-            : "1px solid rgba(255,255,255,0.06)",
+          background: scrolled ? "rgba(255,255,255,0.92)" : "transparent",
+          backdropFilter: scrolled ? "blur(20px) saturate(180%)" : "none",
+          WebkitBackdropFilter: scrolled ? "blur(20px) saturate(180%)" : "none",
+          borderBottom: scrolled ? "1px solid rgba(0,0,0,0.06)" : "1px solid transparent",
         }}
       >
-        <div className="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="max-w-[1200px] mx-auto px-5 sm:px-6 h-16 flex items-center justify-between">
           {/* Logo */}
           <Link to="/" className="flex items-center">
-            <OraLogo size={30} animate={false} color="#E8E4DF" />
+            <OraLogo size={26} animate={false} color={lightMode ? "#FFFFFF" : "var(--text-primary)"} />
           </Link>
 
-          {/* Desktop nav links */}
+          {/* Desktop nav links — centered */}
           <div className="hidden md:flex items-center gap-1">
             {links.map((l) => {
               const active = location.pathname === l.href;
@@ -75,12 +54,16 @@ export function Navbar() {
                 <Link
                   key={l.href}
                   to={l.href}
-                  className="px-4 py-2 rounded-lg transition-all"
+                  className="px-4 py-2 rounded-full transition-all duration-200"
                   style={{
-                    fontSize: "13px",
-                    fontWeight: active ? 500 : 400,
-                    color: active ? "#E8E4DF" : "#5C5856",
-                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    color: lightMode
+                      ? (active ? "#FFFFFF" : "rgba(255,255,255,0.7)")
+                      : (active ? "var(--text-primary)" : "var(--text-secondary)"),
+                    background: active
+                      ? (lightMode ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.04)")
+                      : "transparent",
                   }}
                 >
                   {l.label}
@@ -91,68 +74,16 @@ export function Navbar() {
 
           {/* Desktop right */}
           <div className="hidden md:flex items-center gap-3">
-            {isHub && user ? (
-              <>
-                {profile?.role === "admin" && (
-                  <Link to="/admin" className="p-2.5 rounded-lg transition-colors" style={{ color: "#9A9590" }}>
-                    <Shield size={16} />
-                  </Link>
-                )}
-                <div className="relative" ref={avatarMenuRef}>
-                  <button
-                    onClick={() => setAvatarMenuOpen(!avatarMenuOpen)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
-                    style={{
-                      background: "rgba(255,255,255,0.10)",
-                      color: "#E8E4DF",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {userInitial}
-                  </button>
-                  <AnimatePresence>
-                    {avatarMenuOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4, scale: 0.96 }}
-                        className="absolute right-0 top-11 w-44 rounded-xl py-1.5 z-50"
-                        style={{
-                          background: "#1a1918",
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          boxShadow: "0 8px 28px rgba(0,0,0,0.4)",
-                        }}
-                      >
-                        <Link
-                          to="/profile"
-                          onClick={() => setAvatarMenuOpen(false)}
-                          className="flex items-center gap-2.5 px-4 py-2.5 transition-colors"
-                          style={{ fontSize: "13px", fontWeight: 500, color: "#E8E4DF" }}
-                        >
-                          <User size={14} /> Profile
-                        </Link>
-                        <button
-                          onClick={handleSignOut}
-                          className="flex items-center gap-2.5 px-4 py-2.5 transition-colors w-full text-left"
-                          style={{ fontSize: "13px", fontWeight: 500, color: "#C45B4A" }}
-                        >
-                          <LogOut size={14} /> Sign out
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </>
-            ) : user ? (
+            {user ? (
               <Link
                 to="/hub"
-                className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
+                className="px-5 py-2 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
                 style={{
-                  background: "#E8E4DF",
-                  color: "#131211",
-                  fontSize: "13px",
-                  fontWeight: 500,
+                  background: lightMode ? "#FFFFFF" : "var(--primary)",
+                  color: lightMode ? "#111111" : "var(--primary-foreground)",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
                 }}
               >
                 Dashboard
@@ -161,30 +92,39 @@ export function Navbar() {
               <>
                 <Link
                   to="/login"
-                  className="transition-colors"
-                  style={{ fontSize: "13px", fontWeight: 400, color: "#5C5856" }}
+                  className="px-4 py-2 rounded-full transition-all duration-200"
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    color: lightMode ? "rgba(255,255,255,0.7)" : "var(--text-secondary)",
+                  }}
                 >
                   Sign in
                 </Link>
                 <Link
                   to="/login?mode=signup"
-                  className="px-5 py-2 rounded-lg transition-all hover:opacity-90"
+                  className="px-5 py-2 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
                   style={{
-                    background: "#E8E4DF",
-                    color: "#131211",
-                    fontSize: "13px",
-                    fontWeight: 500,
+                    background: lightMode ? "#FFFFFF" : "var(--primary)",
+                    color: lightMode ? "#111111" : "var(--primary-foreground)",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    letterSpacing: "-0.01em",
                   }}
                 >
-                  Start free
+                  Get started
                 </Link>
               </>
             )}
           </div>
 
           {/* Mobile hamburger */}
-          <button className="md:hidden" style={{ color: "#E8E4DF" }} onClick={() => setMobileOpen(!mobileOpen)}>
-            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          <button
+            className="md:hidden p-2 rounded-lg transition-colors"
+            style={{ color: lightMode ? "#FFFFFF" : "var(--text-primary)" }}
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
       </nav>
@@ -196,13 +136,14 @@ export function Navbar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[60] flex flex-col"
-            style={{ background: "#131211" }}
+            style={{ background: "var(--background)" }}
           >
-            <div className="flex items-center justify-between px-6 h-14">
-              <OraLogo size={28} animate={false} color="#E8E4DF" />
-              <button onClick={() => setMobileOpen(false)} style={{ color: "#E8E4DF" }}>
-                <X size={20} />
+            <div className="flex items-center justify-between px-5 h-16">
+              <OraLogo size={26} animate={false} color="var(--text-primary)" />
+              <button onClick={() => setMobileOpen(false)} className="p-2" style={{ color: "var(--text-primary)" }}>
+                <X size={22} />
               </button>
             </div>
             <div className="flex-1 flex flex-col justify-center px-8 gap-3">
@@ -217,11 +158,12 @@ export function Navbar() {
                     to={l.href}
                     onClick={() => setMobileOpen(false)}
                     style={{
-                      fontSize: "clamp(2rem, 6vw, 3.5rem)",
-                      fontWeight: 500,
-                      color: "#E8E4DF",
-                      letterSpacing: "-0.04em",
-                      lineHeight: 1.1,
+                      fontFamily: "'Inter', sans-serif",
+                      fontSize: "clamp(2rem, 6vw, 3rem)",
+                      fontWeight: 700,
+                      color: "var(--text-primary)",
+                      letterSpacing: "-0.03em",
+                      lineHeight: 1.2,
                       display: "block",
                     }}
                   >
@@ -233,15 +175,20 @@ export function Navbar() {
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
-              className="px-8 pb-12 flex gap-4"
+              transition={{ delay: 0.2 }}
+              className="px-8 pb-12 flex flex-col sm:flex-row gap-4"
             >
               {user ? (
                 <Link
                   to="/hub"
                   onClick={() => setMobileOpen(false)}
-                  className="px-8 py-4 rounded-lg"
-                  style={{ background: "#E8E4DF", color: "#131211", fontSize: "16px", fontWeight: 500 }}
+                  className="px-8 py-4 rounded-full text-center"
+                  style={{
+                    background: "var(--primary)",
+                    color: "var(--primary-foreground)",
+                    fontSize: "16px",
+                    fontWeight: 600,
+                  }}
                 >
                   Dashboard
                 </Link>
@@ -250,16 +197,25 @@ export function Navbar() {
                   <Link
                     to="/login?mode=signup"
                     onClick={() => setMobileOpen(false)}
-                    className="px-8 py-4 rounded-lg"
-                    style={{ background: "#E8E4DF", color: "#131211", fontSize: "16px", fontWeight: 500 }}
+                    className="px-8 py-4 rounded-full text-center"
+                    style={{
+                      background: "var(--primary)",
+                      color: "var(--primary-foreground)",
+                      fontSize: "16px",
+                      fontWeight: 600,
+                    }}
                   >
-                    Start free
+                    Get started
                   </Link>
                   <Link
                     to="/login"
                     onClick={() => setMobileOpen(false)}
-                    className="px-6 py-4"
-                    style={{ fontSize: "16px", fontWeight: 400, color: "#5C5856" }}
+                    className="px-6 py-4 text-center"
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: 500,
+                      color: "var(--text-secondary)",
+                    }}
                   >
                     Sign in
                   </Link>

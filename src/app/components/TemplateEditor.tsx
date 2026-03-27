@@ -70,9 +70,9 @@ function resolveColorStatic(color: string | undefined, vault: Record<string, any
   if (!color.startsWith("vault:")) return color;
   const role = color.slice(6);
   const colors = vault?.colors as { hex: string; name: string; role: string }[] | undefined;
-  if (!colors?.length) return "#3B4FC4";
+  if (!colors?.length) return "#111111";
   const match = colors.find(c => c.role?.toLowerCase() === role || c.name?.toLowerCase() === role);
-  return match?.hex || colors[0]?.hex || "#3B4FC4";
+  return match?.hex || colors[0]?.hex || "#111111";
 }
 
 /** Cover-fit crop (like CSS object-fit:cover) */
@@ -929,7 +929,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
             <Rect
               key={layer.id} {...interactiveProps}
               x={x} y={y} width={w} height={h}
-              fill="rgba(255,255,255,0.08)"
+              fill="rgba(26,23,20,0.04)"
               cornerRadius={4}
             />
           );
@@ -1011,8 +1011,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           textAlign: (editingLayer.style?.textAlign || "left") as any,
           lineHeight: editingLayer.style?.lineHeight || 1.3,
           letterSpacing: editingLayer.style?.letterSpacing || 0,
-          background: "rgba(59,79,196,0.08)",
-          border: "2px solid rgba(59,79,196,0.5)",
+          background: "rgba(17,17,17,0.08)",
+          border: "2px solid rgba(17,17,17,0.5)",
           outline: "none",
           resize: "none",
           padding: "2px 4px",
@@ -1028,9 +1028,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
      STYLES (reusable inline style objects)
      ═══════════════════════════════════════════════════════════════════════ */
   const inputStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    color: "#E8E4DF",
+    background: "rgba(26,23,20,0.03)",
+    border: "1px solid rgba(26,23,20,0.04)",
+    color: "var(--foreground)",
     borderRadius: 4,
     fontSize: 11,
     padding: "3px 6px",
@@ -1041,14 +1041,14 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   const labelStyle: React.CSSProperties = { fontSize: 10, color: "#7A7572", display: "block" };
 
   const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 600, color: "#9A9590",
+    fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)",
     textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6,
   };
 
   const smallBtnStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.06)",
-    color: "#9A9590",
+    background: "rgba(26,23,20,0.03)",
+    border: "1px solid var(--border)",
+    color: "var(--text-tertiary)",
     borderRadius: 4,
     fontSize: 11,
     padding: "3px 8px",
@@ -1067,7 +1067,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         className="flex flex-col p-0"
         style={{
           background: "#151413",
-          border: "1px solid rgba(255,255,255,0.08)",
+          border: "1px solid rgba(26,23,20,0.04)",
           maxWidth: "95vw",
           width: "95vw",
           height: "90vh",
@@ -1077,10 +1077,10 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         <DialogTitle className="sr-only">Template Editor</DialogTitle>
 
         {/* ─── HEADER / TOOLBAR ─── */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="flex items-center justify-between px-4 py-2.5 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center gap-3">
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#E8E4DF" }}>Template Editor</span>
-            <span style={{ fontSize: 11, color: "#5C5856" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>Template Editor</span>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
               {template.name} — {cw}×{ch}
             </span>
             <span style={{ fontSize: 9, color: "#3C3A38", marginLeft: 8 }}>
@@ -1097,7 +1097,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               <Redo2 size={12} />
             </button>
 
-            <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.06)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 4px" }} />
 
             {/* Zoom */}
             <button onClick={() => setStageScale(s => Math.max(0.2, s - 0.1))} style={smallBtnStyle} title="Zoom out">
@@ -1108,7 +1108,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               <ZoomIn size={12} />
             </button>
 
-            <div style={{ width: 1, height: 18, background: "rgba(255,255,255,0.06)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 4px" }} />
 
             {/* Export */}
             <button onClick={handleExport} style={smallBtnStyle} title="Export PNG">
@@ -1116,7 +1116,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
             </button>
 
             {/* Save */}
-            <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal, #3B4FC4)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
+            <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal, #111111)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
               <Save size={12} /> Save
             </button>
           </div>
@@ -1126,7 +1126,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         <div className="flex flex-1 overflow-hidden">
 
           {/* ═══ LEFT PANEL — Layers ═══ */}
-          <div className="flex-shrink-0 border-r p-3 overflow-y-auto" style={{ width: 200, borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex-shrink-0 border-r p-3 overflow-y-auto" style={{ width: 200, borderColor: "var(--border)" }}>
             {/* Add elements */}
             <div className="mb-4">
               <p style={sectionTitleStyle}>Add Element</p>
@@ -1163,7 +1163,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={addVaultLogo}
                       className="flex items-center gap-2 w-full px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}
                       title="Add brand logo to canvas"
                     >
                       <img
@@ -1172,14 +1172,14 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         className="w-7 h-7 rounded object-contain"
                         style={{ background: "#222" }}
                       />
-                      <span style={{ fontSize: 10, color: "#9A9590", fontWeight: 500 }}>Add Logo</span>
+                      <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500 }}>Add Logo</span>
                     </button>
                   )}
 
                   {/* Colors */}
                   {vaultColors.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>Colors — click to add block</span>
+                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Colors — click to add block</span>
                       <div className="flex flex-wrap gap-1">
                         {vaultColors.map((c, i) => (
                           <button
@@ -1201,7 +1201,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={() => addVaultText(vault?.company_name || vault?.brandName || "", 5)}
                       className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: "#9A9590" }}
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 10, color: "var(--text-tertiary)" }}
                     >
                       + Brand name: <strong style={{ color: "#C4BEB8" }}>{(vault?.company_name || vault?.brandName || "").slice(0, 20)}</strong>
                     </button>
@@ -1210,7 +1210,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={() => addVaultText(vault.tagline, 3)}
                       className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: "#9A9590" }}
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 10, color: "var(--text-tertiary)" }}
                     >
                       + Tagline: <em style={{ color: "#7A7572" }}>{(vault.tagline as string).slice(0, 25)}</em>
                     </button>
@@ -1219,7 +1219,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Vault fonts as quick-apply */}
                   {(vault?.fonts as string[])?.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>Brand Fonts</span>
+                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Brand Fonts</span>
                       <div className="space-y-0.5">
                         {(vault.fonts as string[]).slice(0, 4).map((f, i) => (
                           <button
@@ -1246,7 +1246,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Brand Assets (logos, patterns, graphics, packshots, overlays) */}
                   {brandAssets.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>
+                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
                         Brand Assets ({brandAssets.length})
                       </span>
                       <div className="grid grid-cols-3 gap-1">
@@ -1255,12 +1255,12 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                             key={asset.id}
                             onClick={() => addVaultAssetImage(asset.signedUrl!, asset.label, asset.role === "logo")}
                             className="relative rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
-                            style={{ aspectRatio: "1/1", background: "#1a1918" }}
+                            style={{ aspectRatio: "1/1", background: "var(--card)" }}
                             title={`Add ${asset.label} (${asset.role})`}
                           >
                             <img src={asset.signedUrl!} alt={asset.label} className="w-full h-full object-contain p-0.5" />
                             <span className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-center truncate"
-                              style={{ fontSize: 7, color: "#9A9590", background: "rgba(0,0,0,0.7)" }}>
+                              style={{ fontSize: 7, color: "var(--text-tertiary)", background: "rgba(0,0,0,0.7)" }}>
                               {asset.role}
                             </span>
                           </button>
@@ -1272,7 +1272,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Image Bank photos */}
                   {brandImages.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "#5C5856", display: "block", marginBottom: 4 }}>
+                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
                         Image Bank ({brandImages.length})
                       </span>
                       <div className="grid grid-cols-3 gap-1">
@@ -1281,7 +1281,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                             key={img.id}
                             onClick={() => addVaultAssetImage(img.signedUrl!, img.fileName)}
                             className="rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
-                            style={{ aspectRatio: "1/1", background: "#1a1918" }}
+                            style={{ aspectRatio: "1/1", background: "var(--card)" }}
                             title={`Add ${img.fileName}${img.tags?.length ? ` (${img.tags.join(", ")})` : ""}`}
                           >
                             <img src={img.signedUrl!} alt={img.fileName} className="w-full h-full object-cover" />
@@ -1292,7 +1292,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   )}
 
                   {vaultAssetsLoading && (
-                    <span style={{ fontSize: 9, color: "#5C5856" }}>Loading vault assets...</span>
+                    <span style={{ fontSize: 9, color: "var(--text-secondary)" }}>Loading vault assets...</span>
                   )}
                 </div>
               </div>
@@ -1308,15 +1308,15 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     onClick={() => setSelectedId(layer.id)}
                     className="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors"
                     style={{
-                      background: selectedId === layer.id ? "rgba(59,79,196,0.15)" : "transparent",
-                      border: `1px solid ${selectedId === layer.id ? "rgba(59,79,196,0.3)" : "transparent"}`,
+                      background: selectedId === layer.id ? "rgba(17,17,17,0.15)" : "transparent",
+                      border: `1px solid ${selectedId === layer.id ? "rgba(17,17,17,0.3)" : "transparent"}`,
                     }}
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <button onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                        {hiddenLayers.has(layer.id) ? <EyeOff size={9} style={{ color: "#3C3A38" }} /> : <Eye size={9} style={{ color: "#5C5856" }} />}
+                        {hiddenLayers.has(layer.id) ? <EyeOff size={9} style={{ color: "#3C3A38" }} /> : <Eye size={9} style={{ color: "var(--text-secondary)" }} />}
                       </button>
-                      <span className="truncate" style={{ fontSize: 11, color: selectedId === layer.id ? "#E8E4DF" : "#7A7572", fontWeight: 500 }}>
+                      <span className="truncate" style={{ fontSize: 11, color: selectedId === layer.id ? "var(--foreground)" : "#7A7572", fontWeight: 500 }}>
                         {layer.type === "background-image" ? "Background"
                           : layer.type === "gradient-overlay" ? "Gradient"
                           : layer.type === "logo" ? "Logo"
@@ -1330,7 +1330,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           : layer.id}
                       </span>
                     </div>
-                    <span style={{ fontSize: 9, color: "#5C5856", flexShrink: 0 }}>
+                    <span style={{ fontSize: 9, color: "var(--text-secondary)", flexShrink: 0 }}>
                       {layer.type === "background-image" ? "📷" : layer.type === "text" ? "T" : layer.type === "shape" ? "□" : layer.type === "circle" ? "○" : layer.type === "gradient-overlay" ? "▓" : layer.type === "logo" ? "✦" : layer.type === "line" ? "—" : layer.type === "image" ? "🖼" : layer.type}
                     </span>
                   </div>
@@ -1362,9 +1362,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     boundBoxFunc={(_oldBox: any, newBox: any) => newBox}
                     anchorSize={8}
                     anchorCornerRadius={2}
-                    anchorStroke="#3B4FC4"
+                    anchorStroke="#111111"
                     anchorFill="#fff"
-                    borderStroke="#3B4FC4"
+                    borderStroke="#111111"
                     borderStrokeWidth={1.5}
                     padding={2}
                     rotateEnabled={true}
@@ -1377,7 +1377,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           </div>
 
           {/* ═══ RIGHT PANEL — Properties ═══ */}
-          <div className="flex-shrink-0 border-l p-3 overflow-y-auto" style={{ width: 240, borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex-shrink-0 border-l p-3 overflow-y-auto" style={{ width: 240, borderColor: "var(--border)" }}>
             {selectedLayer ? (
               <div className="space-y-4">
 
@@ -1482,7 +1482,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={100}
                         value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { opacity: +e.target.value / 100 })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#111111" }}
                       />
                     </label>
 
@@ -1494,7 +1494,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={0} max={50}
                           value={selectedLayer.style?.cornerRadius || 0}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { cornerRadius: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#111111" }}
                         />
                       </label>
                     )}
@@ -1506,7 +1506,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={-180} max={180}
                         value={selectedLayer.style?.rotation || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { rotation: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#111111" }}
                       />
                     </label>
                   </div>
@@ -1535,7 +1535,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={1} max={15} step={0.25}
                           value={selectedLayer.style?.fontSize || 3}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { fontSize: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#111111" }}
                         />
                       </label>
 
@@ -1600,8 +1600,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                               onClick={() => updateLayerStyle(selectedLayer.id, { textAlign: value })}
                               style={{
                                 ...smallBtnStyle,
-                                background: (selectedLayer.style?.textAlign || "left") === value ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
-                                borderColor: (selectedLayer.style?.textAlign || "left") === value ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.06)",
+                                background: (selectedLayer.style?.textAlign || "left") === value ? "rgba(17,17,17,0.2)" : "rgba(26,23,20,0.03)",
+                                borderColor: (selectedLayer.style?.textAlign || "left") === value ? "rgba(17,17,17,0.4)" : "var(--border)",
                               }}
                             >
                               <Icon size={12} />
@@ -1624,8 +1624,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                               onClick={() => updateLayerStyle(selectedLayer.id, { textTransform: value })}
                               style={{
                                 ...smallBtnStyle,
-                                background: (selectedLayer.style?.textTransform || "none") === value ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
-                                borderColor: (selectedLayer.style?.textTransform || "none") === value ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.06)",
+                                background: (selectedLayer.style?.textTransform || "none") === value ? "rgba(17,17,17,0.2)" : "rgba(26,23,20,0.03)",
+                                borderColor: (selectedLayer.style?.textTransform || "none") === value ? "rgba(17,17,17,0.4)" : "var(--border)",
                                 fontWeight: 600,
                                 fontSize: 11,
                               }}
@@ -1643,7 +1643,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={0.8} max={2.5} step={0.1}
                           value={selectedLayer.style?.lineHeight || 1.3}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { lineHeight: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#111111" }}
                         />
                       </label>
 
@@ -1654,7 +1654,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           type="range" min={-2} max={10} step={0.5}
                           value={selectedLayer.style?.letterSpacing || 0}
                           onChange={(e) => updateLayerStyle(selectedLayer.id, { letterSpacing: +e.target.value })}
-                          className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                          className="w-full mt-1" style={{ accentColor: "#111111" }}
                         />
                       </label>
                     </div>
@@ -1690,7 +1690,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={10} step={0.5}
                         value={selectedLayer.style?.strokeWidth || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { strokeWidth: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#111111" }}
                       />
                     </label>
 
@@ -1700,7 +1700,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         type="range" min={0} max={40}
                         value={selectedLayer.style?.shadowBlur || 0}
                         onChange={(e) => updateLayerStyle(selectedLayer.id, { shadowBlur: +e.target.value })}
-                        className="w-full mt-1" style={{ accentColor: "#3B4FC4" }}
+                        className="w-full mt-1" style={{ accentColor: "#111111" }}
                       />
                     </label>
 
@@ -1779,12 +1779,12 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4" style={{ color: "#5C5856" }}>
+              <div className="flex flex-col items-center justify-center h-full text-center px-4" style={{ color: "var(--text-secondary)" }}>
                 <Layers size={24} style={{ color: "#3C3A38", marginBottom: 12 }} />
                 <p style={{ fontSize: 13, fontWeight: 600, color: "#7A7572" }}>Select a layer</p>
                 <p style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>Click elements on the canvas or in the layer list to edit their properties</p>
                 <div className="mt-6 text-left w-full space-y-2" style={{ fontSize: 10, color: "#3C3A38" }}>
-                  <p><strong style={{ color: "#5C5856" }}>Quick Tips:</strong></p>
+                  <p><strong style={{ color: "var(--text-secondary)" }}>Quick Tips:</strong></p>
                   <p>• Double-click text to edit inline</p>
                   <p>• Drag elements to reposition</p>
                   <p>• Use corner handles to resize</p>

@@ -151,9 +151,9 @@ const FORMAT_OPTIONS: FormatOption[] = [
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
-  Instagram: "#E1306C", LinkedIn: "#0077B5", Facebook: "#1877F2",
-  "Twitter/X": "#1DA1F2", TikTok: "#00F2EA", YouTube: "#FF0000",
-  Pinterest: "#E60023", Web: "#10B981",
+  Instagram: "#666666", LinkedIn: "#666666", Facebook: "#666666",
+  "Twitter/X": "#666666", TikTok: "#666666", YouTube: "#666666",
+  Pinterest: "#666666", Web: "#666666",
 };
 
 /* ── Per-format diversity suffixes to avoid visual repetition across formats ── */
@@ -201,35 +201,35 @@ const PLATFORM_GROUPS = [
 
 // Platforms available for social connection
 const CONNECTABLE_PLATFORMS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#0077B5" },
-  { id: "instagram", label: "Instagram", icon: Instagram, color: "#E1306C" },
-  { id: "facebook", label: "Facebook", icon: Facebook, color: "#1877F2" },
-  { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#1DA1F2" },
-  { id: "tiktok", label: "TikTok", icon: Clapperboard, color: "#00F2EA" },
-  { id: "youtube", label: "YouTube", icon: Youtube, color: "#FF0000" },
-  { id: "pinterest", label: "Pinterest", icon: ImageIcon, color: "#E60023" },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#666666" },
+  { id: "instagram", label: "Instagram", icon: Instagram, color: "#666666" },
+  { id: "facebook", label: "Facebook", icon: Facebook, color: "#666666" },
+  { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#666666" },
+  { id: "tiktok", label: "TikTok", icon: Clapperboard, color: "#666666" },
+  { id: "youtube", label: "YouTube", icon: Youtube, color: "#666666" },
+  { id: "pinterest", label: "Pinterest", icon: ImageIcon, color: "#666666" },
 ];
 
 /* ── AI Model Options ── */
 const TEXT_MODELS = [
-  { id: "gpt-4o",                    label: "GPT-4o",          badge: "Fast",       color: "#10a37f" },
-  { id: "gpt-4.1",                   label: "GPT-4.1",         badge: "Smart",      color: "#10a37f" },
-  { id: "claude-sonnet-4-20250514",  label: "Claude Sonnet",   badge: "Creative",   color: "#c96442" },
-  { id: "claude-haiku-4-20250514",   label: "Claude Haiku",    badge: "Ultra Fast", color: "#c96442" },
-  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#4285F4" },
+  { id: "gpt-4o",                    label: "GPT-4o",          badge: "Fast",       color: "#666666" },
+  { id: "gpt-4.1",                   label: "GPT-4.1",         badge: "Smart",      color: "#666666" },
+  { id: "claude-sonnet-4-20250514",  label: "Claude Sonnet",   badge: "Creative",   color: "#888888" },
+  { id: "claude-haiku-4-20250514",   label: "Claude Haiku",    badge: "Ultra Fast", color: "#888888" },
+  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#666666" },
 ];
 const IMAGE_MODELS = [
-  { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#8b5cf6" },
-  { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#8b5cf6" },
-  { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#f59e0b" },
-  { id: "flux-schnell",    label: "Flux Schnell",      badge: "Ultra Fast", color: "#f59e0b" },
-  { id: "dall-e-3",        label: "DALL-E 3",          badge: "Precise",    color: "#10a37f" },
+  { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#666666" },
+  { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#666666" },
+  { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#999999" },
+  { id: "flux-schnell",    label: "Flux Schnell",      badge: "Ultra Fast", color: "#999999" },
+  { id: "dall-e-3",        label: "DALL-E 3",          badge: "Precise",    color: "#666666" },
 ];
 const VIDEO_MODELS = [
-  { id: "ray-flash-2", label: "Ray Flash 2",  badge: "Fast · $0.08",    color: "#8b5cf6" },
-  { id: "ray-2",       label: "Ray 2",        badge: "Premium · $0.15", color: "#8b5cf6" },
-  { id: "kling-v2.1",  label: "Kling v2.1",  badge: "Alt",             color: "#e11d48" },
-  { id: "seedance-v1", label: "SeedAnce v1",  badge: "Alt",             color: "#0ea5e9" },
+  { id: "ray-flash-2", label: "Ray Flash 2",  badge: "Fast · $0.08",    color: "#666666" },
+  { id: "ray-2",       label: "Ray 2",        badge: "Premium · $0.15", color: "#666666" },
+  { id: "kling-v2.1",  label: "Kling v2.1",  badge: "Alt",             color: "#666666" },
+  { id: "seedance-v1", label: "SeedAnce v1",  badge: "Alt",             color: "#666666" },
 ];
 
 const VAULT_PILLS = [
@@ -1675,9 +1675,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     };
 
     const calChannelColors: Record<string, string> = {
-      LinkedIn: "#0077B5", Instagram: "#E1306C", Facebook: "#1877F2",
-      Email: "#EA4335", "Twitter/X": "#1DA1F2", TikTok: "#00f2ea",
-      YouTube: "#FF0000", Pinterest: "#E60023",
+      LinkedIn: "#666666", Instagram: "#666666", Facebook: "#666666",
+      Email: "#666666", "Twitter/X": "#666666", TikTok: "#666666",
+      YouTube: "#666666", Pinterest: "#666666",
     };
 
     const now = new Date();
@@ -1730,7 +1730,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           id: `cal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           title, channel: asset.platform, time,
           day: candidate.getDate(), month: candidate.getMonth(), year: candidate.getFullYear(),
-          color: calChannelColors[asset.platform] || "#7A7572",
+          color: calChannelColors[asset.platform] || "var(--text-secondary)",
           postingNote, formatId: asset.formatId,
           assetType: asset.type,
           copy: asset.copy || "",
@@ -1754,7 +1754,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           channel: asset.platform,
           time: (platformSchedule[asset.platform]?.times || ["10:00"])[0],
           day: fallback.getDate(), month: fallback.getMonth(), year: fallback.getFullYear(),
-          color: calChannelColors[asset.platform] || "#7A7572",
+          color: calChannelColors[asset.platform] || "var(--text-secondary)",
           postingNote: "Overflow slot — consider rescheduling",
           formatId: asset.formatId,
           assetType: asset.type,
@@ -1939,7 +1939,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   ];
   const briefScore = briefScoreItems.reduce((acc, item) => acc + (item.filled ? item.weight : 0), 0);
   const briefScoreLabel = briefScore < 30 ? "Minimal" : briefScore < 55 ? "Basic" : briefScore < 80 ? "Good" : "Expert";
-  const briefScoreColor = briefScore < 30 ? "#d4183d" : briefScore < 55 ? "#f59e0b" : briefScore < 80 ? "#3b82f6" : "#10b981";
+  const briefScoreColor = briefScore < 30 ? "#d4183d" : briefScore < 55 ? "#999999" : briefScore < 80 ? "#666666" : "#333333";
 
   // ── Contextual objective tips ──
   const OBJECTIVE_TIPS: Record<string, { tip: string; suggestedFormats: string[]; suggestedTone: string }> = {
@@ -1996,18 +1996,18 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
      ═══════════════════════════════════ */
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "#131211" }}>
+    <div className="flex flex-col h-full" style={{ background: "var(--background)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(59,79,196,0.12)" }}>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(17,17,17,0.12)" }}>
             <Sparkles size={16} style={{ color: "var(--ora-signal)" }} />
           </div>
           <div>
-            <h2 style={{ fontSize: "17px", fontWeight: 600, color: "#E8E4DF", letterSpacing: "-0.02em" }}>
+            <h2 style={{ fontSize: "17px", fontWeight: 600, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
               Campaign Lab
             </h2>
-            <p style={{ fontSize: "11px", color: "#7A7572", marginTop: 1 }}>
+            <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: 1 }}>
               One brief. Every format. Brand-compliant.
             </p>
           </div>
@@ -2018,7 +2018,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               onClick={handleSaveCampaign}
               disabled={savingCampaign || assets.filter(a => a.status === "ready").length === 0}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
-              style={{ background: "rgba(94,106,210,0.12)", border: "1px solid rgba(94,106,210,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
+              style={{ background: "rgba(17,17,17,0.12)", border: "1px solid rgba(17,17,17,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
             >
               {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : campaignSavedId ? <Check size={13} /> : <Save size={13} />}
               {savingCampaign ? "Saving..." : campaignSavedId ? "Saved" : "Save Campaign"}
@@ -2026,7 +2026,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             <button
               onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); setCampaignSavedId(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", fontWeight: 500 }}
+              style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
             >
               <RefreshCw size={13} />
               New Campaign
@@ -2053,11 +2053,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   placeholder={"Describe your campaign...\ne.g. Launch our new summer collection -- luxury, minimalist, target 25-45 professionals."}
                   className="w-full rounded-xl px-5 py-4 resize-none transition-all"
                   style={{
-                    background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                    background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)",
                     fontSize: "15px", lineHeight: 1.6, minHeight: 110, outline: "none",
                   }}
-                  onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                  onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                  onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                  onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                 />
                 {/* "Inspire me" button */}
                 <div className="flex items-center gap-2 mt-2">
@@ -2066,9 +2066,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     disabled={topicsLoading}
                     className="flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer"
                     style={{
-                      background: showTopics ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)",
-                      border: `1px solid ${showTopics ? "rgba(245,158,11,0.3)" : "rgba(245,158,11,0.15)"}`,
-                      color: "#f59e0b", fontSize: "12px", fontWeight: 600,
+                      background: showTopics ? "rgba(17,17,17,0.12)" : "rgba(17,17,17,0.06)",
+                      border: `1px solid ${showTopics ? "rgba(17,17,17,0.3)" : "rgba(17,17,17,0.15)"}`,
+                      color: "#999999", fontSize: "12px", fontWeight: 600,
                       opacity: topicsLoading ? 0.7 : 1,
                     }}
                   >
@@ -2076,7 +2076,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     {topicsLoading ? "Generating ideas..." : "Inspire me"}
                   </button>
                   {topicsUpcoming.length > 0 && !showTopics && (
-                    <span style={{ fontSize: "11px", color: "#7A7572" }}>
+                    <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                       <Calendar size={10} className="inline mr-1" />
                       {topicsUpcoming[0]}
                     </span>
@@ -2093,15 +2093,15 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     exit={{ opacity: 0, height: 0 }}
                     className="overflow-hidden"
                   >
-                    <div className="rounded-xl p-4" style={{ background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.12)" }}>
+                    <div className="rounded-xl p-4" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.12)" }}>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <Wand2 size={13} style={{ color: "#f59e0b" }} />
-                          <span style={{ fontSize: "12px", fontWeight: 700, color: "#E8E4DF" }}>
+                          <Wand2 size={13} style={{ color: "#999999" }} />
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--foreground)" }}>
                             Content Ideas{selectedProduct ? ` for ${selectedProduct.name}` : ""}
                           </span>
                         </div>
-                        <button onClick={() => setShowTopics(false)} className="p-1 cursor-pointer" style={{ color: "#5C5856" }}>
+                        <button onClick={() => setShowTopics(false)} className="p-1 cursor-pointer" style={{ color: "var(--text-secondary)" }}>
                           <X size={12} />
                         </button>
                       </div>
@@ -2110,7 +2110,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       {topicsUpcoming.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mb-3">
                           {topicsUpcoming.slice(0, 4).map((ev, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#f59e0b", background: "rgba(245,158,11,0.08)" }}>
+                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#999999", background: "rgba(17,17,17,0.08)" }}>
                               <Calendar size={8} className="inline mr-1" />{ev}
                             </span>
                           ))}
@@ -2119,21 +2119,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                       {topicsLoading ? (
                         <div className="flex items-center justify-center py-8 gap-2">
-                          <Loader2 size={16} className="animate-spin" style={{ color: "#f59e0b" }} />
-                          <span style={{ fontSize: "13px", color: "#9A9590" }}>Analyzing your brand, products & trends...</span>
+                          <Loader2 size={16} className="animate-spin" style={{ color: "#999999" }} />
+                          <span style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>Analyzing your brand, products & trends...</span>
                         </div>
                       ) : topicSuggestions.length === 0 ? (
-                        <div className="text-center py-6" style={{ fontSize: "13px", color: "#5C5856" }}>
+                        <div className="text-center py-6" style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                           No suggestions yet. Click "Inspire me" to generate ideas.
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {topicSuggestions.map((topic, i) => {
                             const typeColors: Record<string, string> = {
-                              educate: "#3b82f6", inspire: "#a855f7", sell: "#10b981",
-                              entertain: "#f59e0b", "behind-the-scenes": "#ec4899",
+                              educate: "#111111", inspire: "#444444", sell: "#666666",
+                              entertain: "#888888", "behind-the-scenes": "#AAAAAA",
                             };
-                            const typeColor = typeColors[topic.type] || "#7A7572";
+                            const typeColor = typeColors[topic.type] || "var(--text-secondary)";
                             return (
                               <button
                                 key={i}
@@ -2141,19 +2141,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 className="text-left rounded-lg p-3 transition-all cursor-pointer group"
                                 style={{
                                   background: "rgba(255,255,255,0.02)",
-                                  border: "1px solid rgba(255,255,255,0.06)",
+                                  border: "1px solid var(--border)",
                                 }}
                                 onMouseEnter={e => {
                                   e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                                  e.currentTarget.style.borderColor = "rgba(245,158,11,0.3)";
+                                  e.currentTarget.style.borderColor = "rgba(17,17,17,0.3)";
                                 }}
                                 onMouseLeave={e => {
                                   e.currentTarget.style.background = "rgba(255,255,255,0.02)";
-                                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                                  e.currentTarget.style.borderColor = "var(--border)";
                                 }}
                               >
                                 <div className="flex items-start gap-2 mb-1.5">
-                                  <span className="flex-1" style={{ fontSize: "12px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.4 }}>
+                                  <span className="flex-1" style={{ fontSize: "12px", fontWeight: 600, color: "var(--foreground)", lineHeight: 1.4 }}>
                                     {topic.title}
                                   </span>
                                   <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, color: typeColor, background: `${typeColor}15`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -2167,17 +2167,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 )}
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {topic.format && (
-                                    <span style={{ fontSize: "9px", color: "#5C5856", fontWeight: 500 }}>
+                                    <span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 500 }}>
                                       {topic.format}
                                     </span>
                                   )}
                                   {topic.product && (
-                                    <span style={{ fontSize: "9px", color: "#10b981", fontWeight: 500 }}>
+                                    <span style={{ fontSize: "9px", color: "#666666", fontWeight: 500 }}>
                                       <Package size={8} className="inline mr-0.5" />{topic.product}
                                     </span>
                                   )}
                                   {topic.why_now && (
-                                    <span style={{ fontSize: "9px", color: "#7A7572" }}>
+                                    <span style={{ fontSize: "9px", color: "var(--text-secondary)" }}>
                                       {topic.why_now}
                                     </span>
                                   )}
@@ -2194,7 +2194,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <button
                             onClick={handleSuggestTopics}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                            style={{ fontSize: "11px", fontWeight: 600, color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
+                            style={{ fontSize: "11px", fontWeight: 600, color: "#999999", background: "rgba(17,17,17,0.06)" }}
                           >
                             <RefreshCw size={11} /> Other ideas
                           </button>
@@ -2209,16 +2209,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               <div>
                 <div
                   className="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
-                  style={{ borderColor: "rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)" }}
-                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "rgba(59,79,196,0.4)"; }}
-                  onDragLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
-                  onDrop={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; handlePhotoDrop(e); }}
+                  style={{ borderColor: "rgba(26,23,20,0.04)", background: "rgba(255,255,255,0.02)" }}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "rgba(17,17,17,0.4)"; }}
+                  onDragLeave={e => { e.currentTarget.style.borderColor = "rgba(26,23,20,0.04)"; }}
+                  onDrop={e => { e.currentTarget.style.borderColor = "rgba(26,23,20,0.04)"; handlePhotoDrop(e); }}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {refPhotos.length === 0 ? (
                     <div className="flex items-center justify-center py-5 gap-3">
-                      <Camera size={16} style={{ color: "#5C5856" }} />
-                      <span style={{ fontSize: "13px", fontWeight: 500, color: "#7A7572" }}>Drop reference photos or click to upload</span>
+                      <Camera size={16} style={{ color: "var(--text-secondary)" }} />
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-secondary)" }}>Drop reference photos or click to upload</span>
                     </div>
                   ) : (
                     <div className="p-3 flex flex-wrap gap-2">
@@ -2235,7 +2235,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       ))}
                       {refPhotos.length < 10 && (
                         <div className="w-16 h-16 rounded-lg border border-dashed flex items-center justify-center" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
-                          <Upload size={12} style={{ color: "#5C5856" }} />
+                          <Upload size={12} style={{ color: "var(--text-secondary)" }} />
                         </div>
                       )}
                     </div>
@@ -2248,16 +2248,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               <div>
                 <div className="flex gap-2">
                   <div className="flex-1 relative">
-                    <Link2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#5C5856" }} />
+                    <Link2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "var(--text-secondary)" }} />
                     <input
                       value={productUrls}
                       onChange={e => { setProductUrls(e.target.value); setScannedProduct(null); }}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScanUrl(); } }}
                       placeholder="Paste your product or service page URL..."
                       className="w-full rounded-xl pl-10 pr-4 py-3 transition-all"
-                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "14px", outline: "none" }}
-                      onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                      onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                      style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "14px", outline: "none" }}
+                      onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                      onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                     />
                   </div>
                   {productUrls.trim() && !scannedProduct && (
@@ -2278,39 +2278,39 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-2 rounded-xl px-4 py-3 flex items-start gap-3"
-                    style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}
+                    style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.15)" }}
                   >
-                    <Check size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#10b981" }} />
+                    <Check size={14} className="flex-shrink-0 mt-0.5" style={{ color: "#666666" }} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{scannedProduct.name}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{scannedProduct.name}</span>
                         {scannedProduct.price && (
-                          <span style={{ fontSize: "11px", color: "#10b981", fontWeight: 600 }}>
+                          <span style={{ fontSize: "11px", color: "#666666", fontWeight: 600 }}>
                             {scannedProduct.price} {scannedProduct.currency || ""}
                           </span>
                         )}
                       </div>
                       {scannedProduct.description && (
-                        <p className="mt-1 line-clamp-2" style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.5 }}>
+                        <p className="mt-1 line-clamp-2" style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
                           {scannedProduct.description}
                         </p>
                       )}
                       {scannedProduct.features && scannedProduct.features.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {scannedProduct.features.slice(0, 4).map((f, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#10b981", background: "rgba(16,185,129,0.1)" }}>
+                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#666666", background: "rgba(17,17,17,0.1)" }}>
                               {f}
                             </span>
                           ))}
                           {scannedProduct.features.length > 4 && (
-                            <span style={{ fontSize: "10px", color: "#5C5856" }}>+{scannedProduct.features.length - 4} more</span>
+                            <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>+{scannedProduct.features.length - 4} more</span>
                           )}
                         </div>
                       )}
                     </div>
                     <button
                       onClick={() => { setScannedProduct(null); setProductUrls(""); setBrief(""); setKeyMessages(""); }}
-                      className="p-1 rounded-md cursor-pointer" style={{ color: "#5C5856" }}
+                      className="p-1 rounded-md cursor-pointer" style={{ color: "var(--text-secondary)" }}
                     >
                       <X size={12} />
                     </button>
@@ -2330,8 +2330,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         onClick={() => handleSelectProduct(product)}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer"
                         style={{
-                          background: isSelected ? "rgba(59,79,196,0.12)" : "#1a1918",
-                          border: `1px solid ${isSelected ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
+                          background: isSelected ? "rgba(17,17,17,0.12)" : "var(--card)",
+                          border: `1px solid ${isSelected ? "rgba(17,17,17,0.4)" : "rgba(26,23,20,0.04)"}`,
                         }}
                       >
                         {mainImage ? (
@@ -2339,7 +2339,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         ) : (
                           <Package size={12} style={{ color: "#3B3936" }} />
                         )}
-                        <span style={{ fontSize: "12px", fontWeight: 600, color: isSelected ? "var(--ora-signal)" : "#E8E4DF" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: isSelected ? "var(--ora-signal)" : "var(--foreground)" }}>
                           {product.name}
                         </span>
                         {isSelected && <Check size={12} style={{ color: "var(--ora-signal)" }} />}
@@ -2352,16 +2352,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               {/* Format Selection — grouped by platform */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                     Output Formats
                   </span>
                   <div className="flex items-center gap-2">
                     <button onClick={() => setSelectedFormats(FORMAT_OPTIONS.map(f => f.id))}
-                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(94,106,210,0.08)" }}>
+                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(17,17,17,0.08)" }}>
                       All
                     </button>
                     <button onClick={() => setSelectedFormats([])}
-                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", background: "rgba(255,255,255,0.04)" }}>
+                      className="px-2 py-0.5 rounded cursor-pointer" style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", background: "rgba(26,23,20,0.03)" }}>
                       None
                     </button>
                   </div>
@@ -2370,7 +2370,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   {PLATFORM_GROUPS.map(group => {
                     const groupFormats = FORMAT_OPTIONS.filter(f => f.platform === group.platform);
                     if (groupFormats.length === 0) return null;
-                    const color = PLATFORM_COLORS[group.platform] || "#7A7572";
+                    const color = PLATFORM_COLORS[group.platform] || "var(--text-secondary)";
                     const allSelected = groupFormats.every(f => selectedFormats.includes(f.id));
                     const someSelected = groupFormats.some(f => selectedFormats.includes(f.id));
                     const PlatIcon = group.icon;
@@ -2385,10 +2385,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             }
                           }}
                           className="flex items-center gap-2 mb-1.5 cursor-pointer"
-                          style={{ fontSize: "11px", fontWeight: 600, color: someSelected ? color : "#5C5856" }}>
+                          style={{ fontSize: "11px", fontWeight: 600, color: someSelected ? color : "var(--text-secondary)" }}>
                           <PlatIcon size={11} />
                           {group.platform}
-                          <span style={{ fontSize: "9px", fontWeight: 400, color: "#5C5856" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 400, color: "var(--text-secondary)" }}>
                             ({groupFormats.filter(f => selectedFormats.includes(f.id)).length}/{groupFormats.length})
                           </span>
                         </button>
@@ -2403,8 +2403,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
                                 style={{
                                   background: isSelected ? `${color}15` : "rgba(255,255,255,0.02)",
-                                  border: `1px solid ${isSelected ? `${color}40` : "rgba(255,255,255,0.06)"}`,
-                                  color: isSelected ? color : "#5C5856",
+                                  border: `1px solid ${isSelected ? `${color}40` : "var(--border)"}`,
+                                  color: isSelected ? color : "var(--text-secondary)",
                                   fontSize: "11px", fontWeight: isSelected ? 600 : 400,
                                 }}
                                 title={fmt.description}
@@ -2427,8 +2427,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 disabled={!canGenerate}
                 className="w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all cursor-pointer"
                 style={{
-                  background: canGenerate ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
-                  color: canGenerate ? "#fff" : "#5C5856",
+                  background: canGenerate ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+                  color: canGenerate ? "#fff" : "var(--text-secondary)",
                   fontWeight: 600, fontSize: "15px",
                   cursor: canGenerate ? "pointer" : "not-allowed",
                 }}
@@ -2438,29 +2438,29 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               </button>
 
               {/* ═══ SECTION 2: ADVANCED — Collapsible ═══ */}
-              <div className="rounded-xl overflow-hidden" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <button
                   onClick={() => setShowAdvanced(!showAdvanced)}
                   className="w-full flex items-center justify-between px-5 py-4 cursor-pointer transition-all"
-                  style={{ background: showAdvanced ? "rgba(59,79,196,0.04)" : "transparent" }}
+                  style={{ background: showAdvanced ? "rgba(17,17,17,0.04)" : "transparent" }}
                 >
                   <div className="flex items-center gap-3">
-                    <Zap size={14} style={{ color: showAdvanced ? "var(--ora-signal)" : "#5C5856" }} />
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: showAdvanced ? "#E8E4DF" : "#9A9590" }}>
+                    <Zap size={14} style={{ color: showAdvanced ? "var(--ora-signal)" : "var(--text-secondary)" }} />
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: showAdvanced ? "var(--foreground)" : "var(--text-tertiary)" }}>
                       Refine campaign
                     </span>
                     {/* Count of filled advanced fields */}
                     {(() => {
                       const filledCount = [campaignObjective, toneOverride, contentAngle, keyMessages, targetAudience, ctaText, campaignStartDate, campaignDuration, language !== "auto" ? language : ""].filter(Boolean).length;
                       return filledCount > 0 ? (
-                        <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(59,79,196,0.12)" }}>
+                        <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(17,17,17,0.12)" }}>
                           {filledCount} option{filledCount > 1 ? "s" : ""} set
                         </span>
                       ) : null;
                     })()}
                   </div>
                   <motion.div animate={{ rotate: showAdvanced ? 180 : 0 }} transition={{ duration: 0.2 }}>
-                    <ChevronDown size={16} style={{ color: "#5C5856" }} />
+                    <ChevronDown size={16} style={{ color: "var(--text-secondary)" }} />
                   </motion.div>
                 </button>
 
@@ -2473,27 +2473,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       transition={{ duration: 0.25 }}
                       className="overflow-hidden"
                     >
-                      <div className="px-5 pb-5 space-y-6" style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                      <div className="px-5 pb-5 space-y-6" style={{ borderTop: "1px solid rgba(26,23,20,0.03)" }}>
 
                         {/* Campaign Objective + Language — side by side */}
                         <div className="grid grid-cols-2 gap-4 pt-4">
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <Megaphone size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Objective</span>
+                              <Megaphone size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Objective</span>
                             </div>
                             <select
                               value={campaignObjective}
                               onChange={e => setCampaignObjective(e.target.value)}
                               className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
                               style={{
-                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignObjective ? "#E8E4DF" : "#5C5856",
+                                background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: campaignObjective ? "var(--foreground)" : "var(--text-secondary)",
                                 fontSize: "13px", outline: "none", appearance: "none",
                                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                                 backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                               }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             >
                               <option value="">Select objective...</option>
                               <option value="Brand Awareness">Brand Awareness</option>
@@ -2509,21 +2509,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <BookOpen size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Language</span>
+                              <BookOpen size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Language</span>
                             </div>
                             <select
                               value={language}
                               onChange={e => setLanguage(e.target.value)}
                               className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
                               style={{
-                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF",
+                                background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)",
                                 fontSize: "13px", outline: "none", appearance: "none",
                                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                                 backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                               }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             >
                               <option value="auto">Auto-detect</option>
                               <option value="English">English</option>
@@ -2547,12 +2547,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
                             className="rounded-xl px-4 py-3"
-                            style={{ background: "rgba(94,106,210,0.06)", border: "1px solid rgba(94,106,210,0.12)" }}
+                            style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.12)" }}
                           >
                             <div className="flex items-start gap-3">
                               <Zap size={12} className="flex-shrink-0 mt-0.5" style={{ color: "var(--ora-signal)" }} />
                               <div>
-                                <p style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.55 }}>
+                                <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.55 }}>
                                   {currentObjectiveTip.tip}
                                 </p>
                                 <div className="flex items-center gap-2 mt-2">
@@ -2560,7 +2560,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                     <button
                                       onClick={() => setToneOverride(currentObjectiveTip.suggestedTone)}
                                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer"
-                                      style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
+                                      style={{ background: "rgba(17,17,17,0.1)", border: "1px solid rgba(17,17,17,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
                                     >
                                       <TrendingUp size={9} /> {currentObjectiveTip.suggestedTone}
                                     </button>
@@ -2568,7 +2568,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   <button
                                     onClick={() => setSelectedFormats(currentObjectiveTip.suggestedFormats)}
                                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer"
-                                    style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
+                                    style={{ background: "rgba(17,17,17,0.1)", border: "1px solid rgba(17,17,17,0.2)", fontSize: "10px", fontWeight: 500, color: "var(--ora-signal)" }}
                                   >
                                     <LayoutGrid size={9} /> Optimal formats ({currentObjectiveTip.suggestedFormats.length})
                                   </button>
@@ -2581,8 +2581,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         {/* Tone Override */}
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <MessageSquare size={12} style={{ color: "#7A7572" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Tone of voice</span>
+                            <MessageSquare size={12} style={{ color: "var(--text-secondary)" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Tone of voice</span>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
                             {["", "Professional", "Casual & Friendly", "Bold & Confident", "Inspirational", "Educational", "Provocative", "Humorous", "Luxury & Refined", "Technical"].map(tone => {
@@ -2594,9 +2594,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   onClick={() => setToneOverride(tone)}
                                   className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                                   style={{
-                                    background: isSelected ? "rgba(94,106,210,0.15)" : "rgba(255,255,255,0.02)",
-                                    border: `1px solid ${isSelected ? "rgba(94,106,210,0.4)" : "rgba(255,255,255,0.06)"}`,
-                                    color: isSelected ? "var(--ora-signal)" : "#7A7572",
+                                    background: isSelected ? "rgba(17,17,17,0.15)" : "rgba(255,255,255,0.02)",
+                                    border: `1px solid ${isSelected ? "rgba(17,17,17,0.4)" : "var(--border)"}`,
+                                    color: isSelected ? "var(--ora-signal)" : "var(--text-secondary)",
                                     fontSize: "11px", fontWeight: isSelected ? 600 : 400,
                                   }}
                                 >
@@ -2611,32 +2611,32 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <Users size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Target audience</span>
+                              <Users size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Target audience</span>
                             </div>
                             <input
                               value={targetAudience}
                               onChange={e => setTargetAudience(e.target.value)}
                               placeholder="e.g. Tech professionals 25-45"
                               className="w-full rounded-xl px-4 py-2.5 transition-all"
-                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <Send size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Call to action</span>
+                              <Send size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Call to action</span>
                             </div>
                             <input
                               value={ctaText}
                               onChange={e => setCtaText(e.target.value)}
                               placeholder='e.g. "Start free trial"'
                               className="w-full rounded-xl px-4 py-2.5 transition-all"
-                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             />
                           </div>
                         </div>
@@ -2644,34 +2644,34 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         {/* Content Angle */}
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <Sparkles size={12} style={{ color: "#7A7572" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Content angle / Hook</span>
+                            <Sparkles size={12} style={{ color: "var(--text-secondary)" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Content angle / Hook</span>
                           </div>
                           <input
                             value={contentAngle}
                             onChange={e => setContentAngle(e.target.value)}
                             placeholder='e.g. "3 reasons why...", customer success story, data-driven insight'
                             className="w-full rounded-xl px-4 py-2.5 transition-all"
-                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
+                            onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                            onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                           />
                         </div>
 
                         {/* Key Messages */}
                         <div>
                           <div className="flex items-center gap-2 mb-2">
-                            <Type size={12} style={{ color: "#7A7572" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Key messages</span>
+                            <Type size={12} style={{ color: "var(--text-secondary)" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Key messages</span>
                           </div>
                           <textarea
                             value={keyMessages}
                             onChange={e => setKeyMessages(e.target.value)}
                             placeholder={"- Product saves 10 hours/week\n- Used by 500+ companies\n- Free trial, no credit card"}
                             className="w-full rounded-xl px-4 py-3 resize-none transition-all"
-                            style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", lineHeight: 1.6, minHeight: 70, outline: "none" }}
-                            onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                            onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                            style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", lineHeight: 1.6, minHeight: 70, outline: "none" }}
+                            onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                            onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                           />
                         </div>
 
@@ -2679,36 +2679,36 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <Calendar size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Start date</span>
+                              <Calendar size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Start date</span>
                             </div>
                             <input
                               type="date"
                               value={campaignStartDate}
                               onChange={e => setCampaignStartDate(e.target.value)}
                               className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
-                              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignStartDate ? "#E8E4DF" : "#5C5856", fontSize: "13px", outline: "none", colorScheme: "dark" }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: campaignStartDate ? "var(--foreground)" : "var(--text-secondary)", fontSize: "13px", outline: "none", colorScheme: "dark" }}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             />
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <Clock size={12} style={{ color: "#7A7572" }} />
-                              <span style={{ fontSize: "12px", fontWeight: 600, color: "#9A9590" }}>Duration</span>
+                              <Clock size={12} style={{ color: "var(--text-secondary)" }} />
+                              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Duration</span>
                             </div>
                             <select
                               value={campaignDuration}
                               onChange={e => setCampaignDuration(e.target.value)}
                               className="w-full rounded-xl px-4 py-2.5 transition-all cursor-pointer"
                               style={{
-                                background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: campaignDuration ? "#E8E4DF" : "#5C5856",
+                                background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: campaignDuration ? "var(--foreground)" : "var(--text-secondary)",
                                 fontSize: "13px", outline: "none", appearance: "none",
                                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235C5856' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
                                 backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
                               }}
-                              onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                              onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                              onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                              onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                             >
                               <option value="">Select duration...</option>
                               <option value="1 day (flash)">1 day (flash)</option>
@@ -2734,14 +2734,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               </div>
 
               {/* Brand Vault Status — compact */}
-              <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center gap-2">
-                  <Shield size={13} style={{ color: vault ? "#10b981" : "#5C5856" }} />
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: vault ? "#10b981" : "#7A7572" }}>
+                  <Shield size={13} style={{ color: vault ? "#666666" : "var(--text-secondary)" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: vault ? "#666666" : "var(--text-secondary)" }}>
                     {vaultLoading ? "Loading Vault..." : vault ? `${vault.brandName || vault.company_name || "Brand Vault"} active` : "No Brand Vault"}
                   </span>
                   {vault && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", color: "var(--ora-signal)", background: "rgba(59,79,196,0.08)" }}>
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", color: "var(--ora-signal)", background: "rgba(17,17,17,0.08)" }}>
                       <Check size={8} /> tone + vocabulary + guardrails
                     </span>
                   )}
@@ -2749,12 +2749,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 {/* Logo */}
                 <div className="flex items-center gap-2">
                   {logoUrl ? (
-                    <img src={logoUrl} alt="Logo" className="w-6 h-6 rounded object-contain" style={{ background: "#222120" }} />
+                    <img src={logoUrl} alt="Logo" className="w-6 h-6 rounded object-contain" style={{ background: "var(--secondary)" }} />
                   ) : (
                     <button
                       onClick={() => logoInputRef.current?.click()}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer"
-                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#7A7572", fontSize: "11px" }}
+                      style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--text-secondary)", fontSize: "11px" }}
                     >
                       {uploadingLogo ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
                       Logo
@@ -2765,7 +2765,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     <button
                       onClick={() => setShowLogoOverlay(!showLogoOverlay)}
                       className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
-                      style={{ background: showLogoOverlay ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLogoOverlay ? "rgba(52,211,153,0.2)" : "rgba(255,255,255,0.06)"}`, fontSize: "10px", fontWeight: 600, color: showLogoOverlay ? "#34d399" : "#5C5856" }}
+                      style={{ background: showLogoOverlay ? "rgba(17,17,17,0.1)" : "rgba(26,23,20,0.03)", border: `1px solid ${showLogoOverlay ? "rgba(17,17,17,0.2)" : "var(--border)"}`, fontSize: "10px", fontWeight: 600, color: showLogoOverlay ? "#666666" : "var(--text-secondary)" }}
                     >
                       {showLogoOverlay ? <Check size={9} /> : <Eye size={9} />}
                       Overlay
@@ -2775,17 +2775,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               </div>
 
               {/* AI Model Selector — compact inside advanced area */}
-              <div className="rounded-xl px-4 py-3" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="rounded-xl px-4 py-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center justify-between mb-2">
-                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Models</span>
+                  <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>AI Models</span>
                   <button onClick={() => setMultiModelEnabled(!multiModelEnabled)}
                     className="flex items-center gap-1 px-2 py-0.5 rounded-lg cursor-pointer"
                     style={{
-                      background: multiModelEnabled ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${multiModelEnabled ? "rgba(59,79,196,0.4)" : "rgba(255,255,255,0.08)"}`,
+                      background: multiModelEnabled ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)",
+                      border: `1px solid ${multiModelEnabled ? "rgba(17,17,17,0.4)" : "rgba(26,23,20,0.04)"}`,
                     }}>
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: multiModelEnabled ? "var(--ora-signal)" : "#3d3c3b" }} />
-                    <span style={{ fontSize: "9px", fontWeight: 600, color: multiModelEnabled ? "#E8E4DF" : "#5C5856" }}>Compare</span>
+                    <span style={{ fontSize: "9px", fontWeight: 600, color: multiModelEnabled ? "var(--foreground)" : "var(--text-secondary)" }}>Compare</span>
                   </button>
                 </div>
                 {[
@@ -2795,8 +2795,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
                   <div key={label} className="mb-2 last:mb-0">
                     <div className="flex items-center gap-1.5 mb-1">
-                      <Icon size={10} style={{ color: "#5C5856" }} />
-                      <span style={{ fontSize: "10px", fontWeight: 500, color: "#5C5856" }}>{label}</span>
+                      <Icon size={10} style={{ color: "var(--text-secondary)" }} />
+                      <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--text-secondary)" }}>{label}</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {models.map(m => {
@@ -2818,8 +2818,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
                             style={{
                               background: active ? `${m.color}18` : "rgba(255,255,255,0.03)",
-                              border: `1px solid ${active ? m.color + "50" : "rgba(255,255,255,0.06)"}`,
-                              color: active ? m.color : "#7A7572",
+                              border: `1px solid ${active ? m.color + "50" : "var(--border)"}`,
+                              color: active ? m.color : "var(--text-secondary)",
                               fontSize: "11px", fontWeight: active ? 600 : 400,
                             }}
                           >
@@ -2842,10 +2842,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               className="flex-1 flex flex-col items-center justify-center gap-6 py-20">
               <Loader2 size={32} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
               <div className="text-center">
-                <p style={{ fontSize: "16px", fontWeight: 600, color: "#E8E4DF", marginBottom: 4 }}>
+                <p style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)", marginBottom: 4 }}>
                   Generating campaign...
                 </p>
-                <p style={{ fontSize: "13px", color: "#7A7572" }}>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                   {refPhotos.length > 0
                     ? generationProgress < 10 ? "Uploading reference photos..."
                     : generationProgress < 35 ? "Analyzing visual DNA + generating copy..."
@@ -2855,22 +2855,22 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   }
                 </p>
               </div>
-              <div className="w-80 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div className="w-80 h-1 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
                 <motion.div className="h-full rounded-full" style={{ background: "var(--ora-signal)" }}
                   animate={{ width: `${generationProgress}%` }} transition={{ duration: 0.5 }} />
               </div>
               <div className="flex flex-wrap justify-center gap-2 mt-4">
                 {assets.map(asset => {
-                  const color = PLATFORM_COLORS[asset.platform] || "#7A7572";
+                  const color = PLATFORM_COLORS[asset.platform] || "var(--text-secondary)";
                   const isReady = asset.status === "ready";
                   const isError = asset.status === "error";
                   return (
                     <span key={asset.id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{
                       background: isReady ? `${color}15` : isError ? "rgba(212,24,61,0.1)" : "rgba(255,255,255,0.03)",
-                      border: `1px solid ${isReady ? `${color}30` : isError ? "rgba(212,24,61,0.2)" : "rgba(255,255,255,0.06)"}`,
+                      border: `1px solid ${isReady ? `${color}30` : isError ? "rgba(212,24,61,0.2)" : "var(--border)"}`,
                     }}>
-                      {isReady ? <Check size={10} style={{ color }} /> : isError ? <AlertCircle size={10} style={{ color: "#d4183d" }} /> : <Loader2 size={10} className="animate-spin" style={{ color: "#5C5856" }} />}
-                      <span style={{ fontSize: "10px", fontWeight: 500, color: isReady ? color : isError ? "#d4183d" : "#5C5856" }}>{asset.label}</span>
+                      {isReady ? <Check size={10} style={{ color }} /> : isError ? <AlertCircle size={10} style={{ color: "#d4183d" }} /> : <Loader2 size={10} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
+                      <span style={{ fontSize: "10px", fontWeight: 500, color: isReady ? color : isError ? "#d4183d" : "var(--text-secondary)" }}>{asset.label}</span>
                     </span>
                   );
                 })}
@@ -2884,14 +2884,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               className="px-6 py-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 style={{ fontSize: "18px", fontWeight: 600, color: "#E8E4DF", letterSpacing: "-0.02em" }}>
+                  <h3 style={{ fontSize: "18px", fontWeight: 600, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
                     Campaign Ready
                   </h3>
-                  <p style={{ fontSize: "13px", color: "#7A7572", marginTop: 2 }}>
+                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: 2 }}>
                     {assets.filter(a => a.status === "ready").length}/{assets.length} assets generated
                     {(vault?.brandName || vault?.company_name) ? ` for ${vault.brandName || vault.company_name}` : ""}
                     {Object.values(deployingAssets).filter(s => s === "deployed" || s === "scheduled").length > 0 && (
-                      <span style={{ color: "#10b981", marginLeft: 8 }}>
+                      <span style={{ color: "#666666", marginLeft: 8 }}>
                         {Object.values(deployingAssets).filter(s => s === "deployed" || s === "scheduled").length} deployed
                       </span>
                     )}
@@ -2917,16 +2917,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               </div>
 
               {/* Social Accounts — transparent integration */}
-              <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(59,79,196,0.12)" }}>
+                  <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(17,17,17,0.12)" }}>
                     <Send size={11} style={{ color: "var(--ora-signal)" }} />
                   </div>
-                  <span style={{ fontSize: "12px", color: "#E8E4DF", fontWeight: 600 }}>Social Accounts</span>
-                  {zernioLoading && <Loader2 size={10} className="animate-spin" style={{ color: "#7A7572" }} />}
+                  <span style={{ fontSize: "12px", color: "var(--foreground)", fontWeight: 600 }}>Social Accounts</span>
+                  {zernioLoading && <Loader2 size={10} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
                   {!zernioLoading && zernioAccounts.length > 0 && (
                     <button onClick={refreshZernioAccounts} className="ml-auto cursor-pointer" title="Refresh accounts">
-                      <RefreshCw size={10} style={{ color: "#5C5856" }} />
+                      <RefreshCw size={10} style={{ color: "var(--text-secondary)" }} />
                     </button>
                   )}
                 </div>
@@ -2937,8 +2937,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
                       return (
                         <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-                          style={{ background: `${PLATFORM_COLORS[pName] || "#7A7572"}15`, fontSize: "11px", fontWeight: 600, color: PLATFORM_COLORS[pName] || "#9A9590" }}>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#10b981" }} />
+                          style={{ background: `${PLATFORM_COLORS[pName] || "var(--text-secondary)"}15`, fontSize: "11px", fontWeight: 600, color: PLATFORM_COLORS[pName] || "var(--text-tertiary)" }}>
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
                           {pName} {acc.username ? `@${acc.username}` : ""}
                         </span>
                       );
@@ -2955,8 +2955,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all cursor-pointer"
                         style={{
                           background: isConnecting ? `${p.color}20` : "rgba(255,255,255,0.03)",
-                          border: `1px solid ${isConnecting ? `${p.color}40` : "rgba(255,255,255,0.08)"}`,
-                          fontSize: "11px", fontWeight: 500, color: isConnecting ? p.color : "#7A7572",
+                          border: `1px solid ${isConnecting ? `${p.color}40` : "rgba(26,23,20,0.04)"}`,
+                          fontSize: "11px", fontWeight: 500, color: isConnecting ? p.color : "var(--text-secondary)",
                           opacity: connectingPlatform && !isConnecting ? 0.4 : 1,
                         }}>
                         {isConnecting ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
@@ -2965,7 +2965,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     );
                   })}
                   {CONNECTABLE_PLATFORMS.filter(p => !zernioAccounts.some((a: any) => a.platform === p.id)).length === 0 && zernioAccounts.length > 0 && (
-                    <span style={{ fontSize: "10px", color: "#5C5856" }}>All platforms connected</span>
+                    <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>All platforms connected</span>
                   )}
                 </div>
               </div>
@@ -2974,12 +2974,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 {assets.map((asset, i) => {
                   const fmt = FORMAT_OPTIONS.find(f => f.id === asset.formatId);
                   const Icon = fmt?.icon || ImageIcon;
-                  const color = PLATFORM_COLORS[asset.platform] || "#7A7572";
+                  const color = PLATFORM_COLORS[asset.platform] || "var(--text-secondary)";
 
                   return (
                     <motion.div key={asset.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }} className="rounded-xl overflow-hidden group"
-                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                       {/* Preview area */}
                       <div className="relative cursor-pointer"
                         style={{ aspectRatio: asset.type === "text" ? "3/2" : (fmt?.aspectRatio || "1/1"), background: "#0e0d0c", maxHeight: 280 }}
@@ -2991,8 +2991,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                               <div className="relative w-full h-full">
                                 <img src={asset.carouselSlides[0]?.imageUrl || asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" />
                                 <div className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
-                                  <LayoutGrid size={9} style={{ color: "#E8E4DF" }} />
-                                  <span style={{ fontSize: "9px", fontWeight: 600, color: "#E8E4DF" }}>
+                                  <LayoutGrid size={9} style={{ color: "var(--foreground)" }} />
+                                  <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--foreground)" }}>
                                     {asset.carouselSlides.filter(s => s.imageUrl).length} slides
                                   </span>
                                 </div>
@@ -3034,7 +3034,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                       width: "14%", maxWidth: 56, minWidth: 24,
                                       height: "auto",
                                       objectFit: "contain",
-                                      filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))",
+                                      filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))",
                                       opacity: 0.9,
                                       borderRadius: 3,
                                     }}
@@ -3062,7 +3062,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             {/* Brand logo overlay on video */}
                             {brandLogoUrl && (
                               <img src={brandLogoUrl} alt="Brand logo" className="absolute"
-                                style={{ bottom: 10, right: 10, width: "14%", maxWidth: 56, minWidth: 24, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                                style={{ bottom: 10, right: 10, width: "14%", maxWidth: 56, minWidth: 24, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 3 }} />
                             )}
                           </div>
                         ) : asset.status === "ready" && asset.type === "text" ? (
@@ -3073,17 +3073,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                               </p>
                             )}
                             {asset.headline && (
-                              <p className="line-clamp-2 mb-2" style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.3 }}>
+                              <p className="line-clamp-2 mb-2" style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)", lineHeight: 1.3 }}>
                                 {asset.headline}
                               </p>
                             )}
-                            <p className="line-clamp-5" style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.6 }}>
+                            <p className="line-clamp-5" style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
                               {asset.caption || asset.copy || ""}
                             </p>
                             {!asset.caption && !asset.copy && !asset.headline && (
                               <div className="flex flex-col items-center justify-center gap-2 py-4">
-                                <FileText size={20} style={{ color: "#5C5856" }} />
-                                <span style={{ fontSize: "12px", color: "#7A7572" }}>No text generated</span>
+                                <FileText size={20} style={{ color: "var(--text-secondary)" }} />
+                                <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>No text generated</span>
                                 <button onClick={(e) => { e.stopPropagation(); retryTextGeneration(); }}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md cursor-pointer"
                                   style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "11px", fontWeight: 600 }}>
@@ -3100,7 +3100,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         ) : asset.status === "generating" ? (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2">
                             <Loader2 size={20} className="animate-spin" style={{ color }} />
-                            <span style={{ fontSize: "11px", color: "#5C5856" }}>Generating...</span>
+                            <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>Generating...</span>
                           </div>
                         ) : asset.status === "error" ? (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-3">
@@ -3154,15 +3154,15 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 }}
                                   className="flex items-center gap-1 px-2 py-1 rounded-md transition-all cursor-pointer"
                                   style={{
-                                    background: isSelected ? "rgba(59,79,196,0.2)" : "rgba(255,255,255,0.04)",
-                                    border: isSelected ? "1px solid rgba(59,79,196,0.5)" : "1px solid rgba(255,255,255,0.06)",
+                                    background: isSelected ? "rgba(17,17,17,0.2)" : "rgba(26,23,20,0.03)",
+                                    border: isSelected ? "1px solid rgba(17,17,17,0.5)" : "1px solid var(--border)",
                                   }}>
                                   {isImage && v.imageUrl ? (
                                     <img src={v.imageUrl} alt={v.modelLabel} className="w-5 h-5 rounded object-cover" />
                                   ) : null}
                                   <span style={{
                                     fontSize: "9px", fontWeight: isSelected ? 700 : 500,
-                                    color: isSelected ? "#E8E4DF" : "#7A7572",
+                                    color: isSelected ? "var(--foreground)" : "var(--text-secondary)",
                                   }}>{v.modelLabel}</span>
                                 </button>
                               );
@@ -3174,7 +3174,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       {/* Info */}
                       <div className="p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{asset.label}</span>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{asset.label}</span>
                           {asset.status === "ready" && (
                             <div className="flex items-center gap-1">
                               {/* Edit template button */}
@@ -3191,26 +3191,26 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   }}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
                                   title={assetTemplates[asset.formatId] ? "Edit template" : "Choose template"}
-                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}
+                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}
                                 >
-                                  <Pencil size={12} style={{ color: assetTemplates[asset.formatId] ? "var(--ora-signal)" : "#7A7572" }} />
+                                  <Pencil size={12} style={{ color: assetTemplates[asset.formatId] ? "var(--ora-signal)" : "var(--text-secondary)" }} />
                                 </button>
                               )}
                               <button onClick={() => handleDeployAsset(asset)}
                                 disabled={deployingAssets[asset.formatId] === "deploying" || deployingAssets[asset.formatId] === "deployed"}
                                 className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
                                 title={deployingAssets[asset.formatId] === "deployed" ? "Published" : deployingAssets[asset.formatId] === "scheduled" ? "Scheduled" : "Publish to platform"}
-                                style={{ background: deployingAssets[asset.formatId] === "deployed" ? "rgba(16,185,129,0.15)" : deployingAssets[asset.formatId] === "scheduled" ? "rgba(59,79,196,0.15)" : "rgba(255,255,255,0.04)" }}>
+                                style={{ background: deployingAssets[asset.formatId] === "deployed" ? "rgba(17,17,17,0.15)" : deployingAssets[asset.formatId] === "scheduled" ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}>
                                 {deployingAssets[asset.formatId] === "deploying" ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
-                                  : deployingAssets[asset.formatId] === "deployed" ? <Check size={12} style={{ color: "#10b981" }} />
+                                  : deployingAssets[asset.formatId] === "deployed" ? <Check size={12} style={{ color: "#666666" }} />
                                   : deployingAssets[asset.formatId] === "scheduled" ? <Clock size={12} style={{ color: "var(--ora-signal)" }} />
-                                  : <Send size={12} style={{ color: "#7A7572" }} />}
+                                  : <Send size={12} style={{ color: "var(--text-secondary)" }} />}
                               </button>
-                              <button onClick={() => handleSaveAsset(asset)} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
-                                <Save size={12} style={{ color: "#7A7572" }} />
+                              <button onClick={() => handleSaveAsset(asset)} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                                <Save size={12} style={{ color: "var(--text-secondary)" }} />
                               </button>
-                              <button onClick={() => handleDownload(asset)} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
-                                <Download size={12} style={{ color: "#7A7572" }} />
+                              <button onClick={() => handleDownload(asset)} className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                                <Download size={12} style={{ color: "var(--text-secondary)" }} />
                               </button>
                             </div>
                           )}
@@ -3219,24 +3219,24 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <p className="line-clamp-1 mb-1" style={{ fontSize: "12px", fontWeight: 600, color: "#C4BEB8", lineHeight: 1.4 }}>{asset.headline}</p>
                         )}
                         {(asset.caption || asset.copy) && (
-                          <p className="line-clamp-3" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
+                          <p className="line-clamp-3" style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
                         )}
                         {asset.hashtags && (
                           <p className="line-clamp-1 mt-1" style={{ fontSize: "11px", color: "var(--ora-signal)", lineHeight: 1.4 }}>{asset.hashtags}</p>
                         )}
                         {asset.status === "ready" && (
                           <div className="flex items-center gap-1 mt-2">
-                            <Check size={11} style={{ color: "#10b981" }} />
-                            <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 600 }}>Brand-compliant</span>
+                            <Check size={11} style={{ color: "#666666" }} />
+                            <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>Brand-compliant</span>
                           </div>
                         )}
 
                         {deployingAssets[asset.formatId] && (
                           <div className="flex items-center gap-1 mt-1">
-                            {deployingAssets[asset.formatId] === "deployed" && <><Send size={9} style={{ color: "#10b981" }} /><span style={{ fontSize: "9px", color: "#10b981", fontWeight: 600 }}>Published</span></>}
+                            {deployingAssets[asset.formatId] === "deployed" && <><Send size={9} style={{ color: "#666666" }} /><span style={{ fontSize: "9px", color: "#666666", fontWeight: 600 }}>Published</span></>}
                             {deployingAssets[asset.formatId] === "scheduled" && <><Clock size={9} style={{ color: "var(--ora-signal)" }} /><span style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600 }}>Scheduled</span></>}
-                            {deployingAssets[asset.formatId] === "deploying" && <><Loader2 size={9} className="animate-spin" style={{ color: "#7A7572" }} /><span style={{ fontSize: "9px", color: "#7A7572", fontWeight: 600 }}>Deploying...</span></>}
-                            {deployingAssets[asset.formatId] === "skipped" && <><Check size={9} style={{ color: "#7A7572" }} /><span style={{ fontSize: "9px", color: "#7A7572", fontWeight: 600 }}>Skipped (not supported)</span></>}
+                            {deployingAssets[asset.formatId] === "deploying" && <><Loader2 size={9} className="animate-spin" style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>Deploying...</span></>}
+                            {deployingAssets[asset.formatId] === "skipped" && <><Check size={9} style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>Skipped (not supported)</span></>}
                             {deployingAssets[asset.formatId] === "error" && <><AlertCircle size={9} style={{ color: "#d4183d" }} /><span style={{ fontSize: "9px", color: "#d4183d", fontWeight: 600 }}>Deploy failed</span></>}
                           </div>
                         )}
@@ -3255,9 +3255,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     disabled={calendarLoading || assets.filter(a => a.status === "ready").length === 0}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all cursor-pointer"
                     style={{
-                      background: calendarGenerated ? "rgba(16,185,129,0.08)" : "rgba(59,79,196,0.1)",
-                      border: `1px solid ${calendarGenerated ? "rgba(16,185,129,0.2)" : "rgba(59,79,196,0.2)"}`,
-                      color: calendarGenerated ? "#10b981" : "var(--ora-signal)",
+                      background: calendarGenerated ? "rgba(17,17,17,0.08)" : "rgba(17,17,17,0.1)",
+                      border: `1px solid ${calendarGenerated ? "rgba(17,17,17,0.2)" : "rgba(17,17,17,0.2)"}`,
+                      color: calendarGenerated ? "#666666" : "var(--ora-signal)",
                       fontSize: "13px", fontWeight: 600,
                       opacity: calendarLoading ? 0.6 : 1,
                     }}
@@ -3270,7 +3270,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     <button
                       onClick={() => setShowCalendarPanel(prev => !prev)}
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer"
-                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#9A9590", fontSize: "12px", fontWeight: 500 }}
+                      style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--text-tertiary)", fontSize: "12px", fontWeight: 500 }}
                     >
                       <ChevronRight size={12} style={{ transform: showCalendarPanel ? "rotate(90deg)" : "none", transition: "transform 0.2s" }} />
                       {showCalendarPanel ? "Hide calendar" : "Show calendar"}
@@ -3282,7 +3282,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       <Link
                         to="/hub/calendar"
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg transition-all"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#9A9590", fontSize: "12px", fontWeight: 500 }}
+                        style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--text-tertiary)", fontSize: "12px", fontWeight: 500 }}
                       >
                         <ExternalLink size={12} />
                         Open Calendar
@@ -3293,7 +3293,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       disabled={deployingAll || assets.filter(a => a.status === "ready").length === 0}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all cursor-pointer"
                       style={{
-                        background: deployingAll ? "rgba(255,255,255,0.04)" : "var(--ora-signal)",
+                        background: deployingAll ? "rgba(26,23,20,0.03)" : "var(--ora-signal)",
                         color: "#fff", fontSize: "13px", fontWeight: 600,
                         opacity: (deployingAll || assets.filter(a => a.status === "ready").length === 0) ? 0.5 : 1,
                       }}
@@ -3310,9 +3310,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                     const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
                     const channelColors: Record<string, string> = {
-                      LinkedIn: "#0077B5", Instagram: "#E1306C", Facebook: "#1877F2",
-                      Email: "#EA4335", "Twitter/X": "#1DA1F2", TikTok: "#00f2ea",
-                      YouTube: "#FF0000", Pinterest: "#E60023", Web: "#4285F4",
+                      LinkedIn: "#666666", Instagram: "#666666", Facebook: "#666666",
+                      Email: "#666666", "Twitter/X": "#666666", TikTok: "#666666",
+                      YouTube: "#666666", Pinterest: "#666666", Web: "#666666",
                     };
 
                     // Build grid for current view month
@@ -3354,36 +3354,36 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="overflow-hidden"
                       >
-                        <div className="rounded-xl overflow-hidden" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                           {/* Header */}
-                          <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                          <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                             <div className="flex items-center gap-3">
                               <Calendar size={14} style={{ color: "var(--ora-signal)" }} />
-                              <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>Editorial Calendar</span>
-                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(59,79,196,0.1)" }}>
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>Editorial Calendar</span>
+                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(17,17,17,0.1)" }}>
                                 {calendarEvents.length} posts
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <button onClick={() => navigateMonth(-1)} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
-                                <ChevronLeft size={14} style={{ color: "#9A9590" }} />
+                              <button onClick={() => navigateMonth(-1)} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                                <ChevronLeft size={14} style={{ color: "var(--text-tertiary)" }} />
                               </button>
-                              <span style={{ fontSize: "14px", fontWeight: 600, color: "#E8E4DF", minWidth: 140, textAlign: "center" }}>
+                              <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--foreground)", minWidth: 140, textAlign: "center" }}>
                                 {MONTHS_FULL[calendarViewMonth]} {calendarViewYear}
                                 {monthsWithEvents.has(`${calendarViewYear}-${calendarViewMonth}`) && (
                                   <span className="inline-block w-1.5 h-1.5 rounded-full ml-2" style={{ background: "var(--ora-signal)", verticalAlign: "middle" }} />
                                 )}
                               </span>
-                              <button onClick={() => navigateMonth(1)} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
-                                <ChevronRight size={14} style={{ color: "#9A9590" }} />
+                              <button onClick={() => navigateMonth(1)} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                                <ChevronRight size={14} style={{ color: "var(--text-tertiary)" }} />
                               </button>
                             </div>
                           </div>
 
                           {/* Day-of-week headers */}
-                          <div className="grid grid-cols-7 px-2 pt-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          <div className="grid grid-cols-7 px-2 pt-2" style={{ borderBottom: "1px solid rgba(26,23,20,0.03)" }}>
                             {DOW.map(d => (
-                              <div key={d} className="text-center py-2" style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              <div key={d} className="text-center py-2" style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                                 {d}
                               </div>
                             ))}
@@ -3403,14 +3403,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                     <>
                                       <span style={{
                                         fontSize: "11px", fontWeight: todayMark ? 700 : 400,
-                                        color: todayMark ? "var(--ora-signal)" : dayEvents.length > 0 ? "#E8E4DF" : "#3a3836",
+                                        color: todayMark ? "var(--ora-signal)" : dayEvents.length > 0 ? "var(--foreground)" : "#3a3836",
                                         display: "block", textAlign: "right", paddingRight: 2, paddingTop: 1,
                                       }}>
                                         {dayNum}
                                       </span>
                                       <div className="mt-0.5 space-y-0.5">
                                         {dayEvents.slice(0, 3).map((ev, ei) => {
-                                          const color = channelColors[ev.channel] || ev.color || "#7A7572";
+                                          const color = channelColors[ev.channel] || ev.color || "var(--text-secondary)";
                                           return (
                                             <motion.div
                                               key={ev.id || ei}
@@ -3424,14 +3424,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                               <span style={{ fontSize: "8px", fontWeight: 600, color, display: "block", lineHeight: 1.2 }}>
                                                 {ev.time} {ev.channel}
                                               </span>
-                                              <span className="truncate block" style={{ fontSize: "8px", color: "#9A9590", lineHeight: 1.2 }}>
+                                              <span className="truncate block" style={{ fontSize: "8px", color: "var(--text-tertiary)", lineHeight: 1.2 }}>
                                                 {ev.title}
                                               </span>
                                             </motion.div>
                                           );
                                         })}
                                         {dayEvents.length > 3 && (
-                                          <span style={{ fontSize: "8px", fontWeight: 600, color: "#5C5856", paddingLeft: 2 }}>
+                                          <span style={{ fontSize: "8px", fontWeight: 600, color: "var(--text-secondary)", paddingLeft: 2 }}>
                                             +{dayEvents.length - 3} more
                                           </span>
                                         )}
@@ -3444,11 +3444,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           </div>
 
                           {/* Legend + list summary below grid */}
-                          <div className="px-5 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                          <div className="px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
                             <div className="flex flex-wrap gap-3 mb-3">
                               {[...new Set(calendarEvents.map(e => e.channel))].map(ch => (
-                                <span key={ch} className="inline-flex items-center gap-1.5" style={{ fontSize: "10px", fontWeight: 500, color: channelColors[ch] || "#7A7572" }}>
-                                  <span className="w-2 h-2 rounded-full" style={{ background: channelColors[ch] || "#7A7572" }} />
+                                <span key={ch} className="inline-flex items-center gap-1.5" style={{ fontSize: "10px", fontWeight: 500, color: channelColors[ch] || "var(--text-secondary)" }}>
+                                  <span className="w-2 h-2 rounded-full" style={{ background: channelColors[ch] || "var(--text-secondary)" }} />
                                   {ch} ({calendarEvents.filter(e => e.channel === ch).length})
                                 </span>
                               ))}
@@ -3459,16 +3459,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 const db = new Date(b.year, b.month, b.day);
                                 return da.getTime() - db.getTime();
                               }).map((ev, i) => {
-                                const color = channelColors[ev.channel] || ev.color || "#7A7572";
+                                const color = channelColors[ev.channel] || ev.color || "var(--text-secondary)";
                                 const evDate = new Date(ev.year, ev.month, ev.day);
                                 const dateStr = evDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
                                 return (
                                   <div key={ev.id || i} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.02)" }}>
-                                    <span style={{ fontSize: "11px", fontWeight: 500, color: "#7A7572", minWidth: 90 }}>{dateStr}</span>
+                                    <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", minWidth: 90 }}>{dateStr}</span>
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: `${color}15`, fontSize: "9px", fontWeight: 600, color }}>{ev.time}</span>
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: `${color}15`, fontSize: "9px", fontWeight: 600, color }}>{ev.channel}</span>
-                                    <span className="truncate flex-1" style={{ fontSize: "11px", fontWeight: 500, color: "#E8E4DF" }}>{ev.title}</span>
-                                    {ev.postingNote && <span className="truncate hidden sm:block" style={{ fontSize: "9px", color: "#5C5856", maxWidth: 200 }}>{ev.postingNote}</span>}
+                                    <span className="truncate flex-1" style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)" }}>{ev.title}</span>
+                                    {ev.postingNote && <span className="truncate hidden sm:block" style={{ fontSize: "9px", color: "var(--text-secondary)", maxWidth: 200 }}>{ev.postingNote}</span>}
                                   </div>
                                 );
                               })}
@@ -3493,11 +3493,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             style={{ background: "rgba(0,0,0,0.85)" }} onClick={() => setSelectedAsset(null)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()} className="max-w-4xl w-full max-h-[90vh] overflow-auto rounded-xl"
-              style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.1)" }}>
-              <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              style={{ background: "var(--background)", border: "1px solid rgba(255,255,255,0.1)" }}>
+              <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
                 <div className="flex items-center gap-3">
-                  <span style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF" }}>{selectedAsset.label}</span>
-                  <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: PLATFORM_COLORS[selectedAsset.platform] || "#7A7572", background: `${PLATFORM_COLORS[selectedAsset.platform] || "#7A7572"}15` }}>
+                  <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--foreground)" }}>{selectedAsset.label}</span>
+                  <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: PLATFORM_COLORS[selectedAsset.platform] || "var(--text-secondary)", background: `${PLATFORM_COLORS[selectedAsset.platform] || "var(--text-secondary)"}15` }}>
                     {selectedAsset.platform}
                   </span>
                 </div>
@@ -3507,7 +3507,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     disabled={deployingAssets[selectedAsset.formatId] === "deploying" || deployingAssets[selectedAsset.formatId] === "deployed"}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
                     style={{
-                      background: deployingAssets[selectedAsset.formatId] === "deployed" ? "rgba(16,185,129,0.15)" : deployingAssets[selectedAsset.formatId] === "deploying" ? "rgba(255,255,255,0.06)" : "#10b981",
+                      background: deployingAssets[selectedAsset.formatId] === "deployed" ? "rgba(17,17,17,0.15)" : deployingAssets[selectedAsset.formatId] === "deploying" ? "var(--border)" : "#666666",
                       color: "#fff", fontSize: "12px", fontWeight: 600,
                       opacity: deployingAssets[selectedAsset.formatId] === "deploying" ? 0.6 : 1,
                     }}
@@ -3525,7 +3525,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           setGalleryOpen(true);
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
-                        style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}
+                        style={{ background: "var(--border)", color: "var(--foreground)", fontSize: "12px", fontWeight: 500 }}
                       >
                         <LayoutGrid size={12} /> Templates
                       </button>
@@ -3533,7 +3533,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         <button
                           onClick={() => { setEditorAsset(selectedAsset); setSelectedAsset(null); }}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
-                          style={{ background: "rgba(59,79,196,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(59,79,196,0.3)" }}
+                          style={{ background: "rgba(17,17,17,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(17,17,17,0.3)" }}
                         >
                           <Pencil size={12} /> Edit
                         </button>
@@ -3543,11 +3543,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   <button onClick={() => handleSaveAsset(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
                     <Save size={12} /> Save to Library
                   </button>
-                  <button onClick={() => handleDownload(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.06)", color: "#E8E4DF", fontSize: "12px", fontWeight: 500 }}>
+                  <button onClick={() => handleDownload(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--border)", color: "var(--foreground)", fontSize: "12px", fontWeight: 500 }}>
                     <Download size={12} /> Export
                   </button>
-                  <button onClick={() => setSelectedAsset(null)} className="p-2 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.04)" }}>
-                    <X size={16} style={{ color: "#7A7572" }} />
+                  <button onClick={() => setSelectedAsset(null)} className="p-2 rounded-lg cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                    <X size={16} style={{ color: "var(--text-secondary)" }} />
                   </button>
                 </div>
               </div>
@@ -3557,27 +3557,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 mb-2">
                       <LayoutGrid size={14} style={{ color: "var(--ora-signal)" }} />
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>
                         Carousel — {selectedAsset.carouselSlides.length} slides
                       </span>
                     </div>
                     <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "thin" }}>
                       {selectedAsset.carouselSlides.map((slide, idx) => (
-                        <div key={idx} className="flex-shrink-0 rounded-xl overflow-hidden relative" style={{ width: 220, background: "#0e0d0c", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div key={idx} className="flex-shrink-0 rounded-xl overflow-hidden relative" style={{ width: 220, background: "#0e0d0c", border: "1px solid var(--border)" }}>
                           {slide.imageUrl ? (
                             <img src={slide.imageUrl} alt={`Slide ${idx + 1}`} className="w-full" style={{ aspectRatio: "1/1", objectFit: "cover" }} />
                           ) : (
-                            <div className="flex items-center justify-center" style={{ aspectRatio: "1/1", background: "#131211" }}>
+                            <div className="flex items-center justify-center" style={{ aspectRatio: "1/1", background: "var(--background)" }}>
                               {slide.status === "generating" ? <Loader2 size={16} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
-                                : <AlertCircle size={16} style={{ color: "#5C5856" }} />}
+                                : <AlertCircle size={16} style={{ color: "var(--text-secondary)" }} />}
                             </div>
                           )}
                           {brandLogoUrl && slide.imageUrl && (
-                            <img src={brandLogoUrl} alt="Logo" className="absolute" style={{ bottom: 6, right: 6, width: "16%", maxWidth: 32, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 2 }} />
+                            <img src={brandLogoUrl} alt="Logo" className="absolute" style={{ bottom: 6, right: 6, width: "16%", maxWidth: 32, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 2 }} />
                           )}
                           <div className="p-3">
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--ora-signal)", letterSpacing: "0.06em", textTransform: "uppercase" }}>Slide {idx + 1}</span>
-                            <p className="line-clamp-3 mt-1" style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>{slide.text}</p>
+                            <p className="line-clamp-3 mt-1" style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>{slide.text}</p>
                           </div>
                         </div>
                       ))}
@@ -3622,7 +3622,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       <>
                         <img src={selectedAsset.imageUrl} alt={selectedAsset.label} className="w-full rounded-xl max-h-[50vh] object-contain" style={{ background: "#0e0d0c" }} />
                         {brandLogoUrl && (
-                          <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                          <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 12, right: 12, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 3 }} />
                         )}
                       </>
                     )}
@@ -3640,7 +3640,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         style={{ maxHeight: "50vh", background: "#0e0d0c" }}
                       />
                       {brandLogoUrl && (
-                        <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 16, right: 16, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.5))", opacity: 0.9, borderRadius: 3 }} />
+                        <img src={brandLogoUrl} alt="Brand logo" className="absolute" style={{ bottom: 16, right: 16, width: "10%", maxWidth: 64, minWidth: 28, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 3 }} />
                       )}
                     </div>
                   </div>
@@ -3648,11 +3648,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Subject line (email) */}
                 {selectedAsset.subject && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Subject Line
                     </span>
-                    <p style={{ fontSize: "15px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.5 }}>
+                    <p style={{ fontSize: "15px", fontWeight: 600, color: "var(--foreground)", lineHeight: 1.5 }}>
                       {selectedAsset.subject}
                     </p>
                   </div>
@@ -3660,11 +3660,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Headline */}
                 {selectedAsset.headline && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Headline
                     </span>
-                    <p style={{ fontSize: "16px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.4, letterSpacing: "-0.01em" }}>
+                    <p style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)", lineHeight: 1.4, letterSpacing: "-0.01em" }}>
                       {selectedAsset.headline}
                     </p>
                   </div>
@@ -3672,14 +3672,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Meta Description (SEO articles) */}
                 {selectedAsset.metaDescription && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(59,79,196,0.15)" }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid rgba(17,17,17,0.15)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Meta Description (SEO)
                     </span>
-                    <p style={{ fontSize: "13px", color: "#9A9590", lineHeight: 1.5, fontStyle: "italic" }}>
+                    <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.5, fontStyle: "italic" }}>
                       {selectedAsset.metaDescription}
                     </p>
-                    <span style={{ fontSize: "10px", color: "#5C5856", marginTop: 4, display: "block" }}>
+                    <span style={{ fontSize: "10px", color: "var(--text-secondary)", marginTop: 4, display: "block" }}>
                       {selectedAsset.metaDescription.length}/155 chars
                     </span>
                   </div>
@@ -3687,15 +3687,15 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Main copy / caption */}
                 {(selectedAsset.caption || selectedAsset.copy) && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? "Article" : selectedAsset.type === "text" ? "Body Copy" : "Caption"}
                     </span>
-                    <div style={{ fontSize: "14px", color: "#E8E4DF", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
+                    <div style={{ fontSize: "14px", color: "var(--foreground)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
                       dangerouslySetInnerHTML={(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article")
                         ? { __html: (selectedAsset.caption || selectedAsset.copy || "")
-                            .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:#E8E4DF;margin:20px 0 8px">$1</h3>')
-                            .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:#E8E4DF;margin:24px 0 10px">$1</h2>')
+                            .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:var(--foreground);margin:20px 0 8px">$1</h3>')
+                            .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:var(--foreground);margin:24px 0 10px">$1</h2>')
                             .replace(/^- (.+)$/gm, '<li style="margin-left:16px;margin-bottom:4px">$1</li>')
                             .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                             .replace(/\n\n/g, '<br/><br/>')
@@ -3706,11 +3706,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? undefined : (selectedAsset.caption || selectedAsset.copy)}
                     </div>
                     {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") && (
-                      <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                      <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                           {((selectedAsset.caption || selectedAsset.copy || "").split(/\s+/).length)} words
                         </span>
-                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                           ~{Math.ceil((selectedAsset.caption || selectedAsset.copy || "").split(/\s+/).length / 250)} min read
                         </span>
                       </div>
@@ -3720,8 +3720,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Hashtags */}
                 {selectedAsset.hashtags && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
                       Hashtags
                     </span>
                     <p style={{ fontSize: "13px", color: "var(--ora-signal)", lineHeight: 1.6 }}>{selectedAsset.hashtags}</p>
@@ -3730,8 +3730,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Features (landing page) */}
                 {selectedAsset.features && selectedAsset.features.length > 0 && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Key Features
                     </span>
                     <ul className="space-y-2">
@@ -3747,8 +3747,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* CTA */}
                 {selectedAsset.ctaText && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Call to Action
                     </span>
                     <span className="inline-flex items-center px-5 py-2.5 rounded-lg" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "14px", fontWeight: 600 }}>
@@ -3759,8 +3759,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Re-prompt / Regenerate */}
                 {selectedAsset.type !== "text" && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Re-prompt & Regenerate
                     </span>
                     <div className="flex gap-2">
@@ -3769,9 +3769,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         onChange={e => setRepromptText(e.target.value)}
                         placeholder={`Describe what you want instead... (current: ${selectedAsset.imagePrompt?.slice(0, 60) || selectedAsset.videoPrompt?.slice(0, 60) || "auto-generated"})`}
                         className="flex-1 rounded-lg px-4 py-2.5 transition-all"
-                        style={{ background: "#131211", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", outline: "none" }}
-                        onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
-                        onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
+                        style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
+                        onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+                        onBlur={e => (e.target.style.border = "1px solid rgba(26,23,20,0.04)")}
                         onKeyDown={e => { if (e.key === "Enter" && repromptText.trim()) handleRegenerateAsset(selectedAsset, repromptText); }}
                       />
                       <button
@@ -3779,7 +3779,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         disabled={!repromptText.trim() || regeneratingAsset === selectedAsset.formatId}
                         className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg cursor-pointer transition-all flex-shrink-0"
                         style={{
-                          background: regeneratingAsset === selectedAsset.formatId ? "rgba(255,255,255,0.04)" : "var(--ora-signal)",
+                          background: regeneratingAsset === selectedAsset.formatId ? "rgba(26,23,20,0.03)" : "var(--ora-signal)",
                           color: "#fff", fontSize: "13px", fontWeight: 600,
                           opacity: (!repromptText.trim() || regeneratingAsset === selectedAsset.formatId) ? 0.5 : 1,
                         }}
@@ -3789,12 +3789,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       </button>
                     </div>
                     {selectedAsset.imagePrompt && (
-                      <p className="mt-2" style={{ fontSize: "11px", color: "#5C5856", lineHeight: 1.5 }}>
+                      <p className="mt-2" style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
                         Current prompt: {selectedAsset.imagePrompt.slice(0, 150)}{selectedAsset.imagePrompt.length > 150 ? "..." : ""}
                       </p>
                     )}
                     {selectedAsset.videoPrompt && !selectedAsset.imagePrompt && (
-                      <p className="mt-2" style={{ fontSize: "11px", color: "#5C5856", lineHeight: 1.5 }}>
+                      <p className="mt-2" style={{ fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
                         Current prompt: {selectedAsset.videoPrompt.slice(0, 150)}{selectedAsset.videoPrompt.length > 150 ? "..." : ""}
                       </p>
                     )}
@@ -3803,8 +3803,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 {/* Template selector chips */}
                 {selectedAsset.type === "image" && getTemplatesForFormat(selectedAsset.formatId).length > 0 && (
-                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
+                  <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
                       Layout Template
                     </span>
                     <div className="flex flex-wrap gap-2">
@@ -3812,10 +3812,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         onClick={() => setAssetTemplates(prev => { const next = { ...prev }; delete next[selectedAsset.formatId]; return next; })}
                         className="px-3 py-1.5 rounded-lg cursor-pointer transition-all"
                         style={{
-                          background: !assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
-                          color: !assetTemplates[selectedAsset.formatId] ? "#fff" : "#7A7572",
+                          background: !assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+                          color: !assetTemplates[selectedAsset.formatId] ? "#fff" : "var(--text-secondary)",
                           fontSize: "11px", fontWeight: 600,
-                          border: `1px solid ${!assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(255,255,255,0.08)"}`,
+                          border: `1px solid ${!assetTemplates[selectedAsset.formatId] ? "var(--ora-signal)" : "rgba(26,23,20,0.04)"}`,
                         }}
                       >Raw</button>
                       {getTemplatesForFormat(selectedAsset.formatId).map(tmpl => (
@@ -3824,10 +3824,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           onClick={() => setAssetTemplates(prev => ({ ...prev, [selectedAsset.formatId]: tmpl.id }))}
                           className="px-3 py-1.5 rounded-lg cursor-pointer transition-all"
                           style={{
-                            background: assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(255,255,255,0.04)",
-                            color: assetTemplates[selectedAsset.formatId] === tmpl.id ? "#fff" : "#9A9590",
+                            background: assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+                            color: assetTemplates[selectedAsset.formatId] === tmpl.id ? "#fff" : "var(--text-tertiary)",
                             fontSize: "11px", fontWeight: 600,
-                            border: `1px solid ${assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(255,255,255,0.08)"}`,
+                            border: `1px solid ${assetTemplates[selectedAsset.formatId] === tmpl.id ? "var(--ora-signal)" : "rgba(26,23,20,0.04)"}`,
                           }}
                         >{tmpl.name}</button>
                       ))}
@@ -3835,10 +3835,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}>
-                  <Shield size={14} style={{ color: "#10b981" }} />
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#10b981" }}>Brand-compliant</span>
-                  <span style={{ fontSize: "11px", color: "#5C5856" }}>-- Validated by Compliance Guard agent</span>
+                <div className="flex items-center gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.12)" }}>
+                  <Shield size={14} style={{ color: "#666666" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#666666" }}>Brand-compliant</span>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>-- Validated by Compliance Guard agent</span>
                 </div>
               </div>
             </motion.div>

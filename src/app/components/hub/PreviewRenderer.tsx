@@ -49,11 +49,11 @@ export function PreviewRenderer({ preview, large = false }: { preview: Generatio
 
     case "code":
       return (
-        <div className="w-full h-full p-3 font-mono overflow-hidden" style={{ background: "#1a1a2e" }}>
+        <div className="w-full h-full p-3 font-mono overflow-hidden" style={{ background: "#1a1a1a" }}>
           <div className="flex items-center gap-1 mb-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-400/50" />
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-400/50" />
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400/50" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
+            <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
             <span className="ml-2" style={{ fontSize: "8px", color: "rgba(255,255,255,0.3)" }}>{preview.language}</span>
           </div>
           <pre className="text-white/70 whitespace-pre-wrap" style={{ fontSize: large ? "11px" : "8px", lineHeight: 1.5 }}>

@@ -194,7 +194,7 @@ function AnalyticsPageContent() {
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-foreground mb-1" style={{ fontSize: "28px", fontWeight: 500, letterSpacing: "-0.03em" }}>Analytics</h1>
+              <h1 className="text-foreground mb-1" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>Analytics</h1>
               <p className="text-muted-foreground" style={{ fontSize: "15px" }}>Real-time data from your campaigns, calendar, and brand scans.</p>
             </div>
             <button onClick={handleRefresh} disabled={refreshing}
@@ -219,8 +219,8 @@ function AnalyticsPageContent() {
               </div>
               {kpi.trend && kpi.trend !== "--" && (
                 <div className="flex items-center gap-1 mt-1.5">
-                  {kpi.dir === "up" ? <TrendingUp size={12} className="text-green-500" /> : kpi.dir === "down" ? <TrendingDown size={12} className="text-destructive" /> : <Minus size={12} className="text-muted-foreground" />}
-                  <span className={kpi.dir === "up" ? "text-green-600" : "text-muted-foreground"} style={{ fontSize: "11px", fontWeight: 500 }}>{kpi.trend}</span>
+                  {kpi.dir === "up" ? <TrendingUp size={12} className="text-[var(--text-secondary)]" /> : kpi.dir === "down" ? <TrendingDown size={12} className="text-destructive" /> : <Minus size={12} className="text-muted-foreground" />}
+                  <span className={kpi.dir === "up" ? "text-[var(--text-secondary)]" : "text-muted-foreground"} style={{ fontSize: "11px", fontWeight: 500 }}>{kpi.trend}</span>
                 </div>
               )}
             </motion.div>
@@ -290,14 +290,14 @@ function AnalyticsPageContent() {
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="p-3 rounded-lg" style={{ background: "rgba(22,163,74,0.06)", border: "1px solid rgba(22,163,74,0.12)" }}>
+                <div className="p-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.12)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
-                    <CheckCircle2 size={12} style={{ color: "#16a34a" }} />
+                    <CheckCircle2 size={12} style={{ color: "#666666" }} />
                     <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Published</span>
                   </div>
                   <span className="text-foreground" style={{ fontSize: "22px", fontWeight: 500 }}>{socialData.summary.totalDeployed}</span>
                 </div>
-                <div className="p-3 rounded-lg" style={{ background: "var(--ora-signal-light)", border: "1px solid rgba(59,79,196,0.12)" }}>
+                <div className="p-3 rounded-lg" style={{ background: "var(--ora-signal-light)", border: "1px solid rgba(17,17,17,0.12)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock size={12} className="text-ora-signal" />
                     <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Scheduled</span>
@@ -322,7 +322,7 @@ function AnalyticsPageContent() {
                       <div key={platform} className="flex items-center gap-3 p-2.5 rounded-lg border border-border">
                         <span className="text-foreground w-24 flex-shrink-0" style={{ fontSize: "13px", fontWeight: 500 }}>{platform}</span>
                         <div className="flex items-center gap-4 flex-1">
-                          <span className="flex items-center gap-1" style={{ fontSize: "12px", color: "#16a34a" }}>
+                          <span className="flex items-center gap-1" style={{ fontSize: "12px", color: "#666666" }}>
                             <Send size={10} /> {data.deployed}
                           </span>
                           <span className="flex items-center gap-1" style={{ fontSize: "12px", color: "var(--ora-signal)" }}>
@@ -361,8 +361,8 @@ function AnalyticsPageContent() {
                           <span className="text-foreground" style={{ fontSize: "13px" }}>{post.platform}</span>
                           <span className="px-1.5 py-0.5 rounded" style={{
                             fontSize: "10px", fontWeight: 600,
-                            background: post.status === "published" ? "rgba(22,163,74,0.08)" : post.status === "scheduled" ? "var(--ora-signal-light)" : "rgba(212,24,61,0.08)",
-                            color: post.status === "published" ? "#16a34a" : post.status === "scheduled" ? "var(--ora-signal)" : "#d4183d",
+                            background: post.status === "published" ? "rgba(17,17,17,0.08)" : post.status === "scheduled" ? "var(--ora-signal-light)" : "rgba(212,24,61,0.08)",
+                            color: post.status === "published" ? "#666666" : post.status === "scheduled" ? "var(--ora-signal)" : "#d4183d",
                           }}>{post.status}</span>
                         </div>
                         <div className="flex items-center gap-3">
@@ -484,8 +484,8 @@ function AnalyticsPageContent() {
                         <span className="text-foreground flex-shrink-0" style={{ fontSize: "12px", fontWeight: 500 }}>{post.platform}</span>
                         <span className="px-1.5 py-0.5 rounded flex-shrink-0" style={{
                           fontSize: "9px", fontWeight: 600,
-                          background: post.status === "published" ? "rgba(22,163,74,0.08)" : "var(--ora-signal-light)",
-                          color: post.status === "published" ? "#16a34a" : "var(--ora-signal)",
+                          background: post.status === "published" ? "rgba(17,17,17,0.08)" : "var(--ora-signal-light)",
+                          color: post.status === "published" ? "#666666" : "var(--ora-signal)",
                         }}>{post.status}</span>
                         {post.content && (
                           <span className="text-muted-foreground truncate" style={{ fontSize: "11px" }}>{post.content}</span>
