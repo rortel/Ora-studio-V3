@@ -12316,9 +12316,46 @@ async function ensureMergedBucket() {
 app.post("/campaign-lab/generate-soundtrack", async (c) => {
   const t0 = Date.now();
   try {
-    const { brief, mood, style } = await c.req.json();
+    const body = await c.req.json();
+    const { brief, mood, style } = body;
     if (!brief && !mood) return c.json({ success: false, error: "brief or mood required" }, 400);
-    const stylePrompt = style || `${mood || "cinematic ambient"}, instrumental, professional, brand video background`;
+
+    // ── Brand-aware audio prompt ──
+    let brandStyle = style || "";
+    let user: any = null; try { user = await getUser(c); } catch { }
+    if (user?.id && !style) {
+      const brandCtx = await buildBrandContext(user.id);
+      const parts: string[] = [];
+      // Map brand tone to music feel
+      if (brandCtx.tone) {
+        const t = brandCtx.tone;
+        if (t.confidence >= 7) parts.push("confident");
+        if (t.warmth >= 7) parts.push("warm");
+        if (t.warmth <= 3) parts.push("cool, sleek");
+        if (t.humor >= 6) parts.push("playful");
+        if (t.formality >= 7) parts.push("sophisticated, elegant");
+        if (t.formality <= 3) parts.push("casual, laid-back");
+        if (t.primary_tone) parts.push(t.primary_tone);
+      }
+      // Map brand moods from Image Bank
+      if (brandCtx.imageBankMoods?.length) parts.push(...brandCtx.imageBankMoods.slice(0, 3));
+      else if (brandCtx.photoStyle?.mood) parts.push(brandCtx.photoStyle.mood);
+      // Industry-aware genre hints
+      if (brandCtx.industry) {
+        const ind = brandCtx.industry.toLowerCase();
+        if (ind.includes("tech") || ind.includes("digital")) parts.push("modern electronic");
+        else if (ind.includes("luxury") || ind.includes("fashion")) parts.push("minimal, refined");
+        else if (ind.includes("sport") || ind.includes("fitness")) parts.push("energetic, driving");
+        else if (ind.includes("food") || ind.includes("restaurant")) parts.push("warm acoustic");
+        else if (ind.includes("finance") || ind.includes("bank")) parts.push("corporate, trust");
+        else if (ind.includes("health") || ind.includes("pharma")) parts.push("calm, reassuring");
+        else parts.push("cinematic");
+      }
+      parts.push("instrumental", "professional", "brand video background");
+      brandStyle = parts.filter(Boolean).join(", ");
+      console.log(`[generate-soundtrack] Brand-enriched style: "${brandStyle.slice(0, 120)}"`);
+    }
+    const stylePrompt = brandStyle || `${mood || "cinematic ambient"}, instrumental, professional, brand video background`;
     console.log(`[generate-soundtrack] brief="${(brief || "").slice(0, 60)}", mood="${mood || "auto"}", style="${stylePrompt.slice(0, 80)}"`);
 
     const { taskId, sunoModel } = await sunoStartGeneration({
@@ -12352,9 +12389,43 @@ app.post("/campaign-lab/generate-soundtrack", async (c) => {
 // POST /campaign-lab/soundtrack-start — Start Suno generation, return taskId immediately
 app.post("/campaign-lab/soundtrack-start", async (c) => {
   try {
-    const { brief, mood, style } = await c.req.json();
+    const body = await c.req.json();
+    const { brief, mood, style } = body;
     if (!brief && !mood) return c.json({ success: false, error: "brief or mood required" }, 400);
-    const stylePrompt = style || `${mood || "cinematic ambient"}, instrumental, professional, brand video background`;
+
+    // ── Brand-aware audio prompt (same logic as generate-soundtrack) ──
+    let brandStyle = style || "";
+    let user: any = null; try { user = await getUser(c); } catch { }
+    if (user?.id && !style) {
+      const brandCtx = await buildBrandContext(user.id);
+      const parts: string[] = [];
+      if (brandCtx.tone) {
+        const t = brandCtx.tone;
+        if (t.confidence >= 7) parts.push("confident");
+        if (t.warmth >= 7) parts.push("warm");
+        if (t.warmth <= 3) parts.push("cool, sleek");
+        if (t.humor >= 6) parts.push("playful");
+        if (t.formality >= 7) parts.push("sophisticated, elegant");
+        if (t.formality <= 3) parts.push("casual, laid-back");
+        if (t.primary_tone) parts.push(t.primary_tone);
+      }
+      if (brandCtx.imageBankMoods?.length) parts.push(...brandCtx.imageBankMoods.slice(0, 3));
+      else if (brandCtx.photoStyle?.mood) parts.push(brandCtx.photoStyle.mood);
+      if (brandCtx.industry) {
+        const ind = brandCtx.industry.toLowerCase();
+        if (ind.includes("tech") || ind.includes("digital")) parts.push("modern electronic");
+        else if (ind.includes("luxury") || ind.includes("fashion")) parts.push("minimal, refined");
+        else if (ind.includes("sport") || ind.includes("fitness")) parts.push("energetic, driving");
+        else if (ind.includes("food") || ind.includes("restaurant")) parts.push("warm acoustic");
+        else if (ind.includes("finance") || ind.includes("bank")) parts.push("corporate, trust");
+        else if (ind.includes("health") || ind.includes("pharma")) parts.push("calm, reassuring");
+        else parts.push("cinematic");
+      }
+      parts.push("instrumental", "professional", "brand video background");
+      brandStyle = parts.filter(Boolean).join(", ");
+      console.log(`[soundtrack-start] Brand-enriched style: "${brandStyle.slice(0, 120)}"`);
+    }
+    const stylePrompt = brandStyle || `${mood || "cinematic ambient"}, instrumental, professional, brand video background`;
     console.log(`[soundtrack-start] brief="${(brief || "").slice(0, 60)}", style="${stylePrompt.slice(0, 80)}"`);
     const { taskId, sunoModel } = await sunoStartGeneration({
       prompt: brief?.slice(0, 200) || mood || "cinematic background music",
