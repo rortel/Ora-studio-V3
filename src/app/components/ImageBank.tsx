@@ -44,9 +44,36 @@ interface BrandImage {
 }
 
 const CATEGORIES = [
-  "general", "product", "lifestyle", "team", "office",
+  "general", "hero", "photo-product", "photo-lifestyle", "photo-team",
+  "graphic-element", "pattern", "picto-icon", "mockup", "illustration",
+  "logo-variant", "product", "lifestyle", "team", "office",
   "event", "social", "ad", "packaging", "abstract", "other",
 ];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  "general": "General",
+  "hero": "Hero / Banner",
+  "photo-product": "Product Photo",
+  "photo-lifestyle": "Lifestyle",
+  "photo-team": "Team / People",
+  "graphic-element": "Graphic Element",
+  "pattern": "Pattern / Texture",
+  "picto-icon": "Pictogram / Icon",
+  "mockup": "Mockup",
+  "illustration": "Illustration",
+  "logo-variant": "Logo Variant",
+  "product": "Product",
+  "lifestyle": "Lifestyle",
+  "team": "Team",
+  "office": "Office",
+  "event": "Event",
+  "social": "Social",
+  "ad": "Ad",
+  "packaging": "Packaging",
+  "abstract": "Abstract",
+  "brand": "Brand",
+  "other": "Other",
+};
 
 // ── Props ──
 
@@ -379,7 +406,7 @@ export function ImageBank({ accessToken }: ImageBankProps) {
             style={{ fontSize: "11px", fontWeight: 500, background: C.bg, border: `1px solid ${C.border}`, color: C.text }}>
             <option value="">All categories</option>
             {CATEGORIES.filter((cat) => allCategories.includes(cat) || cat === filterCategory).map((cat) => (
-              <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+              <option key={cat} value={cat}>{CATEGORY_LABELS[cat] || cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
             ))}
           </select>
           {allTags.length > 0 && (
@@ -506,12 +533,12 @@ export function ImageBank({ accessToken }: ImageBankProps) {
                   {/* Info bar */}
                   <div className="px-2.5 py-2" style={{ borderTop: `1px solid ${C.border}` }}>
                     <p className="truncate" style={{ fontSize: "11px", fontWeight: 500, color: C.text, lineHeight: 1.3 }}>
-                      {img.altText || img.fileName}
+                      {(img as any).description || img.altText || img.fileName}
                     </p>
                     <div className="flex items-center justify-between mt-1">
                       <span className="px-1.5 py-0.5 rounded"
                         style={{ fontSize: "9px", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", background: "rgba(255,255,255,0.04)", color: C.textMuted }}>
-                        {img.category || "general"}
+                        {CATEGORY_LABELS[img.category] || img.category || "general"}
                       </span>
                       <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)" }}>{formatSize(img.fileSize || 0)}</span>
                     </div>
