@@ -310,6 +310,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [repromptText, setRepromptText] = useState("");
   const [regeneratingAsset, setRegeneratingAsset] = useState<string | null>(null);
   const [savingCampaign, setSavingCampaign] = useState(false);
+  const [campaignSavedId, setCampaignSavedId] = useState<string | null>(null); // tracks auto-saved campaign ID
 
   // ── Model selection ──
   const [textModel, setTextModel] = useState("gpt-4o");
@@ -1434,54 +1435,91 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
   };
 
+  // ── Build campaign item for library (reused by manual save + auto-save) ──
+  const buildCampaignItem = useCallback((readyAssets: GeneratedAsset[], existingId?: string) => {
+    const campaignId = existingId || `campaign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const imageAssets = readyAssets.filter(a => a.imageUrl);
+    const videoAsset = readyAssets.find(a => a.videoUrl);
+    const assetsList = readyAssets.map(a => ({
+      formatId: a.formatId,
+      label: a.label,
+      platform: a.platform,
+      type: a.type,
+      imageUrl: a.imageUrl || "",
+      videoUrl: a.videoUrl || "",
+      copy: a.copy || a.caption || "",
+      caption: a.caption || "",
+      hashtags: a.hashtags || "",
+      headline: a.headline || "",
+      ctaText: a.ctaText || "",
+      subject: a.subject || "",
+      imagePrompt: a.imagePrompt || "",
+      videoPrompt: a.videoPrompt || "",
+    }));
+    return {
+      id: campaignId,
+      type: "campaign",
+      title: brief.trim().slice(0, 100) || "Untitled Campaign",
+      brief: brief.trim(),
+      objective: campaignObjective,
+      tone: toneOverride,
+      language,
+      platforms: [...new Set(readyAssets.map(a => a.platform))],
+      formatCount: readyAssets.length,
+      thumbnail: imageAssets[0]?.imageUrl || "",
+      assets: assetsList,
+      createdAt: new Date().toISOString(),
+      model: "multi-agent",
+      prompt: brief.trim(),
+      // preview field — LibraryPage reads campaign data from here
+      preview: {
+        kind: "campaign",
+        platforms: [...new Set(readyAssets.map(a => a.platform))],
+        deliverableCount: readyAssets.length,
+        packshotUrl: imageAssets[0]?.imageUrl || "",
+        lifestyleUrl: imageAssets[1]?.imageUrl || "",
+        videoUrl: videoAsset?.videoUrl || "",
+        copy: { headline: assetsList[0]?.headline || brief.trim().slice(0, 80) },
+        assets: assetsList,
+      },
+    };
+  }, [brief, campaignObjective, toneOverride, language]);
+
   // ── Save entire campaign to Library ──
-  const handleSaveCampaign = async () => {
+  const handleSaveCampaign = async (silent = false) => {
     if (savingCampaign) return;
     setSavingCampaign(true);
     try {
       const readyAssets = assets.filter(a => a.status === "ready");
-      if (readyAssets.length === 0) { toast.error("No ready assets to save"); setSavingCampaign(false); return; }
-      const campaignId = `campaign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const campaignItem = {
-        id: campaignId,
-        type: "campaign",
-        title: brief.trim().slice(0, 100) || "Untitled Campaign",
-        brief: brief.trim(),
-        objective: campaignObjective,
-        tone: toneOverride,
-        language,
-        platforms: [...new Set(readyAssets.map(a => a.platform))],
-        formatCount: readyAssets.length,
-        thumbnail: readyAssets.find(a => a.imageUrl)?.imageUrl || "",
-        assets: readyAssets.map(a => ({
-          formatId: a.formatId,
-          label: a.label,
-          platform: a.platform,
-          type: a.type,
-          imageUrl: a.imageUrl || "",
-          videoUrl: a.videoUrl || "",
-          copy: a.copy || a.caption || "",
-          caption: a.caption || "",
-          hashtags: a.hashtags || "",
-          headline: a.headline || "",
-          ctaText: a.ctaText || "",
-          subject: a.subject || "",
-          imagePrompt: a.imagePrompt || "",
-          videoPrompt: a.videoPrompt || "",
-        })),
-        createdAt: new Date().toISOString(),
-        model: "multi-agent",
-        prompt: brief.trim(),
-      };
+      if (readyAssets.length === 0) { if (!silent) toast.error("No ready assets to save"); setSavingCampaign(false); return; }
+      const campaignItem = buildCampaignItem(readyAssets, campaignSavedId || undefined);
       await serverPost("/library/items", { item: campaignItem });
-      toast.success(`Campaign saved to Library (${readyAssets.length} assets)`);
+      setCampaignSavedId(campaignItem.id);
+      if (!silent) toast.success(`Campaign saved to Library (${readyAssets.length} assets)`);
+      else console.log(`[CampaignLab] Auto-saved campaign ${campaignItem.id} (${readyAssets.length} assets)`);
     } catch (err: any) {
       console.error("[CampaignLab] Save campaign error:", err);
-      toast.error(`Save failed: ${err?.message || "Unknown error"}`);
+      if (!silent) toast.error(`Save failed: ${err?.message || "Unknown error"}`);
     } finally {
       setSavingCampaign(false);
     }
   };
+
+  // ── Auto-save: save/update campaign whenever an asset becomes ready ──
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (phase !== "results") return;
+    const readyCount = assets.filter(a => a.status === "ready").length;
+    const pendingCount = assets.filter(a => a.status === "generating" || a.status === "pending").length;
+    if (readyCount === 0) return;
+    // Debounce: wait 3s after last status change, then auto-save
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      console.log(`[CampaignLab] Auto-save triggered: ${readyCount} ready, ${pendingCount} pending`);
+      handleSaveCampaign(true);
+    }, pendingCount === 0 ? 1500 : 5000); // faster save when all done
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [phase, assets]);
 
   // ── Refresh Zernio accounts list (must be before useEffect and handleConnectPlatform that use it) ──
   const refreshZernioAccounts = useCallback(() => {
@@ -1925,11 +1963,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
               style={{ background: "rgba(94,106,210,0.12)", border: "1px solid rgba(94,106,210,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
             >
-              {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              {savingCampaign ? "Saving..." : "Save Campaign"}
+              {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : campaignSavedId ? <Check size={13} /> : <Save size={13} />}
+              {savingCampaign ? "Saving..." : campaignSavedId ? "Saved" : "Save Campaign"}
             </button>
             <button
-              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); }}
+              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); setCampaignSavedId(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#E8E4DF", fontSize: "13px", fontWeight: 500 }}
             >
