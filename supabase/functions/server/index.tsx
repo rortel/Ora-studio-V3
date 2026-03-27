@@ -7580,13 +7580,16 @@ const ADOBE_CLIENT_ID = Deno.env.get("ADOBE_CLIENT_ID") || "";
 const ADOBE_CLIENT_SECRET = Deno.env.get("ADOBE_CLIENT_SECRET") || "";
 
 async function getAdobeAccessToken(): Promise<string> {
-  const res = await fetch(`${ADOBE_PDF_BASE}/token`, {
+  // Adobe IMS OAuth2 — client_credentials flow
+  const res = await fetch("https://ims-na1.adobelogin.com/ims/token/v3", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `client_id=${ADOBE_CLIENT_ID}&client_secret=${ADOBE_CLIENT_SECRET}`,
+    body: `grant_type=client_credentials&client_id=${ADOBE_CLIENT_ID}&client_secret=${ADOBE_CLIENT_SECRET}&scope=openid,AdobeID,DCAPI`,
   });
-  if (!res.ok) throw new Error(`Adobe auth failed: ${res.status} ${await res.text()}`);
-  const data = await res.json();
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Adobe IMS auth failed: ${res.status} ${text}`);
+  const data = JSON.parse(text);
+  console.log(`[adobe-extract] IMS token obtained, expires_in=${data.expires_in}`);
   return data.access_token;
 }
 
