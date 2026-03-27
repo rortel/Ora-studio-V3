@@ -9,7 +9,7 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
-  Pencil, Package,
+  Pencil, Package, Lightbulb, Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
@@ -348,6 +348,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const productsLoadedRef = useRef(false);
 
+  // ── Topic suggestions state ──
+  const [topicSuggestions, setTopicSuggestions] = useState<any[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [showTopics, setShowTopics] = useState(false);
+  const [topicsUpcoming, setTopicsUpcoming] = useState<string[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const vaultLoadedRef = useRef(false);
@@ -576,6 +582,57 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
     console.log(`[CampaignLab] Upload: ${urls.length}/${refPhotos.length} refs ready`);
     return urls;
+  };
+
+  // ── Topic suggestion handler ──
+  const handleSuggestTopics = async () => {
+    setTopicsLoading(true);
+    setShowTopics(true);
+    try {
+      const res = await serverPost("/topics/suggest", {
+        productId: selectedProduct?.id || null,
+        count: 8,
+      }, 30_000);
+      if (res.success && res.topics) {
+        setTopicSuggestions(res.topics);
+        setTopicsUpcoming(res.upcomingEvents || []);
+      } else {
+        toast.error(res.error || "Failed to suggest topics");
+      }
+    } catch (err: any) {
+      toast.error("Topic suggestion failed");
+      console.error("[topics]", err);
+    } finally {
+      setTopicsLoading(false);
+    }
+  };
+
+  const handlePickTopic = (topic: any) => {
+    const parts: string[] = [];
+    if (topic.hook) parts.push(topic.hook);
+    if (topic.angle) parts.push(`Angle: ${topic.angle}`);
+    if (topic.why_now) parts.push(`Timing: ${topic.why_now}`);
+    setBrief(parts.join("\n"));
+
+    // Auto-select the suggested format if available
+    if (topic.format) {
+      const formatId = topic.format;
+      if (!selectedFormats.includes(formatId)) {
+        setSelectedFormats(prev => [...new Set([...prev, formatId])]);
+      }
+    }
+
+    // If topic targets a product, select it
+    if (topic.product && products.length > 0) {
+      const match = products.find((p: any) =>
+        p.name?.toLowerCase().includes(topic.product.toLowerCase()) ||
+        topic.product.toLowerCase().includes(p.name?.toLowerCase())
+      );
+      if (match) setSelectedProduct(match);
+    }
+
+    setShowTopics(false);
+    toast.success("Topic applied!");
   };
 
   // ── Helper: Scan product/service URL → extract info and pre-fill brief ──
@@ -2002,7 +2059,151 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   onFocus={e => (e.target.style.border = "1px solid rgba(59,79,196,0.4)")}
                   onBlur={e => (e.target.style.border = "1px solid rgba(255,255,255,0.08)")}
                 />
+                {/* "Inspire me" button */}
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={handleSuggestTopics}
+                    disabled={topicsLoading}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all cursor-pointer"
+                    style={{
+                      background: showTopics ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)",
+                      border: `1px solid ${showTopics ? "rgba(245,158,11,0.3)" : "rgba(245,158,11,0.15)"}`,
+                      color: "#f59e0b", fontSize: "12px", fontWeight: 600,
+                      opacity: topicsLoading ? 0.7 : 1,
+                    }}
+                  >
+                    {topicsLoading ? <Loader2 size={13} className="animate-spin" /> : <Lightbulb size={13} />}
+                    {topicsLoading ? "Generating ideas..." : "Inspire me"}
+                  </button>
+                  {topicsUpcoming.length > 0 && !showTopics && (
+                    <span style={{ fontSize: "11px", color: "#7A7572" }}>
+                      <Calendar size={10} className="inline mr-1" />
+                      {topicsUpcoming[0]}
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* ═══ TOPIC SUGGESTIONS PANEL ═══ */}
+              <AnimatePresence>
+                {showTopics && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="rounded-xl p-4" style={{ background: "rgba(245,158,11,0.04)", border: "1px solid rgba(245,158,11,0.12)" }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Wand2 size={13} style={{ color: "#f59e0b" }} />
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: "#E8E4DF" }}>
+                            Content Ideas{selectedProduct ? ` for ${selectedProduct.name}` : ""}
+                          </span>
+                        </div>
+                        <button onClick={() => setShowTopics(false)} className="p-1 cursor-pointer" style={{ color: "#5C5856" }}>
+                          <X size={12} />
+                        </button>
+                      </div>
+
+                      {/* Upcoming events nudge */}
+                      {topicsUpcoming.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {topicsUpcoming.slice(0, 4).map((ev, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 500, color: "#f59e0b", background: "rgba(245,158,11,0.08)" }}>
+                              <Calendar size={8} className="inline mr-1" />{ev}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {topicsLoading ? (
+                        <div className="flex items-center justify-center py-8 gap-2">
+                          <Loader2 size={16} className="animate-spin" style={{ color: "#f59e0b" }} />
+                          <span style={{ fontSize: "13px", color: "#9A9590" }}>Analyzing your brand, products & trends...</span>
+                        </div>
+                      ) : topicSuggestions.length === 0 ? (
+                        <div className="text-center py-6" style={{ fontSize: "13px", color: "#5C5856" }}>
+                          No suggestions yet. Click "Inspire me" to generate ideas.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {topicSuggestions.map((topic, i) => {
+                            const typeColors: Record<string, string> = {
+                              educate: "#3b82f6", inspire: "#a855f7", sell: "#10b981",
+                              entertain: "#f59e0b", "behind-the-scenes": "#ec4899",
+                            };
+                            const typeColor = typeColors[topic.type] || "#7A7572";
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => handlePickTopic(topic)}
+                                className="text-left rounded-lg p-3 transition-all cursor-pointer group"
+                                style={{
+                                  background: "rgba(255,255,255,0.02)",
+                                  border: "1px solid rgba(255,255,255,0.06)",
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                                  e.currentTarget.style.borderColor = "rgba(245,158,11,0.3)";
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = "rgba(255,255,255,0.02)";
+                                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)";
+                                }}
+                              >
+                                <div className="flex items-start gap-2 mb-1.5">
+                                  <span className="flex-1" style={{ fontSize: "12px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.4 }}>
+                                    {topic.title}
+                                  </span>
+                                  <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, color: typeColor, background: `${typeColor}15`, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                    {topic.type}
+                                  </span>
+                                </div>
+                                {topic.hook && (
+                                  <p className="mb-1.5" style={{ fontSize: "11px", color: "#c4b5a0", lineHeight: 1.4, fontStyle: "italic" }}>
+                                    "{topic.hook}"
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {topic.format && (
+                                    <span style={{ fontSize: "9px", color: "#5C5856", fontWeight: 500 }}>
+                                      {topic.format}
+                                    </span>
+                                  )}
+                                  {topic.product && (
+                                    <span style={{ fontSize: "9px", color: "#10b981", fontWeight: 500 }}>
+                                      <Package size={8} className="inline mr-0.5" />{topic.product}
+                                    </span>
+                                  )}
+                                  {topic.why_now && (
+                                    <span style={{ fontSize: "9px", color: "#7A7572" }}>
+                                      {topic.why_now}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Refresh button */}
+                      {topicSuggestions.length > 0 && !topicsLoading && (
+                        <div className="flex justify-center mt-3">
+                          <button
+                            onClick={handleSuggestTopics}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            style={{ fontSize: "11px", fontWeight: 600, color: "#f59e0b", background: "rgba(245,158,11,0.06)" }}
+                          >
+                            <RefreshCw size={11} /> Other ideas
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Reference Photos — compact inline */}
               <div>
