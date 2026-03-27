@@ -7458,33 +7458,24 @@ const handlePdfImagesUpload = async (c: any) => {
     const isCharterSource = pdfSource === "pdf-charter";
     console.log(`[categorize-upload] ${files.length} assets from PDF for user=${userId}, brand=${brandName}, source=${pdfSource}`);
 
-    const categorizationPrompt = `You are a VERY STRICT brand asset classifier for a brand guidelines PDF${brandName ? ` ("${brandName}")` : ""}.
+    const categorizationPrompt = `Classify this brand book page. Answer ONLY with a JSON object.
 
-TASK: Decide if this page contains a reusable visual asset (logo, photo, icon, mockup). Most pages should be SKIPPED.
+SKIP (answer {"category":"skip"}) for ALL of these — this is the DEFAULT:
+- ANY page with text (titles, paragraphs, bullet points, annotations, rules, guidelines)
+- Color palettes, typography specimens, font samples
+- Section dividers, table of contents, numbered pages
+- Pages showing logo + usage rules / do's and don'ts
+- Pages with dark/colored backgrounds + text overlay
+- Brand strategy, mission, values, positioning pages
+- ANY page where text occupies more than 20% of the area
 
-KEEP — only if the visual asset is the DOMINANT element (covers >60% of the page area):
-- "logo" — page where the MAIN CONTENT is one or more logo graphics displayed large and clear (not a small logo in a corner or header)
-- "graphic-element" — page where ACTUAL icons/pictograms/symbols are displayed as the main content, large and clear
-- "pattern" — page showing a large pattern or texture as the main visual
-- "photo" — page dominated by a photograph (mood, people, product, lifestyle)
-- "mockup" — page showing a large mockup (business card, vehicle, signage, stationery)
+KEEP only these rare cases (typically 5-8 pages out of 30):
+- "logo" — ONLY if the page shows logo variants on a CLEAN background with NO explanatory text at all
+- "photo" — ONLY if the page is a FULL-BLEED photograph (edge to edge, no text overlay, no caption)
+- "graphic-element" — ONLY if the page displays ONLY icons/pictograms grid with NO text descriptions
+- "mockup" — ONLY if the page shows ONLY a photorealistic mockup (business card, vehicle, signage) with NO text
 
-SKIP — everything else:
-- "skip" — This is the DEFAULT. Skip if: page has ANY text explaining rules/guidelines, page shows color palettes/codes, page shows typography specimens, page is a section divider/title page, page is table of contents, page has a logo but mostly to illustrate usage rules (do's/don'ts with text annotations), page shows brand positioning/strategy/values text, page is mostly dark/colored background with some text, page has small decorative elements but is mainly layout.
-
-CRITICAL RULES:
-1. When in doubt, choose "skip". Be aggressive about skipping.
-2. A page showing "logo + text explaining logo rules" = SKIP (it's a guideline page, not a reusable asset)
-3. A page showing "just the logo variants on a clean background" = KEEP as "logo"
-4. A page with a photo AND explanatory text = SKIP (guideline page)
-5. A page that IS a full-bleed photograph = KEEP as "photo"
-6. Section dividers with colored backgrounds = SKIP
-7. Pages with brand signature/tagline text = SKIP
-
-You should keep approximately 20-30% of pages from a typical brand book.
-
-Return ONLY: {"category":"...","tags":["tag1","tag2"],"description":"one-line"}
-No markdown, no backticks.`;
+{"category":"skip","tags":[],"description":"..."} or {"category":"logo|photo|graphic-element|mockup","tags":["..."],"description":"..."}`;
 
     // Process ALL files in parallel (classify + upload concurrently)
     const allowed = new Set(["image/png", "image/jpeg", "image/webp"]);
