@@ -306,10 +306,11 @@ function LibraryPageContent() {
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      const ext = item.type === "image" ? ".png" : item.type === "film" ? ".mp4" : item.type === "sound" ? ".wav" : "";
+      const ext = item.type === "image" ? ".png" : item.type === "film" ? ".mp4" : item.type === "sound" ? ".mp3" : "";
       a.download = `${getItemName(item).slice(0, 40)}${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
+      toast.success("Download started");
     } catch {
       // Fallback: open in new tab
       window.open(url, "_blank");
@@ -987,14 +988,25 @@ function LibraryPageContent() {
                               onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
                               onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
                           </div>
+                        ) : item.type === "sound" && item.preview?.audioUrl ? (
+                          <div className="w-full flex flex-col items-center justify-center gap-3 p-5">
+                            <Music size={22} style={{ color: typeColor, opacity: 0.5 }} />
+                            <audio src={item.preview.audioUrl} controls className="w-full" style={{ height: 32 }} onClick={(e) => e.stopPropagation()} />
+                            <span style={{ fontSize: "10px", fontWeight: 800, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>Sound</span>
+                          </div>
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6">
                             <Icon size={24} style={{ color: typeColor, opacity: 0.4 }} />
                             <span style={{ fontSize: "10px", fontWeight: 800, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
                             {item.preview?.kind === "text" && (
-                              <p className="text-center line-clamp-3 mt-1" style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>
-                                {(item.preview as any).excerpt?.slice(0, 120)}...
+                              <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "#9A9590", lineHeight: 1.5 }}>
+                                {(item.preview as any).excerpt?.slice(0, 200)}
                               </p>
+                            )}
+                            {item.preview?.kind === "code" && (
+                              <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "#9A9590", lineHeight: 1.4 }}>
+                                {(item.preview as any).snippet?.slice(0, 200)}
+                              </pre>
                             )}
                           </div>
                         )}
@@ -1028,6 +1040,11 @@ function LibraryPageContent() {
                             <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Download HD">
                               <Download size={12} style={{ color: "#9A9590" }} />
                             </button>
+                            {(item.preview?.kind === "text" || item.preview?.kind === "code") && (
+                              <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.preview.kind === "text" ? item.preview.excerpt : item.preview.snippet); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Copy text">
+                                <Copy size={12} style={{ color: "#9A9590" }} />
+                              </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); setMoveTargetItem(item.id); }}
                               className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#222120] cursor-pointer" title="Move to folder">
                               <FolderInput size={12} style={{ color: "#9A9590" }} />
@@ -1083,10 +1100,15 @@ function LibraryPageContent() {
                       <span className="w-20 hidden sm:block" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{getTypeLabel(item.type)}</span>
                       <span className="w-24 hidden md:block truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{item.model?.name || "AI"}</span>
                       <span className="w-24 hidden lg:block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{new Date(item.savedAt).toLocaleDateString()}</span>
-                      <div className="w-24 flex items-center gap-1">
+                      <div className="w-28 flex items-center gap-1">
                         <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Download HD">
                           <Download size={13} />
                         </button>
+                        {(item.preview?.kind === "text" || item.preview?.kind === "code") && (
+                          <button onClick={(e) => { e.stopPropagation(); copyToClipboard(item.preview.kind === "text" ? item.preview.excerpt : item.preview.snippet); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Copy text">
+                            <Copy size={13} />
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); setMoveTargetItem(item.id); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Move">
                           <FolderInput size={13} />
                         </button>
@@ -1207,7 +1229,11 @@ function LibraryPageContent() {
                     {previewItem.preview?.kind === "sound" && previewItem.preview.audioUrl && (
                       <div className="flex flex-col items-center gap-4 py-8">
                         <Music size={32} className="text-ora-signal" />
-                        <audio src={previewItem.preview.audioUrl} controls className="w-full" />
+                        <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{getItemName(previewItem)}</p>
+                        <audio src={previewItem.preview.audioUrl} controls autoPlay className="w-full" />
+                        {previewItem.preview.duration && (
+                          <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{previewItem.preview.duration}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1216,6 +1242,15 @@ function LibraryPageContent() {
                       <p className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{getItemName(previewItem)}</p>
                       <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{previewItem.model?.name} - {new Date(previewItem.savedAt).toLocaleDateString()}</p>
                     </div>
+                    {(previewItem.preview?.kind === "text" || previewItem.preview?.kind === "code") && (
+                      <button
+                        onClick={() => copyToClipboard(previewItem.preview.kind === "text" ? previewItem.preview.excerpt : previewItem.preview.snippet)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
+                      >
+                        <Copy size={14} /> Copy
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDownload(previewItem)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer"
