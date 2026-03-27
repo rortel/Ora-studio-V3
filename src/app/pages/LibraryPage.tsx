@@ -166,7 +166,7 @@ function LibraryPageContent() {
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const [contextMenu, setContextMenu] = useState<{ itemId: string; x: number; y: number } | null>(null);
   const [moveTargetItem, setMoveTargetItem] = useState<string | null>(null);
-  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>("__auto__"); // auto-expand first campaign
+  const [openCampaignId, setOpenCampaignId] = useState<string | null>(null); // which campaign folder is open
   const [downloadingCampaign, setDownloadingCampaign] = useState<string | null>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
@@ -203,15 +203,6 @@ function LibraryPageContent() {
   }, [serverPost]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  // Auto-expand first campaign on load
-  useEffect(() => {
-    if (expandedCampaignId === "__auto__" && items.length > 0) {
-      const firstCampaign = items.find((it: any) => it.type === "campaign");
-      if (firstCampaign) setExpandedCampaignId(firstCampaign.id);
-      else setExpandedCampaignId(null);
-    }
-  }, [items, expandedCampaignId]);
 
   // Close sort menu on outside click
   useEffect(() => {
@@ -510,12 +501,13 @@ function LibraryPageContent() {
                   Open AI Hub
                 </Link>
               </div>
-            ) : (
-              <div className="space-y-4">
+            ) : !openCampaignId ? (
+              /* ── FOLDER GRID VIEW ── */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {sortItems(campaignItems, sortMode).map((item, i) => {
-                  const { assets: cAssets, platforms, headline, deliverableCount, thumbnails, videoUrl, brief: cBrief } = getCampaignData(item);
-                  const isExpanded = expandedCampaignId === item.id;
+                  const { assets: cAssets, platforms, headline, deliverableCount, thumbnails, videoUrl } = getCampaignData(item);
                   const isDownloading = downloadingCampaign === item.id;
+                  const coverUrl = thumbnails[0] || "";
 
                   return (
                     <motion.div
@@ -523,212 +515,256 @@ function LibraryPageContent() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.05, 0.3) }}
-                      className="bg-card border border-border rounded-xl overflow-hidden"
-                      style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}
+                      className="rounded-xl overflow-hidden cursor-pointer group"
+                      style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
+                      onClick={() => setOpenCampaignId(item.id)}
                     >
-                      {/* Campaign header — always visible */}
-                      <div
-                        className="cursor-pointer group"
-                        onClick={() => setExpandedCampaignId(isExpanded ? null : item.id)}
-                      >
-                        {/* Image strip */}
-                        <div className="flex h-[140px]">
-                          {thumbnails.length > 0 ? thumbnails.slice(0, 3).map((url: string, ti: number) => (
-                            <div key={ti} className="flex-1 relative overflow-hidden bg-secondary/30">
-                              <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                            </div>
-                          )) : (
-                            <div className="flex-1 flex items-center justify-center bg-secondary/20">
-                              <Sparkles size={24} className="text-muted-foreground/20" />
-                            </div>
-                          )}
-                          {videoUrl && (
-                            <div className="flex-1 relative overflow-hidden bg-black">
-                              <video src={videoUrl} className="w-full h-full object-cover" muted playsInline
-                                onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                                onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
-                              <div className="absolute top-2 left-2">
-                                <span className="px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm" style={{ fontSize: "9px", fontWeight: 500, color: "#fff" }}>Video</span>
+                      {/* Cover image — mosaic of up to 4 thumbnails */}
+                      <div className="relative h-[160px] overflow-hidden bg-black/20">
+                        {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).length >= 4 ? (
+                          <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
+                            {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).slice(0, 4).map((a: any, ti: number) => (
+                              <div key={ti} className="overflow-hidden">
+                                {a.videoUrl ? (
+                                  <video src={a.videoUrl} className="w-full h-full object-cover" muted playsInline />
+                                ) : (
+                                  <img src={a.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                )}
                               </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Info bar */}
-                        <div className="p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(94,106,210,0.1)" }}>
-                                  <Sparkles size={9} style={{ color: "#5E6AD2" }} />
-                                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#5E6AD2" }}>Campaign</span>
-                                </div>
-                                <span style={{ fontSize: "10px" }} className="text-muted-foreground">{deliverableCount} deliverable{deliverableCount !== 1 ? "s" : ""}</span>
-                              </div>
-                              {headline && (
-                                <p className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{headline}</p>
-                              )}
-                              <p className="truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: "2px" }}>
-                                {getItemName(item)}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {/* Download all */}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
-                                disabled={isDownloading}
-                                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                                title="Download all assets"
-                              >
-                                {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                              </button>
-                              {/* Delete */}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }}
-                                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                              {/* Expand chevron */}
-                              <div className="flex items-center gap-1 px-2 py-1 rounded-md transition-colors" style={{ background: isExpanded ? "rgba(94,106,210,0.08)" : "transparent" }}>
-                                {!isExpanded && <span style={{ fontSize: "10px", color: "#5E6AD2", fontWeight: 500 }}>See assets</span>}
-                                <div className="w-5 h-5 flex items-center justify-center" style={{ color: "#5E6AD2" }}>
-                                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                </div>
-                              </div>
-                            </div>
+                            ))}
                           </div>
-
-                          {/* Platforms + date */}
-                          <div className="flex items-center gap-3 mt-3">
-                            <div className="flex items-center gap-1.5">
-                              {platforms.map((p: string) => {
-                                const PIcon = getPlatformIcon(p);
-                                const pColor = getPlatformColor(p);
-                                return (
-                                  <div key={p} className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: `${pColor}10` }}>
-                                    <PIcon size={12} style={{ color: pColor }} />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                              {new Date(item.savedAt).toLocaleDateString()}
-                            </span>
+                        ) : coverUrl ? (
+                          <img src={coverUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <FolderOpen size={32} style={{ color: "#3d3c3b" }} />
                           </div>
+                        )}
+                        {/* Overlay with count */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                        <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                          <div className="flex items-center gap-1.5">
+                            {platforms.slice(0, 5).map((p: string, pi: number) => {
+                              const PIcon = getPlatformIcon(p);
+                              const pColor = getPlatformColor(p);
+                              return (
+                                <div key={pi} className="w-5 h-5 rounded flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+                                  <PIcon size={10} style={{ color: pColor }} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", fontSize: "10px", fontWeight: 600, color: "#fff" }}>
+                            {deliverableCount} asset{deliverableCount !== 1 ? "s" : ""}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Expanded detail — all assets */}
-                      <AnimatePresence>
-                        {isExpanded && cAssets.length > 0 && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.25 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="border-t border-border px-4 pt-3 pb-4 space-y-3">
-                              {/* Brief */}
-                              {cBrief && (
-                                <div className="mb-3">
-                                  <p style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Brief</p>
-                                  <p style={{ fontSize: "13px", color: "var(--foreground)", lineHeight: 1.5 }}>{cBrief.slice(0, 300)}{cBrief.length > 300 ? "..." : ""}</p>
-                                </div>
-                              )}
-
-                              {/* Download All button */}
-                              <button
-                                onClick={() => handleDownloadCampaign(item)}
-                                disabled={isDownloading}
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer mb-3"
-                                style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", color: "#5E6AD2", fontSize: "13px", fontWeight: 600 }}
-                              >
-                                {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                                {isDownloading ? "Downloading..." : `Download All (${cAssets.length} files)`}
-                              </button>
-
-                              {/* Asset grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {cAssets.map((asset: any, ai: number) => {
-                                  const PIcon = getPlatformIcon(asset.platform || "");
-                                  const pColor = getPlatformColor(asset.platform || "");
-                                  return (
-                                    <div key={ai} className="bg-secondary/30 rounded-lg overflow-hidden border border-border/50 group/asset">
-                                      {/* Preview */}
-                                      {asset.imageUrl ? (
-                                        <div className="h-[120px] relative overflow-hidden bg-black/10">
-                                          <img src={asset.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                                        </div>
-                                      ) : asset.videoUrl ? (
-                                        <div className="h-[120px] relative overflow-hidden bg-black">
-                                          <video src={asset.videoUrl} className="w-full h-full object-cover" muted playsInline
-                                            onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                                            onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
-                                          <div className="absolute top-1.5 left-1.5">
-                                            <span className="px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm" style={{ fontSize: "9px", fontWeight: 500, color: "#fff" }}>
-                                              <Film size={8} className="inline mr-0.5 -mt-px" /> Video
-                                            </span>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="h-[80px] flex items-center justify-center bg-secondary/20">
-                                          <FileText size={20} className="text-muted-foreground/30" />
-                                        </div>
-                                      )}
-
-                                      {/* Asset info */}
-                                      <div className="p-2.5">
-                                        <div className="flex items-center gap-1.5 mb-1.5">
-                                          <div className="w-4 h-4 rounded flex items-center justify-center" style={{ background: `${pColor}15` }}>
-                                            <PIcon size={9} style={{ color: pColor }} />
-                                          </div>
-                                          <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)" }}>{asset.label || asset.formatId}</span>
-                                        </div>
-
-                                        {/* Caption preview */}
-                                        {(asset.caption || asset.copy) && (
-                                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }} className="line-clamp-2 mb-2">
-                                            {(asset.caption || asset.copy).slice(0, 120)}{(asset.caption || asset.copy).length > 120 ? "..." : ""}
-                                          </p>
-                                        )}
-
-                                        {/* Actions */}
-                                        <div className="flex items-center gap-1 opacity-0 group-hover/asset:opacity-100 transition-opacity">
-                                          <button
-                                            onClick={() => downloadAssetFile(asset, getItemName(item))}
-                                            className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
-                                            style={{ background: "rgba(255,255,255,0.06)", color: "var(--foreground)" }}
-                                            title="Download"
-                                          >
-                                            <Download size={10} /> Download
-                                          </button>
-                                          {(asset.caption || asset.copy) && (
-                                            <button
-                                              onClick={() => copyToClipboard(asset.caption || asset.copy)}
-                                              className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
-                                              style={{ background: "rgba(255,255,255,0.06)", color: "var(--foreground)" }}
-                                              title="Copy text"
-                                            >
-                                              <Copy size={10} /> Copy
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      {/* Info */}
+                      <div className="p-3.5">
+                        <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>
+                          {headline || getItemName(item)}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span style={{ fontSize: "11px", color: "#7A7572" }}>
+                            {new Date(item.savedAt).toLocaleDateString()}
+                          </span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
+                              disabled={isDownloading}
+                              className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.06)" }}
+                              title="Download all"
+                            >
+                              {isDownloading ? <Loader2 size={11} className="animate-spin" style={{ color: "#9A9590" }} /> : <Download size={11} style={{ color: "#9A9590" }} />}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }}
+                              className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.06)" }}
+                            >
+                              <Trash2 size={11} style={{ color: "#9A9590" }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </motion.div>
                   );
                 })}
               </div>
-            )}
+            ) : (() => {
+              /* ── OPEN CAMPAIGN — CampaignLab-style cards ── */
+              const openItem = campaignItems.find(it => it.id === openCampaignId);
+              if (!openItem) { setOpenCampaignId(null); return null; }
+              const { assets: cAssets, platforms, headline, deliverableCount, brief: cBrief } = getCampaignData(openItem);
+              const isDownloading = downloadingCampaign === openItem.id;
+
+              return (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  {/* Header with back button */}
+                  <div className="flex items-center gap-3 mb-6">
+                    <button
+                      onClick={() => setOpenCampaignId(null)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", fontSize: "12px", fontWeight: 500, color: "#9A9590" }}
+                    >
+                      <ChevronRight size={12} className="rotate-180" /> Back
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="truncate" style={{ fontSize: "16px", fontWeight: 600, color: "#E8E4DF" }}>
+                        {headline || getItemName(openItem)}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span style={{ fontSize: "11px", color: "#7A7572" }}>{deliverableCount} assets</span>
+                        <div className="flex items-center gap-1">
+                          {platforms.map((p: string, pi: number) => {
+                            const PIcon = getPlatformIcon(p);
+                            const pColor = getPlatformColor(p);
+                            return <PIcon key={pi} size={12} style={{ color: pColor }} />;
+                          })}
+                        </div>
+                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                          {new Date(openItem.savedAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDownloadCampaign(openItem)}
+                      disabled={isDownloading}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
+                      style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", color: "#5E6AD2", fontSize: "12px", fontWeight: 600 }}
+                    >
+                      {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                      Download All
+                    </button>
+                  </div>
+
+                  {/* Brief */}
+                  {cBrief && (
+                    <div className="mb-5 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Brief</p>
+                      <p style={{ fontSize: "13px", color: "#C4BEB8", lineHeight: 1.6 }}>{cBrief.slice(0, 500)}{cBrief.length > 500 ? "..." : ""}</p>
+                    </div>
+                  )}
+
+                  {/* Asset cards grid — same layout as CampaignLab results */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {cAssets.map((asset: any, ai: number) => {
+                      const PIcon = getPlatformIcon(asset.platform || "");
+                      const pColor = getPlatformColor(asset.platform || "");
+                      const isText = !asset.imageUrl && !asset.videoUrl;
+                      const aspectRatio = asset.type === "text" || isText ? "3/2" : (asset.aspectRatio || "1/1");
+
+                      return (
+                        <motion.div
+                          key={ai}
+                          initial={{ opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: ai * 0.04 }}
+                          className="rounded-xl overflow-hidden group/card"
+                          style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}
+                        >
+                          {/* Preview area */}
+                          <div className="relative" style={{ aspectRatio, background: "#0e0d0c", maxHeight: 280 }}>
+                            {asset.imageUrl ? (
+                              <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                            ) : asset.videoUrl ? (
+                              <div className="relative w-full h-full">
+                                <video
+                                  src={asset.videoUrl}
+                                  className="w-full h-full object-cover"
+                                  muted playsInline
+                                  onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(() => {})}
+                                  onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-full h-full p-4 overflow-hidden">
+                                {asset.headline && (
+                                  <p className="line-clamp-2 mb-2" style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF", lineHeight: 1.3 }}>
+                                    {asset.headline}
+                                  </p>
+                                )}
+                                <p className="line-clamp-6" style={{ fontSize: "12px", color: "#9A9590", lineHeight: 1.6 }}>
+                                  {asset.caption || asset.copy || ""}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Platform badge */}
+                            <div className="absolute top-3 left-3">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}>
+                                <PIcon size={10} style={{ color: pColor }} />
+                                <span style={{ fontSize: "10px", fontWeight: 600, color: "#fff" }}>{asset.platform}</span>
+                              </span>
+                            </div>
+
+                            {/* Video badge */}
+                            {asset.videoUrl && (
+                              <div className="absolute top-3 right-3">
+                                <span className="px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", fontSize: "9px", fontWeight: 500, color: "#fff" }}>
+                                  <Film size={8} className="inline mr-0.5 -mt-px" /> Video
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info section */}
+                          <div className="p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "#E8E4DF" }}>{asset.label || asset.formatId}</span>
+                              {/* Action buttons */}
+                              <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                {(asset.caption || asset.copy) && (
+                                  <button
+                                    onClick={() => copyToClipboard(asset.caption || asset.copy)}
+                                    className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                    style={{ background: "rgba(255,255,255,0.04)" }}
+                                    title="Copy text"
+                                  >
+                                    <Copy size={12} style={{ color: "#7A7572" }} />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => downloadAssetFile(asset, getItemName(openItem))}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  style={{ background: "rgba(255,255,255,0.04)" }}
+                                  title="Download"
+                                >
+                                  <Download size={12} style={{ color: "#7A7572" }} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Headline */}
+                            {asset.headline && !isText && (
+                              <p className="line-clamp-1 mb-1" style={{ fontSize: "12px", fontWeight: 600, color: "#C4BEB8", lineHeight: 1.4 }}>{asset.headline}</p>
+                            )}
+
+                            {/* Caption */}
+                            {(asset.caption || asset.copy) && (
+                              <p className="line-clamp-3" style={{ fontSize: "12px", color: "#7A7572", lineHeight: 1.5 }}>{asset.caption || asset.copy}</p>
+                            )}
+
+                            {/* Hashtags */}
+                            {asset.hashtags && (
+                              <p className="line-clamp-1 mt-1" style={{ fontSize: "11px", color: "#5E6AD2", lineHeight: 1.4 }}>{asset.hashtags}</p>
+                            )}
+
+                            {/* Brand-compliant badge */}
+                            <div className="flex items-center gap-1 mt-2">
+                              <Check size={11} style={{ color: "#10b981" }} />
+                              <span style={{ fontSize: "10px", color: "#10b981", fontWeight: 600 }}>Brand-compliant</span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              );
+            })()}
           </div>
         )}
 
