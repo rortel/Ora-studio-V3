@@ -6,7 +6,9 @@ import {
   Check, X, Pencil, ChevronRight, Loader2, BookOpen,
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
   Instagram, Linkedin, Facebook, Camera, Clapperboard,
+  Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -79,6 +81,46 @@ function getAssetUrl(item: LibraryItem): string | null {
   return null;
 }
 
+/* Extract campaign data from library item (handles both old and new data shapes) */
+function getCampaignData(item: LibraryItem) {
+  const raw = item as any;
+  const preview = raw.preview || {};
+  const assets: any[] = preview.assets || raw.assets || [];
+  const platforms: string[] = preview.platforms || raw.platforms || [...new Set(assets.map((a: any) => a.platform).filter(Boolean))];
+  const headline = preview?.copy?.headline || raw.title || assets[0]?.headline || "";
+  const deliverableCount = preview.deliverableCount || raw.formatCount || assets.length || 0;
+  const imageAssets = assets.filter((a: any) => a.imageUrl);
+  const videoAsset = assets.find((a: any) => a.videoUrl);
+  const thumbnails = [
+    preview.packshotUrl || raw.thumbnail || imageAssets[0]?.imageUrl || "",
+    preview.lifestyleUrl || imageAssets[1]?.imageUrl || "",
+  ].filter(Boolean);
+  const videoUrl = preview.videoUrl || videoAsset?.videoUrl || "";
+  const brief = raw.brief || raw.prompt || "";
+  return { assets, platforms, headline, deliverableCount, thumbnails, videoUrl, brief };
+}
+
+function getPlatformIcon(p: string) {
+  const lower = p.toLowerCase();
+  if (lower.includes("instagram")) return Instagram;
+  if (lower.includes("linkedin")) return Linkedin;
+  if (lower.includes("facebook")) return Facebook;
+  if (lower.includes("twitter") || lower.includes("x")) return Twitter;
+  if (lower.includes("youtube")) return Youtube;
+  if (lower.includes("tiktok")) return Clapperboard;
+  return Sparkles;
+}
+function getPlatformColor(p: string) {
+  const lower = p.toLowerCase();
+  if (lower.includes("instagram")) return "#E4405F";
+  if (lower.includes("linkedin")) return "#0A66C2";
+  if (lower.includes("facebook")) return "#1877F2";
+  if (lower.includes("twitter") || lower.includes("x")) return "#1DA1F2";
+  if (lower.includes("youtube")) return "#FF0000";
+  if (lower.includes("tiktok")) return "#00F2EA";
+  return "#9A9590";
+}
+
 function sortItems(items: LibraryItem[], mode: SortMode): LibraryItem[] {
   const sorted = [...items];
   switch (mode) {
@@ -124,6 +166,8 @@ function LibraryPageContent() {
   const [previewItem, setPreviewItem] = useState<LibraryItem | null>(null);
   const [contextMenu, setContextMenu] = useState<{ itemId: string; x: number; y: number } | null>(null);
   const [moveTargetItem, setMoveTargetItem] = useState<string | null>(null);
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [downloadingCampaign, setDownloadingCampaign] = useState<string | null>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
   // Server call helper with proper Authorization header
@@ -272,6 +316,59 @@ function LibraryPageContent() {
     }
   }, []);
 
+  // Download a single campaign asset (image/video/text)
+  const downloadAssetFile = useCallback(async (asset: any, campaignTitle: string) => {
+    const url = asset.imageUrl || asset.videoUrl;
+    if (url) {
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        const blob = await res.blob();
+        const ext = asset.videoUrl ? "mp4" : "png";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${campaignTitle.slice(0, 30)}-${asset.platform || "asset"}-${asset.formatId || ""}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch {
+        window.open(url, "_blank");
+      }
+    } else if (asset.copy || asset.caption) {
+      const text = [asset.headline, asset.caption || asset.copy, asset.hashtags].filter(Boolean).join("\n\n");
+      const blob = new Blob([text], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${campaignTitle.slice(0, 30)}-${asset.platform || "text"}-${asset.formatId || ""}.txt`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  }, []);
+
+  // Download all campaign assets
+  const handleDownloadCampaign = useCallback(async (item: LibraryItem) => {
+    const { assets, brief } = getCampaignData(item);
+    if (assets.length === 0) { toast.error("No assets to download"); return; }
+    setDownloadingCampaign(item.id);
+    const title = (item as any).title || getItemName(item);
+    try {
+      for (let i = 0; i < assets.length; i++) {
+        await downloadAssetFile(assets[i], title);
+        // Small delay between downloads to avoid browser blocking
+        if (i < assets.length - 1) await new Promise(r => setTimeout(r, 500));
+      }
+      toast.success(`${assets.length} fichier(s) téléchargé(s)`);
+    } catch (err) {
+      console.error("[Library] campaign download error:", err);
+      toast.error("Download error");
+    } finally {
+      setDownloadingCampaign(null);
+    }
+  }, [downloadAssetFile]);
+
+  // Copy text to clipboard
+  const copyToClipboard = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => toast.success("Copied!")).catch(() => {});
+  }, []);
+
   // Split items by type
   const contentItems = items.filter((item) => item.type !== "campaign");
   const campaignItems = items.filter((item) => item.type === "campaign");
@@ -404,13 +501,11 @@ function LibraryPageContent() {
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 {sortItems(campaignItems, sortMode).map((item, i) => {
-                  const preview = item.preview as any;
-                  const platforms = preview?.platforms || [];
-                  const headline = preview?.copy?.headline || "";
-                  const deliverableCount = preview?.deliverableCount || 0;
-                  const thumbnails = [preview?.packshotUrl, preview?.lifestyleUrl].filter(Boolean);
+                  const { assets: cAssets, platforms, headline, deliverableCount, thumbnails, videoUrl, brief: cBrief } = getCampaignData(item);
+                  const isExpanded = expandedCampaignId === item.id;
+                  const isDownloading = downloadingCampaign === item.id;
 
                   return (
                     <motion.div
@@ -418,76 +513,204 @@ function LibraryPageContent() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.05, 0.3) }}
-                      className="bg-card border border-border rounded-xl overflow-hidden group"
+                      className="bg-card border border-border rounded-xl overflow-hidden"
                       style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}
                     >
-                      {/* Image strip */}
-                      <div className="flex h-[140px]">
-                        {thumbnails.length > 0 ? thumbnails.map((url: string, ti: number) => (
-                          <div key={ti} className="flex-1 relative overflow-hidden bg-secondary/30">
-                            <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
-                          </div>
-                        )) : (
-                          <div className="flex-1 flex items-center justify-center bg-secondary/20">
-                            <Sparkles size={24} className="text-muted-foreground/20" />
-                          </div>
-                        )}
-                        {preview?.videoUrl && (
-                          <div className="flex-1 relative overflow-hidden bg-black">
-                            <video src={preview.videoUrl} className="w-full h-full object-cover" muted playsInline
-                              onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                              onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
-                            <div className="absolute top-2 left-2">
-                              <span className="px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm" style={{ fontSize: "9px", fontWeight: 500, color: "#fff" }}>Reel</span>
+                      {/* Campaign header — always visible */}
+                      <div
+                        className="cursor-pointer group"
+                        onClick={() => setExpandedCampaignId(isExpanded ? null : item.id)}
+                      >
+                        {/* Image strip */}
+                        <div className="flex h-[140px]">
+                          {thumbnails.length > 0 ? thumbnails.slice(0, 3).map((url: string, ti: number) => (
+                            <div key={ti} className="flex-1 relative overflow-hidden bg-secondary/30">
+                              <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
                             </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-ora-signal-light">
-                                <Sparkles size={9} className="text-ora-signal" />
-                                <span style={{ fontSize: "10px", fontWeight: 600 }} className="text-ora-signal">Campaign</span>
+                          )) : (
+                            <div className="flex-1 flex items-center justify-center bg-secondary/20">
+                              <Sparkles size={24} className="text-muted-foreground/20" />
+                            </div>
+                          )}
+                          {videoUrl && (
+                            <div className="flex-1 relative overflow-hidden bg-black">
+                              <video src={videoUrl} className="w-full h-full object-cover" muted playsInline
+                                onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                                onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
+                              <div className="absolute top-2 left-2">
+                                <span className="px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm" style={{ fontSize: "9px", fontWeight: 500, color: "#fff" }}>Video</span>
                               </div>
-                              <span style={{ fontSize: "10px" }} className="text-muted-foreground">{deliverableCount} deliverables</span>
                             </div>
-                            {headline && (
-                              <p className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{headline}</p>
-                            )}
-                            <p className="truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: "2px" }}>
-                              {getItemName(item)}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteItem(item.id)}
-                            className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          )}
                         </div>
 
-                        {/* Platforms */}
-                        <div className="flex items-center gap-3 mt-3">
-                          <div className="flex items-center gap-1.5">
-                            {platforms.map((p: string) => {
-                              const PIcon = p === "Instagram" ? Instagram : p === "LinkedIn" ? Linkedin : Facebook;
-                              const pColor = p === "Instagram" ? "#E4405F" : p === "LinkedIn" ? "#0A66C2" : "#1877F2";
-                              return (
-                                <div key={p} className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: `${pColor}10` }}>
-                                  <PIcon size={12} style={{ color: pColor }} />
+                        {/* Info bar */}
+                        <div className="p-4">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(94,106,210,0.1)" }}>
+                                  <Sparkles size={9} style={{ color: "#5E6AD2" }} />
+                                  <span style={{ fontSize: "10px", fontWeight: 600, color: "#5E6AD2" }}>Campaign</span>
                                 </div>
-                              );
-                            })}
+                                <span style={{ fontSize: "10px" }} className="text-muted-foreground">{deliverableCount} deliverable{deliverableCount !== 1 ? "s" : ""}</span>
+                              </div>
+                              {headline && (
+                                <p className="truncate" style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{headline}</p>
+                              )}
+                              <p className="truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: "2px" }}>
+                                {getItemName(item)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {/* Download all */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
+                                disabled={isDownloading}
+                                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                                title="Download all assets"
+                              >
+                                {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                              </button>
+                              {/* Delete */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }}
+                                className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                              {/* Expand chevron */}
+                              <div className="w-7 h-7 flex items-center justify-center text-muted-foreground">
+                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              </div>
+                            </div>
                           </div>
-                          <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                            {new Date(item.savedAt).toLocaleDateString()}
-                          </span>
+
+                          {/* Platforms + date */}
+                          <div className="flex items-center gap-3 mt-3">
+                            <div className="flex items-center gap-1.5">
+                              {platforms.map((p: string) => {
+                                const PIcon = getPlatformIcon(p);
+                                const pColor = getPlatformColor(p);
+                                return (
+                                  <div key={p} className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: `${pColor}10` }}>
+                                    <PIcon size={12} style={{ color: pColor }} />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                              {new Date(item.savedAt).toLocaleDateString()}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Expanded detail — all assets */}
+                      <AnimatePresence>
+                        {isExpanded && cAssets.length > 0 && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="border-t border-border px-4 pt-3 pb-4 space-y-3">
+                              {/* Brief */}
+                              {cBrief && (
+                                <div className="mb-3">
+                                  <p style={{ fontSize: "11px", fontWeight: 600, color: "#9A9590", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Brief</p>
+                                  <p style={{ fontSize: "13px", color: "var(--foreground)", lineHeight: 1.5 }}>{cBrief.slice(0, 300)}{cBrief.length > 300 ? "..." : ""}</p>
+                                </div>
+                              )}
+
+                              {/* Download All button */}
+                              <button
+                                onClick={() => handleDownloadCampaign(item)}
+                                disabled={isDownloading}
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer mb-3"
+                                style={{ background: "rgba(94,106,210,0.1)", border: "1px solid rgba(94,106,210,0.2)", color: "#5E6AD2", fontSize: "13px", fontWeight: 600 }}
+                              >
+                                {isDownloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                                {isDownloading ? "Downloading..." : `Download All (${cAssets.length} files)`}
+                              </button>
+
+                              {/* Asset grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {cAssets.map((asset: any, ai: number) => {
+                                  const PIcon = getPlatformIcon(asset.platform || "");
+                                  const pColor = getPlatformColor(asset.platform || "");
+                                  return (
+                                    <div key={ai} className="bg-secondary/30 rounded-lg overflow-hidden border border-border/50 group/asset">
+                                      {/* Preview */}
+                                      {asset.imageUrl ? (
+                                        <div className="h-[120px] relative overflow-hidden bg-black/10">
+                                          <img src={asset.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                        </div>
+                                      ) : asset.videoUrl ? (
+                                        <div className="h-[120px] relative overflow-hidden bg-black">
+                                          <video src={asset.videoUrl} className="w-full h-full object-cover" muted playsInline
+                                            onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                                            onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
+                                          <div className="absolute top-1.5 left-1.5">
+                                            <span className="px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm" style={{ fontSize: "9px", fontWeight: 500, color: "#fff" }}>
+                                              <Film size={8} className="inline mr-0.5 -mt-px" /> Video
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="h-[80px] flex items-center justify-center bg-secondary/20">
+                                          <FileText size={20} className="text-muted-foreground/30" />
+                                        </div>
+                                      )}
+
+                                      {/* Asset info */}
+                                      <div className="p-2.5">
+                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                          <div className="w-4 h-4 rounded flex items-center justify-center" style={{ background: `${pColor}15` }}>
+                                            <PIcon size={9} style={{ color: pColor }} />
+                                          </div>
+                                          <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)" }}>{asset.label || asset.formatId}</span>
+                                        </div>
+
+                                        {/* Caption preview */}
+                                        {(asset.caption || asset.copy) && (
+                                          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }} className="line-clamp-2 mb-2">
+                                            {(asset.caption || asset.copy).slice(0, 120)}{(asset.caption || asset.copy).length > 120 ? "..." : ""}
+                                          </p>
+                                        )}
+
+                                        {/* Actions */}
+                                        <div className="flex items-center gap-1 opacity-0 group-hover/asset:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => downloadAssetFile(asset, getItemName(item))}
+                                            className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                                            style={{ background: "rgba(255,255,255,0.06)", color: "var(--foreground)" }}
+                                            title="Download"
+                                          >
+                                            <Download size={10} /> Download
+                                          </button>
+                                          {(asset.caption || asset.copy) && (
+                                            <button
+                                              onClick={() => copyToClipboard(asset.caption || asset.copy)}
+                                              className="flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors"
+                                              style={{ background: "rgba(255,255,255,0.06)", color: "var(--foreground)" }}
+                                              title="Copy text"
+                                            >
+                                              <Copy size={10} /> Copy
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   );
                 })}
