@@ -592,7 +592,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       const res = await serverPost("/topics/suggest", {
         productId: selectedProduct?.id || null,
         count: 8,
-      }, 30_000);
+      }, 60_000);
       if (res.success && res.topics) {
         setTopicSuggestions(res.topics);
         setTopicsUpcoming(res.upcomingEvents || []);
