@@ -66,9 +66,21 @@ app.onError((err, c) => {
 app.use("*", async (c, next) => {
   if (c.req.method === "POST" || c.req.method === "PUT" || c.req.method === "DELETE") {
     const ct = c.req.header("Content-Type") || "";
-    // Skip binary/multipart uploads — body must remain unconsumed for route handler
+    // For multipart/form-data: extract _token from FormData (clone to preserve body for route handler)
     if (ct.includes("multipart/form-data")) {
-      console.log(`[body-parser] SKIP multipart for ${c.req.method} ${c.req.path}`);
+      try {
+        const cloned = c.req.raw.clone();
+        const fd = await cloned.formData();
+        const tkn = fd.get("_token");
+        if (tkn && typeof tkn === "string") {
+          c.set("userToken", tkn);
+          console.log(`[body-parser] multipart _token extracted (${tkn.slice(0, 20)}...)`);
+        } else {
+          console.log(`[body-parser] multipart: no _token field`);
+        }
+      } catch (fdErr: any) {
+        console.log(`[body-parser] multipart token extraction failed: ${fdErr?.message || fdErr}`);
+      }
       await next();
       return;
     }
@@ -362,7 +374,7 @@ async function buildBrandContext(userId: string): Promise<BrandContext | null> {
       return null;
     }
     const ctx: BrandContext = {
-      brandName: vaultData.company_name || "",
+      brandName: vaultData.brandName || vaultData.company_name || "",
       industry: vaultData.industry || "",
       tagline: vaultData.tagline || "",
       tone: vaultData.tone || null,
@@ -1973,15 +1985,46 @@ app.get("/auth/me", async (c) => {
 
 // GET+POST /user/init — Batch endpoint: returns vault + library in ONE call
 // GET avoids CORS preflight entirely (token via _token query param)
+// ── Helper: sync brandName ↔ company_name + logoUrl ↔ logo_url in vault ──
+// VaultPage writes: company_name, logo_url (snake_case)
+// CampaignLab reads: brandName, logoUrl (camelCase)
+// This function ensures both conventions always match.
+function syncVaultNames(vault: any): any {
+  if (!vault) return vault;
+  // company_name is the source of truth (VaultPage writes it)
+  const canonical = vault.company_name || vault.brandName || "";
+  if (canonical) {
+    vault.brandName = canonical;
+    vault.company_name = canonical;
+  }
+  // logo_url is the source of truth (VaultPage writes it)
+  // If both exist but differ, logo_url wins (it's more recent from VaultPage upload)
+  if (vault.logo_url && vault.logoUrl && vault.logo_url !== vault.logoUrl) {
+    vault.logoUrl = vault.logo_url;
+  } else if (vault.logo_url && !vault.logoUrl) {
+    vault.logoUrl = vault.logo_url;
+  } else if (vault.logoUrl && !vault.logo_url) {
+    vault.logo_url = vault.logoUrl;
+  }
+  return vault;
+}
+
+// ── Helper: save vault to KV with name/logo sync ──
+async function saveVaultToKV(userId: string, vault: any): Promise<void> {
+  syncVaultNames(vault);
+  await kv.set(`vault:${userId}`, vault);
+}
+
 app.get("/user/init", async (c) => {
   const t0 = Date.now();
   try {
     const user = await requireAuth(c);
-    const [vault, libraryItems] = await Promise.all([
+    const [rawVault, libraryItems] = await Promise.all([
       kv.get(`vault:${user.id}`).catch(() => null),
       kv.getByPrefix(`lib:${user.id}:`).catch(() => []),
     ]);
-    console.log(`[user/init GET] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
+    const vault = syncVaultNames(rawVault);
+    console.log(`[user/init GET] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} brand="${vault?.brandName || ""}" lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
     return c.json({
       success: true,
       vault: vault || null,
@@ -1998,11 +2041,12 @@ app.post("/user/init", async (c) => {
   const t0 = Date.now();
   try {
     const user = await requireAuth(c);
-    const [vault, libraryItems] = await Promise.all([
+    const [rawVault, libraryItems] = await Promise.all([
       kv.get(`vault:${user.id}`).catch(() => null),
       kv.getByPrefix(`lib:${user.id}:`).catch(() => []),
     ]);
-    console.log(`[user/init] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
+    const vault = syncVaultNames(rawVault);
+    console.log(`[user/init] user=${user.id.slice(0, 8)} vault=${vault ? "yes" : "no"} brand="${vault?.brandName || ""}" lib=${(libraryItems || []).length} (${Date.now() - t0}ms)`);
     return c.json({
       success: true,
       vault: vault || null,
@@ -2538,18 +2582,18 @@ app.post("/campaign/generate-texts", async (c) => {
       if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
       if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
       if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
-      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
+      if (brandVault.values) brandCtx.push(`VALUES: ${Array.isArray(brandVault.values) ? brandVault.values.join(", ") : String(brandVault.values)}`);
       if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
-      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
+      if (brandVault.toneAttributes) brandCtx.push(`TONE ATTRIBUTES: ${Array.isArray(brandVault.toneAttributes) ? brandVault.toneAttributes.join(", ") : String(brandVault.toneAttributes)}`);
       if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
-      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY: ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS: ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
+      if (brandVault.approvedTerms) brandCtx.push(`APPROVED VOCABULARY: ${Array.isArray(brandVault.approvedTerms) ? brandVault.approvedTerms.slice(0, 30).join(", ") : String(brandVault.approvedTerms)}`);
+      if (brandVault.forbiddenTerms) brandCtx.push(`FORBIDDEN WORDS: ${Array.isArray(brandVault.forbiddenTerms) ? brandVault.forbiddenTerms.slice(0, 30).join(", ") : String(brandVault.forbiddenTerms)}`);
+      if (brandVault.keyMessages) brandCtx.push(`KEY MESSAGES: ${Array.isArray(brandVault.keyMessages) ? brandVault.keyMessages.slice(0, 8).join(" | ") : String(brandVault.keyMessages)}`);
       if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE: ${brandVault.targetAudience}`);
-      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
+      if (brandVault.competitors) brandCtx.push(`COMPETITORS: ${Array.isArray(brandVault.competitors) ? brandVault.competitors.slice(0, 5).join(", ") : String(brandVault.competitors)}`);
       if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
-      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
-      if (brandVault.sections) { for (const s of brandVault.sections) { const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
+      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${String(brandVault.guidelines).slice(0, 500)}`);
+      if (Array.isArray(brandVault.sections)) { for (const s of brandVault.sections) { const items = (Array.isArray(s.items) ? s.items : []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
     }
     const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
 
@@ -2709,20 +2753,20 @@ app.get("/campaign/generate-texts-get", async (c) => {
       if (brandVault.tagline) brandCtx.push(`TAGLINE: ${brandVault.tagline}`);
       if (brandVault.mission) brandCtx.push(`MISSION: ${brandVault.mission}`);
       if (brandVault.vision) brandCtx.push(`VISION: ${brandVault.vision}`);
-      if (brandVault.values?.length) brandCtx.push(`VALUES: ${brandVault.values.join(", ")}`);
+      if (brandVault.values) brandCtx.push(`VALUES: ${Array.isArray(brandVault.values) ? brandVault.values.join(", ") : String(brandVault.values)}`);
       if (brandVault.tone) brandCtx.push(`TONE OF VOICE: ${brandVault.tone}`);
-      if (brandVault.toneAttributes?.length) brandCtx.push(`TONE ATTRIBUTES: ${brandVault.toneAttributes.join(", ")}`);
+      if (brandVault.toneAttributes) brandCtx.push(`TONE ATTRIBUTES: ${Array.isArray(brandVault.toneAttributes) ? brandVault.toneAttributes.join(", ") : String(brandVault.toneAttributes)}`);
       if (brandVault.personality) brandCtx.push(`BRAND PERSONALITY: ${brandVault.personality}`);
-      if (brandVault.approvedTerms?.length) brandCtx.push(`APPROVED VOCABULARY (MUST use): ${brandVault.approvedTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.forbiddenTerms?.length) brandCtx.push(`FORBIDDEN WORDS (NEVER use): ${brandVault.forbiddenTerms.slice(0, 30).join(", ")}`);
-      if (brandVault.keyMessages?.length) brandCtx.push(`KEY MESSAGES: ${brandVault.keyMessages.slice(0, 8).join(" | ")}`);
+      if (brandVault.approvedTerms) brandCtx.push(`APPROVED VOCABULARY (MUST use): ${Array.isArray(brandVault.approvedTerms) ? brandVault.approvedTerms.slice(0, 30).join(", ") : String(brandVault.approvedTerms)}`);
+      if (brandVault.forbiddenTerms) brandCtx.push(`FORBIDDEN WORDS (NEVER use): ${Array.isArray(brandVault.forbiddenTerms) ? brandVault.forbiddenTerms.slice(0, 30).join(", ") : String(brandVault.forbiddenTerms)}`);
+      if (brandVault.keyMessages) brandCtx.push(`KEY MESSAGES: ${Array.isArray(brandVault.keyMessages) ? brandVault.keyMessages.slice(0, 8).join(" | ") : String(brandVault.keyMessages)}`);
       if (brandVault.targetAudience) brandCtx.push(`TARGET AUDIENCE (vault): ${brandVault.targetAudience}`);
-      if (brandVault.competitors?.length) brandCtx.push(`COMPETITORS: ${brandVault.competitors.slice(0, 5).join(", ")}`);
+      if (brandVault.competitors) brandCtx.push(`COMPETITORS: ${Array.isArray(brandVault.competitors) ? brandVault.competitors.slice(0, 5).join(", ") : String(brandVault.competitors)}`);
       if (brandVault.usp) brandCtx.push(`USP: ${brandVault.usp}`);
-      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${brandVault.guidelines.slice(0, 500)}`);
-      if (brandVault.sections) {
+      if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${String(brandVault.guidelines).slice(0, 500)}`);
+      if (Array.isArray(brandVault.sections)) {
         for (const s of brandVault.sections) {
-          const items = (s.items || []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n");
+          const items = (Array.isArray(s.items) ? s.items : []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n");
           if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`);
         }
       }
@@ -4157,8 +4201,9 @@ app.get("/vault", async (c) => {
 app.post("/vault/load", async (c) => {
   try {
     const user = await requireAuth(c);
-    const vault = await kv.get(`vault:${user.id}`);
-    console.log(`[vault/load] user ${user.id}: vault ${vault ? "found" : "not found"}`);
+    const rawVault = await kv.get(`vault:${user.id}`);
+    const vault = syncVaultNames(rawVault);
+    console.log(`[vault/load] user ${user.id}: vault ${vault ? "found" : "not found"} brand="${vault?.brandName || ""}"`);
     return c.json({ success: true, vault: vault || null });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
@@ -4168,6 +4213,7 @@ app.post("/vault", async (c) => {
   try {
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const { _token, ...data } = body;
+    console.log(`[vault/save] incoming keys: [${Object.keys(data).join(",")}] company_name="${data.company_name || "NONE"}" brandName="${data.brandName || "NONE"}"`);
     // If body only has _token → it's a read
     if (Object.keys(data).length === 0) {
       const user = await requireAuth(c);
@@ -4177,9 +4223,19 @@ app.post("/vault", async (c) => {
     // Otherwise it's a write
     const user = await requireAuth(c);
     const existing = await kv.get(`vault:${user.id}`) || {};
-    const updated = { ...existing, ...data, userId: user.id, updatedAt: new Date().toISOString() };
-    await kv.set(`vault:${user.id}`, updated);
-    return c.json({ success: true, vault: updated });
+    const merged = { ...existing, ...data, userId: user.id, updatedAt: new Date().toISOString() };
+    // Keep brandName and company_name in sync — whichever is newer wins
+    if (data.brandName && !data.company_name) merged.company_name = data.brandName;
+    if (data.company_name && !data.brandName) merged.brandName = data.company_name;
+    // If both exist in merged but mismatch, prefer the one from incoming data
+    if (merged.brandName && merged.company_name && merged.brandName !== merged.company_name) {
+      const canonical = data.brandName || data.company_name || merged.brandName;
+      merged.brandName = canonical;
+      merged.company_name = canonical;
+    }
+    await saveVaultToKV(user.id, merged);
+    console.log(`[vault/save] user=${user.id.slice(0,8)} brandName="${merged.brandName}" company_name="${merged.company_name}"`);
+    return c.json({ success: true, vault: merged });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
@@ -4366,11 +4422,162 @@ app.post("/vault/analyze", async (c) => {
         }
       }
 
-      // Favicon
+      // Favicon + apple-touch-icon (high-res)
       const favicon = html.match(/<link[^>]+rel=["'](icon|shortcut icon|apple-touch-icon)["'][^>]+href=["']([^"']+)["']/i)?.[2] || "";
       if (favicon) {
         try { data.meta.favicon = favicon.startsWith("http") ? favicon : new URL(favicon, pageUrl).href; } catch {}
       }
+      // Prefer apple-touch-icon (higher res) over favicon
+      const appleTouchIcon = html.match(/<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["']/i)?.[2] || "";
+      if (appleTouchIcon) {
+        try { data.meta.appleTouchIcon = appleTouchIcon.startsWith("http") ? appleTouchIcon : new URL(appleTouchIcon, pageUrl).href; } catch {}
+      }
+
+      // ── Logo extraction (multiple strategies, scored by confidence) ──
+      const logoCandidates: { url: string; score: number; source: string }[] = [];
+      const seenLogoUrls = new Set<string>();
+      function addLogoCandidate(rawUrl: string, score: number, source: string) {
+        if (!rawUrl) return;
+        try {
+          const fullUrl = rawUrl.startsWith("http") ? rawUrl : new URL(rawUrl, pageUrl).href;
+          if (seenLogoUrls.has(fullUrl)) return;
+          // Skip data URIs, tracking pixels, tiny icons
+          if (fullUrl.startsWith("data:") || /pixel|track|beacon|1x1|spacer/i.test(fullUrl)) return;
+          seenLogoUrls.add(fullUrl);
+          logoCandidates.push({ url: fullUrl, score, source });
+        } catch {}
+      }
+
+      // 1. <img> or <svg> inside <header> or <nav> with class/id/alt containing "logo" (score 10)
+      const headerLogoImgs = html.match(/<(?:header|nav)[^>]*>[\s\S]*?<\/(?:header|nav)>/gi) || [];
+      for (const block of headerLogoImgs) {
+        const imgs = block.match(/<img[^>]+src=["']([^"']+)["'][^>]*/gi) || [];
+        for (const img of imgs) {
+          const src = img.match(/src=["']([^"']+)["']/)?.[1];
+          const alt = img.match(/alt=["']([^"']*?)["']/i)?.[1] || "";
+          const cls = img.match(/class=["']([^"']*?)["']/i)?.[1] || "";
+          if (src) {
+            if (/logo/i.test(alt) || /logo/i.test(cls) || /logo/i.test(src)) {
+              addLogoCandidate(src, 10, "header-logo-img");
+            } else {
+              // First image in header is often the logo
+              addLogoCandidate(src, 6, "header-first-img");
+            }
+          }
+        }
+        // SVG in header
+        const svgData = block.match(/<a[^>]*>[\s\S]*?<svg[\s\S]*?<\/svg>/i);
+        if (svgData) {
+          // Can't extract SVG as URL easily — mark as detected
+          data.meta.hasHeaderSvgLogo = true;
+        }
+      }
+
+      // 2. Any <img> with class/id/alt containing "logo" anywhere (score 8)
+      const allLogoImgs = html.match(/<img[^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/gi) || [];
+      for (const match of allLogoImgs) {
+        const src = match.match(/src=["']([^"']+)["']/)?.[1];
+        if (src) addLogoCandidate(src, 8, "img-logo-attr");
+      }
+      // Also match src before class/alt
+      const allLogoImgs2 = html.match(/<img[^>]+src=["']([^"']+)["'][^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["']/gi) || [];
+      for (const match of allLogoImgs2) {
+        const src = match.match(/src=["']([^"']+)["']/)?.[1];
+        if (src) addLogoCandidate(src, 8, "img-logo-attr2");
+      }
+
+      // 3. <a> with class/id containing "logo" linking to homepage (score 7)
+      const logoLinks = html.match(/<a[^>]+(?:class|id)=["'][^"']*logo[^"']*["'][^>]*>[\s\S]*?<\/a>/gi) || [];
+      for (const link of logoLinks) {
+        const innerImg = link.match(/<img[^>]+src=["']([^"']+)["']/)?.[1];
+        if (innerImg) addLogoCandidate(innerImg, 7, "a-logo-inner-img");
+      }
+
+      // 4. OG image (often the logo or hero — score 4)
+      if (data.meta.ogImage) addLogoCandidate(data.meta.ogImage, 4, "og-image");
+
+      // 5. Apple touch icon (score 5 — usually clean logo)
+      if (data.meta.appleTouchIcon) addLogoCandidate(data.meta.appleTouchIcon, 5, "apple-touch-icon");
+
+      // 6. Favicon (score 2 — low res but reliable)
+      if (data.meta.favicon) addLogoCandidate(data.meta.favicon, 2, "favicon");
+
+      // Sort by score desc, pick best
+      logoCandidates.sort((a, b) => b.score - a.score);
+      data.meta.logoUrl = logoCandidates[0]?.url || "";
+      data.meta.logoCandidates = logoCandidates.slice(0, 5);
+      if (logoCandidates.length > 0) {
+        console.log(`[extractFromHtml] Logo candidates: ${logoCandidates.map(l => `${l.source}(${l.score}): ${l.url.slice(0, 60)}`).join(", ")}`);
+      }
+
+      // ── Brand images extraction (photos, hero images, lifestyle) ──
+      const brandImages: { url: string; alt: string; score: number; source: string }[] = [];
+      const seenImgUrls = new Set<string>();
+      // Blocklist patterns for non-brand images
+      const imgBlocklist = /pixel|track|beacon|spacer|1x1|sprite|icon-|ico-|flag-|avatar|emoji|badge|button|arrow|chevron|caret|close|menu|hamburger|loading|spinner|placeholder|blank\.|transparent\.|pdf[-_]?page|page[-_]?\d+|thumb[-_]?\d|slide[-_]?\d|screenshot/i;
+      const smallIconPattern = /\b(16|20|24|32|48)x\1\b|icon[-_]|ico[-_]|\bsvg\b/i;
+      // Skip document-like images (PDF renders, slides, screenshots)
+      const docPattern = /\.pdf|page[_-]?\d+\.(png|jpg)|slide[_-]?\d+|render|preview[-_]page|document[-_]/i;
+
+      const allImgs = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*/gi) || [];
+      for (const imgTag of allImgs) {
+        const src = imgTag.match(/src=["']([^"']+)["']/)?.[1];
+        if (!src || src.startsWith("data:")) continue;
+        if (imgBlocklist.test(src) || docPattern.test(src)) continue;
+        // Skip if it's a logo candidate
+        try {
+          const fullUrl = src.startsWith("http") ? src : new URL(src, pageUrl).href;
+          if (seenImgUrls.has(fullUrl) || seenLogoUrls.has(fullUrl)) continue;
+          if (imgBlocklist.test(fullUrl) || docPattern.test(fullUrl)) continue;
+          seenImgUrls.add(fullUrl);
+
+          const alt = imgTag.match(/alt=["']([^"']*?)["']/i)?.[1] || "";
+          const width = parseInt(imgTag.match(/width=["']?(\d+)/i)?.[1] || "0");
+          const height = parseInt(imgTag.match(/height=["']?(\d+)/i)?.[1] || "0");
+          const cls = imgTag.match(/class=["']([^"']*?)["']/i)?.[1] || "";
+          // Skip document/PDF-like alt text
+          if (/page\s*\d|slide\s*\d|capture|screenshot/i.test(alt)) continue;
+
+          // Skip tiny images (likely icons)
+          if ((width > 0 && width < 100) || (height > 0 && height < 100)) continue;
+          if (smallIconPattern.test(src) || smallIconPattern.test(cls)) continue;
+
+          let score = 3; // base score
+          // Boost for large images
+          if (width >= 400 || height >= 300) score += 3;
+          if (width >= 800 || height >= 600) score += 2;
+          // Boost for hero/banner/product mentions
+          if (/hero|banner|featured|cover|main|product|lifestyle|visual|photo|img-full/i.test(cls) || /hero|banner|featured|cover|main/i.test(src)) score += 3;
+          // Boost for meaningful alt text
+          if (alt && alt.length > 5 && !/logo|icon/i.test(alt)) score += 2;
+          // Boost for common image extensions
+          if (/\.(jpg|jpeg|png|webp)(\?|$)/i.test(fullUrl)) score += 1;
+          // Penalize for common non-brand patterns
+          if (/avatar|profile|user|staff|team/i.test(src) || /avatar|profile/i.test(cls)) score -= 2;
+
+          brandImages.push({ url: fullUrl, alt, score, source: "img-tag" });
+        } catch {}
+      }
+
+      // Also check CSS background-image URLs for hero images
+      const bgImgMatches = html.match(/background(?:-image)?\s*:\s*url\(["']?([^"')]+)["']?\)/gi) || [];
+      for (const bg of bgImgMatches) {
+        const bgUrl = bg.match(/url\(["']?([^"')]+)["']?\)/)?.[1];
+        if (!bgUrl || bgUrl.startsWith("data:") || imgBlocklist.test(bgUrl)) continue;
+        try {
+          const fullUrl = bgUrl.startsWith("http") ? bgUrl : new URL(bgUrl, pageUrl).href;
+          if (seenImgUrls.has(fullUrl)) continue;
+          seenImgUrls.add(fullUrl);
+          brandImages.push({ url: fullUrl, alt: "", score: 5, source: "css-bg" });
+        } catch {}
+      }
+
+      // Sort by score, filter low-quality, keep top 15
+      brandImages.sort((a, b) => b.score - a.score);
+      const qualityImages = brandImages.filter(img => img.score >= 5);
+      data.brandImages = qualityImages.slice(0, 15);
+      console.log(`[extractFromHtml] Brand images: ${brandImages.length} found, ${qualityImages.length} above score threshold, keeping top ${Math.min(qualityImages.length, 15)}`);
+
       return data;
     }
 
@@ -4733,9 +4940,208 @@ ${truncated}` },
 
     const existing = await kv.get(`vault:${user.id}`) || {};
     const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
-    await kv.set(`vault:${user.id}`, merged);
+    // CRITICAL: keep brandName and company_name in sync
+    // AI returns company_name, frontend CampaignLab reads brandName — they MUST match
+    await saveVaultToKV(user.id, merged);
 
-    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${dna.company_name} (${isCharter ? "charter" : deep ? "deep" : "std"})`);
+    // ── BACKGROUND: Download logo + brand images from URL scan ──
+    // Fire-and-forget — don't block the response
+    if (url && preExtracted.meta) {
+      (async () => {
+        try {
+          const sb = supabaseAdmin();
+          const userId = user.id;
+
+          // ── 1. LOGO: download best candidate and store in vault ──
+          const logoUrl = preExtracted.meta.logoUrl;
+          if (logoUrl && !merged.logo_url) {
+            try {
+              console.log(`[vault/analyze-bg] Downloading logo: ${logoUrl.slice(0, 80)}`);
+              const logoRes = await fetch(logoUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" },
+                signal: AbortSignal.timeout(15_000),
+                redirect: "follow",
+              });
+              if (logoRes.ok) {
+                const ct = logoRes.headers.get("content-type") || "";
+                const buf = await logoRes.arrayBuffer();
+                // Skip if too small (< 500 bytes = likely a placeholder) or too large (> 5MB)
+                if (buf.byteLength >= 500 && buf.byteLength <= 5_000_000) {
+                  let ext = "png";
+                  if (ct.includes("svg")) ext = "svg";
+                  else if (ct.includes("jpeg") || ct.includes("jpg")) ext = "jpg";
+                  else if (ct.includes("webp")) ext = "webp";
+                  else if (ct.includes("gif")) ext = "gif";
+                  else if (ct.includes("ico")) ext = "ico";
+                  const storagePath = `vault-logos/${userId}/logo-scan-${Date.now()}.${ext}`;
+                  await ensureBucket();
+                  const { error: upErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(buf), { contentType: ct || `image/${ext}`, upsert: true });
+                  if (!upErr) {
+                    const { data: signedData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+                    if (signedData?.signedUrl) {
+                      const vault = await kv.get(`vault:${userId}`) || {};
+                      await saveVaultToKV(userId, { ...vault, logo_url: signedData.signedUrl, logo_path: storagePath });
+                      console.log(`[vault/analyze-bg] Logo saved: ${storagePath} (${(buf.byteLength / 1024).toFixed(0)}KB)`);
+                    }
+                  } else {
+                    console.log(`[vault/analyze-bg] Logo upload error: ${upErr.message}`);
+                  }
+                } else {
+                  console.log(`[vault/analyze-bg] Logo skipped: ${buf.byteLength} bytes (too ${buf.byteLength < 500 ? "small" : "large"})`);
+                }
+              }
+            } catch (logoErr) { console.log(`[vault/analyze-bg] Logo download failed: ${logoErr}`); }
+          }
+
+          // ── 2. BRAND IMAGES: download top images and add to image bank ──
+          const brandImages = preExtracted.brandImages || [];
+          if (brandImages.length > 0) {
+            await ensureImageBankBucket();
+            // Take top 10 high-quality images only
+            const topImages = brandImages.slice(0, 10);
+            let savedCount = 0;
+            console.log(`[vault/analyze-bg] Downloading ${topImages.length} brand images (score >= 5)...`);
+
+            // Brand name for AI context
+            const brandName = merged.brandName || merged.company_name || "";
+
+            // AI categorization prompt for website-scraped images
+            const webImageCategorizationPrompt = `You are a brand asset manager. Classify this image from the website of "${brandName || "a company"}".
+
+Return ONLY a JSON object:
+{
+  "category": "one of: hero, photo-product, photo-lifestyle, photo-team, graphic-element, pattern, picto-icon, mockup, illustration, logo-variant, other",
+  "tags": ["3-6 descriptive tags"],
+  "description": "One sentence describing what the image shows and how a designer could use it",
+  "mood": "primary mood (e.g. professional, warm, dynamic, luxurious, minimal)",
+  "usage": ["recommended usages from: social-post, story, ad-banner, email-hero, landing-page, blog-header, product-detail, background, overlay"]
+}
+
+Category definitions:
+- hero: Full-width banner or header image, typically atmospheric
+- photo-product: Product shot (packshot, flat lay, in-use)
+- photo-lifestyle: Lifestyle/editorial photography showing brand universe
+- photo-team: People, team, founders, clients
+- graphic-element: Icons, shapes, decorative brand elements
+- pattern: Repeating patterns, textures, backgrounds
+- picto-icon: Pictograms, icons, small UI elements
+- mockup: Brand applied to physical objects (signage, packaging, merch)
+- illustration: Hand-drawn or vector illustrations
+- logo-variant: Logo or logo variation
+- other: Doesn't fit above categories`;
+
+            await Promise.allSettled(topImages.map(async (img: any, idx: number) => {
+              try {
+                const imgRes = await fetch(img.url, {
+                  headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" },
+                  signal: AbortSignal.timeout(15_000),
+                  redirect: "follow",
+                });
+                if (!imgRes.ok) return;
+                const ct = imgRes.headers.get("content-type") || "";
+                // Only accept actual images (not HTML, PDF, etc.)
+                if (!ct.includes("image")) return;
+                // Skip SVG (usually icons/logos, not brand photos)
+                if (ct.includes("svg")) return;
+                const buf = await imgRes.arrayBuffer();
+                // Skip tiny (< 15KB = icons/thumbnails) and huge (> 8MB)
+                if (buf.byteLength < 15_000 || buf.byteLength > 8_000_000) return;
+
+                let ext = "jpg";
+                if (ct.includes("png")) ext = "png";
+                else if (ct.includes("webp")) ext = "webp";
+                else if (ct.includes("gif")) ext = "gif";
+
+                const imageId = `scan-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+                const storagePath = `${userId}/${imageId}.${ext}`;
+
+                const { error: upErr } = await sb.storage.from(IMAGE_BANK_BUCKET).upload(storagePath, new Uint8Array(buf), { contentType: ct, upsert: false });
+                if (upErr) return;
+
+                // Derive filename from URL
+                const urlParts = img.url.split("/");
+                const origName = urlParts[urlParts.length - 1]?.split("?")[0] || `brand-image-${idx}.${ext}`;
+
+                // Default metadata
+                let category = img.source === "css-bg" ? "hero" : "other";
+                let tags: string[] = ["auto-scan", "website"];
+                let description = img.alt || "";
+                let mood = "";
+                let usage: string[] = [];
+
+                // ── AI Vision categorization (Pixtral) ──
+                try {
+                  const bytes = new Uint8Array(buf);
+                  let binary = "";
+                  // Only send images < 2MB to vision API (larger ones are too slow)
+                  if (bytes.length < 2_000_000) {
+                    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                    const imgBase64 = btoa(binary);
+                    const dataUri = `data:${ct};base64,${imgBase64}`;
+
+                    const visionRes = await fetchWithTimeout(`${MISTRAL_BASE}/chat/completions`, {
+                      method: "POST",
+                      headers: mistralHeaders(),
+                      body: JSON.stringify({
+                        model: "pixtral-large-latest",
+                        messages: [{ role: "user", content: [
+                          { type: "text", text: webImageCategorizationPrompt },
+                          { type: "image_url", image_url: { url: dataUri } },
+                        ] }],
+                        max_tokens: 400,
+                        temperature: 0.1,
+                        response_format: { type: "json_object" },
+                      }),
+                    }, 25_000);
+
+                    if (visionRes.ok) {
+                      const vData = await visionRes.json();
+                      const raw = vData.choices?.[0]?.message?.content || "";
+                      const parsed = JSON.parse(raw.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim());
+                      if (parsed.category) category = parsed.category;
+                      if (Array.isArray(parsed.tags)) tags = [...new Set(["auto-scan", "website", ...parsed.tags])];
+                      if (parsed.description) description = parsed.description;
+                      if (parsed.mood) mood = parsed.mood;
+                      if (Array.isArray(parsed.usage)) usage = parsed.usage;
+                      console.log(`[vault/analyze-bg] AI classified ${origName}: ${category} [${tags.slice(0, 4).join(",")}] — "${description.slice(0, 60)}"`);
+                    }
+                  }
+                } catch (visionErr) {
+                  console.log(`[vault/analyze-bg] Vision classification failed for ${origName}: ${visionErr}`);
+                }
+
+                const meta = {
+                  id: imageId,
+                  fileName: origName,
+                  storagePath,
+                  fileSize: buf.byteLength,
+                  mimeType: ct,
+                  tags,
+                  category,
+                  alt: img.alt || "",
+                  description,
+                  mood,
+                  recommendedUsage: usage,
+                  sourceUrl: img.url,
+                  analyzedAt: new Date().toISOString(),
+                  uploadedAt: new Date().toISOString(),
+                };
+                await kv.set(`brand-image:${userId}:${imageId}`, meta);
+                savedCount++;
+              } catch (imgErr) {
+                // Silent — individual image failure is fine
+              }
+            }));
+
+            console.log(`[vault/analyze-bg] Brand images: ${savedCount}/${topImages.length} saved to image bank`);
+          }
+        } catch (bgErr) {
+          console.log(`[vault/analyze-bg] Background job error: ${bgErr}`);
+        }
+      })();
+    }
+
+    console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${merged.brandName || merged.company_name} (${isCharter ? "charter" : deep ? "deep" : "std"})`);
     return c.json({ success: true, dna, vault: merged, _path: isCharter ? "charter" : "url" });
 
   } catch (err: any) {
@@ -5055,7 +5461,7 @@ app.post("/vault/upload-logo", async (c) => {
     const logoUrl = urlData?.signedUrl || "";
     // Save to vault
     const existing = await kv.get(`vault:${userId}`) || {};
-    await kv.set(`vault:${userId}`, { ...existing, logo_url: logoUrl, logo_path: storagePath, updatedAt: new Date().toISOString() });
+    await saveVaultToKV(userId, { ...existing, logo_url: logoUrl, logo_path: storagePath, updatedAt: new Date().toISOString() });
 
     console.log(`[vault/upload-logo] OK in ${Date.now() - t0}ms`);
     return c.json({ success: true, logoUrl, storagePath });
@@ -5097,7 +5503,7 @@ app.post("/vault/upload-logo", async (c) => {
     const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 60 * 60 * 24 * 30);
     // Save logo info in vault
     const existing = await kv.get(`vault:${user.id}`) || {};
-    await kv.set(`vault:${user.id}`, { ...existing, logoUrl: urlData?.signedUrl || null, logoStoragePath: storagePath, updatedAt: new Date().toISOString() });
+    await saveVaultToKV(user.id, { ...existing, logoUrl: urlData?.signedUrl || null, logoStoragePath: storagePath, updatedAt: new Date().toISOString() });
     console.log(`[vault/upload-logo] OK in ${Date.now() - t0}ms`);
     return c.json({ success: true, logoUrl: urlData?.signedUrl || null, storagePath });
   } catch (err) {
@@ -5282,7 +5688,7 @@ Be extremely specific. Provide hex color codes when visible. Name fonts if recog
     const existing = await kv.get(`vault:${userId}`) || {};
     const fileRefs = existing.uploaded_files || [];
     fileRefs.push({ fileId, fileName, fileType, fileSize, storagePath, signedUrl, questionField, extractedText: extractedText.slice(0, 3000), uploadedAt: new Date().toISOString() });
-    await kv.set(`vault:${userId}`, { ...existing, uploaded_files: fileRefs, updatedAt: new Date().toISOString() });
+    await saveVaultToKV(userId, { ...existing, uploaded_files: fileRefs, updatedAt: new Date().toISOString() });
 
     console.log(`[analyze-file] DONE in ${Date.now() - t0}ms`);
     return c.json({ success: true, fileId, fileName, fileType, signedUrl, extractedText: fieldSummary, questionField });
@@ -5566,11 +5972,6 @@ app.post("/vault/analyze-brand", async (c) => {
 });
 
 // ─── TEST ROUTE: Simple GET to verify server is working ──
-app.get("/vault/test-simple", (c) => {
-  console.log("[test-simple] ✅ GET route hit!");
-  return c.json({ success: true, message: "Simple route works!" });
-});
-
 // ─── VAULT ROUTE: Monolithic scan-url (scrape + AI analysis in one call) ──
 app.post("/vault/scan-url", async (c) => {
   console.log("[scan-url] ✅ POST ROUTE HIT — Starting handler...");
@@ -6141,7 +6542,7 @@ app.post("/vault/conversation", async (c) => {
         completedAt: new Date().toISOString(),
         confidence_score: 85
       };
-      await kv.set(`vault:${user.id}`, finalVault);
+      await saveVaultToKV(user.id, finalVault);
 
       console.log(`[conversation] Complete in ${Date.now() - t0}ms`);
       return c.json({
@@ -6155,7 +6556,7 @@ app.post("/vault/conversation", async (c) => {
     // Save state
     conversationState.phase = nextQuestion.phase;
     conversationState.step = nextQuestion.step;
-    await kv.set(`vault:${user.id}`, { ...existingVault, conversation_state: conversationState });
+    await saveVaultToKV(user.id, { ...existingVault, conversation_state: conversationState });
 
     console.log(`[conversation] Next question in ${Date.now() - t0}ms`);
     return c.json({
@@ -7300,7 +7701,7 @@ Rules:
       updatedAt: new Date().toISOString(),
     };
 
-    await kv.set(`vault:${user.id}`, finalVault);
+    await saveVaultToKV(user.id, finalVault);
 
     console.log(`[analyze-onboarding] DONE in ${Date.now() - t0}ms - brand: ${structuredData.brandName}`);
     return c.json({ success: true, vault: finalVault });
@@ -7577,15 +7978,19 @@ app.post("/vault/images/categorize-upload", handlePdfImagesUpload);
 // ══════════════════════════════════════════════════════════════
 
 const ADOBE_PDF_BASE = "https://pdf-services-ue1.adobe.io";
-const ADOBE_CLIENT_ID = Deno.env.get("ADOBE_CLIENT_ID") || "";
-const ADOBE_CLIENT_SECRET = Deno.env.get("ADOBE_CLIENT_SECRET") || "";
+// Read Adobe credentials lazily (at call time, not at cold-start) to pick up secret changes
+function getAdobeClientId(): string { return Deno.env.get("ADOBE_CLIENT_ID") || ""; }
+function getAdobeClientSecret(): string { return Deno.env.get("ADOBE_CLIENT_SECRET") || ""; }
 
 async function getAdobeAccessToken(): Promise<string> {
+  const clientId = getAdobeClientId();
+  const clientSecret = getAdobeClientSecret();
+  console.log(`[adobe-extract] Auth with clientId=${clientId.slice(0,8)}...`);
   // Adobe IMS OAuth2 — client_credentials flow
   const res = await fetch("https://ims-na1.adobelogin.com/ims/token/v3", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=client_credentials&client_id=${ADOBE_CLIENT_ID}&client_secret=${ADOBE_CLIENT_SECRET}&scope=openid,AdobeID,DCAPI`,
+    body: `grant_type=client_credentials&client_id=${clientId}&client_secret=${clientSecret}&scope=openid,AdobeID,DCAPI`,
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Adobe IMS auth failed: ${res.status} ${text}`);
@@ -7597,7 +8002,7 @@ async function getAdobeAccessToken(): Promise<string> {
 function adobeHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
-    "x-api-key": ADOBE_CLIENT_ID,
+    "x-api-key": getAdobeClientId(),
     "Content-Type": "application/json",
   };
 }
@@ -7625,37 +8030,77 @@ app.post("/vault/adobe-extract", async (c) => {
     console.log("[adobe-extract] Token obtained");
 
     // Step 2: Create upload asset
+    console.log(`[adobe-extract] Step 2: Creating asset at ${ADOBE_PDF_BASE}/assets`);
     const createRes = await fetch(`${ADOBE_PDF_BASE}/assets`, {
       method: "POST",
       headers: adobeHeaders(adobeToken),
       body: JSON.stringify({ mediaType: "application/pdf" }),
     });
-    if (!createRes.ok) throw new Error(`Adobe create asset failed: ${createRes.status}`);
-    const { uploadUri, assetID } = await createRes.json();
-    console.log(`[adobe-extract] Asset created: ${assetID}`);
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      console.log(`[adobe-extract] Step 2 FAILED: ${createRes.status} ${errText}`);
+      throw new Error(`Adobe create asset failed: ${createRes.status} ${errText}`);
+    }
+    const createData = await createRes.json();
+    const uploadUri = createData.uploadUri;
+    const assetID = createData.assetID;
+    console.log(`[adobe-extract] Step 2 OK: assetID=${assetID}`);
 
     // Step 3: Upload PDF to Adobe
     const pdfBytes = await file.arrayBuffer();
+    console.log(`[adobe-extract] Step 3: Uploading ${(pdfBytes.byteLength/1024).toFixed(0)}KB to ${uploadUri?.slice(0,60)}...`);
     const uploadRes = await fetch(uploadUri, {
       method: "PUT",
       headers: { "Content-Type": "application/pdf" },
       body: pdfBytes,
     });
-    if (!uploadRes.ok) throw new Error(`Adobe upload failed: ${uploadRes.status}`);
-    console.log("[adobe-extract] PDF uploaded to Adobe");
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text();
+      console.log(`[adobe-extract] Step 3 FAILED: ${uploadRes.status} ${errText}`);
+      throw new Error(`Adobe upload failed: ${uploadRes.status}`);
+    }
+    console.log("[adobe-extract] Step 3 OK: PDF uploaded");
 
     // Step 4: Start extraction job (text + figures)
+    // Use input.assetID format per Adobe PDF Services API v2
+    const extractBody = {
+      assetID,
+      elementsToExtract: ["text", "tables"],
+      renditionsToExtract: ["figures", "tables"],
+    };
+    console.log(`[adobe-extract] Step 4: POST ${ADOBE_PDF_BASE}/operation/extractpdf body=${JSON.stringify(extractBody).slice(0,200)}`);
     const extractRes = await fetch(`${ADOBE_PDF_BASE}/operation/extractpdf`, {
       method: "POST",
       headers: adobeHeaders(adobeToken),
-      body: JSON.stringify({
-        assetID,
-        elementsToExtract: ["text", "tables"],
-        renditionsToExtract: ["figures", "tables"],
-      }),
+      body: JSON.stringify(extractBody),
     });
-    if (!extractRes.ok) throw new Error(`Adobe extract failed: ${extractRes.status} ${await extractRes.text()}`);
-    const pollingUrl = extractRes.headers.get("location") || extractRes.headers.get("x-request-id");
+    if (!extractRes.ok) {
+      const errText = await extractRes.text();
+      console.log(`[adobe-extract] Step 4 FAILED: ${extractRes.status} ${errText}`);
+      // Try alternative format (input.assetID)
+      console.log(`[adobe-extract] Step 4 RETRY: trying input.assetID format...`);
+      const extractRes2 = await fetch(`${ADOBE_PDF_BASE}/operation/extractpdf`, {
+        method: "POST",
+        headers: adobeHeaders(adobeToken),
+        body: JSON.stringify({
+          input: { assetID },
+          elementsToExtract: ["text", "tables"],
+          elementsToExtractRenditions: ["figures", "tables"],
+        }),
+      });
+      if (!extractRes2.ok) {
+        const errText2 = await extractRes2.text();
+        console.log(`[adobe-extract] Step 4 RETRY FAILED: ${extractRes2.status} ${errText2}`);
+        throw new Error(`Adobe extract failed: ${extractRes.status} ${errText}`);
+      }
+      // Use retry response
+      const pollingUrl2 = extractRes2.headers.get("location") || extractRes2.headers.get("x-request-id");
+      if (!pollingUrl2) throw new Error("No polling URL from Adobe (retry)");
+      console.log(`[adobe-extract] Step 4 RETRY OK, polling: ${pollingUrl2}`);
+      // Continue with pollingUrl2 below by assigning to shared var
+      Object.assign(extractRes, { _pollingUrl: pollingUrl2 });
+    }
+    const pollingUrl = (extractRes as any)._pollingUrl || extractRes.headers.get("location") || extractRes.headers.get("x-request-id");
     if (!pollingUrl) throw new Error("No polling URL from Adobe");
     console.log(`[adobe-extract] Job started, polling: ${pollingUrl}`);
 
@@ -7664,7 +8109,7 @@ app.post("/vault/adobe-extract", async (c) => {
     for (let attempt = 0; attempt < 60; attempt++) {
       await new Promise(r => setTimeout(r, 2000)); // wait 2s between polls
       const pollRes = await fetch(pollingUrl, {
-        headers: { Authorization: `Bearer ${adobeToken}`, "x-api-key": ADOBE_CLIENT_ID },
+        headers: { Authorization: `Bearer ${adobeToken}`, "x-api-key": getAdobeClientId() },
       });
       if (!pollRes.ok) { console.log(`[adobe-extract] Poll ${attempt}: ${pollRes.status}`); continue; }
       const pollData = await pollRes.json();
@@ -8348,6 +8793,322 @@ app.delete("/calendar/:id", async (c) => {
     if (found) await kv.del(found.id);
     return c.json({ success: true });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
+// ══════════════════════════════════════════════════════════════
+// TOPIC SUGGESTIONS — AI generates contextual content ideas
+// ══════════════════════════════════════════════════════════════
+
+// Marronniers / key calendar events by month (0-indexed) + sector tags
+const CALENDAR_EVENTS: { month: number; day: number; label: string; sectors: string[] }[] = [
+  // January
+  { month: 0, day: 1, label: "New Year", sectors: ["all"] },
+  { month: 0, day: 17, label: "Blue Monday", sectors: ["wellness", "lifestyle", "food"] },
+  { month: 0, day: 24, label: "International Day of Education", sectors: ["education", "tech"] },
+  // February
+  { month: 1, day: 2, label: "World Wetlands Day", sectors: ["eco", "nature"] },
+  { month: 1, day: 14, label: "Valentine's Day", sectors: ["all"] },
+  { month: 1, day: 20, label: "World Social Justice Day", sectors: ["ngo", "social"] },
+  // March
+  { month: 2, day: 8, label: "International Women's Day", sectors: ["all"] },
+  { month: 2, day: 15, label: "World Consumer Rights Day", sectors: ["retail", "ecommerce"] },
+  { month: 2, day: 20, label: "First Day of Spring", sectors: ["all"] },
+  { month: 2, day: 21, label: "World Poetry Day", sectors: ["culture", "education"] },
+  { month: 2, day: 22, label: "World Water Day", sectors: ["eco", "nature"] },
+  // April
+  { month: 3, day: 1, label: "April Fools' Day", sectors: ["all"] },
+  { month: 3, day: 7, label: "World Health Day", sectors: ["health", "wellness", "pharma"] },
+  { month: 3, day: 22, label: "Earth Day", sectors: ["all"] },
+  // May
+  { month: 4, day: 1, label: "International Workers' Day", sectors: ["all"] },
+  { month: 4, day: 4, label: "Star Wars Day", sectors: ["entertainment", "tech", "geek"] },
+  { month: 4, day: 11, label: "Mother's Day", sectors: ["all"] },
+  { month: 4, day: 17, label: "World Telecommunication Day", sectors: ["tech", "telecom"] },
+  // June
+  { month: 5, day: 1, label: "Global Day of Parents", sectors: ["family", "lifestyle"] },
+  { month: 5, day: 5, label: "World Environment Day", sectors: ["eco", "all"] },
+  { month: 5, day: 15, label: "Father's Day", sectors: ["all"] },
+  { month: 5, day: 21, label: "Summer Solstice", sectors: ["all"] },
+  { month: 5, day: 21, label: "World Music Day", sectors: ["music", "culture", "entertainment"] },
+  // July
+  { month: 6, day: 4, label: "US Independence Day", sectors: ["us-market"] },
+  { month: 6, day: 14, label: "Bastille Day (France)", sectors: ["france", "luxury"] },
+  { month: 6, day: 17, label: "World Emoji Day", sectors: ["tech", "social", "all"] },
+  { month: 6, day: 30, label: "International Friendship Day", sectors: ["all"] },
+  // August
+  { month: 7, day: 12, label: "International Youth Day", sectors: ["education", "social"] },
+  { month: 7, day: 19, label: "World Photography Day", sectors: ["creative", "tech", "art"] },
+  { month: 7, day: 26, label: "Women's Equality Day", sectors: ["all"] },
+  // September
+  { month: 8, day: 1, label: "Back to School", sectors: ["all"] },
+  { month: 8, day: 5, label: "International Day of Charity", sectors: ["ngo", "social"] },
+  { month: 8, day: 21, label: "International Day of Peace", sectors: ["all"] },
+  { month: 8, day: 22, label: "Car Free Day", sectors: ["eco", "urban", "mobility"] },
+  { month: 8, day: 27, label: "World Tourism Day", sectors: ["travel", "hospitality"] },
+  // October
+  { month: 9, day: 1, label: "International Coffee Day", sectors: ["food", "retail", "lifestyle"] },
+  { month: 9, day: 4, label: "World Animal Day", sectors: ["pet", "eco", "nature"] },
+  { month: 9, day: 10, label: "World Mental Health Day", sectors: ["health", "wellness"] },
+  { month: 9, day: 16, label: "World Food Day", sectors: ["food", "agriculture"] },
+  { month: 9, day: 31, label: "Halloween", sectors: ["all"] },
+  // November
+  { month: 10, day: 11, label: "Singles' Day (11.11)", sectors: ["ecommerce", "retail"] },
+  { month: 10, day: 25, label: "International Day Against Violence Against Women", sectors: ["all"] },
+  { month: 10, day: 29, label: "Black Friday", sectors: ["all"] },
+  { month: 10, day: 30, label: "Small Business Saturday", sectors: ["retail", "local"] },
+  // December
+  { month: 11, day: 2, label: "Cyber Monday", sectors: ["ecommerce", "tech", "retail"] },
+  { month: 11, day: 5, label: "International Volunteer Day", sectors: ["ngo", "social"] },
+  { month: 11, day: 24, label: "Christmas Eve", sectors: ["all"] },
+  { month: 11, day: 25, label: "Christmas", sectors: ["all"] },
+  { month: 11, day: 31, label: "New Year's Eve", sectors: ["all"] },
+];
+
+app.post("/topics/suggest", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { productId, count = 8 } = body;
+
+    console.log(`[topics/suggest] user=${user.id.slice(0, 8)}, productId=${productId || "none"}`);
+
+    // ── Gather context ──
+
+    // 1. Vault (brand) — send EVERYTHING so AI truly understands the brand
+    const rawVault = await kv.get(`vault:${user.id}`);
+    const vault = rawVault || {};
+    const brandName = vault.brandName || vault.company_name || "your brand";
+
+    // Flatten ALL vault sections into readable text
+    const vaultSections: string[] = [];
+    if (vault.sections && Array.isArray(vault.sections)) {
+      for (const section of vault.sections) {
+        if (!section.items || section.items.length === 0) continue;
+        const items = section.items.map((it: any) => `  • ${it.label}: ${it.value}`).join("\n");
+        vaultSections.push(`[${section.title}]\n${items}`);
+      }
+    }
+    const fullVaultText = vaultSections.join("\n\n");
+
+    // Additional vault fields
+    const keyMessages = vault.keyMessages?.join(" | ") || "";
+    const approvedTerms = vault.approvedTerms?.join(", ") || "";
+    const forbiddenTerms = vault.forbiddenTerms?.join(", ") || "";
+
+    // Try to detect sector from vault
+    const sectorRaw = vault.sections?.find((s: any) => {
+      const t = (s.title || "").toLowerCase();
+      return t.includes("sector") || t.includes("secteur") || t.includes("industry") || t.includes("marché");
+    })?.items?.[0]?.value || "";
+
+    // 2. Products — send FULL details (name, description, features, category, price)
+    const allProducts = await kv.getByPrefix(`product:${user.id}:`);
+    const products = (allProducts || []).map((p: any) => ({
+      id: p.id,
+      name: p.name || "",
+      description: (p.description || "").slice(0, 500),
+      features: p.features || [],
+      category: p.category || "",
+      price: p.price || "",
+      currency: p.currency || "",
+    }));
+    const targetProduct = productId ? products.find((p: any) => p.id?.includes(productId)) : null;
+
+    // 3. Library (already created) — titles + briefs to avoid repetition
+    const libItems = await kv.getByPrefix(`lib:${user.id}:`);
+    const recentTitles = (libItems || [])
+      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 20)
+      .map((item: any) => item.title || item.name || item.preview?.copy?.headline || "")
+      .filter(Boolean);
+
+    // 4. Marronniers — upcoming 45 days
+    const today = new Date();
+    const upcoming: string[] = [];
+    for (let d = 0; d <= 45; d++) {
+      const check = new Date(today);
+      check.setDate(check.getDate() + d);
+      const m = check.getMonth();
+      const day = check.getDate();
+      for (const ev of CALENDAR_EVENTS) {
+        if (ev.month === m && ev.day === day) {
+          if (ev.sectors.includes("all") || (sectorRaw && ev.sectors.some(s => sectorRaw.toLowerCase().includes(s)))) {
+            const daysUntil = d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
+            upcoming.push(`${ev.label} (${check.toLocaleDateString("en", { month: "short", day: "numeric" })}, ${daysUntil})`);
+          }
+        }
+      }
+    }
+
+    // ── Build prompt ──
+    const systemPrompt = `You are a senior brand strategist and content director. Your job is to propose content topics that are DEEPLY SPECIFIC to the brand described below.
+
+CRITICAL RULES:
+- You MUST read and internalize every detail of the brand profile below. Your suggestions must reflect THIS brand's unique positioning, values, products, audience, and tone. Generic topics = failure.
+- NEVER invent facts about the brand. Use ONLY what is provided in the brand profile and products.
+- NEVER mention competitor brands by name.
+- Each topic must be something ONLY this brand could post — if you replaced the brand name and it still works for any company, it's too generic. Redo it.
+- Reference specific products, specific brand values, specific audience pain points from the data provided.
+- The "hook" must be a real, ready-to-post first line in the brand's tone of voice.
+- Mix content types: educational, inspirational, promotional, entertaining, behind-the-scenes.
+- If products are listed, at least 50% of topics must reference a specific product.
+- Output ONLY valid JSON — no markdown, no explanation, no preamble.
+
+JSON FORMAT — return an array of exactly ${count} objects:
+[{
+  "title": "Short title (5-8 words)",
+  "angle": "The creative approach — must reference a specific brand attribute or product feature",
+  "type": "educate | inspire | sell | entertain | behind-the-scenes",
+  "product": "Exact product name from list, or null if brand-level",
+  "format": "linkedin-post | instagram-post | instagram-carousel | instagram-story | instagram-reel | facebook-post | twitter-post | email | youtube-short | tiktok",
+  "hook": "The attention-grabbing opening line — written in the brand's tone, ready to post",
+  "why_now": "Why this topic is relevant right now — connect to season, trend, or event if applicable"
+}]`;
+
+    // ── User prompt: FULL brand context ──
+    let brandContext = `═══ BRAND PROFILE: ${brandName} ═══\n`;
+    if (fullVaultText) {
+      brandContext += `\n${fullVaultText}\n`;
+    } else {
+      brandContext += `\n(No detailed brand data available — generate topics based on brand name only)\n`;
+    }
+    if (keyMessages) brandContext += `\nKey messages: ${keyMessages}`;
+    if (approvedTerms) brandContext += `\nApproved vocabulary: ${approvedTerms}`;
+    if (forbiddenTerms) brandContext += `\nForbidden terms (never use): ${forbiddenTerms}`;
+
+    let productsContext = "";
+    if (targetProduct) {
+      productsContext = `\n\n═══ FOCUS PRODUCT ═══\nName: ${targetProduct.name}\nDescription: ${targetProduct.description}\nCategory: ${targetProduct.category}${targetProduct.price ? `\nPrice: ${targetProduct.price} ${targetProduct.currency}` : ""}${targetProduct.features?.length ? `\nFeatures:\n${targetProduct.features.map((f: string) => `  • ${f}`).join("\n")}` : ""}`;
+      // Also list other products for context
+      const others = products.filter((p: any) => p.id !== targetProduct.id);
+      if (others.length > 0) {
+        productsContext += `\n\nOther products in catalog: ${others.map((p: any) => p.name).join(", ")}`;
+      }
+    } else if (products.length > 0) {
+      productsContext = `\n\n═══ PRODUCTS/SERVICES (${products.length}) ═══\n${products.map((p: any) => {
+        let line = `• ${p.name}`;
+        if (p.description) line += `: ${p.description}`;
+        if (p.price) line += ` (${p.price} ${p.currency})`;
+        if (p.features?.length) line += `\n  Features: ${p.features.join(", ")}`;
+        return line;
+      }).join("\n")}`;
+    }
+
+    let calendarContext = "";
+    if (upcoming.length > 0) {
+      calendarContext = `\n\n═══ UPCOMING EVENTS ═══\n${upcoming.map(e => `• ${e}`).join("\n")}\n(Use 1-2 of these as timing hooks if relevant to the brand)`;
+    }
+
+    let avoidContext = "";
+    if (recentTitles.length > 0) {
+      avoidContext = `\n\n═══ ALREADY PUBLISHED (avoid similar angles) ═══\n${recentTitles.map(t => `• ${t}`).join("\n")}`;
+    }
+
+    const userPrompt = `${brandContext}${productsContext}${calendarContext}${avoidContext}\n\nToday: ${today.toLocaleDateString("en", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\n\nGenerate ${count} content topic ideas that are DEEPLY SPECIFIC to ${brandName}. Each topic must reference concrete elements from the brand profile or products above.`;
+
+    console.log(`[topics/suggest] context: brand="${brandName}", vaultSections=${vaultSections.length}, products=${products.length}, events=${upcoming.length}, avoid=${recentTitles.length}, promptLen=${userPrompt.length}`);
+
+    // ── AI call with fallback strategy ──
+    let topics: any[] = [];
+
+    const parseTopics = (raw: string): any[] | null => {
+      const jsonMatch = raw.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        try { return JSON.parse(jsonMatch[0]); } catch { return null; }
+      }
+      return null;
+    };
+
+    // Strategy 1: APIPod (try gpt-4o-mini first for speed, then gpt-4o)
+    const apipodKey = Deno.env.get("APIPOD_API_KEY");
+    if (apipodKey && topics.length === 0) {
+      for (const m of ["gpt-4o", "gpt-5"]) {
+        try {
+          const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apipodKey}` },
+            body: JSON.stringify({
+              model: m,
+              messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+              max_tokens: 4000,
+            }),
+            signal: AbortSignal.timeout(45_000),
+          });
+          if (!res.ok) { console.log(`[topics/suggest] APIPod ${m} → ${res.status}`); continue; }
+          const data = await res.json();
+          const raw = data.choices?.[0]?.message?.content?.trim() || "";
+          const parsed = parseTopics(raw);
+          if (parsed && parsed.length > 0) {
+            topics = parsed;
+            console.log(`[topics/suggest] APIPod ${m} OK: ${topics.length} topics (${Date.now() - t0}ms)`);
+            break;
+          }
+        } catch (err) { console.log(`[topics/suggest] APIPod ${m} error: ${err}`); }
+      }
+    }
+
+    // Strategy 2: OpenAI direct
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (openaiKey && topics.length === 0) {
+      try {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+            max_tokens: 4000,
+          }),
+          signal: AbortSignal.timeout(45_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.choices?.[0]?.message?.content?.trim() || "";
+          const parsed = parseTopics(raw);
+          if (parsed && parsed.length > 0) {
+            topics = parsed;
+            console.log(`[topics/suggest] OpenAI OK: ${topics.length} topics (${Date.now() - t0}ms)`);
+          }
+        }
+      } catch (err) { console.log(`[topics/suggest] OpenAI error: ${err}`); }
+    }
+
+    // Strategy 3: Gemini (fast fallback)
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    if (geminiKey && topics.length === 0) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
+            generationConfig: { maxOutputTokens: 4000 },
+          }),
+          signal: AbortSignal.timeout(45_000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+          const parsed = parseTopics(raw);
+          if (parsed && parsed.length > 0) {
+            topics = parsed;
+            console.log(`[topics/suggest] Gemini OK: ${topics.length} topics (${Date.now() - t0}ms)`);
+          }
+        }
+      } catch (err) { console.log(`[topics/suggest] Gemini error: ${err}`); }
+    }
+
+    if (topics.length === 0) {
+      return c.json({ success: false, error: "All AI providers failed. Please try again." }, 500);
+    }
+
+    console.log(`[topics/suggest] done: ${topics.length} topics (${Date.now() - t0}ms)`);
+    return c.json({ success: true, topics, upcomingEvents: upcoming });
+  } catch (err: any) {
+    console.log(`[topics/suggest] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
 });
 
 // ── CALENDAR GENERATE — AI creates editorial schedule from campaign assets ──
@@ -10393,12 +11154,96 @@ app.get("/library/items", async (c) => {
 });
 
 // POST /library/list — CORS-safe list endpoint (POST + text/plain = no preflight)
+// Refreshes expired signed URLs from storagePaths
 app.post("/library/list", async (c) => {
   try {
     const user = await requireAuth(c);
     const items = await kv.getByPrefix(`lib:${user.id}:`);
-    console.log(`[library/list] user ${user.id}: ${(items || []).length} items`);
-    return c.json({ success: true, items: items || [] });
+    const allItems = items || [];
+    console.log(`[library/list] user ${user.id}: ${allItems.length} items`);
+
+    // ── Refresh signed URLs for items that have storagePaths ──
+    if (allItems.length > 0) {
+      const sb = supabaseAdmin();
+      const urlFields = ["imageUrl", "videoUrl", "audioUrl"] as const;
+      let refreshed = 0;
+      const kvUpdates: Array<{ key: string; value: any }> = [];
+
+      for (const item of allItems) {
+        let itemChanged = false;
+        const preview = item.preview || {};
+
+        // 1. Refresh top-level preview URLs (for single assets: image, video, audio)
+        for (const field of urlFields) {
+          const pathKey = `${field}StoragePath`;
+          if (preview[pathKey]) {
+            try {
+              const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(preview[pathKey], 7 * 24 * 3600);
+              if (data?.signedUrl && data.signedUrl !== preview[field]) {
+                preview[field] = data.signedUrl;
+                itemChanged = true;
+                refreshed++;
+              }
+            } catch {}
+          }
+        }
+
+        // 2. Refresh campaign asset URLs (preview.assets[] array)
+        if (preview.assets && Array.isArray(preview.assets)) {
+          for (const asset of preview.assets) {
+            for (const field of urlFields) {
+              const pathKey = `${field}StoragePath`;
+              if (asset[pathKey]) {
+                try {
+                  const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(asset[pathKey], 7 * 24 * 3600);
+                  if (data?.signedUrl && data.signedUrl !== asset[field]) {
+                    asset[field] = data.signedUrl;
+                    itemChanged = true;
+                    refreshed++;
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+
+        // 3. Also check root-level assets (legacy campaign format)
+        if (item.assets && Array.isArray(item.assets)) {
+          for (const asset of item.assets) {
+            for (const field of urlFields) {
+              const pathKey = `${field}StoragePath`;
+              if (asset[pathKey]) {
+                try {
+                  const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(asset[pathKey], 7 * 24 * 3600);
+                  if (data?.signedUrl && data.signedUrl !== asset[field]) {
+                    asset[field] = data.signedUrl;
+                    itemChanged = true;
+                    refreshed++;
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+
+        if (itemChanged) {
+          item.preview = preview;
+          kvUpdates.push({ key: `lib:${user.id}:${item.id}`, value: item });
+        }
+      }
+
+      // Batch-update KV with refreshed URLs (fire-and-forget)
+      if (kvUpdates.length > 0) {
+        console.log(`[library/list] refreshed ${refreshed} URLs across ${kvUpdates.length} items`);
+        (async () => {
+          for (const { key, value } of kvUpdates) {
+            try { await kv.set(key, value); } catch {}
+          }
+        })();
+      }
+    }
+
+    return c.json({ success: true, items: allItems });
   } catch (err) {
     console.log(`[library/list] error: ${err}`);
     return c.json({ success: false, error: String(err) }, err?.message === "Unauthorized" ? 401 : 500);
@@ -10421,22 +11266,43 @@ app.post("/library/items", async (c) => {
     };
 
     // Auto-persist external media URLs to Supabase Storage (fire-and-forget for speed)
+    // This covers: preview.imageUrl, preview.videoUrl, preview.audioUrl + preview.assets[].imageUrl/videoUrl
     const preview = item.preview || {};
-    const urlsToPersist: Array<{ key: string; url: string; type: string }> = [];
-    if (preview.imageUrl && !preview.imageUrl.includes("supabase.co/storage")) urlsToPersist.push({ key: "imageUrl", url: preview.imageUrl, type: "image" });
-    if (preview.videoUrl && !preview.videoUrl.includes("supabase.co/storage")) urlsToPersist.push({ key: "videoUrl", url: preview.videoUrl, type: "video" });
-    if (preview.audioUrl && !preview.audioUrl.includes("supabase.co/storage")) urlsToPersist.push({ key: "audioUrl", url: preview.audioUrl, type: "audio" });
+    const urlsToPersist: Array<{ target: "preview" | "asset"; assetIndex?: number; key: string; url: string; type: string }> = [];
+
+    // Top-level preview URLs (single assets: image, video, audio)
+    const urlFields = ["imageUrl", "videoUrl", "audioUrl"] as const;
+    const typeMap: Record<string, string> = { imageUrl: "image", videoUrl: "video", audioUrl: "audio" };
+    for (const field of urlFields) {
+      if (preview[field] && !preview[field].includes("supabase.co/storage") && !preview[`${field}StoragePath`]) {
+        urlsToPersist.push({ target: "preview", key: field, url: preview[field], type: typeMap[field] });
+      }
+    }
+
+    // Campaign assets array (preview.assets[].imageUrl, preview.assets[].videoUrl)
+    if (preview.assets && Array.isArray(preview.assets)) {
+      for (let i = 0; i < preview.assets.length; i++) {
+        const asset = preview.assets[i];
+        for (const field of ["imageUrl", "videoUrl"] as const) {
+          if (asset[field] && !asset[field].includes("supabase.co/storage") && !asset[`${field}StoragePath`]) {
+            urlsToPersist.push({ target: "asset", assetIndex: i, key: field, url: asset[field], type: typeMap[field] });
+          }
+        }
+      }
+    }
 
     if (urlsToPersist.length > 0) {
+      console.log(`[lib-persist] ${urlsToPersist.length} URLs to persist for ${item.id} (${urlsToPersist.filter(u => u.target === "asset").length} campaign assets)`);
       // Persist in background — don't block the save response
       (async () => {
         try {
           await ensureGeneratedAssetsBucket();
           const sb = supabaseAdmin();
-          for (const { key, url, type } of urlsToPersist) {
+          for (const entry of urlsToPersist) {
+            const { target, assetIndex, key, url, type } = entry;
             try {
               const dlRes = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-              if (!dlRes.ok) { console.log(`[lib-persist] Download failed for ${key}: HTTP ${dlRes.status}`); continue; }
+              if (!dlRes.ok) { console.log(`[lib-persist] Download failed for ${target}[${assetIndex ?? ""}].${key}: HTTP ${dlRes.status}`); continue; }
               const ct = dlRes.headers.get("content-type") || "";
               const buf = await dlRes.arrayBuffer();
               if (buf.byteLength < 100 || buf.byteLength > 200_000_000) continue;
@@ -10444,22 +11310,28 @@ app.post("/library/items", async (c) => {
               if (ct.includes("png")) ext = "png";
               else if (ct.includes("webp")) ext = "webp";
               else if (ct.includes("webm")) ext = "webm";
-              const storagePath = `${user.id}/${Date.now()}-${item.id.slice(0, 12)}.${ext}`;
+              const slug = assetIndex !== undefined ? `a${assetIndex}` : "main";
+              const storagePath = `${user.id}/${Date.now()}-${item.id.slice(0, 12)}-${slug}.${ext}`;
               const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, new Uint8Array(buf), { contentType: ct || `${type}/${ext}`, upsert: true });
               if (upErr) { console.log(`[lib-persist] Upload failed for ${key}: ${upErr.message}`); continue; }
               const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
               if (signedData?.signedUrl) {
-                // Update the library item with the persistent URL
+                // Update the library item with the persistent URL + storagePath
                 const current = await kv.get(`lib:${user.id}:${item.id}`);
-                if (current && current.preview) {
-                  current.preview[key] = signedData.signedUrl;
-                  current.preview[`${key}StoragePath`] = storagePath;
+                if (current) {
+                  if (target === "preview" && current.preview) {
+                    current.preview[key] = signedData.signedUrl;
+                    current.preview[`${key}StoragePath`] = storagePath;
+                  } else if (target === "asset" && assetIndex !== undefined && current.preview?.assets?.[assetIndex]) {
+                    current.preview.assets[assetIndex][key] = signedData.signedUrl;
+                    current.preview.assets[assetIndex][`${key}StoragePath`] = storagePath;
+                  }
                   current.updatedAt = new Date().toISOString();
                   await kv.set(`lib:${user.id}:${item.id}`, current);
-                  console.log(`[lib-persist] Persisted ${key} for ${item.id}: ${storagePath} (${(buf.byteLength / 1024).toFixed(0)}KB)`);
+                  console.log(`[lib-persist] Persisted ${target}[${assetIndex ?? ""}].${key} → ${storagePath} (${(buf.byteLength / 1024).toFixed(0)}KB)`);
                 }
               }
-            } catch (err) { console.log(`[lib-persist] Failed to persist ${key}: ${err}`); }
+            } catch (err) { console.log(`[lib-persist] Failed to persist ${target}.${key}: ${err}`); }
           }
         } catch (err) { console.log(`[lib-persist] Background persist error: ${err}`); }
       })();
@@ -12918,6 +13790,283 @@ async function handleAudioPoll(req: Request): Promise<Response> {
   } catch (err) { console.log(`[audio-poll-direct] err: ${err}`); return new Response(JSON.stringify({ success: false, error: String(err) }), { status: 500, headers: H }); }
 }
 
+// ══════════════════════════════════════════════════════════════
+// PRODUCTS CRUD
+// ══════════════════════════════════════════════════════════════
+
+// GET & POST /products/list — list all products for user
+// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
+async function listProducts(c: any) {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const items = await kv.getByPrefix(`product:${user.id}:`);
+    const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
+    products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    // Refresh signed URLs for product images (they expire)
+    const sb = supabaseAdmin();
+    for (const product of products) {
+      if (product.images?.length > 0) {
+        for (const img of product.images) {
+          if (img.storagePath) {
+            try {
+              const { data } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(img.storagePath, 86400);
+              if (data?.signedUrl) img.signedUrl = data.signedUrl;
+            } catch { /* keep existing URL */ }
+          }
+        }
+      }
+    }
+
+    return c.json({ success: true, products });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 401);
+  }
+}
+app.get("/products", listProducts);
+app.post("/products/list", listProducts);
+
+// POST /products — create a product
+app.post("/products", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, ...data } = body;
+    const id = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const product = {
+      id,
+      name: data.name || "",
+      description: data.description || "",
+      url: data.url || "",
+      features: data.features || [],
+      price: data.price || "",
+      currency: data.currency || "EUR",
+      category: data.category || "",
+      images: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${id}`, product);
+    console.log(`[products] Created product ${id} for ${user.id}`);
+    return c.json({ success: true, product });
+  } catch (err) {
+    console.log(`[products] Create error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// PUT /products/:id — update a product
+app.put("/products/:id", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const id = c.req.param("id");
+    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, ...data } = body;
+    const existing = await kv.get(`product:${user.id}:${id}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+    const updated = {
+      ...existing,
+      name: data.name ?? existing.name,
+      description: data.description ?? existing.description,
+      url: data.url ?? existing.url,
+      features: data.features ?? existing.features,
+      price: data.price ?? existing.price,
+      currency: data.currency ?? existing.currency,
+      category: data.category ?? existing.category,
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${id}`, updated);
+    return c.json({ success: true, product: updated });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// DELETE /products/:id — delete a product
+app.delete("/products/:id", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const id = c.req.param("id");
+    // Clean up product images from storage
+    const existing = await kv.get(`product:${user.id}:${id}`);
+    if (existing?.images?.length > 0) {
+      const sb = supabaseAdmin();
+      const paths = existing.images.map((img: any) => img.storagePath).filter(Boolean);
+      if (paths.length > 0) await sb.storage.from(MEDIA_BUCKET).remove(paths).catch(() => {});
+    }
+    await kv.del(`product:${user.id}:${id}`);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/scrape-url — scrape product info from a URL
+app.post("/products/scrape-url", async (c) => {
+  try {
+    const user = await getUser(c);
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const url = body.url || body._url;
+    if (!url) return c.json({ success: false, error: "url required" }, 400);
+
+    console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
+
+    // Fetch the page HTML
+    let html = "";
+    try {
+      const pageRes = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      html = await pageRes.text();
+      // Strip scripts/styles, keep text content
+      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
+    } catch (fetchErr) {
+      console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
+    }
+
+    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
+
+    // Use AI to extract product info
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) return c.json({ success: false, error: "AI key not configured" }, 500);
+
+    const systemPrompt = `You are a product data extractor. Given a webpage's text content, extract structured product information.
+Return a JSON object with these fields (use null if not found):
+{
+  "name": "product name",
+  "description": "short product description (2-3 sentences max)",
+  "price": "numeric price as string (e.g. '29.99')",
+  "currency": "3-letter currency code (e.g. EUR, USD, GBP)",
+  "category": "product category",
+  "features": ["feature 1", "feature 2", "feature 3"] (up to 6 key features)
+}
+Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `URL: ${url}\n\nPage content:\n${html}` },
+        ],
+        max_tokens: 500,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!aiRes.ok) return c.json({ success: false, error: "AI extraction failed" }, 500);
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content?.trim() || "{}";
+    let extracted: any = {};
+    try {
+      // Handle possible markdown code blocks
+      const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
+      extracted = JSON.parse(jsonStr);
+    } catch {
+      extracted = {};
+    }
+
+    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
+    return c.json({ success: true, product: extracted });
+  } catch (err) {
+    console.log(`[products/scrape-url] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/:id/images — upload images to a product
+app.post("/products/:id/images", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const formData = await c.req.formData();
+    const files = formData.getAll("files");
+    const sb = supabaseAdmin();
+    const newImages: any[] = [];
+
+    for (const file of files) {
+      if (!(file instanceof File)) continue;
+      const arrayBuffer = await file.arrayBuffer();
+      const ext = file.name.split(".").pop() || "jpg";
+      const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
+
+      await sb.storage.from(MEDIA_BUCKET).remove([storagePath]).catch(() => {});
+      const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
+        contentType: file.type || `image/${ext}`,
+        upsert: true,
+      });
+      if (uploadErr) { console.log(`[products/images] Upload error:`, uploadErr); continue; }
+
+      const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
+      newImages.push({
+        id: imageId,
+        fileName: file.name,
+        storagePath,
+        signedUrl: urlData?.signedUrl || null,
+        fileSize: file.size,
+        mimeType: file.type,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+
+    const updated = {
+      ...existing,
+      images: [...(existing.images || []), ...newImages],
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images] Added ${newImages.length} images to product ${productId}`);
+    return c.json({ success: true, images: newImages, product: updated });
+  } catch (err) {
+    console.log(`[products/images] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// DELETE /products/:id/images/:imageId — delete an image from a product
+app.delete("/products/:id/images/:imageId", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const imageId = c.req.param("imageId");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const image = (existing.images || []).find((img: any) => img.id === imageId);
+    if (image?.storagePath) {
+      const sb = supabaseAdmin();
+      await sb.storage.from(MEDIA_BUCKET).remove([image.storagePath]).catch(() => {});
+    }
+
+    const updated = {
+      ...existing,
+      images: (existing.images || []).filter((img: any) => img.id !== imageId),
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images] Deleted image ${imageId} from product ${productId}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[products/images] Delete error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
 // Ensure campaign ref bucket exists at startup (for direct client uploads)
 ensureCampaignRefBucket().catch(() => {});
 
@@ -13196,283 +14345,6 @@ app.get("/generate/cl-hf-status", async (c) => {
   } catch (err) {
     console.log(`[cl-hf-status] error:`, err);
     return c.json({ success: false, state: "error", error: `Higgsfield status check failed: ${err}` }, 500);
-  }
-});
-
-// ══════════════════════════════════════════════════════════════
-// PRODUCTS CRUD
-// ══════════════════════════════════════════════════════════════
-
-// GET & POST /products/list — list all products for user
-// POST variant exists because the JWT can be >8KB (too large for URL query or HTTP header)
-async function listProducts(c: any) {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const items = await kv.getByPrefix(`product:${user.id}:`);
-    const products = (items || []).map((item: any) => item.value || item).filter(Boolean);
-    products.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
-    // Refresh signed URLs for product images (they expire)
-    const sb = supabaseAdmin();
-    for (const product of products) {
-      if (product.images?.length > 0) {
-        for (const img of product.images) {
-          if (img.storagePath) {
-            try {
-              const { data } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(img.storagePath, 86400);
-              if (data?.signedUrl) img.signedUrl = data.signedUrl;
-            } catch { /* keep existing URL */ }
-          }
-        }
-      }
-    }
-
-    return c.json({ success: true, products });
-  } catch (err) {
-    return c.json({ success: false, error: `${err}` }, 401);
-  }
-}
-app.get("/products", listProducts);
-app.post("/products/list", listProducts);
-
-// POST /products — create a product
-app.post("/products", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
-    const { _token, ...data } = body;
-    const id = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const product = {
-      id,
-      name: data.name || "",
-      description: data.description || "",
-      url: data.url || "",
-      features: data.features || [],
-      price: data.price || "",
-      currency: data.currency || "EUR",
-      category: data.category || "",
-      images: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(`product:${user.id}:${id}`, product);
-    console.log(`[products] Created product ${id} for ${user.id}`);
-    return c.json({ success: true, product });
-  } catch (err) {
-    console.log(`[products] Create error:`, err);
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// PUT /products/:id — update a product
-app.put("/products/:id", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const id = c.req.param("id");
-    const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
-    const { _token, ...data } = body;
-    const existing = await kv.get(`product:${user.id}:${id}`);
-    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
-    const updated = {
-      ...existing,
-      name: data.name ?? existing.name,
-      description: data.description ?? existing.description,
-      url: data.url ?? existing.url,
-      features: data.features ?? existing.features,
-      price: data.price ?? existing.price,
-      currency: data.currency ?? existing.currency,
-      category: data.category ?? existing.category,
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(`product:${user.id}:${id}`, updated);
-    return c.json({ success: true, product: updated });
-  } catch (err) {
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// DELETE /products/:id — delete a product
-app.delete("/products/:id", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const id = c.req.param("id");
-    // Clean up product images from storage
-    const existing = await kv.get(`product:${user.id}:${id}`);
-    if (existing?.images?.length > 0) {
-      const sb = supabaseAdmin();
-      const paths = existing.images.map((img: any) => img.storagePath).filter(Boolean);
-      if (paths.length > 0) await sb.storage.from(MEDIA_BUCKET).remove(paths).catch(() => {});
-    }
-    await kv.del(`product:${user.id}:${id}`);
-    return c.json({ success: true });
-  } catch (err) {
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// POST /products/scrape-url — scrape product info from a URL
-app.post("/products/scrape-url", async (c) => {
-  try {
-    const user = await getUser(c);
-    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
-    const url = body.url || body._url;
-    if (!url) return c.json({ success: false, error: "url required" }, 400);
-
-    console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
-
-    // Fetch the page HTML
-    let html = "";
-    try {
-      const pageRes = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      html = await pageRes.text();
-      // Strip scripts/styles, keep text content
-      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
-    } catch (fetchErr) {
-      console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
-    }
-
-    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
-
-    // Use AI to extract product info
-    const key = Deno.env.get("APIPOD_API_KEY");
-    if (!key) return c.json({ success: false, error: "AI key not configured" }, 500);
-
-    const systemPrompt = `You are a product data extractor. Given a webpage's text content, extract structured product information.
-Return a JSON object with these fields (use null if not found):
-{
-  "name": "product name",
-  "description": "short product description (2-3 sentences max)",
-  "price": "numeric price as string (e.g. '29.99')",
-  "currency": "3-letter currency code (e.g. EUR, USD, GBP)",
-  "category": "product category",
-  "features": ["feature 1", "feature 2", "feature 3"] (up to 6 key features)
-}
-Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
-
-    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nPage content:\n${html}` },
-        ],
-        max_tokens: 500,
-        temperature: 0,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!aiRes.ok) return c.json({ success: false, error: "AI extraction failed" }, 500);
-    const aiData = await aiRes.json();
-    const raw = aiData.choices?.[0]?.message?.content?.trim() || "{}";
-    let extracted: any = {};
-    try {
-      // Handle possible markdown code blocks
-      const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
-      extracted = JSON.parse(jsonStr);
-    } catch {
-      extracted = {};
-    }
-
-    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
-    return c.json({ success: true, product: extracted });
-  } catch (err) {
-    console.log(`[products/scrape-url] Error:`, err);
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// POST /products/:id/images — upload images to a product
-app.post("/products/:id/images", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const productId = c.req.param("id");
-    const existing = await kv.get(`product:${user.id}:${productId}`);
-    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
-
-    const formData = await c.req.formData();
-    const files = formData.getAll("files");
-    const sb = supabaseAdmin();
-    const newImages: any[] = [];
-
-    for (const file of files) {
-      if (!(file instanceof File)) continue;
-      const arrayBuffer = await file.arrayBuffer();
-      const ext = file.name.split(".").pop() || "jpg";
-      const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
-
-      await sb.storage.from(MEDIA_BUCKET).remove([storagePath]).catch(() => {});
-      const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
-        contentType: file.type || `image/${ext}`,
-        upsert: true,
-      });
-      if (uploadErr) { console.log(`[products/images] Upload error:`, uploadErr); continue; }
-
-      const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
-      newImages.push({
-        id: imageId,
-        fileName: file.name,
-        storagePath,
-        signedUrl: urlData?.signedUrl || null,
-        fileSize: file.size,
-        mimeType: file.type,
-        uploadedAt: new Date().toISOString(),
-      });
-    }
-
-    const updated = {
-      ...existing,
-      images: [...(existing.images || []), ...newImages],
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(`product:${user.id}:${productId}`, updated);
-    console.log(`[products/images] Added ${newImages.length} images to product ${productId}`);
-    return c.json({ success: true, images: newImages, product: updated });
-  } catch (err) {
-    console.log(`[products/images] Error:`, err);
-    return c.json({ success: false, error: `${err}` }, 500);
-  }
-});
-
-// DELETE /products/:id/images/:imageId — delete an image from a product
-app.delete("/products/:id/images/:imageId", async (c) => {
-  try {
-    const user = await getUser(c);
-    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
-    const productId = c.req.param("id");
-    const imageId = c.req.param("imageId");
-    const existing = await kv.get(`product:${user.id}:${productId}`);
-    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
-
-    const image = (existing.images || []).find((img: any) => img.id === imageId);
-    if (image?.storagePath) {
-      const sb = supabaseAdmin();
-      await sb.storage.from(MEDIA_BUCKET).remove([image.storagePath]).catch(() => {});
-    }
-
-    const updated = {
-      ...existing,
-      images: (existing.images || []).filter((img: any) => img.id !== imageId),
-      updatedAt: new Date().toISOString(),
-    };
-    await kv.set(`product:${user.id}:${productId}`, updated);
-    console.log(`[products/images] Deleted image ${imageId} from product ${productId}`);
-    return c.json({ success: true });
-  } catch (err) {
-    console.log(`[products/images] Delete error:`, err);
-    return c.json({ success: false, error: `${err}` }, 500);
   }
 });
 
