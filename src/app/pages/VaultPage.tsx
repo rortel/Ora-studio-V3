@@ -612,11 +612,13 @@ function VaultPageContent() {
           }
         } else { setAnalyzeError(data.error || "Could not extract content from file"); }
 
-        // Extract images from PDF via Adobe PDF Extract API (extracts individual figures: logos, photos, pictos)
+        // Extract images from PDF: try Adobe Extract first, fallback to page rendering
         if (dnaOk && isPDF) {
+          let adobeOk = false;
+          // ─── Primary: Adobe PDF Extract API (individual figures) ───
           try {
-            setAnalyzeProgress("Extracting visual assets from PDF (Adobe Extract)...");
-            console.log("[Vault] Sending PDF to Adobe Extract API for figure extraction...");
+            setAnalyzeProgress("Extracting visual assets from PDF...");
+            console.log("[Vault] Trying Adobe Extract API...");
 
             const extractForm = new FormData();
             extractForm.append("file", file);
@@ -633,18 +635,55 @@ function VaultPageContent() {
               const extractData = await extractRes.json();
               console.log(`[Vault] Adobe Extract: ${JSON.stringify(extractData.stats)}, elapsed=${extractData._elapsed}ms`);
               if (extractData.stats?.uploaded > 0) {
+                adobeOk = true;
                 setAnalyzeProgress(`${extractData.stats.uploaded} visual asset${extractData.stats.uploaded > 1 ? "s" : ""} extracted and added to Image Bank`);
-              } else {
-                setAnalyzeProgress("No extractable visual assets found in PDF");
               }
             } else {
               const errText = await extractRes.text().catch(() => extractRes.statusText);
               console.warn(`[Vault] Adobe Extract failed (${extractRes.status}): ${errText}`);
-              setAnalyzeProgress("Image extraction unavailable — brand DNA saved successfully");
             }
           } catch (err: any) {
-            console.warn("[Vault] PDF image extraction error:", err?.message || err);
-            setAnalyzeProgress("Image extraction error — brand DNA saved successfully");
+            console.warn("[Vault] Adobe Extract error:", err?.message || err);
+          }
+
+          // ─── Fallback: Render pages + AI categorization (if Adobe failed) ───
+          if (!adobeOk) {
+            try {
+              console.log("[Vault] Fallback: rendering PDF pages for AI categorization...");
+              setAnalyzeProgress("Rendering PDF pages for visual analysis...");
+              const pageBlobs = await renderPdfPages(file, 30, 2);
+              console.log(`[Vault] Pages: ${pageBlobs.length} rendered`);
+              const pdfName = file.name.replace(/\.pdf$/i, "");
+
+              if (pageBlobs.length > 0) {
+                setAnalyzeProgress(`Classifying ${pageBlobs.length} pages with AI...`);
+                const results = await Promise.allSettled(pageBlobs.map(async (blob, idx) => {
+                  const form = new FormData();
+                  form.append("files", blob, `${pdfName}_page_${idx + 1}.jpg`);
+                  form.append("_token", token());
+                  form.append("brand_name", vault.company_name || "");
+                  form.append("source", "pdf-charter");
+                  const res = await fetch(apiUrl("/vault/pdf-images-upload"), { method: "POST", headers: apiHeaders(false), body: form });
+                  if (!res.ok) throw new Error(`${res.status}`);
+                  return res.json();
+                }));
+
+                let uploaded = 0, skipped = 0;
+                for (const r of results) {
+                  if (r.status === "fulfilled" && r.value?.success) {
+                    uploaded += r.value.stats?.uploaded || 0;
+                    skipped += r.value.stats?.skipped || 0;
+                  }
+                }
+                const failed = results.filter(r => r.status === "rejected").length;
+                console.log(`[Vault] Fallback: ${uploaded} uploaded, ${skipped} skipped, ${failed} failed`);
+                if (uploaded > 0) {
+                  setAnalyzeProgress(`${uploaded} visual asset${uploaded > 1 ? "s" : ""} added to Image Bank`);
+                }
+              }
+            } catch (err: any) {
+              console.warn("[Vault] Fallback page render error:", err?.message || err);
+            }
           }
         }
 
