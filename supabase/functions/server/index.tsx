@@ -2590,6 +2590,9 @@ app.post("/campaign/generate-texts", async (c) => {
       // Ads
       "ad-banner": { label: "Display Ad", platform: "Ads", type: "image" },
       "google-ad-text": { label: "Google Ad Copy", platform: "Ads", type: "text" },
+      // Blog / Articles
+      "blog-article": { label: "Blog Article (SEO)", platform: "Web", type: "text" },
+      "linkedin-article": { label: "LinkedIn Article", platform: "LinkedIn", type: "text" },
     };
     const formats = formatIds.map(id => ({ id, ...(FORMAT_META[id] || { label: id, platform: "Other", type: "text" }) }));
     const fmtDesc = formats.map((f: any) => `- ${f.id}: ${f.label} (${f.platform}, ${f.type})`).join("\n");
@@ -2614,7 +2617,7 @@ app.post("/campaign/generate-texts", async (c) => {
     const sysPrompt =
       `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 3000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY — EVERY FIELD BELOW MUST BE RESPECTED IN EVERY FORMAT) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently — it is the campaign's central theme, not just background info.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM as the call-to-action in every format. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context — never reduce it to just the product alone.
 12. IMAGE PROMPTS — PRODUCT IDENTITY + BRAND-NEW SCENE: Each imagePrompt MUST NAME the exact brand and product model (e.g. \"a MAN eTGX electric truck\", \"a Nike Air Max 90\") so the AI generates the CORRECT product, never a competitor. Then add key VISUAL characteristics (color, shape, distinctive design features). Then describe a COMPLETELY NEW SCENE derived from the campaign brief, event context, target audience, and key messages. The ref photo ONLY preserves the product via img2img — the SCENE must be 100% new. Combine: (a) exact brand+model name, (b) visual features, (c) NEW environment/location from the brief, (d) TARGET AUDIENCE interacting with product, (e) MOOD/ATMOSPHERE. Always MODERN, CURRENT-GENERATION for vehicles. Every imagePrompt must be unique per format. Always end with: No visible text, no logos, no letters, no watermarks anywhere in the image.
-13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, describe visual characteristics, then describe a NEW motion scene from the brief with target audience. Always MODERN vehicles. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","features":[],"imagePrompt":"MANDATORY: a vivid 40-80 word scene. START with exact brand+model name (e.g. MAN eTGX, Nike Air Max). Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). Always MODERN vehicles. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-50 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Always MODERN vehicles. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
+13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, describe visual characteristics, then describe a NEW motion scene from the brief with target audience. Always MODERN vehicles. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n- blog-article: FULL SEO ARTICLE. Structure: headline (H1, 60 chars max, includes primary keyword), metaDescription (155 chars, compelling + keyword), introduction (hook paragraph 60-100 words), caption (FULL ARTICLE BODY 800-1500 words, structured with H2/H3 markdown headings, short paragraphs 2-4 sentences each, bullet points where relevant, internal linking suggestions as [anchor text](URL placeholder), conclusion with CTA). MUST include: primary keyword in H1 + first 100 words + 2-3 times naturally in body, secondary keywords sprinkled, FAQ section with 3-5 questions at the end (## FAQ format). Tone = authoritative yet accessible. Write for HUMANS first, SEO second.\n- linkedin-article: LONG-FORM LINKEDIN ARTICLE. Structure: headline (compelling, 40-80 chars, NOT clickbait), caption (FULL ARTICLE 600-1200 words). Format: strong opening hook (personal story, surprising stat, or bold statement), 3-5 sections with clear H2 headers, short paragraphs (1-3 sentences — LinkedIn readers scan), use line breaks generously, include 1-2 personal insights or lessons learned, end with a question to drive comments + CTA. hashtags: 3-5 relevant. Tone = thought leadership, personal yet professional.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email / 800w blog-article / 600w linkedin-article. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","metaDescription":"SEO meta description for blog-article (155 chars max)","features":[],"imagePrompt":"MANDATORY: a vivid 40-80 word scene. START with exact brand+model name (e.g. MAN eTGX, Nike Air Max). Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). Always MODERN vehicles. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-50 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Always MODERN vehicles. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
 
     const userPrompt = brief || `Create campaign for: ${productUrls}`;
 
@@ -2623,11 +2626,16 @@ app.post("/campaign/generate-texts", async (c) => {
     let resultText = "";
     let usedProvider = "";
 
+    // Increase max_tokens when article formats are requested (need 800-1500 words per article)
+    const hasArticleFormat = formatIds.some((id: string) => id === "blog-article" || id === "linkedin-article" || id === "newsletter");
+    const maxTokens = hasArticleFormat ? 8192 : 4096;
+
     for (const mdl of apipodModels) {
       try {
-        console.log(`[campaign-texts-POST] APIPod ${mdl}...`);
-        const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` }, body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.7 }) }).then(async (res) => { if (!res.ok) { const b = await res.text(); throw new Error(`APIPod ${res.status}: ${b.slice(0, 300)}`); } const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
-        const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`Timeout 60s`)), 60_000));
+        console.log(`[campaign-texts-POST] APIPod ${mdl}... maxTokens=${maxTokens}`);
+        const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` }, body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: maxTokens, temperature: 0.7 }) }).then(async (res) => { if (!res.ok) { const b = await res.text(); throw new Error(`APIPod ${res.status}: ${b.slice(0, 300)}`); } const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
+        const timeoutMs = hasArticleFormat ? 90_000 : 60_000;
+        const timeoutP = new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`Timeout ${timeoutMs/1000}s`)), timeoutMs));
         resultText = await Promise.race([fetchP, timeoutP]);
         if (resultText) { usedProvider = `apipod/${mdl}`; console.log(`[campaign-texts-POST] ${mdl} OK: ${resultText.length}c (${Date.now()-t0}ms)`); break; }
       } catch (err) { console.log(`[campaign-texts-POST] ${mdl} FAILED: ${err}`); }
@@ -2638,7 +2646,7 @@ app.post("/campaign/generate-texts", async (c) => {
       if (openaiKey) {
         try {
           console.log(`[campaign-texts-POST] OpenAI direct...`);
-          const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` }, body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: 4096, temperature: 0.7 }) });
+          const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` }, body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: maxTokens, temperature: 0.7 }) });
           if (!oaiRes.ok) { const b = await oaiRes.text(); throw new Error(`OpenAI ${oaiRes.status}: ${b.slice(0, 300)}`); }
           const oaiData = await oaiRes.json();
           resultText = oaiData.choices?.[0]?.message?.content || "";
@@ -2748,6 +2756,8 @@ app.get("/campaign/generate-texts-get", async (c) => {
       "landing-page": { label: "Landing Page", platform: "Web", type: "text" },
       "ad-banner": { label: "Display Ad", platform: "Ads", type: "image" },
       "google-ad-text": { label: "Google Ad Copy", platform: "Ads", type: "text" },
+      "blog-article": { label: "Blog Article (SEO)", platform: "Web", type: "text" },
+      "linkedin-article": { label: "LinkedIn Article", platform: "LinkedIn", type: "text" },
     };
     const formats = formatIds.map(id => ({ id, ...(FORMAT_META_GET[id] || { label: id, platform: "Other", type: "text" }) }));
     const fmtDesc = formats.map((f: any) => `- ${f.id}: ${f.label} (${f.platform}, ${f.type})`).join("\n");
@@ -11106,10 +11116,10 @@ app.post("/campaign/analyze-refs", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
-    const { imageUrls, brief, targetAudience } = body;
+    const { imageUrls, brief, targetAudience, campaignObjective, toneOverride, contentAngle, keyMessages, callToAction } = body;
     if (!imageUrls?.length) return c.json({ error: "imageUrls required" }, 400);
 
-    console.log(`[campaign/analyze-refs] ${imageUrls.length} images, brief=${brief?.length || 0} chars, user=${user.id.slice(0, 8)}`);
+    console.log(`[campaign/analyze-refs] ${imageUrls.length} images, brief=${brief?.length || 0} chars, objective=${campaignObjective?.length || 0}, angle=${contentAngle?.length || 0}, user=${user.id.slice(0, 8)}`);
 
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
     if (!openaiKey) {
@@ -11117,30 +11127,47 @@ app.post("/campaign/analyze-refs", async (c) => {
       return c.json({ success: true, visualDNA: null, reason: "No OpenAI key" });
     }
 
+    // Build brand context for vision analysis
+    let brandBlock = "";
+    try {
+      const ctx = await buildBrandContext(user.id);
+      if (ctx) brandBlock = buildBrandBlock(ctx);
+    } catch {}
+
     const imageContent = imageUrls.slice(0, 5).map((url: string) => ({
       type: "image_url",
       image_url: { url, detail: "high" },
     }));
 
+    // Build campaign context block from all structured fields
+    const campaignParts: string[] = [];
+    if (campaignObjective) campaignParts.push(`CAMPAIGN OBJECTIVE: ${campaignObjective.slice(0, 300)}`);
+    if (contentAngle) campaignParts.push(`CONTENT ANGLE / EVENT: ${contentAngle.slice(0, 500)}`);
+    if (keyMessages) campaignParts.push(`KEY MESSAGES: ${keyMessages.slice(0, 800)}`);
+    if (callToAction) campaignParts.push(`CTA: ${callToAction.slice(0, 300)}`);
+    if (toneOverride) campaignParts.push(`TONE OVERRIDE: ${toneOverride.slice(0, 300)}`);
+    const campaignDirectives = campaignParts.length > 0 ? `\n\nCAMPAIGN DIRECTIVES (use these to prioritize what matters in the visual):\n${campaignParts.join("\n")}` : "";
+
     const systemPrompt = `You are a visual intelligence analyst for brand campaigns. Analyze the provided reference images and extract a VISUAL DNA that will be used to generate NEW images matching these references as closely as possible.
+${brandBlock ? `\n${brandBlock}\n` : ""}${campaignDirectives}
 
 Extract PRECISELY:
-1. SUBJECT: Main subject (product type, color, material, shape, size, distinctive features). Be HYPER-SPECIFIC.
-2. ENVIRONMENT: Setting, background, surfaces, props. Name exact materials and colors.
-3. COLOR_PALETTE: List 5-8 dominant colors as hex codes with descriptive names.
+1. SUBJECT: Main subject (product type, color, material, shape, size, distinctive features). Be HYPER-SPECIFIC. If brand identity is known, name the EXACT brand and product model.
+2. ENVIRONMENT: Setting, background, surfaces, props. Name exact materials and colors. If a campaign objective or content angle is provided, note how the environment should support it.
+3. COLOR_PALETTE: List 5-8 dominant colors as hex codes with descriptive names. If brand colors are available, flag which reference colors match or complement the brand palette.
 4. LIGHTING: Direction (e.g. "camera-left 45°"), quality (hard/soft/diffused), color temperature (Kelvin), shadow style, fill ratio.
 5. COMPOSITION: Framing (close-up/medium/wide), angle (eye-level/overhead/low/three-quarter), rule of thirds placement, depth of field.
 6. TEXTURE: Surface details visible (grain, reflection, matte, glossy, fabric, metal, skin).
-7. MOOD: Emotional tone with 3-4 descriptors (e.g. "premium, understated, warm, aspirational").
+7. MOOD: Emotional tone with 3-4 descriptors. MUST align with the brand tone and campaign objective if provided.
 8. PHOTOGRAPHY_STYLE: Genre and reference (e.g. "commercial product shot, Apple-style hero imagery").
-9. POST_PROCESSING: Contrast level, saturation, grain, color grading (e.g. "low contrast, slightly desaturated, warm color grade, minimal grain").
+9. POST_PROCESSING: Contrast level, saturation, grain, color grading.
 10. DISTINCTIVE_ELEMENTS: Anything unique that MUST be reproduced (specific object detail, spatial relationship, gesture, distinctive shape).
 
 Output as JSON with these 10 keys (snake_case). Values should be strings. Be HYPER-SPECIFIC — the output will be used verbatim in image generation prompts.`;
 
-    const userPrompt = `Analyze these ${imageUrls.length} reference image(s).${brief ? ` Campaign context: "${brief.slice(0, 500)}"` : ""}${targetAudience ? ` Target audience: "${targetAudience.slice(0, 200)}"` : ""}
+    const userPrompt = `Analyze these ${imageUrls.length} reference image(s).${brief ? ` Campaign context: "${brief.slice(0, 500)}"` : ""}${targetAudience ? ` Target audience: "${targetAudience.slice(0, 200)}"` : ""}${campaignObjective ? ` Objective: "${campaignObjective.slice(0, 300)}"` : ""}${contentAngle ? ` Content angle: "${contentAngle.slice(0, 300)}"` : ""}
 
-Extract the Visual DNA as described.`;
+Extract the Visual DNA as described. Ensure mood and environment align with the campaign directives.`;
 
     const visionRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -11372,7 +11399,7 @@ app.post("/campaign/build-prompt", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
-    const { visualDNA, brief, platform, formatType, targetAudience } = body;
+    const { visualDNA, brief, platform, formatType, targetAudience, campaignObjective, toneOverride, contentAngle, keyMessages, callToAction, language } = body;
     if (!brief && !visualDNA) return c.json({ error: "brief or visualDNA required" }, 400);
 
     // Build brand context
@@ -11381,48 +11408,69 @@ app.post("/campaign/build-prompt", async (c) => {
 
     const parts: string[] = [];
 
-    // Subject from Visual DNA
-    if (visualDNA?.subject) parts.push(`Subject: ${visualDNA.subject}`);
+    // ── 1. PRODUCT IDENTITY (from Visual DNA or brand) ──
+    if (visualDNA?.subject) {
+      // If brand name is known, inject it into the subject for accurate product rendering
+      const brandPrefix = brandCtx?.brandName ? `${brandCtx.brandName} ` : "";
+      parts.push(`Subject: ${brandPrefix}${visualDNA.subject}`);
+    } else if (brandCtx?.brandName) {
+      parts.push(`Subject: ${brandCtx.brandName} product`);
+    }
     if (visualDNA?.environment) parts.push(`Setting: ${visualDNA.environment}`);
 
-    // Lighting from Visual DNA
+    // ── 2. CAMPAIGN CONTEXT (structured fields → scene direction) ──
+    if (campaignObjective) parts.push(`Campaign objective: ${campaignObjective.slice(0, 300)} — the image MUST visually convey this goal`);
+    if (contentAngle) parts.push(`Content angle / event: ${contentAngle.slice(0, 500)} — this is the scene's CENTRAL THEME`);
+    if (keyMessages) parts.push(`Key messages to convey visually: ${keyMessages.slice(0, 400)}`);
+    if (callToAction) parts.push(`The image must inspire this action: ${callToAction.slice(0, 200)}`);
+    if (toneOverride) parts.push(`Desired tone/atmosphere: ${toneOverride.slice(0, 300)}`);
+
+    // ── 3. LIGHTING ──
     if (visualDNA?.lighting) parts.push(`Lighting: ${visualDNA.lighting}`);
 
-    // Color palette from Visual DNA (priority) or brand
+    // ── 4. COLOR PALETTE (Visual DNA priority → brand fallback) ──
     if (visualDNA?.color_palette) {
       parts.push(`Color palette: ${visualDNA.color_palette}`);
+      // Also inject brand colors as accent if available
+      if (brandCtx?.colorPalette?.length) {
+        parts.push(`Brand accent colors to integrate: ${brandCtx.colorPalette.slice(0, 4).join(", ")}`);
+      }
     } else if (brandCtx) {
       const allColors = [...new Set([...brandCtx.colorPalette, ...brandCtx.imageBankColors])].slice(0, 6);
-      if (allColors.length > 0) parts.push(`Color palette: ${allColors.join(", ")}`);
+      if (allColors.length > 0) parts.push(`Color palette (brand): ${allColors.join(", ")}`);
     }
 
-    // Composition
+    // ── 5. COMPOSITION ──
     if (visualDNA?.composition) parts.push(`Composition: ${visualDNA.composition}`);
 
-    // Texture & mood
+    // ── 6. TEXTURE & MOOD ──
     if (visualDNA?.texture) parts.push(`Texture: ${visualDNA.texture}`);
-    if (visualDNA?.mood) parts.push(`Mood: ${visualDNA.mood}`);
+    if (visualDNA?.mood) {
+      parts.push(`Mood: ${visualDNA.mood}`);
+    } else if (toneOverride) {
+      parts.push(`Mood: ${toneOverride}`);
+    }
 
-    // Photography style
+    // ── 7. PHOTOGRAPHY STYLE ──
     if (visualDNA?.photography_style) parts.push(`Style: ${visualDNA.photography_style}`);
     if (visualDNA?.post_processing) parts.push(`Post-processing: ${visualDNA.post_processing}`);
 
-    // Distinctive elements
+    // ── 8. DISTINCTIVE ELEMENTS ──
     if (visualDNA?.distinctive_elements) parts.push(`Must reproduce: ${visualDNA.distinctive_elements}`);
 
-    // Brief adaptation
+    // ── 9. BRIEF + AUDIENCE + PLATFORM ──
     if (brief) parts.push(`Campaign context: ${brief.slice(0, 400)}`);
-    if (platform) parts.push(`For ${platform} audience`);
-    if (targetAudience) parts.push(`Target: ${targetAudience.slice(0, 150)}`);
+    if (platform) parts.push(`Platform: ${platform} — optimize framing and energy for this audience`);
+    if (targetAudience) parts.push(`Target audience: ${targetAudience.slice(0, 150)} — show people/scenes they identify with`);
 
-    // Brand elements (if no Visual DNA already covers them)
+    // ── 10. BRAND ELEMENTS (fallback if no Visual DNA) ──
     if (brandCtx && !visualDNA) {
-      if (brandCtx.imageBankMoods.length > 0) parts.push(`Mood: ${brandCtx.imageBankMoods.slice(0, 3).join(", ")}`);
-      if (brandCtx.imageBankStyles.length > 0) parts.push(`Style: ${brandCtx.imageBankStyles.slice(0, 2).join(", ")}`);
-      if (brandCtx.imageBankLighting.length > 0) parts.push(`Lighting: ${brandCtx.imageBankLighting.slice(0, 2).join(", ")}`);
+      if (brandCtx.imageBankMoods.length > 0) parts.push(`Brand mood: ${brandCtx.imageBankMoods.slice(0, 3).join(", ")}`);
+      if (brandCtx.imageBankStyles.length > 0) parts.push(`Brand style: ${brandCtx.imageBankStyles.slice(0, 2).join(", ")}`);
+      if (brandCtx.imageBankLighting.length > 0) parts.push(`Brand lighting: ${brandCtx.imageBankLighting.slice(0, 2).join(", ")}`);
     }
 
-    // Anti-text + technical anchors
+    // ── 11. ANTI-TEXT + TECHNICAL ANCHORS ──
     parts.push("No visible text, no letters, no words, no brand names, no logos anywhere in the image");
     parts.push("Ultra-detailed, 8K resolution, photorealistic");
 
@@ -12258,7 +12306,23 @@ app.post("/campaign/generate-slots", async (c) => {
     if (user) { const ctx = await buildBrandContext(user.id).catch(() => null); if (ctx) brandBlock = buildBrandBlock(ctx); }
     const isLP = templateId.includes("lp-");
     const slotsDesc = contentSlots.map(s => `- ${s}`).join("\n");
-    const sysPrompt = `You are the senior content director of a brand-obsessed agency. Generate REAL, PUBLISHABLE content for a ${templateCategory} ${isLP ? "landing page" : "email"} template.\n\nTEMPLATE: "${templateName}" (${templateCategory})${brandBlock ? "\n" + brandBlock : ""}${targetAudience ? `\nTARGET AUDIENCE: ${targetAudience}` : ""}\n\nLANGUAGE: ALL content in ${lang === "fr" ? "FRENCH" : "ENGLISH"}.\n\nCONTENT SLOTS TO FILL:\n${slotsDesc}\n\nRULES:\n1. Match exact tone, personality, vocabulary from Brand Vault if available.\n2. Headlines: punchy, max 8 words. Body text: 40-80 words. Excerpts: 15-25 words.\n3. CTA text: action-oriented, max 4 words.\n4. For IMAGE_URL slots: generate a detailed image prompt (80-120 words, photorealistic, cinematic) prefixed with "PROMPT:".\n5. For PRICE slots: use realistic prices with currency symbol.\n6. For DATE slots: use upcoming dates.\n7. Each slot value should be a string. Never empty.\n\nOUTPUT: ONLY valid JSON object. No markdown, no backticks.\nExample: {"HERO_HEADLINE":"...", "HERO_BODY":"...", "CTA_TEXT":"..."}`;
+    // Extract additional campaign fields
+    const campaignObjective = ((body.campaignObjective || "") as string).slice(0, 300);
+    const toneOverride = ((body.toneOverride || "") as string).slice(0, 300);
+    const contentAngle = ((body.contentAngle || "") as string).slice(0, 500);
+    const keyMessages = ((body.keyMessages || "") as string).slice(0, 800);
+    const callToAction = ((body.callToAction || "") as string).slice(0, 300);
+
+    // Build campaign directives block
+    const slotDirectives: string[] = [];
+    if (campaignObjective) slotDirectives.push(`CAMPAIGN OBJECTIVE: ${campaignObjective}`);
+    if (contentAngle) slotDirectives.push(`CONTENT ANGLE / EVENT: ${contentAngle}`);
+    if (keyMessages) slotDirectives.push(`KEY MESSAGES TO INTEGRATE: ${keyMessages}`);
+    if (callToAction) slotDirectives.push(`EXACT CTA: "${callToAction}" — use VERBATIM`);
+    if (toneOverride) slotDirectives.push(`TONE: ${toneOverride}`);
+    const slotDirectivesBlock = slotDirectives.length > 0 ? `\n\nCAMPAIGN DIRECTIVES (MANDATORY):\n${slotDirectives.join("\n")}` : "";
+
+    const sysPrompt = `You are the senior content director of a brand-obsessed agency. Generate REAL, PUBLISHABLE content for a ${templateCategory} ${isLP ? "landing page" : "email"} template.\n\nTEMPLATE: "${templateName}" (${templateCategory})${brandBlock ? "\n" + brandBlock : ""}${slotDirectivesBlock}${targetAudience ? `\nTARGET AUDIENCE: ${targetAudience}` : ""}\n\nLANGUAGE: ALL content in ${lang === "fr" ? "FRENCH" : "ENGLISH"}.\n\nCONTENT SLOTS TO FILL:\n${slotsDesc}\n\nRULES:\n1. Match exact tone, personality, vocabulary from Brand Vault if available.\n2. Headlines: punchy, max 8 words. Body text: 40-80 words. Excerpts: 15-25 words.\n3. If an EXACT CTA is provided in campaign directives, use it VERBATIM. Otherwise, write an action-oriented CTA (max 4 words).\n4. For IMAGE_URL slots: generate a detailed image prompt (80-120 words, photorealistic, cinematic) prefixed with "PROMPT:". Include brand name + product if known.\n5. For PRICE slots: use realistic prices with currency symbol.\n6. For DATE slots: use upcoming dates.\n7. Each slot value should be a string. Never empty.\n8. If KEY MESSAGES are provided, integrate at least one in the headline and one in the body.\n9. If a CONTENT ANGLE is provided, it must be the CENTRAL THEME of all content.\n10. If a CAMPAIGN OBJECTIVE is provided, every piece of content must serve that objective.\n\nOUTPUT: ONLY valid JSON object. No markdown, no backticks.\nExample: {"HERO_HEADLINE":"...", "HERO_BODY":"...", "CTA_TEXT":"..."}`;
     const result = await generateText({ prompt: brief, model: "gpt-4o", systemPrompt: sysPrompt, maxTokens: 3000 });
     let slotData: Record<string, string> = {};
     try { const raw = result.text.trim().replace(/^```json?\s*/, "").replace(/\s*```$/, "").trim(); slotData = JSON.parse(raw); } catch { const m = result.text.match(/\{[\s\S]*\}/); if (m) slotData = JSON.parse(m[0].replace(/,\s*([}\]])/g, "$1")); }

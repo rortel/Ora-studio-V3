@@ -100,6 +100,7 @@ interface GeneratedAsset {
   features?: string[];
   imagePrompt?: string;
   videoPrompt?: string;
+  metaDescription?: string;
   carouselSlides?: CarouselSlide[];
 
   // Multi-model variants
@@ -144,12 +145,15 @@ const FORMAT_OPTIONS: FormatOption[] = [
   { id: "youtube-short", label: "YouTube Short", platform: "YouTube", icon: Film, type: "video", aspectRatio: "9:16", description: "1080x1920 short video" },
   // ── Pinterest ──
   { id: "pinterest-pin", label: "Pinterest Pin", platform: "Pinterest", icon: ImageIcon, type: "image", aspectRatio: "2:3", description: "1000x1500 pin" },
+  // ── Blog / Articles ──
+  { id: "blog-article", label: "Blog Article (SEO)", platform: "Web", icon: BookOpen, type: "text", aspectRatio: "3:2", description: "Full SEO article 800-1500 words" },
+  { id: "linkedin-article", label: "LinkedIn Article", platform: "LinkedIn", icon: BookOpen, type: "text", aspectRatio: "3:2", description: "Long-form LinkedIn article 600-1200 words" },
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
   Instagram: "#E1306C", LinkedIn: "#0077B5", Facebook: "#1877F2",
   "Twitter/X": "#1DA1F2", TikTok: "#00F2EA", YouTube: "#FF0000",
-  Pinterest: "#E60023",
+  Pinterest: "#E60023", Web: "#10B981",
 };
 
 /* ── Per-format diversity suffixes to avoid visual repetition across formats ── */
@@ -172,6 +176,8 @@ const FORMAT_DIVERSITY: Record<string, string> = {
   "youtube-thumbnail": "Wide 16:9, dramatic lighting with high contrast, expressive close-up or bold product hero, click-worthy composition.",
   "youtube-short": "Vertical 9:16, fast-reveal cinematic motion, dramatic lighting, attention-grabbing first frame.",
   "pinterest-pin": "Tall 2:3 portrait, aspirational lifestyle flat-lay or styled vignette, soft natural palette, Pinterest-aesthetic.",
+  "blog-article": "",
+  "linkedin-article": "",
 };
 
 // Maps ORA platform names → Zernio API platform slugs (frontend side)
@@ -568,7 +574,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     console.log(`[CampaignLab] Analyzing ${urls.length} ref images (Vision)...`);
     try {
       const data = await serverPost("/campaign/analyze-refs", {
-        imageUrls: urls, brief: brief.slice(0, 500), targetAudience: targetAudience.slice(0, 200),
+        imageUrls: urls,
+        brief: brief.slice(0, 500),
+        targetAudience: targetAudience.slice(0, 200),
+        campaignObjective: campaignObjective?.slice(0, 300) || "",
+        toneOverride: toneOverride?.slice(0, 300) || "",
+        contentAngle: contentAngle?.slice(0, 500) || "",
+        keyMessages: keyMessages?.slice(0, 800) || "",
+        callToAction: ctaText?.slice(0, 300) || "",
       }, 30_000);
       if (data.success && data.visualDNA) {
         console.log("[CampaignLab] Visual DNA extracted:", Object.keys(data.visualDNA));
@@ -586,7 +599,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const buildEnrichedPrompt = async (visualDNA: any, platform: string, formatType: string): Promise<string | null> => {
     try {
       const data = await serverPost("/campaign/build-prompt", {
-        visualDNA, brief: brief.slice(0, 500), platform, formatType, targetAudience: targetAudience.slice(0, 200),
+        visualDNA,
+        brief: brief.slice(0, 500),
+        platform,
+        formatType,
+        targetAudience: targetAudience.slice(0, 200),
+        campaignObjective: campaignObjective?.slice(0, 300) || "",
+        toneOverride: toneOverride?.slice(0, 300) || "",
+        contentAngle: contentAngle?.slice(0, 500) || "",
+        keyMessages: keyMessages?.slice(0, 800) || "",
+        callToAction: ctaText?.slice(0, 300) || "",
+        language: language || "",
       }, 10_000);
       return data.success ? data.prompt : null;
     } catch { return null; }
@@ -911,6 +934,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           features: fc.features || [],
           imagePrompt: fc.imagePrompt || "",
           videoPrompt: fc.videoPrompt || "",
+          metaDescription: fc.metaDescription || "",
         };
       };
 
@@ -1297,6 +1321,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             features: fc.features || a.features || [],
             imagePrompt: fc.imagePrompt || a.imagePrompt || "",
             videoPrompt: fc.videoPrompt || a.videoPrompt || "",
+            metaDescription: fc.metaDescription || a.metaDescription || "",
             status: a.type === "text" ? (hasCopy ? "ready" as const : a.status) : a.status,
             error: (a.type === "text" && hasCopy) ? undefined : a.error,
           };
@@ -1795,7 +1820,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     },
     "Thought Leadership": {
       tip: "Share unique insights, data, and expert perspectives. Long-form content positions authority. LinkedIn is your primary channel.",
-      suggestedFormats: ["linkedin-text", "linkedin-carousel", "linkedin-post", "twitter-text"],
+      suggestedFormats: ["linkedin-article", "linkedin-text", "blog-article", "linkedin-carousel", "linkedin-post", "twitter-text"],
       suggestedTone: "Professional",
     },
     "Event Promotion": {
@@ -3514,15 +3539,51 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </div>
                 )}
 
+                {/* Meta Description (SEO articles) */}
+                {selectedAsset.metaDescription && (
+                  <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(59,79,196,0.15)" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 6 }}>
+                      Meta Description (SEO)
+                    </span>
+                    <p style={{ fontSize: "13px", color: "#9A9590", lineHeight: 1.5, fontStyle: "italic" }}>
+                      {selectedAsset.metaDescription}
+                    </p>
+                    <span style={{ fontSize: "10px", color: "#5C5856", marginTop: 4, display: "block" }}>
+                      {selectedAsset.metaDescription.length}/155 chars
+                    </span>
+                  </div>
+                )}
+
                 {/* Main copy / caption */}
                 {(selectedAsset.caption || selectedAsset.copy) && (
                   <div className="rounded-xl p-5" style={{ background: "#1a1918", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "#5C5856", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                      {selectedAsset.type === "text" ? "Body Copy" : "Caption"}
+                      {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? "Article" : selectedAsset.type === "text" ? "Body Copy" : "Caption"}
                     </span>
-                    <p style={{ fontSize: "14px", color: "#E8E4DF", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                      {selectedAsset.caption || selectedAsset.copy}
-                    </p>
+                    <div style={{ fontSize: "14px", color: "#E8E4DF", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
+                      dangerouslySetInnerHTML={(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article")
+                        ? { __html: (selectedAsset.caption || selectedAsset.copy || "")
+                            .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:#E8E4DF;margin:20px 0 8px">$1</h3>')
+                            .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:#E8E4DF;margin:24px 0 10px">$1</h2>')
+                            .replace(/^- (.+)$/gm, '<li style="margin-left:16px;margin-bottom:4px">$1</li>')
+                            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                            .replace(/\n\n/g, '<br/><br/>')
+                          }
+                        : undefined
+                      }
+                    >
+                      {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? undefined : (selectedAsset.caption || selectedAsset.copy)}
+                    </div>
+                    {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") && (
+                      <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                          {((selectedAsset.caption || selectedAsset.copy || "").split(/\s+/).length)} words
+                        </span>
+                        <span style={{ fontSize: "11px", color: "#5C5856" }}>
+                          ~{Math.ceil((selectedAsset.caption || selectedAsset.copy || "").split(/\s+/).length / 250)} min read
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
