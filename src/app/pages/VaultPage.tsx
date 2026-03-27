@@ -390,42 +390,80 @@ function VaultPageContent() {
       return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
     };
 
+    // Build reverse lookup: op code → op name for debugging
+    const opNames: Record<number, string> = {};
+    for (const [name, code] of Object.entries(pdfjsLib.OPS)) {
+      opNames[code as number] = name;
+    }
+    const imageOps = new Set([
+      pdfjsLib.OPS.paintImageXObject,
+      pdfjsLib.OPS.paintJpegXObject,
+      pdfjsLib.OPS.paintInlineImageXObject,
+      pdfjsLib.OPS.paintInlineImageXObjectGroup,
+      pdfjsLib.OPS.paintImageMaskXObject,
+      pdfjsLib.OPS.paintImageMaskXObjectGroup,
+      pdfjsLib.OPS.paintImageMaskXObjectRepeat,
+    ]);
+
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const ops = await page.getOperatorList();
+
+      // Debug: log all image-related operators found on this page
+      const pageImageOps: string[] = [];
+      for (let j = 0; j < ops.fnArray.length; j++) {
+        if (imageOps.has(ops.fnArray[j])) {
+          const name = opNames[ops.fnArray[j]] || `op${ops.fnArray[j]}`;
+          const args = ops.argsArray[j];
+          const argInfo = args?.[0] ? (typeof args[0] === "string" ? args[0] : `w=${args[0]?.width||"?"}`) : "noarg";
+          pageImageOps.push(`${name}(${argInfo})`);
+        }
+      }
+      if (pageImageOps.length > 0) {
+        console.log(`[Vault] p${i} image ops: ${pageImageOps.join(", ")}`);
+      }
+
       for (let j = 0; j < ops.fnArray.length; j++) {
         const op = ops.fnArray[j];
         try {
-          // Named image XObjects (most common)
+          // Named image XObjects (most common for photos/logos)
           if (op === pdfjsLib.OPS.paintImageXObject || op === pdfjsLib.OPS.paintJpegXObject) {
             const imgName = ops.argsArray[j][0];
-            const imgData: any = await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error("timeout")), 5000);
-              // Try page.objs first, then commonObjs (shared images)
-              page.objs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
-            }).catch(() => new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
-              page.commonObjs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
-            }).catch(() => null));
-            if (!imgData) continue;
+            let imgData: any = null;
+            try {
+              imgData = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error("timeout")), 5000);
+                page.objs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
+              });
+            } catch {
+              try {
+                imgData = await new Promise((resolve, reject) => {
+                  const timeout = setTimeout(() => reject(new Error("timeout")), 3000);
+                  page.commonObjs.get(imgName, (data: any) => { clearTimeout(timeout); resolve(data); });
+                });
+              } catch { imgData = null; }
+            }
+            if (!imgData) { console.log(`[Vault] p${i} ${imgName}: no data`); continue; }
             const w = imgData.width || imgData.naturalWidth || 0;
             const h = imgData.height || imgData.naturalHeight || 0;
+            console.log(`[Vault] p${i} ${imgName}: ${w}×${h} kind=${imgData.kind} type=${typeof imgData} bitmap=${imgData instanceof ImageBitmap}`);
             if (w < MIN_SIZE || h < MIN_SIZE) continue;
             const sig = `${w}x${h}`;
-            if (seen.has(sig)) continue; // deduplicate same-dimension images
+            if (seen.has(sig)) continue;
             const blob = await imgDataToBlob(imgData);
             if (blob && blob.size > 1000) {
               seen.add(sig);
               results.push({ blob, page: i, w, h });
-              console.log(`[Vault] Raster img p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
+              console.log(`[Vault] ✓ Extracted img p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
             }
           }
-          // Inline images (embedded directly in content stream, not named)
+          // Inline images (embedded directly in content stream)
           else if (op === pdfjsLib.OPS.paintInlineImageXObject || op === pdfjsLib.OPS.paintInlineImageXObjectGroup) {
             const inlineData = ops.argsArray[j][0];
             if (!inlineData) continue;
             const w = inlineData.width || 0;
             const h = inlineData.height || 0;
+            console.log(`[Vault] p${i} inline: ${w}×${h} kind=${inlineData.kind}`);
             if (w < MIN_SIZE || h < MIN_SIZE) continue;
             const sig = `inline-${w}x${h}`;
             if (seen.has(sig)) continue;
@@ -433,13 +471,26 @@ function VaultPageContent() {
             if (blob && blob.size > 1000) {
               seen.add(sig);
               results.push({ blob, page: i, w, h });
-              console.log(`[Vault] Inline img p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
+              console.log(`[Vault] ✓ Extracted inline p${i}: ${w}×${h} (${(blob.size/1024).toFixed(0)}KB)`);
             }
           }
-        } catch { /* skip unreadable images */ }
+          // Image masks (may contain actual photos behind masks)
+          else if (op === pdfjsLib.OPS.paintImageMaskXObject) {
+            const maskData = ops.argsArray[j][0];
+            if (!maskData) continue;
+            const w = maskData.width || 0;
+            const h = maskData.height || 0;
+            if (w >= MIN_SIZE && h >= MIN_SIZE) {
+              console.log(`[Vault] p${i} imageMask: ${w}×${h} (skipping masks for now)`);
+            }
+          }
+        } catch (e: any) {
+          console.log(`[Vault] p${i} extraction error: ${e?.message}`);
+        }
       }
       page.cleanup();
     }
+    console.log(`[Vault] Raster extraction complete: ${results.length} images from ${pdf.numPages} pages`);
     return results;
   };
 
