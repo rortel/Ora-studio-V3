@@ -21,6 +21,7 @@ export function RootLayout() {
   const isProfile = location.pathname.startsWith("/profile");
   const isAdmin = location.pathname.startsWith("/admin");
   const isSubscribe = location.pathname.startsWith("/subscribe");
+  const isVideoEditor = location.pathname === "/hub/video-editor";
   const isAppView = isHub || isProfile || isAdmin || isSubscribe;
 
   // Only scroll to top on actual page navigation (pathname change), not on search param changes
@@ -45,7 +46,12 @@ export function RootLayout() {
         }}
       />
 
-      {isAppView ? (
+      {isVideoEditor ? (
+        /* -- Full-screen view: no sidebar, no navbar -- */
+        <Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </Suspense>
+      ) : isAppView ? (
         /* -- App view: sidebar (desktop) + bottom tab bar (mobile) -- */
         <>
           <AppSidebar />
