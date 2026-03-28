@@ -1319,22 +1319,22 @@ function HubPageContent() {
         </div>
 
         <div className="flex items-center gap-3">
-          {compareItems.length > 0 && (
-            <button
-              onClick={() => setActiveTab(activeTab === "compare" ? "generate" : "compare")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${activeTab === "compare" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
-              style={{ fontSize: "12px", fontWeight: activeTab === "compare" ? 600 : 400 }}
-            >
-              <Columns2 size={13} />
-              Compare
+          <button
+            onClick={() => setActiveTab(activeTab === "compare" ? "generate" : "compare")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all cursor-pointer ${activeTab === "compare" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
+            style={{ fontSize: "12px", fontWeight: activeTab === "compare" ? 600 : 400 }}
+          >
+            <Columns2 size={13} />
+            Compare
+            {compareItems.length > 0 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full ${activeTab === "compare" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
                 style={{ fontSize: "9px", fontWeight: 600, minWidth: 18, textAlign: "center", display: "inline-block" }}
               >
                 {compareItems.length}
               </span>
-            </button>
-          )}
+            )}
+          </button>
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-ora-signal-light">
             <span className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
             <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>{activeModels.length} models</span>
@@ -1932,7 +1932,14 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
     touchDeltaX.current = 0;
   }, [generations.length]);
 
-  if (error) {
+  // Only show full-screen error if there are NO valid results at all
+  const hasValidResults = generations.length > 0 && generations.some(g => {
+    if (g.preview.kind === "image") return !!(g.preview as any).imageUrl;
+    if (g.preview.kind === "film") return !!(g.preview as any).videoUrl;
+    return true; // text/sound always have content
+  });
+
+  if (error && !hasValidResults) {
     return (
       <div className="flex flex-col items-center justify-center py-24 px-6">
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(212,24,61,0.08)" }}>
@@ -2045,8 +2052,16 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
     );
   }
 
-  const safeIndex = Math.min(sliderIndex, generations.length - 1);
-  const currentItem = generations[safeIndex];
+  // Filter out failed generations (no videoUrl/imageUrl) for display
+  const validGenerations = generations.filter(g => {
+    if (g.preview.kind === "film") return !!(g.preview as any).videoUrl;
+    if (g.preview.kind === "image") return !!(g.preview as any).imageUrl || (g.preview.palette?.[0]?.startsWith("http"));
+    return true;
+  });
+  const displayGens = validGenerations.length > 0 ? validGenerations : generations;
+
+  const safeIndex = Math.min(sliderIndex, displayGens.length - 1);
+  const currentItem = displayGens[safeIndex];
   const isVisual = currentItem?.type === "image" || currentItem?.type === "film";
 
   // Helper to get real image URL (skip if we know it errored)
@@ -2083,9 +2098,9 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           </div>
           <div className="flex items-center gap-3">
             <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{currentItem.timestamp}</span>
-            {generations.length > 1 && (
+            {displayGens.length > 1 && (
               <span className="px-2.5 py-1 rounded-full" style={{ fontSize: "11px", fontWeight: 500, color: "#fff", background: "var(--border-accent)", backdropFilter: "blur(12px)" }}>
-                {safeIndex + 1} / {generations.length}
+                {safeIndex + 1} / {displayGens.length}
               </span>
             )}
           </div>
@@ -2122,14 +2137,14 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           </AnimatePresence>
 
           {/* Navigation arrows (desktop only) */}
-          {generations.length > 1 && (
+          {displayGens.length > 1 && (
             <>
-              <button onClick={() => setSliderIndex((prev) => (prev - 1 + generations.length) % generations.length)}
+              <button onClick={() => setSliderIndex((prev) => (prev - 1 + displayGens.length) % displayGens.length)}
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full items-center justify-center cursor-pointer z-20 transition-all hidden md:flex hover:scale-110"
                 style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
                 <ChevronLeft size={20} style={{ color: "rgba(255,255,255,0.8)" }} />
               </button>
-              <button onClick={() => setSliderIndex((prev) => (prev + 1) % generations.length)}
+              <button onClick={() => setSliderIndex((prev) => (prev + 1) % displayGens.length)}
                 className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full items-center justify-center cursor-pointer z-20 transition-all hidden md:flex hover:scale-110"
                 style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)" }}>
                 <ChevronRight size={20} style={{ color: "rgba(255,255,255,0.8)" }} />
@@ -2143,9 +2158,9 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           style={{ background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.35) 65%, transparent 100%)" }}>
 
           {/* Floating thumbnails */}
-          {generations.length > 1 && (
+          {displayGens.length > 1 && (
             <div className="flex justify-center gap-2.5 px-4 mb-3">
-              {generations.map((item, i) => {
+              {displayGens.map((item, i) => {
                 const isActive = i === safeIndex;
                 const imgUrl = getImageUrl(item);
                 return (
@@ -2180,10 +2195,10 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
                 View Library <ChevronRight size={11} />
               </Link>
             )}
-            <button onClick={() => onCompareAll(generations)}
+            <button onClick={() => onCompareAll(displayGens)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
-              style={{ background: generations.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(17,17,17,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
-              <Columns2 size={14} /> Compare All ({generations.length})
+              style={{ background: displayGens.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(17,17,17,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
+              <Columns2 size={14} /> Compare All ({displayGens.length})
             </button>
             {currentItem.type === "image" && currentItem.preview.kind === "image" && (currentItem.preview.imageUrl) && onAnimate && (
               <button onClick={() => onAnimate(currentItem)}
