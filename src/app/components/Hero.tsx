@@ -46,6 +46,7 @@ export function Hero() {
         }}
       />
 
+
       {/* ━━━ Text overlay ━━━ */}
       <div
         className="relative flex flex-col items-center justify-center text-center px-6 h-full"

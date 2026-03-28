@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { OraLogo } from "./OraLogo";
 
+
 export function Footer() {
   const productLinks = [
     { label: "Models", href: "/models" },
