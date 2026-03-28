@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { Check, ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
 
+
 const plans = [
   {
     name: "Starter",

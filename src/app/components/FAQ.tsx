@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, Minus } from "lucide-react";
 
+
 const faqs = [
   { q: "What makes ORA different from ChatGPT or Midjourney?", a: "With ChatGPT you only get GPT. With Midjourney you only get Midjourney. ORA gives you 38+ models in one studio. Plus Arena to compare outputs side by side, Campaign Lab for multi-platform generation, and Brand Vault for automatic compliance." },
   { q: "Which AI models are supported?", a: "GPT-5, GPT-4o, Claude 4.5, Gemini 2.5, DeepSeek V3, Mistral, Flux Pro 2, DALL-E 3, Photon 1, Leonardo AI, Luma Ray 2, Sora 2, Kling 2.1, Veo 3.1, Seedream V4, and many more. New models added monthly." },
