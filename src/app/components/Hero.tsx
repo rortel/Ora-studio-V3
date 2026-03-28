@@ -32,8 +32,8 @@ export function Hero() {
         muted
         loop
         playsInline
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ zIndex: 0 }}
+        className="absolute inset-0 h-full object-cover"
+        style={{ zIndex: 0, width: "100%", minWidth: "100%" }}
         src={heroVideo}
       />
 
