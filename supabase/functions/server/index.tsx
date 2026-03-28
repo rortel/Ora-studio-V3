@@ -575,12 +575,30 @@ async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean 
   const key = Deno.env.get("APIPOD_API_KEY");
   if (!key) { console.log("[enhancePrompt] No API key, using raw"); return rawPrompt; }
   const enhanceModels = ["gpt-4o", "gpt-5"];
+  const isVague = rawPrompt.trim().split(/\s+/).length < 20;
   const systemPrompt = `You are a world-class image prompt engineer specializing in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
 
-RULES:
+${isVague ? `IMPORTANT — SHORT/VAGUE PROMPT DETECTED:
+The user wrote a very brief request. Most users are NOT prompt engineers — they have a clear mental image but struggle to describe it in detail. Your job is to READ BETWEEN THE LINES and expand their idea into a rich visual scene.
+
+STRATEGY FOR VAGUE PROMPTS:
+1. IDENTIFY the core subject — what is the main thing they want to see?
+2. INFER the most likely context — where would this subject naturally be? What setting makes sense?
+3. CHOOSE the best photography style — product shot? lifestyle? editorial? portrait? food photography?
+4. ADD a realistic scene — don't just describe the object in isolation, place it in a believable environment with props, background, and atmosphere.
+5. MAKE IT LOOK EXPENSIVE — assume the user wants a professional, magazine-quality result. Default to warm, inviting, high-end aesthetics.
+
+Examples of how to expand vague prompts:
+- "black cat" → A sleek black cat with piercing golden eyes sitting on a sunlit windowsill in a cozy Parisian apartment, lace curtains softly diffusing warm afternoon light, potted herbs nearby...
+- "my bread" → A freshly baked artisan sourdough loaf on a rustic wooden cutting board, golden crust with flour dusting, steam rising gently, warm bakery interior with morning light streaming through windows...
+- "running shoes" → A pair of modern performance running shoes placed on wet pavement after rain, urban setting at dawn, reflections on the ground, shallow depth of field, athletic lifestyle editorial style...
+- "logo design" → A clean, modern logo mockup embossed on thick cream-colored business card stock, placed on a dark marble surface, soft directional studio lighting, premium branding photography...
+
+NEVER ask for clarification. NEVER output multiple options. Pick the BEST interpretation and commit to it fully.
+` : ''}RULES:
 - Output ONLY the prompt text. No quotes, no explanation, no preamble, no markdown.
-- Keep it between 80 and 180 words.
-- Preserve the user's creative intent EXACTLY — do not change the subject or concept.
+- Keep it between ${isVague ? '120 and 200' : '80 and 180'} words.
+- Preserve the user's creative intent EXACTLY — do not change the subject or concept.${isVague ? ' But ADD visual context, scene, environment, and mood that the user likely imagined but didn\'t write.' : ''}
 - If the user's request is in another language, translate it faithfully to English first.
 - ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt (e.g. "MAN eTGX", "Nike Air Max 90"). The brand name helps the AI match the reference image identity. Do NOT remove or replace brand names with generic descriptions. However, do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
 - CRITICAL TEMPORAL: Vehicles, machines, technology MUST be described as MODERN, CONTEMPORARY, CURRENT-GENERATION (2024-era). NEVER vintage, retro, classic, old, antique. Always add "modern, latest generation" for vehicles.
