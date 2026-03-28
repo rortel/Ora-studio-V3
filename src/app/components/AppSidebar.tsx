@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Home, FolderOpen, Calendar, Palette,
+  Home, FolderOpen, Calendar, Palette, Film,
   User, LogOut, Shield,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
@@ -18,6 +18,7 @@ const navItems = [
   { icon: Home, label: "Home", href: "/hub" },
   { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
   { icon: FolderOpen, label: "Content", href: "/hub/library" },
+  { icon: Film, label: "Video Editor", href: "/hub/video-editor" },
   { icon: Palette, label: "Brand Kit", href: "/hub/vault" },
 ];
 
@@ -25,6 +26,7 @@ const mobileNavItems = [
   { icon: Home, label: "Home", href: "/hub" },
   { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
   { icon: FolderOpen, label: "Content", href: "/hub/library" },
+  { icon: Film, label: "Video", href: "/hub/video-editor" },
   { icon: Palette, label: "Brand", href: "/hub/vault" },
 ];
 

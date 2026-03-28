@@ -2014,6 +2014,14 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         </div>
         {phase === "results" && (
           <div className="flex items-center gap-2">
+            <Link
+              to="/hub/video-editor"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
+              style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
+            >
+              <Film size={13} />
+              Video Editor
+            </Link>
             <button
               onClick={handleSaveCampaign}
               disabled={savingCampaign || assets.filter(a => a.status === "ready").length === 0}
