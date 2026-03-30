@@ -297,13 +297,13 @@ export function StudioPage() {
         case "generate-text": {
           const { prompt, style = "creative" } = action.params;
           const systemPrompt = style === "professional"
-            ? "You are a professional business writer. Write clear, concise, polished content."
-            : "You are a creative professional writer. Write high-quality, engaging content.";
+            ? "You are a world-class business writer. Write clear, polished, persuasive content. Use structured formatting when appropriate (headings, bullet points). Adapt tone and length to the platform and audience."
+            : "You are a world-class creative writer. Write engaging, original, high-impact content. Adapt tone, style and length to the context. Be bold and distinctive.";
           const allModels = action.compare
-            ? "ora-writer,gpt-4o,claude-sonnet,gemini-pro"
-            : "ora-writer";
+            ? "gpt-5,claude-sonnet,gemini-pro,deepseek,gpt-4o"
+            : "gpt-5";
           const res = await serverGet(
-            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=${allModels}&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=2048`
+            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=${allModels}&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=4096`
           );
           if (res.success && res.results) {
             result = {
