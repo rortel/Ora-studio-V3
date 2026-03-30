@@ -3458,10 +3458,8 @@ app.post("/generate/image-start", async (c) => {
 
     const isUploadRef = refSource === "upload";
     if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
-      // Prompt = ONLY studio/lighting/environment. NEVER describe the product.
-      // The photo reference IS the product truth. Prompt guides ONLY the scene.
-      // Map pill prompts to pure photography studio descriptions
+      // Use image_ref (not modify_image_ref) — better subject fidelity
+      lumaBody.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
       const sceneMap: Record<string, string> = {
         "photoshoot": "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.",
         "packshot": "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting from all sides, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution.",
@@ -3478,7 +3476,7 @@ app.post("/generate/image-start", async (c) => {
       else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scenePrompt = sceneMap["flat lay"];
       else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scenePrompt = sceneMap["cinématique"];
       lumaBody.prompt = scenePrompt + antiTextSuffix;
-      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=1.0, scene: ${scenePrompt.slice(0, 80)}...`);
+      console.log(`[image-start-POST] IMAGE_REF weight=1.0, scene: ${scenePrompt.slice(0, 80)}...`);
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     }
@@ -3592,9 +3590,8 @@ app.get("/generate/image-start", async (c) => {
     // User uploads → modify_image_ref (PRESERVES the photo content, adapts for format)
     // Brand Image Bank → image_ref (STYLE reference, inspires the generation)
     if (imageRefUrl && isUploadRef) {
-      // CLIENT UPLOAD: modify_image_ref weight=1.0 — maximum product preservation
-      body.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
-      // Prompt = ONLY studio/lighting. NEVER describe the product.
+      // Use image_ref (not modify_image_ref) — better subject fidelity
+      body.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
       const promptLower = rawPrompt.toLowerCase();
       let scenePrompt = "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render.";
       if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.";
@@ -3604,7 +3601,7 @@ app.get("/generate/image-start", async (c) => {
       else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading.";
       prompt = scenePrompt + antiTextSuffix;
       body.prompt = prompt;
-      console.log(`[image-start] MODIFY_IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
+      console.log(`[image-start] IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
     } else if (imageRefUrl) {
       // BRAND IMAGE BANK: use image_ref as style reference
       body.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
