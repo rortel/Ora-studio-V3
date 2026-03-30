@@ -684,7 +684,7 @@ export function StudioPage() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder="Dis-moi ce que tu veux créer..."
+                  placeholder="Dites-moi ce que vous souhaitez créer..."
                   className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
                   style={{ fontSize: "14px" }}
                 />
@@ -722,10 +722,10 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           <Sparkles size={20} style={{ color: "var(--background)" }} />
         </div>
         <h1 style={{ fontSize: "26px", fontWeight: 700, lineHeight: 1.2 }}>
-          Qu'est-ce que tu veux créer ?
+          Que souhaitez-vous créer ?
         </h1>
         <p style={{ fontSize: "14px", color: "var(--muted-foreground)", marginTop: 8 }}>
-          Image, vidéo, musique, texte — ou une campagne complète. Dis-le moi.
+          Image, vidéo, musique, texte ou campagne complète. Dites-le moi.
         </p>
       </motion.div>
 
@@ -750,7 +750,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           <div>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>Créer</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Image, vidéo, musique, texte. Libre et fun.
+              Image, vidéo, musique, texte. Comparez les modèles IA.
             </div>
           </div>
         </button>
@@ -769,7 +769,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           <div>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>Campagne</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Brief guidé, ta marque, multi-plateforme.
+              Votre marque, vos produits, tous les réseaux.
             </div>
           </div>
         </button>
@@ -783,10 +783,10 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
       >
         {[
-          "Génère un visuel abstrait",
-          "Compose une musique chill",
+          "Générer un visuel abstrait",
+          "Composer une musique chill",
           "Surprise me",
-          "Monte une vidéo courte",
+          "Monter une vidéo courte",
         ].map(s => (
           <button key={s} onClick={() => onSend(s)}
             className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
@@ -1181,6 +1181,15 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
+        {result.items.length === 1 && (
+          <button onClick={() => onCompare(result)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+            <Columns2 size={12} /> Comparer avec d'autres modèles
+          </button>
+        )}
       </div>
     );
   }
@@ -1221,6 +1230,15 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
+        {result.items.length === 1 && (
+          <button onClick={() => onCompare(result)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+            <Columns2 size={12} /> Comparer avec d'autres modèles
+          </button>
+        )}
       </div>
     );
   }
