@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Send, Sparkles, ImageIcon, FileText, Music, Film,
+  Send, Sparkles, ImageIcon, FileText, Music, Film, Mic, Square, Paperclip,
   Loader2, Download, Columns2, RefreshCw, Rocket,
   Play, ArrowRight, Wand2, Palette, ChevronLeft, ChevronRight, X,
   Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
@@ -40,6 +40,7 @@ interface GeneratedResult {
   type: "image" | "text" | "music" | "video" | "campaign";
   items: { url?: string; text?: string; model: string; latencyMs?: number }[];
   prompt: string;
+  refImageUrl?: string;
   campaignPosts?: CampaignPost[];
   logoUrl?: string;
 }
@@ -77,6 +78,32 @@ interface ChatMessage {
   isGenerating?: boolean;
 }
 
+const COMPARE_MODELS = {
+  image: [
+    { id: "ora-vision", label: "ORA Vision", badge: "Luma Photon" },
+    { id: "flux-pro", label: "Flux Pro", badge: "FAL" },
+    { id: "dall-e", label: "DALL·E 3", badge: "OpenAI" },
+    { id: "midjourney", label: "Midjourney", badge: "Replicate" },
+    { id: "seedream-v4", label: "SeDream v4", badge: "ByteDance" },
+  ],
+  text: [
+    { id: "gpt-5", label: "GPT-5", badge: "OpenAI" },
+    { id: "claude-opus", label: "Claude Opus", badge: "Anthropic" },
+    { id: "claude-sonnet", label: "Claude Sonnet", badge: "Anthropic" },
+    { id: "gemini-pro", label: "Gemini Pro", badge: "Google" },
+    { id: "deepseek", label: "DeepSeek", badge: "DeepSeek" },
+    { id: "gpt-4o", label: "GPT-4o", badge: "OpenAI" },
+  ],
+  video: [
+    { id: "ora-motion", label: "ORA Motion", badge: "Luma Ray 2" },
+    { id: "ray-flash-2", label: "Ray Flash 2", badge: "Luma" },
+    { id: "runway-gen3", label: "Runway Gen3", badge: "Runway" },
+    { id: "pika", label: "Pika", badge: "Pika" },
+  ],
+  music: [] as { id: string; label: string; badge: string }[],
+  campaign: [] as { id: string; label: string; badge: string }[],
+};
+
 export function StudioPage() {
   const navigate = useNavigate();
   const { getAuthHeader } = useAuth();
@@ -93,6 +120,126 @@ export function StudioPage() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Voice recording (Whisper) ──
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRecording = useCallback(async () => {
+    if (window.self !== window.top) {
+      toast.error("Micro bloqué en preview", { description: "Ouvrez l'app dans un nouvel onglet.", duration: 8000,
+        action: { label: "Ouvrir", onClick: () => window.open(window.location.href, "_blank") } });
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Micro non disponible", { description: "Votre navigateur ne supporte pas l'enregistrement audio." });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        setRecordingDuration(0);
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) { setIsRecording(false); return; }
+        setIsRecording(false);
+        setIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          const ext = mimeType.includes("webm") ? "webm" : mimeType.includes("mp4") ? "mp4" : "ogg";
+          formData.append("audio", audioBlob, `recording.${ext}`);
+          const res = await fetch(`${API_BASE}/transcribe`, {
+            method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}` }, body: formData, signal: AbortSignal.timeout(30_000),
+          });
+          const data = await res.json();
+          if (data.success && data.text) {
+            setInput(prev => (prev ? prev + " " + data.text : data.text));
+            toast.success("Voix transcrite", { description: data.text.slice(0, 60) + (data.text.length > 60 ? "..." : "") });
+            setTimeout(() => inputRef.current?.focus(), 100);
+          } else {
+            toast.error("Transcription échouée", { description: data.error || "Erreur inconnue" });
+          }
+        } catch (err: any) {
+          toast.error("Erreur transcription", { description: err?.message || "Erreur réseau" });
+        }
+        setIsTranscribing(false);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast.error("Accès micro refusé", { description: "Cliquez sur le cadenas dans la barre d'adresse pour autoriser le micro.", duration: 8000 });
+      } else if (err?.name === "NotFoundError") {
+        toast.error("Aucun micro détecté", { description: "Branchez un microphone et réessayez." });
+      } else {
+        toast.error("Erreur micro", { description: err?.message || "Impossible d'accéder au microphone." });
+      }
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") mediaRecorderRef.current.stop();
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, []);
+
+  // ── Attached image (reference photo) ──
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; signedUrl?: string; uploading: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAttachImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) { toast.error("Fichier non supporté", { description: "Seules les images sont acceptées." }); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("Image trop lourde", { description: "Maximum 10 Mo." }); return; }
+    const preview = URL.createObjectURL(file);
+    setAttachedImage({ file, preview, uploading: true });
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/hub/upload-ref`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.signedUrl) {
+        setAttachedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl, uploading: false } : null);
+        toast.success("Photo ajoutée");
+      } else {
+        toast.error("Échec de l'upload", { description: data.error || "Erreur inconnue" });
+        setAttachedImage(null);
+        URL.revokeObjectURL(preview);
+      }
+    } catch (err: any) {
+      toast.error("Erreur d'upload", { description: err?.message || "Erreur réseau" });
+      setAttachedImage(null);
+      URL.revokeObjectURL(preview);
+    }
+  }, []);
+
+  const removeAttachedImage = useCallback(() => {
+    if (attachedImage?.preview) URL.revokeObjectURL(attachedImage.preview);
+    setAttachedImage(null);
+  }, [attachedImage]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -151,37 +298,62 @@ export function StudioPage() {
       switch (action.type) {
         case "generate-image": {
           const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
-          const allModels = action.compare
-            ? ["ora-vision", "flux-pro", "midjourney", "dall-e"]
-            : models;
-          const res = await serverGet(
-            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${allModels.join(",")}&aspectRatio=${aspectRatio}`
-          );
-          if (res.success && res.results) {
-            result = {
-              type: "image",
-              prompt,
-              items: res.results
-                .filter((r: any) => r.success && r.result?.imageUrl)
-                .map((r: any, i: number) => ({
-                  url: r.result.imageUrl,
-                  model: allModels[i] || "unknown",
-                  latencyMs: r.result.latencyMs,
-                })),
-            };
+          const modelList = Array.isArray(models) ? models : [models];
+          const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
+          if (refUrl) {
+            // Use image-start per model (supports imageRefUrl for img2img)
+            const items: any[] = [];
+            removeAttachedImage();
+            for (const m of modelList) {
+              try {
+                const startRes = await serverGet(
+                  `/generate/image-start?prompt=${encodeURIComponent(prompt)}&model=${m}&aspectRatio=${aspectRatio}&imageRefUrl=${encodeURIComponent(refUrl)}&refSource=upload`
+                );
+                if (startRes.success && startRes.generationId) {
+                  // Poll for completion
+                  let imageUrl: string | null = null;
+                  for (let poll = 0; poll < 30; poll++) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
+                    if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
+                      imageUrl = statusRes.imageUrl;
+                      break;
+                    }
+                    if (statusRes.state === "failed") break;
+                  }
+                  if (imageUrl) items.push({ url: imageUrl, model: m, latencyMs: 0 });
+                }
+              } catch (err) { console.warn(`[studio] image-start ${m} failed:`, err); }
+            }
+            result = { type: "image", prompt, items, refImageUrl: refUrl };
+          } else {
+            // No ref image — use batch endpoint
+            const res = await serverGet(
+              `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelList.join(",")}&aspectRatio=${aspectRatio}`
+            );
+            if (res.success && res.results) {
+              result = {
+                type: "image",
+                prompt,
+                items: res.results
+                  .filter((r: any) => r.success && r.result?.imageUrl)
+                  .map((r: any, i: number) => ({
+                    url: r.result.imageUrl,
+                    model: modelList[i] || "unknown",
+                    latencyMs: r.result.latencyMs,
+                  })),
+              };
+            }
           }
           break;
         }
         case "generate-text": {
           const { prompt, style = "creative" } = action.params;
           const systemPrompt = style === "professional"
-            ? "You are a professional business writer. Write clear, concise, polished content."
-            : "You are a creative professional writer. Write high-quality, engaging content.";
-          const allModels = action.compare
-            ? "ora-writer,gpt-4o,claude-sonnet,gemini-pro"
-            : "ora-writer";
+            ? "You are a world-class business writer. Write clear, polished, persuasive content. Use structured formatting when appropriate (headings, bullet points). Adapt tone and length to the platform and audience."
+            : "You are a world-class creative writer. Write engaging, original, high-impact content. Adapt tone, style and length to the context. Be bold and distinctive.";
           const res = await serverGet(
-            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=${allModels}&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=2048`
+            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=gpt-5&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=4096`
           );
           if (res.success && res.results) {
             result = {
@@ -191,7 +363,7 @@ export function StudioPage() {
                 .filter((r: any) => r.success && r.result?.text)
                 .map((r: any, i: number) => ({
                   text: r.result.text,
-                  model: allModels.split(",")[i] || "unknown",
+                  model: "gpt-5",
                   latencyMs: r.result.latencyMs,
                 })),
             };
@@ -200,7 +372,7 @@ export function StudioPage() {
         }
         case "generate-music": {
           const { prompt, instrumental = true } = action.params;
-          const allModels = action.compare ? ["suno", "udio"] : ["suno"];
+          const allModels = ["suno"];
           const startRes = await serverPost("/suno/start", {
             prompt, models: allModels, instrumental,
           });
@@ -225,20 +397,20 @@ export function StudioPage() {
         }
         case "generate-video": {
           const { prompt, model = "ora-motion" } = action.params;
-          const allModels = action.compare
-            ? ["ora-motion", "runway-gen3"]
-            : [model];
+          const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
+          const allModels = [model];
           const items: any[] = [];
+          if (refUrl) removeAttachedImage();
           for (const m of allModels) {
             const startRes = await serverGet(
-              `/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${m}`
+              `/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${m}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
             );
             if (startRes.success && startRes.generationId) {
               const videoUrl = await pollVideo(startRes.generationId);
               if (videoUrl) items.push({ url: videoUrl, model: m });
             }
           }
-          result = { type: "video", prompt, items };
+          result = { type: "video", prompt, items, refImageUrl: refUrl || undefined };
           break;
         }
         case "generate-campaign": {
@@ -465,7 +637,7 @@ export function StudioPage() {
       toast.error("Erreur de génération. Réessaie.");
     }
     setIsGenerating(false);
-  }, [serverGet, serverPost, navigate]);
+  }, [serverGet, serverPost, navigate, attachedImage, removeAttachedImage]);
 
   // Polling helpers
   async function pollVideo(genId: string): Promise<string | null> {
@@ -511,8 +683,8 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
-      // Campaign mode only if explicitly set (via "Campagne" button or start-campaign action)
-      // Never auto-detect from keywords — the AI handles routing via its own action system
+      // Default to "create" mode if not explicitly set to "campaign"
+      if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
       const isCampaignMode = context.mode === "campaign";
 
       // Load vault + products (always — brand context enriches all generations)
@@ -537,12 +709,14 @@ export function StudioPage() {
         history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         context: {
           ...context,
+          mode: context.mode || "create",
           ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
           ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
           ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
           ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
           ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category })).slice(0, 20) } : {}),
           ...(forceGenerate ? { force_generate: true } : {}),
+          ...(attachedImage?.signedUrl ? { hasReferenceImage: true, referenceImageUrl: attachedImage.signedUrl } : {}),
         },
       });
 
@@ -573,8 +747,8 @@ export function StudioPage() {
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: "Oups, j'ai eu un souci. Réessaie !",
-          suggestions: ["Créer une image", "Lancer une campagne", "Surprise me"],
+          content: "Oups, j'ai eu un souci. Réessayez !",
+          suggestions: ["Créer une image", "Composer une musique", "Écrire un texte"],
         }]);
       }
     } catch {
@@ -586,12 +760,105 @@ export function StudioPage() {
       }]);
     }
     setIsThinking(false);
-  }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate]);
+  }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate, attachedImage]);
 
-  // ── Compare handler ──
+  // ── Compare handler — opens model picker ──
+  const [comparePicker, setComparePicker] = useState<{ result: GeneratedResult; selectedModels: string[] } | null>(null);
+
   const handleCompare = useCallback((result: GeneratedResult) => {
-    handleSend(`Compare : ${result.prompt}`);
-  }, [handleSend]);
+    const defaults = COMPARE_MODELS[result.type as keyof typeof COMPARE_MODELS] || [];
+    setComparePicker({ result, selectedModels: defaults.map(m => m.id) });
+  }, []);
+
+  const handleCompareGenerate = useCallback(async () => {
+    if (!comparePicker) return;
+    const { result, selectedModels } = comparePicker;
+    if (selectedModels.length < 2) { toast.error("Sélectionnez au moins 2 modèles"); return; }
+    setComparePicker(null);
+    setIsGenerating(true);
+
+    try {
+      let compareResult: GeneratedResult | null = null;
+
+      if (result.type === "image") {
+        const refUrl = result.refImageUrl || "";
+        if (refUrl) {
+          // Ref image: use image-start + polling per model (image-via-get doesn't support imageRefUrl)
+          const items: any[] = [];
+          for (const m of selectedModels) {
+            try {
+              const startRes = await serverGet(
+                `/generate/image-start?prompt=${encodeURIComponent(result.prompt)}&model=${m}&aspectRatio=1:1&imageRefUrl=${encodeURIComponent(refUrl)}&refSource=upload`
+              );
+              if (startRes.success && startRes.generationId) {
+                let imageUrl: string | null = null;
+                for (let poll = 0; poll < 30; poll++) {
+                  await new Promise(r => setTimeout(r, 3000));
+                  const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
+                  if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
+                    imageUrl = statusRes.imageUrl; break;
+                  }
+                  if (statusRes.state === "failed") break;
+                }
+                if (imageUrl) items.push({ url: imageUrl, model: m, latencyMs: 0 });
+              }
+            } catch (err) { console.warn(`[studio] compare image-start ${m} failed:`, err); }
+          }
+          compareResult = { type: "image", prompt: result.prompt, items, refImageUrl: refUrl };
+        } else {
+          // No ref image: use batch endpoint
+          const res = await serverGet(
+            `/generate/image-via-get?prompt=${encodeURIComponent(result.prompt)}&models=${selectedModels.join(",")}&aspectRatio=1:1`
+          );
+          if (res.success && res.results) {
+            compareResult = {
+              type: "image", prompt: result.prompt,
+              items: res.results.filter((r: any) => r.success && r.result?.imageUrl)
+                .map((r: any, i: number) => ({ url: r.result.imageUrl, model: selectedModels[i] || "unknown", latencyMs: r.result.latencyMs })),
+            };
+          }
+        }
+      } else if (result.type === "text") {
+        const res = await serverGet(
+          `/generate/text-multi-get?prompt=${encodeURIComponent(result.prompt)}&models=${selectedModels.join(",")}&maxTokens=4096`
+        );
+        if (res.success && res.results) {
+          compareResult = {
+            type: "text", prompt: result.prompt,
+            items: res.results.filter((r: any) => r.success && r.result?.text)
+              .map((r: any, i: number) => ({ text: r.result.text, model: selectedModels[i] || "unknown", latencyMs: r.result.latencyMs })),
+          };
+        }
+      } else if (result.type === "video") {
+        const refUrl = result.refImageUrl || "";
+        const items: any[] = [];
+        for (const m of selectedModels) {
+          const startRes = await serverGet(
+            `/generate/video-start?prompt=${encodeURIComponent(result.prompt)}&model=${m}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
+          );
+          if (startRes.success && startRes.generationId) {
+            const videoUrl = await pollVideo(startRes.generationId);
+            if (videoUrl) items.push({ url: videoUrl, model: m });
+          }
+        }
+        compareResult = { type: "video", prompt: result.prompt, items, refImageUrl: refUrl || undefined };
+      }
+
+      if (compareResult && compareResult.items.length > 0) {
+        const msg: ChatMessage = {
+          id: `compare-${Date.now()}`, role: "assistant",
+          content: `Voici ${compareResult.items.length} versions à comparer :`,
+          result: compareResult,
+        };
+        setMessages(prev => [...prev, msg]);
+      } else {
+        toast.error("La comparaison a échoué");
+      }
+    } catch (err) {
+      toast.error("Erreur lors de la comparaison");
+    }
+    setIsGenerating(false);
+  }, [comparePicker, serverGet]);
 
   const showWelcome = messages.length === 0;
 
@@ -602,7 +869,7 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} />
+              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} />
             ) : (
               <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
                 {messages.map(msg => (
@@ -670,9 +937,58 @@ export function StudioPage() {
           {/* ── Input bar ── */}
           <div className="flex-shrink-0 px-5 pb-5 pt-2">
             <div className="max-w-2xl mx-auto">
+              {/* Attached image preview + quick suggestions */}
+              {attachedImage && (
+                <div className="mb-2 px-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="relative group">
+                      <img src={attachedImage.preview} className="w-14 h-14 rounded-lg object-cover" style={{ border: "1px solid var(--border)" }} alt="" />
+                      {attachedImage.uploading && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(0,0,0,0.5)" }}>
+                          <Loader2 size={16} className="animate-spin text-white" />
+                        </div>
+                      )}
+                      <button onClick={removeAttachedImage}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: "var(--foreground)", color: "var(--background)" }}>
+                        <X size={10} />
+                      </button>
+                    </div>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      {attachedImage.uploading ? "Upload en cours..." : "Photo de référence — que souhaitez-vous en faire ?"}
+                    </span>
+                  </div>
+                  {!attachedImage.uploading && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Photoshoot studio fond blanc",
+                        "Packshot produit",
+                        "Mise en scène lifestyle",
+                        "Flat lay créatif",
+                        "Ambiance cinématique",
+                        "Animer en vidéo",
+                      ].map(s => (
+                        <button key={s} onClick={() => handleSend(s)}
+                          className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
+                          style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
+                          onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <input type="file" ref={fileInputRef} accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleAttachImage(f); e.target.value = ""; }} />
               <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
                 style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                <Sparkles size={14} className="text-muted-foreground flex-shrink-0" />
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                  title="Joindre une photo">
+                  <Paperclip size={15} />
+                </button>
                 <input
                   ref={inputRef}
                   value={input}
@@ -682,6 +998,30 @@ export function StudioPage() {
                   className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
                   style={{ fontSize: "14px" }}
                 />
+                {isTranscribing ? (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Loader2 size={14} className="animate-spin" style={{ color: "var(--foreground)" }} />
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 500 }}>Transcription...</span>
+                  </div>
+                ) : isRecording ? (
+                  <button onClick={stopRecording}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                    style={{ background: "rgba(212, 24, 61, 0.1)" }}
+                    title="Arrêter l'enregistrement">
+                    <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+                      <Square size={12} style={{ color: "#d4183d", fill: "#d4183d" }} />
+                    </motion.div>
+                    <span style={{ fontSize: "11px", color: "#d4183d", fontWeight: 600 }}>
+                      {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, "0")}
+                    </span>
+                  </button>
+                ) : (
+                  <button onClick={startRecording} disabled={isThinking || isGenerating}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Prompt vocal (Whisper)">
+                    <Mic size={15} />
+                  </button>
+                )}
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() || isThinking || isGenerating}
@@ -697,12 +1037,85 @@ export function StudioPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Compare Model Picker Modal ── */}
+      <AnimatePresence>
+        {comparePicker && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+            onClick={() => setComparePicker(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="rounded-2xl p-6 w-full max-w-md mx-4"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 700 }}>Comparer les modèles</h3>
+                  <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
+                    Sélectionnez les IA à comparer ({comparePicker.selectedModels.length} sélectionnées)
+                  </p>
+                </div>
+                <button onClick={() => setComparePicker(null)} className="cursor-pointer" style={{ color: "var(--muted-foreground)" }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-5" style={{ maxHeight: 320, overflowY: "auto" }}>
+                {(COMPARE_MODELS[comparePicker.result.type as keyof typeof COMPARE_MODELS] || []).map(model => {
+                  const selected = comparePicker.selectedModels.includes(model.id);
+                  return (
+                    <button key={model.id}
+                      onClick={() => setComparePicker(prev => {
+                        if (!prev) return null;
+                        const models = selected
+                          ? prev.selectedModels.filter(id => id !== model.id)
+                          : [...prev.selectedModels, model.id];
+                        return { ...prev, selectedModels: models };
+                      })}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer"
+                      style={{
+                        background: selected ? "var(--secondary)" : "transparent",
+                        border: `1px solid ${selected ? "var(--foreground)" : "var(--border)"}`,
+                      }}>
+                      <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: selected ? "var(--foreground)" : "transparent",
+                          border: `2px solid ${selected ? "var(--foreground)" : "var(--border)"}`,
+                        }}>
+                        {selected && <Check size={12} style={{ color: "var(--background)" }} />}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <span style={{ fontSize: "13px", fontWeight: 600 }}>{model.label}</span>
+                      </div>
+                      <span style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500, textTransform: "uppercase" }}>
+                        {model.badge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleCompareGenerate}
+                disabled={comparePicker.selectedModels.length < 2}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
+                <Columns2 size={14} />
+                Comparer {comparePicker.selectedModels.length} modèles
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </RouteGuard>
   );
 }
 
 /* ── Welcome Screen ── */
-function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
+function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; onSetMode: (mode: string) => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-center px-6">
       <motion.div
@@ -731,7 +1144,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-lg"
       >
         <button
-          onClick={() => onSend("Je veux créer quelque chose")}
+          onClick={() => { onSetMode("create"); onSend("Je veux créer quelque chose"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -744,13 +1157,13 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           <div>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>Créer</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Image, vidéo, musique, texte. Comparez les modèles IA.
+              Image, vidéo, musique, texte. Personnalisez chaque détail.
             </div>
           </div>
         </button>
 
         <button
-          onClick={() => onSend("Je veux lancer une campagne")}
+          onClick={() => { onSetMode("campaign"); onSend("Je veux lancer une campagne"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -777,12 +1190,12 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
       >
         {[
-          "Générer un visuel abstrait",
-          "Composer une musique chill",
-          "Surprise me",
-          "Monter une vidéo courte",
+          "Créer une image cinématique",
+          "Composer une musique inspirante",
+          "Écrire un texte percutant",
+          "Générer une vidéo dynamique",
         ].map(s => (
-          <button key={s} onClick={() => onSend(s)}
+          <button key={s} onClick={() => { onSetMode("create"); onSend(s); }}
             className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
             style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", color: "var(--muted-foreground)" }}
             onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -1115,15 +1528,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           ))}
         </div>
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
@@ -1146,15 +1557,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
@@ -1175,15 +1584,6 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
       </div>
     );
   }
@@ -1224,15 +1624,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
