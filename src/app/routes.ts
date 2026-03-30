@@ -15,7 +15,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { MusicPage } from "./pages/MusicPage";
 import { ProductsPage } from "./pages/ProductsPage";
-import { VideoEditorPage } from "./pages/VideoEditorPage";
+import { VideoAssemblerPage } from "./pages/VideoAssemblerPage";
 
 /*
   ROUTE ACCESS MATRIX
@@ -63,7 +63,7 @@ export const router = createBrowserRouter([
       { path: "hub/analytics", Component: AnalyticsPage },
       { path: "hub/calendar", Component: CalendarPage },
       { path: "hub/music", Component: MusicPage },
-      { path: "hub/video-editor", Component: VideoEditorPage },
+      { path: "hub/video-editor", Component: VideoAssemblerPage },
       { path: "profile", Component: ProfilePage },
       { path: "subscribe", Component: SubscribePage },
 

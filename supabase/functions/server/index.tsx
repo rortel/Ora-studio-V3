@@ -4655,6 +4655,136 @@ Generate 6 narrative territories for this brand:`
   }
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// VIDEO ASSEMBLER — AI-powered conversational video assembly
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// POST /video-assembler/plan
+// Takes user intent + available clips + format → returns storyboard
+app.post("/video-assembler/plan", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { message, clips, format, brand_platform, previousPlan, adjustment } = body;
+
+    if (!message && !adjustment) {
+      return c.json({ success: false, error: "message or adjustment required." }, 400);
+    }
+
+    // Load vault for brand context
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    const bp = brand_platform || vault.brand_platform;
+
+    const brandContext = bp
+      ? `BRAND PLATFORM:
+- Promise: ${bp.promise || "N/A"}
+- Narrative register: ${bp.narrative_register || "N/A"}
+- Creative tension: ${bp.creative_tension || "N/A"}
+- Semiotic codes to adopt: ${(bp.semiotic_codes?.adopt || []).join(", ")}
+- Semiotic codes to avoid: ${(bp.semiotic_codes?.avoid || []).join(", ")}
+- Photo direction: framing=${bp.photo_direction?.framing || "N/A"}, lighting=${bp.photo_direction?.lighting || "N/A"}`
+      : "";
+
+    const formatSpecs: Record<string, string> = {
+      "reel": "Instagram/TikTok Reel: 9:16 vertical, 15-30 seconds, fast-paced, hook in first 2s, text overlays, trending music",
+      "story": "Instagram Story: 9:16 vertical, 15 seconds max, quick cuts, bold text, swipe-up CTA",
+      "linkedin": "LinkedIn Video: 16:9 landscape, 30-60 seconds, professional, slower pace, subtitle-friendly, thought leadership",
+      "youtube-short": "YouTube Short: 9:16 vertical, up to 60 seconds, engaging hook, mid-roll retention hooks",
+      "feed": "Social Feed Video: 1:1 square, 15-30 seconds, works on mute with captions, eye-catching thumbnail",
+    };
+    const formatInfo = formatSpecs[format || "reel"] || formatSpecs["reel"];
+
+    const clipsDescription = (clips || []).map((clip: any, i: number) => {
+      return `[${i}] "${clip.name}" (${clip.type}, ${clip.duration || "?"}s) — ${clip.description || "no description"}`;
+    }).join("\n");
+
+    const previousContext = previousPlan
+      ? `\nPREVIOUS STORYBOARD (user wants adjustments):\n${JSON.stringify(previousPlan, null, 2)}\n\nUSER ADJUSTMENT: "${adjustment}"\nModify the previous storyboard according to the user's request. Keep clips that weren't mentioned.`
+      : "";
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.5,
+        messages: [
+          {
+            role: "system",
+            content: `You are an elite video editor and creative director. You create storyboards for short-form video content.
+
+FORMAT: ${formatInfo}
+
+${brandContext}
+
+AVAILABLE CLIPS:
+${clipsDescription || "No clips provided yet — suggest what clips would be needed."}
+
+RULES:
+1. Focus on BENEFIT and STORY, never product catalog shots
+2. Hook in the FIRST 2 seconds — something visually surprising or emotionally compelling
+3. Follow the arc: HOOK → TENSION → RESOLUTION → CTA
+4. Each scene has a specific purpose in the narrative
+5. Text overlays should be punchy (5-8 words max per screen)
+6. Music mood should match the brand narrative register
+7. If no clips match, suggest what to generate
+8. Total duration must fit the format constraints
+9. RESPOND IN THE SAME LANGUAGE as the user's message
+${previousContext}
+
+Return ONLY valid JSON — no markdown, no backticks:
+{
+  "title": "string — short title for this video",
+  "format": "reel | story | linkedin | youtube-short | feed",
+  "dimensions": { "width": number, "height": number },
+  "totalDuration": number (seconds),
+  "musicMood": "string — describe the ideal music mood",
+  "scenes": [
+    {
+      "id": "string — unique id",
+      "order": number,
+      "clipIndex": number | null (index in available clips, null if needs generation),
+      "duration": number (seconds),
+      "description": "string — what this scene shows",
+      "purpose": "hook | tension | proof | emotion | cta",
+      "textOverlay": "string | null — text shown on screen",
+      "textPosition": "top | center | bottom",
+      "transition": "cut | crossfade | fade-black",
+      "suggestGenerate": "string | null — prompt to generate this clip if no matching clip exists"
+    }
+  ],
+  "narration": "string | null — optional voiceover text for the entire video",
+  "suggestion": "string — one creative suggestion to make this video even better"
+}`
+          },
+          {
+            role: "user",
+            content: adjustment
+              ? `Adjust the storyboard: "${adjustment}"`
+              : `Create a storyboard for: "${message}"`
+          }
+        ]
+      })
+    });
+
+    if (!aiRes.ok) {
+      console.error("[video-assembler/plan] AI error:", await aiRes.text());
+      return c.json({ success: false, error: "AI planning failed." }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = (aiData.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const plan = JSON.parse(cleaned);
+
+    console.log(`[video-assembler/plan] user=${user.id.slice(0,8)} scenes=${plan.scenes?.length} duration=${plan.totalDuration}s`);
+    return c.json({ success: true, plan });
+  } catch (err) {
+    console.error("[video-assembler/plan] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /vault/analyze — AI analysis of URL or text content (ENRICHED)
 // Accepts: { url, deep? } or { content, sourceName, sourceType }
 // Returns: { success, dna: { ... } }

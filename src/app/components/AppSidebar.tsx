@@ -18,7 +18,7 @@ const navItems = [
   { icon: Home, label: "Home", href: "/hub" },
   { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
   { icon: FolderOpen, label: "Content", href: "/hub/library" },
-  { icon: Film, label: "Video Editor", href: "/hub/video-editor" },
+  { icon: Film, label: "Video Studio", href: "/hub/video-editor" },
   { icon: Palette, label: "Brand Kit", href: "/hub/vault" },
 ];
 
@@ -26,7 +26,7 @@ const mobileNavItems = [
   { icon: Home, label: "Home", href: "/hub" },
   { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
   { icon: FolderOpen, label: "Content", href: "/hub/library" },
-  { icon: Film, label: "Video", href: "/hub/video-editor" },
+  { icon: Film, label: "Video Studio", href: "/hub/video-editor" },
   { icon: Palette, label: "Brand", href: "/hub/vault" },
 ];
 
