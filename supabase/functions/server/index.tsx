@@ -4370,36 +4370,39 @@ Synthesize this into a complete brand platform JSON.`
   }
 });
 
-// POST /brand-engine/enrich
-// Takes user prompt + contentType + brand_platform → returns enriched prompt
+// POST /brand-engine/enrich — Brief-to-Story creative brief engine
+// Transforms user prompt into a full creative brief (angle, hook, emotional arc, enriched prompt)
 app.post("/brand-engine/enrich", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
-    const { prompt, contentType, brand_platform } = body;
+    const { prompt, contentType, brand_platform, territory } = body;
 
     if (!prompt) return c.json({ success: false, error: "prompt required." }, 400);
 
     // If no brand platform, return original prompt unchanged
     if (!brand_platform) {
-      return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+      return c.json({ success: true, enrichedPrompt: prompt, brief: null, wasEnriched: false });
     }
 
     const bp = brand_platform;
     const contentTypeLabel = contentType || "visual";
+    const territoryContext = territory
+      ? `\nSELECTED NARRATIVE TERRITORY: "${territory.name}" — ${territory.description}. Angle: ${territory.angle}. Emotional register: ${territory.emotion}.`
+      : "";
 
     const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
       method: "POST",
       headers: apipodHeaders(),
       body: JSON.stringify({
         model: "gpt-4o",
-        temperature: 0.3,
+        temperature: 0.4,
         messages: [
           {
             role: "system",
-            content: `You are a brand-aware creative director. Your job is to enrich a user's creative prompt with brand strategy intelligence so the AI generation stays on-brand.
+            content: `You are an elite creative director at a brand agency. Your job is to transform a raw user prompt into a full creative brief, then produce an enriched generation prompt.
 
-Brand Platform:
+BRAND PLATFORM:
 - Promise: ${bp.promise}
 - Narrative register: ${bp.narrative_register}
 - Creative tension: ${bp.creative_tension}
@@ -4407,27 +4410,39 @@ Brand Platform:
 - Semiotic codes to AVOID: ${(bp.semiotic_codes?.avoid || []).join(", ")}
 - Semiotic codes to SUBVERT: ${(bp.semiotic_codes?.subvert || []).join(", ")}
 - Photo direction: framing=${bp.photo_direction?.framing}, lighting=${bp.photo_direction?.lighting}, human_presence=${bp.photo_direction?.human_presence}, composition=${bp.photo_direction?.composition}
-- Positive reference prompts: ${(bp.reference_prompts?.positive || []).join(" | ")}
-- Negative reference prompts (avoid): ${(bp.reference_prompts?.negative || []).join(" | ")}
+- Positive references: ${(bp.reference_prompts?.positive || []).join(" | ")}
+- Negative references (AVOID): ${(bp.reference_prompts?.negative || []).join(" | ")}
+${territoryContext}
 
-Content type being generated: ${contentTypeLabel}
+Content type: ${contentTypeLabel}
 
-RULES:
-1. Keep the user's original intent fully intact — do NOT change what they want to create.
-2. Enrich the prompt with brand-aligned direction: lighting, mood, composition, narrative angle.
-3. Add negative prompt elements from the "avoid" codes and negative references.
-4. Keep the enriched prompt concise — max 2-3 sentences added to the original.
-5. For text content: adjust tone to match the narrative register.
-6. For image/video: inject photographic direction cues.
-7. For audio/music: translate brand mood into sonic direction.
-8. Return ONLY the enriched prompt text. No explanation, no JSON, no markdown.`
+CREATIVE BRIEF RULES:
+1. NEVER show the product literally — always communicate the BENEFIT, the TRANSFORMATION, the STORY.
+2. Find a creative angle that makes the audience FEEL something before they understand the product.
+3. The hook must stop the scroll — surprising, emotional, or thought-provoking.
+4. The emotional arc follows: attention → tension → resolution (aligned with brand promise).
+5. Visual direction must translate brand codes into concrete staging instructions.
+6. For text: write in the narrative register. For image/video: describe mood, not objects. For audio: describe emotional texture.
+
+Return ONLY valid JSON — no markdown, no backticks:
+{
+  "brief": {
+    "angle": "string — the creative angle (1 sentence, what makes this content unique)",
+    "hook": "string — the scroll-stopping hook (what grabs attention in 2 seconds)",
+    "emotional_arc": "string — attention → tension → resolution in 1-2 sentences",
+    "benefit_focus": "string — what the audience gains/feels (NOT what the product does)",
+    "visual_direction": "string — concrete staging/mood instructions for the generation",
+    "dont": "string — what to explicitly avoid in this specific execution"
+  },
+  "enrichedPrompt": "string — the final generation prompt incorporating all the above. Concise but rich. For images: describe the scene, mood, lighting, composition. For text: set tone, angle, hook. For video: describe the sequence. For audio: describe the sonic mood."
+}`
           },
           {
             role: "user",
-            content: `Original prompt: "${prompt}"
+            content: `Raw user prompt: "${prompt}"
 Content type: ${contentTypeLabel}
 
-Return the enriched prompt:`
+Transform this into a creative brief and enriched prompt:`
           }
         ]
       })
@@ -4435,19 +4450,208 @@ Return the enriched prompt:`
 
     if (!aiRes.ok) {
       console.error("[brand-engine/enrich] AI error:", await aiRes.text());
-      // Fallback: return original prompt
-      return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+      return c.json({ success: true, enrichedPrompt: prompt, brief: null, wasEnriched: false });
     }
 
     const aiData = await aiRes.json();
-    const enrichedPrompt = (aiData.choices?.[0]?.message?.content || prompt).trim();
-
-    console.log(`[brand-engine/enrich] user=${user.id.slice(0,8)} type=${contentTypeLabel} enriched=${enrichedPrompt.length}chars`);
-    return c.json({ success: true, enrichedPrompt, wasEnriched: true });
+    const raw = (aiData.choices?.[0]?.message?.content || "").trim();
+    try {
+      const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+      const result = JSON.parse(cleaned);
+      console.log(`[brand-engine/enrich] user=${user.id.slice(0,8)} type=${contentTypeLabel} angle="${result.brief?.angle?.slice(0,60)}"`);
+      return c.json({
+        success: true,
+        enrichedPrompt: result.enrichedPrompt || prompt,
+        brief: result.brief || null,
+        wasEnriched: true,
+      });
+    } catch {
+      // Fallback: use raw text as enriched prompt
+      console.warn("[brand-engine/enrich] JSON parse failed, using raw text");
+      return c.json({ success: true, enrichedPrompt: raw || prompt, brief: null, wasEnriched: true });
+    }
   } catch (err) {
     console.error("[brand-engine/enrich] error:", err);
-    // Fallback: return original prompt
-    return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+    return c.json({ success: true, enrichedPrompt: prompt, brief: null, wasEnriched: false });
+  }
+});
+
+// POST /brand-engine/score — Brand alignment scoring for generated content
+// Scores how well a generated result aligns with the brand strategy
+app.post("/brand-engine/score", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { prompt, result, contentType, brand_platform } = body;
+
+    if (!brand_platform || !result) {
+      return c.json({ success: true, score: null, skipped: true });
+    }
+
+    const bp = brand_platform;
+    const contentDesc = contentType === "image" || contentType === "film"
+      ? `Visual content generated from prompt: "${prompt}". The image/video URL is provided but cannot be analyzed directly — score based on the prompt alignment.`
+      : `Text content: "${typeof result === 'string' ? result.slice(0, 1500) : JSON.stringify(result).slice(0, 1500)}"`;
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content: `You are a brand compliance auditor. Score generated content on brand alignment.
+
+BRAND PLATFORM:
+- Promise: ${bp.promise}
+- Narrative register: ${bp.narrative_register}
+- Creative tension: ${bp.creative_tension}
+- Codes to ADOPT: ${(bp.semiotic_codes?.adopt || []).join(", ")}
+- Codes to AVOID: ${(bp.semiotic_codes?.avoid || []).join(", ")}
+- Photo direction: framing=${bp.photo_direction?.framing}, lighting=${bp.photo_direction?.lighting}
+
+SCORING CRITERIA (each 0-100):
+1. benefit_vs_product: Does it communicate the BENEFIT/STORY rather than just showing the product? (100 = pure benefit storytelling, 0 = product catalog shot)
+2. narrative_alignment: Does the tone match the brand's narrative register? (transformation/connivence/tension/proof/culture)
+3. semiotic_compliance: Does it use adopted codes and avoid forbidden ones?
+4. emotional_impact: Does it provoke emotion aligned with the brand promise?
+5. scroll_stop: Would this stop someone scrolling? Is it surprising, beautiful, or thought-provoking?
+
+Return ONLY valid JSON:
+{
+  "overall": number (0-100, weighted average),
+  "scores": {
+    "benefit_vs_product": number,
+    "narrative_alignment": number,
+    "semiotic_compliance": number,
+    "emotional_impact": number,
+    "scroll_stop": number
+  },
+  "verdict": "on-brand" | "acceptable" | "off-brand",
+  "suggestion": "string — one actionable improvement suggestion (1 sentence)"
+}`
+          },
+          {
+            role: "user",
+            content: `Content type: ${contentType}\n${contentDesc}\n\nScore this content:`
+          }
+        ]
+      })
+    });
+
+    if (!aiRes.ok) {
+      console.error("[brand-engine/score] AI error:", await aiRes.text());
+      return c.json({ success: true, score: null, skipped: true });
+    }
+
+    const aiData = await aiRes.json();
+    const raw = (aiData.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const score = JSON.parse(cleaned);
+
+    console.log(`[brand-engine/score] user=${user.id.slice(0,8)} overall=${score.overall} verdict=${score.verdict}`);
+    return c.json({ success: true, score });
+  } catch (err) {
+    console.error("[brand-engine/score] error:", err);
+    return c.json({ success: true, score: null, skipped: true });
+  }
+});
+
+// POST /brand-engine/territories — Generate narrative territories from brand vault
+// Returns 5-7 pre-validated creative angles the user can pick from
+app.post("/brand-engine/territories", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+
+    // Load vault to get brand context
+    const vault = body.vault || await kv.get(`vault:${user.id}`) || {};
+    const bp = vault.brand_platform;
+
+    const brandContext = `Brand: ${vault.brandName || vault.company_name || "Unknown"}
+Industry: ${vault.industry || "N/A"}
+Tagline: ${vault.tagline || "N/A"}
+Products: ${(vault.products_services || []).join(", ") || "N/A"}
+Tone: ${vault.tone_of_voice || "N/A"}
+Key messages: ${(vault.key_messages || []).join(". ") || "N/A"}`;
+
+    const platformContext = bp
+      ? `\nBRAND PLATFORM:
+- Promise: ${bp.promise}
+- Narrative register: ${bp.narrative_register}
+- Creative tension: ${bp.creative_tension}
+- Semiotic codes to adopt: ${(bp.semiotic_codes?.adopt || []).join(", ")}
+- Semiotic codes to subvert: ${(bp.semiotic_codes?.subvert || []).join(", ")}`
+      : "";
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.6,
+        messages: [
+          {
+            role: "system",
+            content: `You are a senior brand planner. Based on the brand DNA, generate 6 narrative territories — recurring creative angles the brand can use across all content.
+
+Each territory is NOT a single post idea — it's a REUSABLE ANGLE that can generate dozens of contents across formats (image, video, text, sound).
+
+RULES:
+- Each territory focuses on BENEFIT/STORY, never on product features
+- Territories must be diverse: some emotional, some rational, some subversive
+- Names must be evocative and memorable (2-4 words max)
+- Each territory should suggest a different emotional register
+- Include at least one "subversive" territory that challenges industry conventions
+- RESPOND IN THE SAME LANGUAGE as the brand context
+
+Return ONLY valid JSON — no markdown, no backticks:
+{
+  "territories": [
+    {
+      "id": "string — kebab-case unique id",
+      "name": "string — evocative territory name (2-4 words)",
+      "description": "string — what this territory explores (1-2 sentences)",
+      "angle": "string — the creative angle to take (1 sentence)",
+      "emotion": "string — the primary emotion this territory triggers",
+      "example_prompts": ["string — 3 example prompts using this territory"],
+      "best_for": ["image", "text", "film", "sound"]
+    }
+  ]
+}`
+          },
+          {
+            role: "user",
+            content: `${brandContext}${platformContext}
+
+Generate 6 narrative territories for this brand:`
+          }
+        ]
+      })
+    });
+
+    if (!aiRes.ok) {
+      console.error("[brand-engine/territories] AI error:", await aiRes.text());
+      return c.json({ success: false, error: "AI generation failed." }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = (aiData.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const result = JSON.parse(cleaned);
+
+    // Cache territories in vault
+    const existing = await kv.get(`vault:${user.id}`) || {};
+    const updated = { ...existing, narrative_territories: result.territories, territories_updatedAt: new Date().toISOString() };
+    await saveVaultToKV(user.id, updated);
+
+    console.log(`[brand-engine/territories] user=${user.id.slice(0,8)} count=${result.territories?.length}`);
+    return c.json({ success: true, territories: result.territories });
+  } catch (err) {
+    console.error("[brand-engine/territories] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

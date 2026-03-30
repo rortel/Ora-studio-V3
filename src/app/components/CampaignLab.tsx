@@ -9,7 +9,7 @@ import {
   Calendar, Send, Clock, ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Plus, Twitter,
   Youtube, LayoutGrid, Megaphone, Clapperboard,
   Smartphone, Info, Target, Zap, TrendingUp, CheckCircle2, CircleDot,
-  Pencil, Package, Lightbulb, Wand2,
+  Pencil, Package, Lightbulb, Wand2, Compass,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
@@ -322,6 +322,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [textModelsSelected, setTextModelsSelected] = useState<string[]>(["gpt-4o", "claude-sonnet-4-20250514"]);
   const [imageModelsSelected, setImageModelsSelected] = useState<string[]>(["photon-1", "flux-pro-v1.1"]);
 
+  // ── Brand Engine: Territories ──
+  const [territories, setTerritories] = useState<{ id: string; name: string; description: string; angle: string; emotion: string; example_prompts: string[]; best_for: string[] }[]>([]);
+  const [selectedTerritory, setSelectedTerritory] = useState<typeof territories[number] | null>(null);
+  const [territoriesLoading, setTerritoriesLoading] = useState(false);
+
   // ── Template state ──
   const [assetTemplates, setAssetTemplates] = useState<Record<string, string>>({});
   const [editorAsset, setEditorAsset] = useState<GeneratedAsset | null>(null);
@@ -409,6 +414,23 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     };
     fetchVault(1).finally(() => setVaultLoading(false));
   }, [getAuthToken]);
+
+  // ── Brand Engine: load cached narrative territories ──
+  useEffect(() => {
+    serverPost("/vault/load", {}).then(vaultRes => {
+      const cached = vaultRes?.vault?.narrative_territories;
+      if (cached && Array.isArray(cached) && cached.length > 0) setTerritories(cached);
+    }).catch(() => {});
+  }, [serverPost]);
+
+  const loadTerritories = useCallback(async () => {
+    setTerritoriesLoading(true);
+    try {
+      const res = await serverPost("/brand-engine/territories", {});
+      if (res?.success && res.territories) setTerritories(res.territories);
+    } catch (e) { console.warn("[CampaignLab] Territories load failed:", e); }
+    setTerritoriesLoading(false);
+  }, [serverPost]);
 
   // ── Select a product: auto-fill brief + add product images as ref photos ──
   const handleSelectProduct = useCallback((product: any) => {
@@ -980,7 +1002,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     let briefShort = enrichedParts.join("\n\n").slice(0, 2000);
     const urlsShort = (productUrls || "").slice(0, 300);
 
-    // ── Brand Engine: enrich brief with brand strategy ──
+    // ── Brand Engine: Brief-to-Story enrichment ──
     try {
       const vaultRes = await serverPost("/vault/load", {});
       const bp = vaultRes?.vault?.brand_platform;
@@ -989,9 +1011,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           prompt: briefShort,
           contentType: "campaign",
           brand_platform: bp,
+          territory: selectedTerritory || undefined,
         });
         if (enrichRes?.success && enrichRes.wasEnriched && enrichRes.enrichedPrompt) {
-          console.log("[CampaignLab][BrandEngine] Brief enriched:", enrichRes.enrichedPrompt.slice(0, 120));
+          console.log("[CampaignLab][BrandEngine] Brief enriched:", enrichRes.brief?.angle?.slice(0, 80));
           briefShort = enrichRes.enrichedPrompt.slice(0, 2000);
         }
       }
@@ -2071,6 +2094,40 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               className="max-w-3xl mx-auto px-6 py-8 space-y-6">
 
               {/* ═══ SECTION 1: ESSENTIAL — Brief + Formats ═══ */}
+
+              {/* ── Narrative Territories ── */}
+              {territories.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 mr-1">
+                    <Compass size={12} className="text-muted-foreground" />
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Territory</span>
+                  </div>
+                  <button onClick={() => setSelectedTerritory(null)}
+                    className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
+                    style={{ fontSize: "11px", fontWeight: 500, background: !selectedTerritory ? "var(--foreground)" : "var(--secondary)", color: !selectedTerritory ? "var(--background)" : "var(--muted-foreground)", border: "1px solid " + (!selectedTerritory ? "var(--foreground)" : "var(--border)") }}>
+                    Free
+                  </button>
+                  {territories.map(t => (
+                    <button key={t.id} onClick={() => setSelectedTerritory(selectedTerritory?.id === t.id ? null : t)}
+                      className="px-2.5 py-1 rounded-full transition-all cursor-pointer" title={t.description}
+                      style={{ fontSize: "11px", fontWeight: 500, background: selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--secondary)", color: selectedTerritory?.id === t.id ? "var(--background)" : "var(--muted-foreground)", border: "1px solid " + (selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--border)") }}>
+                      {t.name}
+                    </button>
+                  ))}
+                  <button onClick={loadTerritories} disabled={territoriesLoading}
+                    className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-30"
+                    title="Refresh territories">
+                    <RefreshCw size={10} className={territoriesLoading ? "animate-spin" : ""} />
+                  </button>
+                  {selectedTerritory && (
+                    <div className="w-full pl-7 mt-0.5" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      <span style={{ fontWeight: 500 }}>{selectedTerritory.angle}</span>
+                      <span className="mx-1.5">·</span>
+                      <span style={{ fontStyle: "italic" }}>{selectedTerritory.emotion}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Campaign Brief — THE main field */}
               <div>

@@ -10,6 +10,7 @@ import {
   Upload, Layers, Camera, Paintbrush, Maximize2, Rocket,
   Play, Pencil, FolderPlus, Mic, MicOff, Square,
   Scissors, Video, FileAudio, Loader2,
+  Compass, Target, RefreshCw,
 } from "lucide-react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -254,6 +255,13 @@ function HubPageContent() {
   const [refImage, setRefImage] = useState<{ file: File; previewUrl: string; signedUrl?: string; uploading?: boolean } | null>(null);
   const [refStrength, setRefStrength] = useState(0.75);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
+
+  // ── Brand Engine state ──
+  const [brandBrief, setBrandBrief] = useState<{ angle: string; hook: string; emotional_arc: string; benefit_focus: string; visual_direction: string; dont: string } | null>(null);
+  const [brandScore, setBrandScore] = useState<{ overall: number; verdict: string; suggestion: string; scores: Record<string, number> } | null>(null);
+  const [territories, setTerritories] = useState<{ id: string; name: string; description: string; angle: string; emotion: string; example_prompts: string[]; best_for: string[] }[]>([]);
+  const [selectedTerritory, setSelectedTerritory] = useState<typeof territories[number] | null>(null);
+  const [territoriesLoading, setTerritoriesLoading] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -587,6 +595,56 @@ function HubPageContent() {
     }
   }, [libraryFolders, serverPost]);
 
+  // ── Brand Engine: post-generation scoring ──
+  const prevIsGenerating = useRef(false);
+  useEffect(() => {
+    if (prevIsGenerating.current && !isGenerating && generations.length > 0) {
+      // Generation just finished — fire brand score in background
+      const firstGen = generations[0];
+      const resultPreview = firstGen?.preview;
+      const resultText = (resultPreview as any)?.text || (resultPreview as any)?.imageUrl || (resultPreview as any)?.videoUrl || "";
+      serverPost("/vault/load", {}).then(vaultRes => {
+        const bp = vaultRes?.vault?.brand_platform;
+        if (!bp) return;
+        serverPost("/brand-engine/score", {
+          prompt: firstGen?.prompt || "",
+          result: resultText,
+          contentType: firstGen?.type || "image",
+          brand_platform: bp,
+        }).then(scoreRes => {
+          if (scoreRes?.success && scoreRes.score) {
+            setBrandScore(scoreRes.score);
+            console.log("[BrandEngine] Score:", scoreRes.score.overall, scoreRes.score.verdict);
+          }
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+    prevIsGenerating.current = isGenerating;
+  }, [isGenerating, generations, serverPost]);
+
+  // ── Brand Engine: load territories on mount ──
+  useEffect(() => {
+    serverPost("/vault/load", {}).then(vaultRes => {
+      const cached = vaultRes?.vault?.narrative_territories;
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setTerritories(cached);
+      }
+    }).catch(() => {});
+  }, [serverPost]);
+
+  const loadTerritories = useCallback(async () => {
+    setTerritoriesLoading(true);
+    try {
+      const res = await serverPost("/brand-engine/territories", {});
+      if (res?.success && res.territories) {
+        setTerritories(res.territories);
+      }
+    } catch (e) {
+      console.warn("[BrandEngine] Territories load failed:", e);
+    }
+    setTerritoriesLoading(false);
+  }, [serverPost]);
+
   const handleGenerate = useCallback(async () => {
     console.log("[HubPage] handleGenerate called", { prompt: prompt.slice(0, 60), isGenerating, activeModelsCount: activeModels.length, contentType });
     if (!prompt.trim() || isGenerating || activeModels.length === 0) {
@@ -604,25 +662,28 @@ function HubPageContent() {
     const isImageType = contentType === "image";
     const token = getAuthToken();
 
-    // ── Brand Engine enrichment ──
-    // Load vault → if brand_platform exists, enrich the prompt before generation
+    // ── Brand Engine: Brief-to-Story enrichment ──
+    setBrandBrief(null);
+    setBrandScore(null);
+    let vaultBP: any = null;
     try {
       const vaultRes = await serverPost("/vault/load", {});
-      const bp = vaultRes?.vault?.brand_platform;
-      if (bp) {
+      vaultBP = vaultRes?.vault?.brand_platform;
+      if (vaultBP) {
         const enrichRes = await serverPost("/brand-engine/enrich", {
           prompt: currentPrompt,
           contentType,
-          brand_platform: bp,
+          brand_platform: vaultBP,
+          territory: selectedTerritory || undefined,
         });
         if (enrichRes?.success && enrichRes.wasEnriched && enrichRes.enrichedPrompt) {
-          console.log("[BrandEngine] Prompt enriched:", enrichRes.enrichedPrompt.slice(0, 120));
+          console.log("[BrandEngine] Brief-to-story:", enrichRes.brief?.angle?.slice(0, 80));
           currentPrompt = enrichRes.enrichedPrompt;
+          if (enrichRes.brief) setBrandBrief(enrichRes.brief);
         }
       }
     } catch (e) {
       console.warn("[BrandEngine] Enrichment skipped:", e);
-      // Continue with original prompt
     }
 
     const genStartMs = Date.now();
@@ -1389,6 +1450,8 @@ function HubPageContent() {
                 error={generationError}
                 onAnimate={handleAnimate}
                 onExport={handleExport}
+                brandScore={brandScore}
+                brandBrief={brandBrief}
               />
             </motion.div>
           )}
@@ -1652,6 +1715,68 @@ function HubPageContent() {
         <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden"
           onChange={(e) => { const file = e.target.files?.[0]; if (file) handleRefUpload(file); e.target.value = ""; }} />
 
+        {/* ── Narrative Territories ── */}
+        {territories.length > 0 && (
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 mr-1">
+                <Compass size={12} className="text-muted-foreground" />
+                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Territory</span>
+              </div>
+              <button onClick={() => setSelectedTerritory(null)}
+                className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
+                style={{
+                  fontSize: "11px", fontWeight: 500,
+                  background: !selectedTerritory ? "var(--foreground)" : "var(--secondary)",
+                  color: !selectedTerritory ? "var(--background)" : "var(--muted-foreground)",
+                  border: "1px solid " + (!selectedTerritory ? "var(--foreground)" : "var(--border)"),
+                }}>Free</button>
+              {territories.map(t => (
+                <button key={t.id} onClick={() => setSelectedTerritory(selectedTerritory?.id === t.id ? null : t)}
+                  className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
+                  title={t.description}
+                  style={{
+                    fontSize: "11px", fontWeight: 500,
+                    background: selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--secondary)",
+                    color: selectedTerritory?.id === t.id ? "var(--background)" : "var(--muted-foreground)",
+                    border: "1px solid " + (selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--border)"),
+                  }}>{t.name}</button>
+              ))}
+              <button onClick={loadTerritories} disabled={territoriesLoading}
+                className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-30"
+                title="Refresh territories">
+                <RefreshCw size={10} className={territoriesLoading ? "animate-spin" : ""} />
+              </button>
+            </div>
+            {selectedTerritory && (
+              <div className="mt-1.5 pl-7" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                <span style={{ fontWeight: 500 }}>{selectedTerritory.angle}</span>
+                <span className="mx-1.5">·</span>
+                <span style={{ fontStyle: "italic" }}>{selectedTerritory.emotion}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Creative Brief (Brief-to-Story) ── */}
+        <AnimatePresence>
+          {brandBrief && isGenerating && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+              className="mx-4 mb-2 rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Target size={11} style={{ color: "var(--ora-signal)" }} />
+                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Creative Brief</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                <div><span style={{ fontWeight: 600, color: "var(--foreground)" }}>Angle:</span> {brandBrief.angle}</div>
+                <div><span style={{ fontWeight: 600, color: "var(--foreground)" }}>Hook:</span> {brandBrief.hook}</div>
+                <div><span style={{ fontWeight: 600, color: "var(--foreground)" }}>Benefit:</span> {brandBrief.benefit_focus}</div>
+                <div><span style={{ fontWeight: 600, color: "var(--foreground)" }}>Avoid:</span> {brandBrief.dont}</div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Input bar — iMessage style */}
         <div className="px-4 pb-4 pt-1">
           <div
@@ -1898,7 +2023,7 @@ function getPlaceholder(type: ContentType): string {
    GENERATE VIEW
    ═���═════════════════════════════════ */
 
-function GenerateView({ generations, isGenerating, contentType, activeModels, onSave, onCompareAll, compareItems, onPreview, error, onAnimate, onExport }: {
+function GenerateView({ generations, isGenerating, contentType, activeModels, onSave, onCompareAll, compareItems, onPreview, error, onAnimate, onExport, brandScore, brandBrief }: {
   generations: GeneratedItem[];
   isGenerating: boolean;
   contentType: ContentType;
@@ -1910,6 +2035,8 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
   error?: string | null;
   onAnimate?: (item: GeneratedItem) => void;
   onExport: (item: GeneratedItem) => void;
+  brandScore?: { overall: number; verdict: string; suggestion: string; scores: Record<string, number> } | null;
+  brandBrief?: { angle: string; hook: string; emotional_arc: string; benefit_focus: string; visual_direction: string; dont: string } | null;
 }) {
   const [sliderIndex, setSliderIndex] = useState(0);
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
@@ -2234,6 +2361,24 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
               <Download size={14} /> Export
             </button>
           </div>
+
+          {/* Brand Score badge — floating on visual results */}
+          {brandScore && !isGenerating && (
+            <div className="flex justify-center pb-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+                style={{
+                  background: brandScore.verdict === "on-brand" ? "rgba(16,185,129,0.15)" : brandScore.verdict === "acceptable" ? "rgba(245,158,11,0.15)" : "rgba(239,68,68,0.15)",
+                  backdropFilter: "blur(16px)",
+                  border: `1px solid ${brandScore.verdict === "on-brand" ? "rgba(16,185,129,0.3)" : brandScore.verdict === "acceptable" ? "rgba(245,158,11,0.3)" : "rgba(239,68,68,0.3)"}`,
+                }}>
+                <Target size={11} style={{ color: brandScore.verdict === "on-brand" ? "#10b981" : brandScore.verdict === "acceptable" ? "#f59e0b" : "#ef4444" }} />
+                <span style={{ fontSize: "11px", fontWeight: 600, color: brandScore.verdict === "on-brand" ? "#10b981" : brandScore.verdict === "acceptable" ? "#f59e0b" : "#ef4444" }}>
+                  {brandScore.overall}/100
+                </span>
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.6)" }}>{brandScore.suggestion}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2245,13 +2390,28 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
   return (
     <div className="p-6 flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div>
-          <p className="text-muted-foreground mb-0.5" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Results from {generations.length} models
-          </p>
-          <p className="text-foreground truncate max-w-[400px]" style={{ fontSize: "13px", fontWeight: 500 }}>
-            "{generations[0]?.prompt}"
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="text-muted-foreground mb-0.5" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              Results from {generations.length} models
+            </p>
+            <p className="text-foreground truncate max-w-[400px]" style={{ fontSize: "13px", fontWeight: 500 }}>
+              "{generations[0]?.prompt}"
+            </p>
+          </div>
+          {/* Brand Score badge — text results */}
+          {brandScore && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+              style={{
+                background: brandScore.verdict === "on-brand" ? "rgba(16,185,129,0.08)" : brandScore.verdict === "acceptable" ? "rgba(245,158,11,0.08)" : "rgba(239,68,68,0.08)",
+                border: `1px solid ${brandScore.verdict === "on-brand" ? "rgba(16,185,129,0.2)" : brandScore.verdict === "acceptable" ? "rgba(245,158,11,0.2)" : "rgba(239,68,68,0.2)"}`,
+              }}>
+              <Target size={10} style={{ color: brandScore.verdict === "on-brand" ? "#10b981" : brandScore.verdict === "acceptable" ? "#f59e0b" : "#ef4444" }} />
+              <span style={{ fontSize: "10px", fontWeight: 600, color: brandScore.verdict === "on-brand" ? "#10b981" : brandScore.verdict === "acceptable" ? "#f59e0b" : "#ef4444" }}>
+                {brandScore.overall}/100
+              </span>
+            </div>
+          )}
         </div>
         <button onClick={() => { /* regenerate */ }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
