@@ -4659,6 +4659,31 @@ Generate 6 narrative territories for this brand:`
 // STUDIO CHAT — Unified conversational creation router
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+function getUpcomingDates(now: Date): string {
+  const events = [
+    { month: 1, day: 1, name: "Nouvel An" }, { month: 2, day: 14, name: "Saint-Valentin" },
+    { month: 3, day: 8, name: "Journée des droits des femmes" }, { month: 3, day: 22, name: "Journée mondiale de l'eau" },
+    { month: 4, day: 1, name: "April Fools' Day" }, { month: 4, day: 7, name: "Journée mondiale de la santé" },
+    { month: 4, day: 22, name: "Earth Day" }, { month: 5, day: 1, name: "Fête du travail" },
+    { month: 5, day: 11, name: "Fête des mères" }, { month: 6, day: 5, name: "Journée mondiale de l'environnement" },
+    { month: 6, day: 15, name: "Fête des pères" }, { month: 6, day: 21, name: "Fête de la musique" },
+    { month: 9, day: 1, name: "Rentrée" }, { month: 10, day: 31, name: "Halloween" },
+    { month: 11, day: 29, name: "Black Friday" }, { month: 12, day: 25, name: "Noël" },
+  ];
+  const year = now.getFullYear();
+  const upcoming = events
+    .map(e => {
+      let d = new Date(year, e.month - 1, e.day);
+      if (d < now) d = new Date(year + 1, e.month - 1, e.day);
+      const days = Math.ceil((d.getTime() - now.getTime()) / 86400000);
+      return { ...e, daysUntil: days, date: d.toISOString().slice(0, 10) };
+    })
+    .filter(e => e.daysUntil <= 60 && e.daysUntil > 0)
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+    .slice(0, 5);
+  return upcoming.map(e => `- ${e.name} (${e.date}, dans ${e.daysUntil} jours)`).join("\n");
+}
+
 app.post("/studio/chat", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -4675,48 +4700,76 @@ app.post("/studio/chat", async (c) => {
       content: h.content,
     }));
 
+    // Build brand context from vault if available
+    const bp = context.brand_platform;
+    const brandSection = bp ? `
+MARQUE DE L'UTILISATEUR :
+- Nom : ${bp.brand_name || "inconnu"}
+- Promesse : ${bp.promise || ""}
+- Registre narratif : ${bp.narrative_register || ""}
+- Tension créative : ${bp.creative_tension || ""}
+- Direction photo : ${bp.photo_direction || ""}
+- Codes à adopter : ${bp.semiotic_codes?.adopt?.join(", ") || ""}
+- Codes à éviter : ${bp.semiotic_codes?.avoid?.join(", ") || ""}
+- Ton : ${context.tone || bp.tone || "professionnel"}
+${context.gammes ? `- Gammes/produits : ${JSON.stringify(context.gammes).slice(0, 500)}` : ""}
+IMPORTANT : En mode CAMPAGNE, utilise TOUJOURS ces informations marque pour enrichir les briefs et rester brand-compliant.` : "";
+
+    const today = new Date();
+    const calendarHints = getUpcomingDates(today);
+
     const systemPrompt = `Tu es l'assistant créatif du Studio ORA. Tu es sympathique, enthousiaste et direct — comme un directeur artistique cool qui parle par SMS.
 
 TON RÔLE : comprendre ce que l'utilisateur veut créer et router vers la bonne action.
 
 IL Y A 2 MODES :
-1. CRÉATION LIBRE — génération rapide d'image, texte, musique, vidéo. Fun, expérimental, pas de lien avec la marque. L'utilisateur veut juste créer quelque chose.
+1. CRÉATION LIBRE — génération rapide d'image, texte, musique, vidéo. Fun, expérimental, pas de lien avec la marque.
 2. CAMPAGNE — brief structuré, multi-format, brand compliant. L'utilisateur veut communiquer pour sa marque/entreprise.
+${brandSection}
+
+DATES CLÉS À VENIR (pour Inspire Me) :
+${calendarHints}
 
 RÈGLES :
 - Si l'intention est claire → propose directement l'action
-- Si l'intention est ambiguë (ex: "je veux communiquer sur X") → demande gentiment : visuel rapide, vidéo montée, ou campagne complète ?
+- Si l'intention est ambiguë → demande gentiment : visuel rapide, vidéo montée, ou campagne complète ?
 - Si l'utilisateur ne sait pas quoi faire → propose des idées fun et inspire-le
-- Toujours tutoyer, être bref, utiliser un ton SMS/chat
-- Jamais de longs paragraphes, 2-3 phrases max par message
+- Toujours tutoyer, être bref, ton SMS/chat, 2-3 phrases max
 - Quand tu proposes de générer, sois précis sur ce que tu vas faire
 
-POUR CHAQUE RÉPONSE, tu dois retourner un JSON avec :
+FLUX CAMPAGNE (mode=campaign) :
+Quand l'utilisateur veut une campagne, tu mènes le brief CONVERSATIONNELLEMENT en posant ces questions UNE PAR UNE (pas toutes d'un coup) :
+1. "C'est pour quoi ? Décris ton projet en quelques mots." → brief
+2. "Tu vises qui ?" → targetAudience
+3. "Sur quels canaux tu veux diffuser ?" → propose : LinkedIn, Instagram, Facebook, Twitter, TikTok, YouTube, Blog
+4. "Un ton particulier ? Un CTA ?" → toneOfVoice, callToAction
+5. "Un angle ou message clé ?" → contentAngle, keyMessages
+Quand tu as assez d'infos (au minimum brief + formats), utilise generate-campaign.
+Si l'utilisateur dit "Inspire me" en mode campagne → propose 3-4 concepts créatifs basés sur les dates clés + la marque.
+
+POUR CHAQUE RÉPONSE, retourne un JSON :
 {
-  "reply": "ton message à l'utilisateur",
-  "action": null | {
-    "type": "generate-image" | "generate-text" | "generate-music" | "generate-video" | "start-campaign" | "start-video-montage" | "ask-clarification",
-    "params": { ... }
-  },
+  "reply": "ton message",
+  "action": null | { "type": "...", "params": { ... } },
   "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"]
 }
 
-ACTIONS POSSIBLES ET LEURS PARAMS :
-- generate-image: { "prompt": "...", "aspectRatio": "1:1" | "16:9" | "9:16" | "4:5", "models": ["ora-vision"] }
-- generate-text: { "prompt": "...", "style": "creative" | "professional" | "casual" }
+ACTIONS ET PARAMS :
+- generate-image: { "prompt": "...", "aspectRatio": "1:1"|"16:9"|"9:16"|"4:5" }
+- generate-text: { "prompt": "...", "style": "creative"|"professional"|"casual" }
 - generate-music: { "prompt": "...", "instrumental": true/false }
 - generate-video: { "prompt": "...", "model": "ora-motion" }
-- start-campaign: { "brief": "...", "objective": "...", "channels": ["linkedin", "instagram"] }
-  → Utilise ce type quand l'utilisateur veut une campagne. Pose les questions du brief une par une de manière conversationnelle : objectif, cible, message clé, canaux, ton.
-- start-video-montage: { "description": "...", "format": "reel" | "linkedin" | "story" }
-- ask-clarification: { "options": ["option1", "option2", "option3"] }
+- generate-campaign: { "brief": "...", "formats": ["linkedin-post","instagram-reel",...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto" }
+  Formats possibles : linkedin-post, linkedin-carousel, linkedin-video, linkedin-text, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, facebook-ad, twitter-post, twitter-thread, tiktok-video, youtube-thumbnail, youtube-short, pinterest-pin, blog-article
+- start-video-montage: { "description": "...", "format": "reel"|"linkedin"|"story" }
+- start-campaign: (pour initier le mode campagne, pas encore générer)
+- ask-clarification: { "options": ["opt1","opt2","opt3"] }
 
-Les "suggestions" sont des propositions cliquables affichées sous ton message. 3 max. Courtes (5-8 mots).
+Les "suggestions" sont des pills cliquables. 3 max. Courtes (5-8 mots).
+Si "compare" → ajoute "compare": true dans l'action.
+Si "inspire me" / "surprise me" → propose des concepts créatifs.
 
-Si l'utilisateur dit "compare" ou veut comparer → ajoute "compare": true dans l'action.
-Si l'utilisateur dit "inspire me" ou "surprise me" → propose un concept créatif inattendu.
-
-CONTEXTE CONVERSATION : ${context.mode ? `Mode actif: ${context.mode}` : "Aucun mode actif"}
+CONTEXTE : ${context.mode ? `Mode: ${context.mode}` : "Aucun mode"} | Date: ${today.toISOString().slice(0,10)}
 ${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}`;
 
     const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
