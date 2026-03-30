@@ -297,23 +297,52 @@ export function StudioPage() {
       switch (action.type) {
         case "generate-image": {
           const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
+          const modelList = Array.isArray(models) ? models : [models];
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
-          const res = await serverGet(
-            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${(Array.isArray(models) ? models : [models]).join(",")}&aspectRatio=${aspectRatio}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
-          );
-          if (refUrl) removeAttachedImage();
-          if (res.success && res.results) {
-            result = {
-              type: "image",
-              prompt,
-              items: res.results
-                .filter((r: any) => r.success && r.result?.imageUrl)
-                .map((r: any, i: number) => ({
-                  url: r.result.imageUrl,
-                  model: allModels[i] || "unknown",
-                  latencyMs: r.result.latencyMs,
-                })),
-            };
+          if (refUrl) {
+            // Use image-start per model (supports imageRefUrl for img2img)
+            const items: any[] = [];
+            removeAttachedImage();
+            for (const m of modelList) {
+              try {
+                const startRes = await serverGet(
+                  `/generate/image-start?prompt=${encodeURIComponent(prompt)}&model=${m}&aspectRatio=${aspectRatio}&imageRefUrl=${encodeURIComponent(refUrl)}&refSource=upload`
+                );
+                if (startRes.success && startRes.generationId) {
+                  // Poll for completion
+                  let imageUrl: string | null = null;
+                  for (let poll = 0; poll < 30; poll++) {
+                    await new Promise(r => setTimeout(r, 3000));
+                    const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
+                    if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
+                      imageUrl = statusRes.imageUrl;
+                      break;
+                    }
+                    if (statusRes.state === "failed") break;
+                  }
+                  if (imageUrl) items.push({ url: imageUrl, model: m, latencyMs: 0 });
+                }
+              } catch (err) { console.warn(`[studio] image-start ${m} failed:`, err); }
+            }
+            result = { type: "image", prompt, items };
+          } else {
+            // No ref image — use batch endpoint
+            const res = await serverGet(
+              `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelList.join(",")}&aspectRatio=${aspectRatio}`
+            );
+            if (res.success && res.results) {
+              result = {
+                type: "image",
+                prompt,
+                items: res.results
+                  .filter((r: any) => r.success && r.result?.imageUrl)
+                  .map((r: any, i: number) => ({
+                    url: r.result.imageUrl,
+                    model: modelList[i] || "unknown",
+                    latencyMs: r.result.latencyMs,
+                  })),
+              };
+            }
           }
           break;
         }
