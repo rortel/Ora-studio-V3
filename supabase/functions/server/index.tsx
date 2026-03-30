@@ -3460,13 +3460,14 @@ app.post("/generate/image-start", async (c) => {
     if (imageRefUrl && isUploadRef) {
       // Use image_ref (not modify_image_ref) — better subject fidelity
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
+      const noHumans = " Only the product alone, no people, no humans, no persons, no hands, no figures in the scene.";
       const sceneMap: Record<string, string> = {
-        "photoshoot": "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.",
-        "packshot": "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting from all sides, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution.",
-        "lifestyle": "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography, the subject placed naturally in a real-world setting.",
-        "flat lay": "Creative flat lay composition, top-down aerial view, arranged on a clean surface with complementary props, soft even lighting, pastel or neutral tones, magazine editorial style.",
-        "cinématique": "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain texture, deep contrast shadows, rich cinematic color grading, widescreen 2.39:1 feel.",
-        "default": "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render.",
+        "photoshoot": "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject." + noHumans,
+        "packshot": "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting from all sides, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution." + noHumans,
+        "lifestyle": "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography, the subject placed naturally in a real-world setting." + noHumans,
+        "flat lay": "Creative flat lay composition, top-down aerial view, arranged on a clean surface with complementary props, soft even lighting, pastel or neutral tones, magazine editorial style." + noHumans,
+        "cinématique": "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain texture, deep contrast shadows, rich cinematic color grading, widescreen 2.39:1 feel." + noHumans,
+        "default": "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render." + noHumans,
       };
       const promptLower = rawPrompt.toLowerCase();
       let scenePrompt = sceneMap["default"];
@@ -3593,12 +3594,13 @@ app.get("/generate/image-start", async (c) => {
       // Use image_ref (not modify_image_ref) — better subject fidelity
       body.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
       const promptLower = rawPrompt.toLowerCase();
-      let scenePrompt = "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render.";
-      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.";
-      else if (promptLower.includes("packshot")) scenePrompt = "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution.";
-      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography.";
-      else if (promptLower.includes("flat")) scenePrompt = "Creative flat lay, top-down aerial view, clean surface, complementary props, soft even lighting, magazine editorial style.";
-      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading.";
+      const noHumans = " Only the product alone, no people, no humans, no persons, no hands, no figures in the scene.";
+      let scenePrompt = "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render." + noHumans;
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject." + noHumans;
+      else if (promptLower.includes("packshot")) scenePrompt = "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution." + noHumans;
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography." + noHumans;
+      else if (promptLower.includes("flat")) scenePrompt = "Creative flat lay, top-down aerial view, clean surface, complementary props, soft even lighting, magazine editorial style." + noHumans;
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading." + noHumans;
       prompt = scenePrompt + antiTextSuffix;
       body.prompt = prompt;
       console.log(`[image-start] IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
