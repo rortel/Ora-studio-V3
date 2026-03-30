@@ -674,6 +674,19 @@ export function StudioPage() {
     if (!msg || isThinking) return;
     if (!text) setInput("");
 
+    // ── CREATE MODE shortcut: skip AI, show welcome locally ──
+    if (msg === "__CREATE_MODE__") {
+      setContext(prev => ({ ...prev, mode: "create" }));
+      setMessages([{
+        id: `assist-welcome-${Date.now()}`,
+        role: "assistant",
+        content: "Bienvenue en mode création libre ! Que souhaitez-vous créer ?\n\nJe peux générer des **images**, **vidéos**, **musiques** et **textes**. Décrivez votre idée ou joignez une photo pour commencer.",
+        suggestions: ["Créer une image", "Générer une vidéo", "Composer une musique", "Écrire un texte"],
+      }]);
+      loadVault();
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -958,22 +971,38 @@ export function StudioPage() {
                       {attachedImage.uploading ? "Upload en cours..." : "Photo de référence — que souhaitez-vous en faire ?"}
                     </span>
                   </div>
-                  {!attachedImage.uploading && (
+                  {!attachedImage.uploading && attachedImage.signedUrl && (
                     <div className="flex flex-wrap gap-1.5">
                       {[
-                        "Photoshoot studio fond blanc",
-                        "Packshot produit",
-                        "Mise en scène lifestyle",
-                        "Flat lay créatif",
-                        "Ambiance cinématique",
-                        "Animer en vidéo",
+                        { label: "Photoshoot studio fond blanc", prompt: "Professional studio photoshoot, pure white background, luxury product photography, soft diffused studio lighting, clean minimalist composition, commercial quality", type: "image" as const },
+                        { label: "Packshot produit", prompt: "Clean product packshot, neutral gradient background, professional commercial photography, sharp focus, centered composition, studio lighting", type: "image" as const },
+                        { label: "Mise en scène lifestyle", prompt: "Lifestyle product scene, natural environment, warm golden hour lighting, authentic setting, editorial photography style, depth of field", type: "image" as const },
+                        { label: "Flat lay créatif", prompt: "Creative flat lay composition, top-down view, artistic arrangement with complementary props, soft shadows, pastel or neutral background, magazine style", type: "image" as const },
+                        { label: "Ambiance cinématique", prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
+                        { label: "Animer en vidéo", prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
                       ].map(s => (
-                        <button key={s} onClick={() => handleSend(s)}
+                        <button key={s.label} onClick={() => {
+                          const refUrl = attachedImage.signedUrl!;
+                          const msgId = `assist-pill-${Date.now()}`;
+                          const userMsg: ChatMessage = { id: `user-pill-${Date.now()}`, role: "user", content: s.label };
+                          const assistMsg: ChatMessage = {
+                            id: msgId, role: "assistant",
+                            content: `Je vais utiliser votre photo comme base pour créer : ${s.label.toLowerCase()}.`,
+                            isGenerating: true,
+                            action: { type: s.type === "video" ? "generate-video" : "generate-image", params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", model: s.type === "video" ? "ora-motion" : "ora-vision" } },
+                          };
+                          if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
+                          setMessages(prev => [...prev, userMsg, assistMsg]);
+                          executeAction(
+                            { type: s.type === "video" ? "generate-video" : "generate-image", params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", model: s.type === "video" ? "ora-motion" : "ora-vision" } },
+                            msgId
+                          );
+                        }}
                           className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
                           style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
                           onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
                           onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
-                          {s}
+                          {s.label}
                         </button>
                       ))}
                     </div>
@@ -1144,7 +1173,7 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
         className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-lg"
       >
         <button
-          onClick={() => { onSetMode("create"); onSend("Je veux créer quelque chose"); }}
+          onClick={() => { onSetMode("create"); onSend("__CREATE_MODE__"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}

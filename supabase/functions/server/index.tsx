@@ -3495,14 +3495,14 @@ app.get("/generate/image-start", async (c) => {
     // User uploads → modify_image_ref (PRESERVES the photo content, adapts for format)
     // Brand Image Bank → image_ref (STYLE reference, inspires the generation)
     if (imageRefUrl && isUploadRef) {
-      // CLIENT UPLOAD: use modify_image_ref to PRESERVE the actual photo
-      // Weight 0.85 = preserve 85% of original, allow 15% adaptation for format/crop
-      body.modify_image_ref = { url: imageRefUrl, weight: 0.85 };
-      console.log(`[image-start] Using MODIFY_IMAGE_REF (upload, weight=0.85): ${imageRefUrl.slice(0, 100)}...`);
-      // Simplify prompt for modify mode — strip brand visual fluff, focus on adaptation
-      // The original photo IS the visual truth; the prompt should only guide the adaptation
+      // CLIENT UPLOAD: use modify_image_ref to PRESERVE the actual product
+      // Weight 0.95 = preserve 95% of original product — only change background/environment
+      body.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+      console.log(`[image-start] Using MODIFY_IMAGE_REF (upload, weight=0.95): ${imageRefUrl.slice(0, 100)}...`);
+      // Simplify prompt for modify mode — the product MUST stay identical
+      // Only the scene/background/lighting changes, NOT the product itself
       const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
-      let cleanPrompt = rawPrompt.slice(0, 300); // Keep only core of imagePrompt from AI
+      let cleanPrompt = rawPrompt.slice(0, 300);
       // Strip brand name from the clean prompt too
       if (brandCtx?.brandName) {
         const lbn = brandCtx.brandName.toLowerCase();
@@ -3512,7 +3512,7 @@ app.get("/generate/image-start", async (c) => {
           ci = cleanPrompt.toLowerCase().indexOf(lbn, ci + 11);
         }
       }
-      prompt = `${cleanPrompt}. Place this product in a completely new scene for ${formatHint}. Keep the product recognizable but create a fresh environment, lighting, and context. Professional commercial photography.${antiTextSuffix}`;
+      prompt = `${cleanPrompt}. CRITICAL: The product/subject in the photo must remain EXACTLY identical — same shape, colors, details, proportions, textures, logos. Only change the background, environment, lighting and scene composition. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
       body.prompt = prompt; // Update body with simplified prompt
       console.log(`[image-start] Simplified prompt for upload modify (${prompt.length} chars)`);
     } else if (imageRefUrl) {
@@ -4759,12 +4759,18 @@ INTERDIT EN CRÉATION LIBRE :
 Si l'utilisateur demande "plan marketing", "stratégie digitale", "lancement produit", "recommandations" → RÉPONDEZ DIRECTEMENT en texte riche dans "reply". C'est une question, pas une campagne.
 Si l'utilisateur parle de "produit", "marque", "audience", "cible" → c'est du contexte pour sa création, pas une demande de campagne.
 
-EXEMPLES EN CRÉATION LIBRE :
+EXEMPLES EN CRÉATION LIBRE (RESPECTEZ EXACTEMENT CE FORMAT) :
 - "Fais-moi un plan marketing" → REPLY directement avec un plan structuré en markdown. PAS d'action.
-- "Crée une image de mon produit" → action generate-image
-- "Écris un post LinkedIn" → action generate-text
+- "Crée une image de mon produit" → action generate-image IMMÉDIATEMENT
+- "Photoshoot studio fond blanc" → action generate-image avec prompt descriptif. PAS de question.
+- "Packshot produit sur fond noir" → action generate-image. PAS de question.
+- "Écris un post LinkedIn" → action generate-text IMMÉDIATEMENT
 - "Je veux une stratégie de contenu" → REPLY directement. PAS de campagne.
-- "Génère une vidéo promotionnelle" → action generate-video
+- "Génère une vidéo promotionnelle" → action generate-video IMMÉDIATEMENT
+- "Image cinématique d'un coucher de soleil" → action generate-image. PAS de question.
+- "Mise en scène lifestyle nature" → action generate-image. PAS de question.
+
+⚠️ RÈGLE CRITIQUE : Quand l'utilisateur demande de CRÉER/GÉNÉRER un visuel, texte, vidéo ou musique avec des détails suffisants → RETOURNEZ TOUJOURS l'action correspondante dans le JSON. Ne répondez JAMAIS uniquement avec du texte si une génération est demandée. "Je vais générer..." sans action = BUG.
 
 MARQUE EN CRÉATION LIBRE :
 ${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Enrichissez SILENCIEUSEMENT les prompts de génération (couleurs, style photo, ton) mais ne parlez PAS de la marque dans votre message texte. L'utilisateur crée librement.` : ""}
@@ -4843,11 +4849,25 @@ ${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateu
 - IMAGE (img2img) : le sujet/produit de la photo est préservé, seul le décor/contexte change. Idéal pour : photoshoot studio, packshot, mise en scène produit, lifestyle, flat lay, ambiance spécifique, fond différent.
 - VIDÉO (img2vid) : la photo devient la première image de la vidéo, animée par l'IA.
 
-⚠️ RÈGLE PHOTO RÉFÉRENCE — PRIORITAIRE :
-- Si l'utilisateur donne une demande CLAIRE avec la photo (ex: "photoshoot fond blanc", "packshot", "mise en scène lifestyle", "ambiance cinématique", "anime en vidéo"), GÉNÉREZ IMMÉDIATEMENT avec generate-image ou generate-video. Ne posez PAS de questions.
-- Passez "imageUrl": "${context.referenceImageUrl || ""}" dans les params de l'action pour que le frontend utilise la photo comme référence.
-- Si la demande est vague (juste la photo sans instruction), ALORS proposez les options : "Photoshoot studio sur fond blanc ?", "Mise en scène lifestyle ?", "Ambiance cinématique ?", "Animer en vidéo ?"
-- Mentionnez la photo brièvement : "Je vais utiliser votre photo comme base pour..."` : ""}
+⚠️ RÈGLE PHOTO RÉFÉRENCE — OBLIGATOIRE :
+Quand une photo est jointe ET l'utilisateur demande une génération (photoshoot, packshot, lifestyle, cinématique, vidéo...), vous DEVEZ retourner une action generate-image ou generate-video. JAMAIS uniquement du texte.
+
+EXEMPLE OBLIGATOIRE — si l'utilisateur dit "Photoshoot studio fond blanc" avec une photo jointe, retournez EXACTEMENT :
+{
+  "reply": "Je vais utiliser votre photo comme base pour créer un photoshoot studio sur fond blanc.",
+  "action": { "type": "generate-image", "params": { "prompt": "Professional studio photoshoot, pure white background, luxury product photography, soft studio lighting, clean minimalist composition, high-end commercial style", "aspectRatio": "1:1", "imageUrl": "${context.referenceImageUrl || ""}" } },
+  "suggestions": ["Changer le fond", "Version packshot", "Ambiance cinématique"]
+}
+
+AUTRE EXEMPLE — "Anime en vidéo" avec photo :
+{
+  "reply": "Je vais animer votre photo en vidéo.",
+  "action": { "type": "generate-video", "params": { "prompt": "Smooth cinematic animation, gentle camera movement, professional product reveal", "model": "ora-motion", "imageUrl": "${context.referenceImageUrl || ""}" } },
+  "suggestions": ["Plus dynamique", "Style slow motion", "Ajouter du texte"]
+}
+
+- Si la demande est vague (juste la photo sans instruction), ALORS proposez les options dans les suggestions.
+- NE POSEZ PAS de questions quand la demande est claire. Générez.` : ""}
 ${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}
 ${context.force_generate ? `\n⚠️ PRIORITÉ ABSOLUE : Retournez generate-campaign MAINTENANT. Déduisez TOUT du contexte marque. Formats par défaut : ["linkedin-post","instagram-post","facebook-post"]. AUCUNE question.` : ""}`;
 
@@ -12301,7 +12321,7 @@ app.get("/generate/cl-image-start", async (c) => {
 
     const lumaBody: any = { prompt, model: "photon-1", aspect_ratio: aspectRatio };
     if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.85 };
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     } else if (autoResolvedImageUrl) {
@@ -12844,8 +12864,8 @@ app.post("/campaign/generate-image", async (c) => {
       const b: any = { prompt, model, aspect_ratio: ar };
       if (imageRefUrl) {
         if (refSource === "upload") {
-          // User-uploaded photo: modify_image_ref preserves content, weight 0.85
-          b.modify_image_ref = { url: imageRefUrl, weight: 0.85 };
+          // User-uploaded photo: modify_image_ref preserves product identity, weight 0.95
+          b.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
         } else {
           // Style reference: image_ref with weight 0.80
           b.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
