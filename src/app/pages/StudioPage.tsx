@@ -511,15 +511,9 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
-      // Detect campaign mode from any message in history or current
-      const allMsgs = [...messages.map(m => m.content), msg];
-      const anyCampaignMention = allMsgs.some(m => /campagne|campaign|marque|brand|produit|product/i.test(m));
-      const isCampaignMode = context.mode === "campaign" || anyCampaignMention;
-
-      // Auto-set campaign mode for future messages
-      if (isCampaignMode && context.mode !== "campaign") {
-        setContext(prev => ({ ...prev, mode: "campaign" }));
-      }
+      // Campaign mode only if explicitly set (via "Campagne" button or start-campaign action)
+      // Never auto-detect from keywords — the AI handles routing via its own action system
+      const isCampaignMode = context.mode === "campaign";
 
       // Load vault + products (always — brand context enriches all generations)
       let vaultData = vault;
