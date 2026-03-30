@@ -3412,6 +3412,90 @@ app.post("/generate/campaign-plan", async (c) => {
   }
 });
 
+// POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
+app.post("/generate/image-start", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch { }
+
+    let body: any = {};
+    try { body = await c.req.json(); } catch { try { body = JSON.parse(await c.req.text()); } catch { } }
+    const rawPrompt = body.prompt || c.req.query("prompt");
+    const aspectRatio = body.aspectRatio || c.req.query("aspectRatio") || "16:9";
+    const model = body.model || c.req.query("model") || "photon-1";
+    const imageRefUrl = body.imageRefUrl || c.req.query("imageRefUrl") || undefined;
+    const refSource = body.refSource || c.req.query("refSource") || "";
+    const brandVisualPrefix = body.brandVisual || c.req.query("brandVisual") || "";
+
+    const fullUrl = c.req.url;
+    console.log(`[image-start-POST] URL len=${fullUrl.length}, prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}`);
+    if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
+
+    // ── SERVER-SIDE BRAND CONTEXT ──
+    let prompt = rawPrompt;
+    let brandCtx: BrandContext | null = null;
+    if (user) {
+      try {
+        brandCtx = await buildBrandContext(user.id);
+        if (brandCtx) {
+          prompt = enrichPromptWithBrand(prompt, brandCtx, aspectRatio);
+          console.log(`[image-start-POST] Brand-enriched prompt (${prompt.length} chars)`);
+        }
+      } catch (err) { console.log(`[image-start-POST] buildBrandContext failed: ${err}`); }
+    }
+
+    const antiTextSuffix = ". No visible text, letters, numbers, words, watermarks, labels or typography in the image.";
+    if (brandCtx?.brandName) {
+      const bn = brandCtx.brandName;
+      const before = prompt;
+      prompt = prompt.replace(new RegExp(bn, "gi"), "the product");
+      if (before !== prompt) console.log(`[image-start-POST] Stripped brand name "${bn}"`);
+    }
+
+    const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
+    const lumaBody: any = { prompt: prompt + antiTextSuffix, model: "photon-1", aspect_ratio: lumaArMap[aspectRatio] || "1:1" };
+
+    const isUploadRef = refSource === "upload";
+    if (imageRefUrl && isUploadRef) {
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+      const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
+      let cleanPrompt = rawPrompt.slice(0, 300);
+      if (brandCtx?.brandName) {
+        cleanPrompt = cleanPrompt.replace(new RegExp(brandCtx.brandName, "gi"), "the product");
+      }
+      lumaBody.prompt = `${cleanPrompt}. CRITICAL: The product/subject must remain EXACTLY identical. Only change background, environment, lighting. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
+      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=0.95`);
+    } else if (imageRefUrl) {
+      lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
+    }
+
+    console.log(`[image-start-POST] Luma body: prompt=${lumaBody.prompt?.length} chars, model=photon-1, ratio=${lumaBody.aspect_ratio}, hasModifyRef=${!!lumaBody.modify_image_ref}`);
+
+    const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${Deno.env.get("LUMA_API_KEY")}`, "Content-Type": "application/json" },
+      body: JSON.stringify(lumaBody),
+    });
+
+    if (!lumaRes.ok) {
+      const errText = await lumaRes.text();
+      console.error(`[image-start-POST] Luma error ${lumaRes.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Luma error: ${lumaRes.status}` }, 500);
+    }
+
+    const generation = await lumaRes.json();
+    const genId = generation.id;
+    if (!genId) return c.json({ success: false, error: "No generation ID" }, 500);
+
+    console.log(`[image-start-POST] OK ${Date.now() - t0}ms, genId=${genId}`);
+    return c.json({ success: true, generationId: genId, state: generation.state || "queued" });
+  } catch (err) {
+    console.error(`[image-start-POST] error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 app.get("/generate/image-start", async (c) => {
   const t0 = Date.now();
   try {
