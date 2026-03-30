@@ -21,7 +21,6 @@ export function VideoComposition({ project }: Props) {
               key={item.id}
               from={item.from}
               durationInFrames={item.durationInFrames}
-              layout="none"
             >
               <TransitionWrapper item={item} fps={project.fps}>
                 <RenderItem item={item} fps={project.fps} />
@@ -56,7 +55,7 @@ function TransitionWrapper({
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
       });
-      return <div style={{ opacity }}>{children}</div>;
+      return <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>;
     }
     case "fade-black": {
       const opacity = interpolate(frame, [0, transitionFrames], [0, 1], {
@@ -66,7 +65,7 @@ function TransitionWrapper({
       return (
         <>
           <AbsoluteFill style={{ background: "#000", opacity: 1 - opacity }} />
-          <div style={{ opacity }}>{children}</div>
+          <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>
         </>
       );
     }
@@ -78,7 +77,7 @@ function TransitionWrapper({
       return (
         <>
           <AbsoluteFill style={{ background: "#fff", opacity: 1 - opacity }} />
-          <div style={{ opacity }}>{children}</div>
+          <AbsoluteFill style={{ opacity }}>{children}</AbsoluteFill>
         </>
       );
     }
@@ -88,9 +87,9 @@ function TransitionWrapper({
         extrapolateRight: "clamp",
       });
       return (
-        <div style={{ clipPath: `inset(0 ${100 - progress}% 0 0)` }}>
+        <AbsoluteFill style={{ clipPath: `inset(0 ${100 - progress}% 0 0)` }}>
           {children}
-        </div>
+        </AbsoluteFill>
       );
     }
     case "wipe-right": {
@@ -99,9 +98,9 @@ function TransitionWrapper({
         extrapolateRight: "clamp",
       });
       return (
-        <div style={{ clipPath: `inset(0 0 0 ${100 - progress}%)` }}>
+        <AbsoluteFill style={{ clipPath: `inset(0 0 0 ${100 - progress}%)` }}>
           {children}
-        </div>
+        </AbsoluteFill>
       );
     }
     default:
