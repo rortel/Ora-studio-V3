@@ -77,6 +77,32 @@ interface ChatMessage {
   isGenerating?: boolean;
 }
 
+const COMPARE_MODELS = {
+  image: [
+    { id: "ora-vision", label: "ORA Vision", badge: "Luma Photon" },
+    { id: "flux-pro", label: "Flux Pro", badge: "FAL" },
+    { id: "dall-e", label: "DALL·E 3", badge: "OpenAI" },
+    { id: "midjourney", label: "Midjourney", badge: "Replicate" },
+    { id: "seedream-v4", label: "SeDream v4", badge: "ByteDance" },
+  ],
+  text: [
+    { id: "gpt-5", label: "GPT-5", badge: "OpenAI" },
+    { id: "claude-opus", label: "Claude Opus", badge: "Anthropic" },
+    { id: "claude-sonnet", label: "Claude Sonnet", badge: "Anthropic" },
+    { id: "gemini-pro", label: "Gemini Pro", badge: "Google" },
+    { id: "deepseek", label: "DeepSeek", badge: "DeepSeek" },
+    { id: "gpt-4o", label: "GPT-4o", badge: "OpenAI" },
+  ],
+  video: [
+    { id: "ora-motion", label: "ORA Motion", badge: "Luma Ray 2" },
+    { id: "ray-flash-2", label: "Ray Flash 2", badge: "Luma" },
+    { id: "runway-gen3", label: "Runway Gen3", badge: "Runway" },
+    { id: "pika", label: "Pika", badge: "Pika" },
+  ],
+  music: [] as { id: string; label: string; badge: string }[],
+  campaign: [] as { id: string; label: string; badge: string }[],
+};
+
 export function StudioPage() {
   const navigate = useNavigate();
   const { getAuthHeader } = useAuth();
@@ -272,11 +298,8 @@ export function StudioPage() {
         case "generate-image": {
           const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
-          const allModels = action.compare
-            ? ["ora-vision", "flux-pro", "midjourney", "dall-e"]
-            : models;
           const res = await serverGet(
-            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${allModels.join(",")}&aspectRatio=${aspectRatio}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
+            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${(Array.isArray(models) ? models : [models]).join(",")}&aspectRatio=${aspectRatio}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
           );
           if (refUrl) removeAttachedImage();
           if (res.success && res.results) {
@@ -299,11 +322,8 @@ export function StudioPage() {
           const systemPrompt = style === "professional"
             ? "You are a world-class business writer. Write clear, polished, persuasive content. Use structured formatting when appropriate (headings, bullet points). Adapt tone and length to the platform and audience."
             : "You are a world-class creative writer. Write engaging, original, high-impact content. Adapt tone, style and length to the context. Be bold and distinctive.";
-          const allModels = action.compare
-            ? "gpt-5,claude-opus,claude-sonnet,gemini-pro,deepseek,gpt-4o"
-            : "gpt-5";
           const res = await serverGet(
-            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=${allModels}&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=4096`
+            `/generate/text-multi-get?prompt=${encodeURIComponent(prompt)}&models=gpt-5&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=4096`
           );
           if (res.success && res.results) {
             result = {
@@ -313,7 +333,7 @@ export function StudioPage() {
                 .filter((r: any) => r.success && r.result?.text)
                 .map((r: any, i: number) => ({
                   text: r.result.text,
-                  model: allModels.split(",")[i] || "unknown",
+                  model: "gpt-5",
                   latencyMs: r.result.latencyMs,
                 })),
             };
@@ -322,7 +342,7 @@ export function StudioPage() {
         }
         case "generate-music": {
           const { prompt, instrumental = true } = action.params;
-          const allModels = action.compare ? ["suno", "udio"] : ["suno"];
+          const allModels = ["suno"];
           const startRes = await serverPost("/suno/start", {
             prompt, models: allModels, instrumental,
           });
@@ -348,9 +368,7 @@ export function StudioPage() {
         case "generate-video": {
           const { prompt, model = "ora-motion" } = action.params;
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
-          const allModels = action.compare
-            ? ["ora-motion", "runway-gen3"]
-            : [model];
+          const allModels = [model];
           const items: any[] = [];
           if (refUrl) removeAttachedImage();
           for (const m of allModels) {
@@ -713,10 +731,73 @@ export function StudioPage() {
     setIsThinking(false);
   }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate, attachedImage]);
 
-  // ── Compare handler ──
+  // ── Compare handler — opens model picker ──
+  const [comparePicker, setComparePicker] = useState<{ result: GeneratedResult; selectedModels: string[] } | null>(null);
+
   const handleCompare = useCallback((result: GeneratedResult) => {
-    handleSend(`Compare : ${result.prompt}`);
-  }, [handleSend]);
+    const defaults = COMPARE_MODELS[result.type as keyof typeof COMPARE_MODELS] || [];
+    setComparePicker({ result, selectedModels: defaults.map(m => m.id) });
+  }, []);
+
+  const handleCompareGenerate = useCallback(async () => {
+    if (!comparePicker) return;
+    const { result, selectedModels } = comparePicker;
+    if (selectedModels.length < 2) { toast.error("Sélectionnez au moins 2 modèles"); return; }
+    setComparePicker(null);
+    setIsGenerating(true);
+
+    try {
+      let compareResult: GeneratedResult | null = null;
+
+      if (result.type === "image") {
+        const res = await serverGet(
+          `/generate/image-via-get?prompt=${encodeURIComponent(result.prompt)}&models=${selectedModels.join(",")}&aspectRatio=1:1`
+        );
+        if (res.success && res.results) {
+          compareResult = {
+            type: "image", prompt: result.prompt,
+            items: res.results.filter((r: any) => r.success && r.result?.imageUrl)
+              .map((r: any, i: number) => ({ url: r.result.imageUrl, model: selectedModels[i] || "unknown", latencyMs: r.result.latencyMs })),
+          };
+        }
+      } else if (result.type === "text") {
+        const res = await serverGet(
+          `/generate/text-multi-get?prompt=${encodeURIComponent(result.prompt)}&models=${selectedModels.join(",")}&maxTokens=4096`
+        );
+        if (res.success && res.results) {
+          compareResult = {
+            type: "text", prompt: result.prompt,
+            items: res.results.filter((r: any) => r.success && r.result?.text)
+              .map((r: any, i: number) => ({ text: r.result.text, model: selectedModels[i] || "unknown", latencyMs: r.result.latencyMs })),
+          };
+        }
+      } else if (result.type === "video") {
+        const items: any[] = [];
+        for (const m of selectedModels) {
+          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(result.prompt)}&model=${m}`);
+          if (startRes.success && startRes.generationId) {
+            const videoUrl = await pollVideo(startRes.generationId);
+            if (videoUrl) items.push({ url: videoUrl, model: m });
+          }
+        }
+        compareResult = { type: "video", prompt: result.prompt, items };
+      }
+
+      if (compareResult && compareResult.items.length > 0) {
+        const msg: ChatMessage = {
+          id: `compare-${Date.now()}`, role: "assistant",
+          content: `Voici ${compareResult.items.length} versions à comparer :`,
+          result: compareResult,
+        };
+        setMessages(prev => [...prev, msg]);
+      } else {
+        toast.error("La comparaison a échoué");
+      }
+    } catch (err) {
+      toast.error("Erreur lors de la comparaison");
+    }
+    setIsGenerating(false);
+  }, [comparePicker, serverGet]);
 
   const showWelcome = messages.length === 0;
 
@@ -873,6 +954,79 @@ export function StudioPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Compare Model Picker Modal ── */}
+      <AnimatePresence>
+        {comparePicker && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+            onClick={() => setComparePicker(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="rounded-2xl p-6 w-full max-w-md mx-4"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 700 }}>Comparer les modèles</h3>
+                  <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
+                    Sélectionnez les IA à comparer ({comparePicker.selectedModels.length} sélectionnées)
+                  </p>
+                </div>
+                <button onClick={() => setComparePicker(null)} className="cursor-pointer" style={{ color: "var(--muted-foreground)" }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-2 mb-5" style={{ maxHeight: 320, overflowY: "auto" }}>
+                {(COMPARE_MODELS[comparePicker.result.type as keyof typeof COMPARE_MODELS] || []).map(model => {
+                  const selected = comparePicker.selectedModels.includes(model.id);
+                  return (
+                    <button key={model.id}
+                      onClick={() => setComparePicker(prev => {
+                        if (!prev) return null;
+                        const models = selected
+                          ? prev.selectedModels.filter(id => id !== model.id)
+                          : [...prev.selectedModels, model.id];
+                        return { ...prev, selectedModels: models };
+                      })}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all cursor-pointer"
+                      style={{
+                        background: selected ? "var(--secondary)" : "transparent",
+                        border: `1px solid ${selected ? "var(--foreground)" : "var(--border)"}`,
+                      }}>
+                      <div className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: selected ? "var(--foreground)" : "transparent",
+                          border: `2px solid ${selected ? "var(--foreground)" : "var(--border)"}`,
+                        }}>
+                        {selected && <Check size={12} style={{ color: "var(--background)" }} />}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <span style={{ fontSize: "13px", fontWeight: 600 }}>{model.label}</span>
+                      </div>
+                      <span style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500, textTransform: "uppercase" }}>
+                        {model.badge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleCompareGenerate}
+                disabled={comparePicker.selectedModels.length < 2}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
+                <Columns2 size={14} />
+                Comparer {comparePicker.selectedModels.length} modèles
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </RouteGuard>
   );
 }
@@ -1291,15 +1445,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           ))}
         </div>
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
@@ -1322,15 +1474,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
@@ -1351,15 +1501,6 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
       </div>
     );
   }
@@ -1400,15 +1541,13 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           </div>
         ))}
-        {result.items.length === 1 && (
-          <button onClick={() => onCompare(result)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres modèles
-          </button>
-        )}
+        <button onClick={() => onCompare(result)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+          <Columns2 size={12} /> Comparer avec d'autres IA
+        </button>
       </div>
     );
   }
