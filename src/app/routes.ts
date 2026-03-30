@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./pages/RootLayout";
 import { HubPage } from "./pages/HubPage";
+import { StudioPage } from "./pages/StudioPage";
 import { LandingPage } from "./pages/LandingPage";
 import { PricingPage } from "./pages/PricingPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -56,7 +57,8 @@ export const router = createBrowserRouter([
       { path: "login", Component: LoginPage },
 
       // Authenticated routes (guard inside component)
-      { path: "hub", Component: HubPage },
+      { path: "hub", Component: StudioPage },
+      { path: "hub/classic", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },
       { path: "hub/vault", Component: VaultPage },
       { path: "hub/vault/products", Component: ProductsPage },
