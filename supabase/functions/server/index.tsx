@@ -4656,6 +4656,102 @@ Generate 6 narrative territories for this brand:`
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STUDIO CHAT — Unified conversational creation router
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+app.post("/studio/chat", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { message, history = [], context = {} } = body;
+
+    if (!message) {
+      return c.json({ success: false, error: "message required." }, 400);
+    }
+
+    // Build conversation history for AI
+    const historyMessages = (history as any[]).slice(-12).map((h: any) => ({
+      role: h.role === "user" ? "user" : "assistant",
+      content: h.content,
+    }));
+
+    const systemPrompt = `Tu es l'assistant créatif du Studio ORA. Tu es sympathique, enthousiaste et direct — comme un directeur artistique cool qui parle par SMS.
+
+TON RÔLE : comprendre ce que l'utilisateur veut créer et router vers la bonne action.
+
+IL Y A 2 MODES :
+1. CRÉATION LIBRE — génération rapide d'image, texte, musique, vidéo. Fun, expérimental, pas de lien avec la marque. L'utilisateur veut juste créer quelque chose.
+2. CAMPAGNE — brief structuré, multi-format, brand compliant. L'utilisateur veut communiquer pour sa marque/entreprise.
+
+RÈGLES :
+- Si l'intention est claire → propose directement l'action
+- Si l'intention est ambiguë (ex: "je veux communiquer sur X") → demande gentiment : visuel rapide, vidéo montée, ou campagne complète ?
+- Si l'utilisateur ne sait pas quoi faire → propose des idées fun et inspire-le
+- Toujours tutoyer, être bref, utiliser un ton SMS/chat
+- Jamais de longs paragraphes, 2-3 phrases max par message
+- Quand tu proposes de générer, sois précis sur ce que tu vas faire
+
+POUR CHAQUE RÉPONSE, tu dois retourner un JSON avec :
+{
+  "reply": "ton message à l'utilisateur",
+  "action": null | {
+    "type": "generate-image" | "generate-text" | "generate-music" | "generate-video" | "start-campaign" | "start-video-montage" | "ask-clarification",
+    "params": { ... }
+  },
+  "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"]
+}
+
+ACTIONS POSSIBLES ET LEURS PARAMS :
+- generate-image: { "prompt": "...", "aspectRatio": "1:1" | "16:9" | "9:16" | "4:5", "models": ["ora-vision"] }
+- generate-text: { "prompt": "...", "style": "creative" | "professional" | "casual" }
+- generate-music: { "prompt": "...", "instrumental": true/false }
+- generate-video: { "prompt": "...", "model": "ora-motion" }
+- start-campaign: { "brief": "...", "objective": "...", "channels": ["linkedin", "instagram"] }
+  → Utilise ce type quand l'utilisateur veut une campagne. Pose les questions du brief une par une de manière conversationnelle : objectif, cible, message clé, canaux, ton.
+- start-video-montage: { "description": "...", "format": "reel" | "linkedin" | "story" }
+- ask-clarification: { "options": ["option1", "option2", "option3"] }
+
+Les "suggestions" sont des propositions cliquables affichées sous ton message. 3 max. Courtes (5-8 mots).
+
+Si l'utilisateur dit "compare" ou veut comparer → ajoute "compare": true dans l'action.
+Si l'utilisateur dit "inspire me" ou "surprise me" → propose un concept créatif inattendu.
+
+CONTEXTE CONVERSATION : ${context.mode ? `Mode actif: ${context.mode}` : "Aucun mode actif"}
+${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}`;
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...historyMessages,
+          { role: "user", content: message },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!aiRes.ok) {
+      console.error("[studio/chat] AI error:", await aiRes.text());
+      return c.json({ success: false, error: "AI routing failed." }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = (aiData.choices?.[0]?.message?.content || "").trim();
+    const result = JSON.parse(raw);
+
+    console.log(`[studio/chat] user=${user.id.slice(0,8)} action=${result.action?.type || "none"}`);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    console.error("[studio/chat] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // VIDEO ASSEMBLER — AI-powered conversational video assembly
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
