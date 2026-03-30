@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Send, Sparkles, ImageIcon, FileText, Music, Film,
+  Send, Sparkles, ImageIcon, FileText, Music, Film, Mic, Square,
   Loader2, Download, Columns2, RefreshCw, Rocket,
   Play, ArrowRight, Wand2, Palette, ChevronLeft, ChevronRight, X,
   Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
@@ -93,6 +93,88 @@ export function StudioPage() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Voice recording (Whisper) ──
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRecording = useCallback(async () => {
+    if (window.self !== window.top) {
+      toast.error("Micro bloqué en preview", { description: "Ouvrez l'app dans un nouvel onglet.", duration: 8000,
+        action: { label: "Ouvrir", onClick: () => window.open(window.location.href, "_blank") } });
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Micro non disponible", { description: "Votre navigateur ne supporte pas l'enregistrement audio." });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+        setRecordingDuration(0);
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (audioBlob.size < 100) { setIsRecording(false); return; }
+        setIsRecording(false);
+        setIsTranscribing(true);
+        try {
+          const formData = new FormData();
+          const ext = mimeType.includes("webm") ? "webm" : mimeType.includes("mp4") ? "mp4" : "ogg";
+          formData.append("audio", audioBlob, `recording.${ext}`);
+          const res = await fetch(`${API_BASE}/transcribe`, {
+            method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}` }, body: formData, signal: AbortSignal.timeout(30_000),
+          });
+          const data = await res.json();
+          if (data.success && data.text) {
+            setInput(prev => (prev ? prev + " " + data.text : data.text));
+            toast.success("Voix transcrite", { description: data.text.slice(0, 60) + (data.text.length > 60 ? "..." : "") });
+            setTimeout(() => inputRef.current?.focus(), 100);
+          } else {
+            toast.error("Transcription échouée", { description: data.error || "Erreur inconnue" });
+          }
+        } catch (err: any) {
+          toast.error("Erreur transcription", { description: err?.message || "Erreur réseau" });
+        }
+        setIsTranscribing(false);
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start(250);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast.error("Accès micro refusé", { description: "Cliquez sur le cadenas dans la barre d'adresse pour autoriser le micro.", duration: 8000 });
+      } else if (err?.name === "NotFoundError") {
+        toast.error("Aucun micro détecté", { description: "Branchez un microphone et réessayez." });
+      } else {
+        toast.error("Erreur micro", { description: err?.message || "Impossible d'accéder au microphone." });
+      }
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") mediaRecorderRef.current.stop();
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -682,6 +764,30 @@ export function StudioPage() {
                   className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
                   style={{ fontSize: "14px" }}
                 />
+                {isTranscribing ? (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Loader2 size={14} className="animate-spin" style={{ color: "var(--foreground)" }} />
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 500 }}>Transcription...</span>
+                  </div>
+                ) : isRecording ? (
+                  <button onClick={stopRecording}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                    style={{ background: "rgba(212, 24, 61, 0.1)" }}
+                    title="Arrêter l'enregistrement">
+                    <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+                      <Square size={12} style={{ color: "#d4183d", fill: "#d4183d" }} />
+                    </motion.div>
+                    <span style={{ fontSize: "11px", color: "#d4183d", fontWeight: 600 }}>
+                      {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, "0")}
+                    </span>
+                  </button>
+                ) : (
+                  <button onClick={startRecording} disabled={isThinking || isGenerating}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Prompt vocal (Whisper)">
+                    <Mic size={15} />
+                  </button>
+                )}
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() || isThinking || isGenerating}
