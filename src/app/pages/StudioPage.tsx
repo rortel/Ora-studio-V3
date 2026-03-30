@@ -303,14 +303,14 @@ export function StudioPage() {
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           console.log(`[studio] generate-image refUrl=${refUrl ? "YES" : "NO"} (${refUrl.slice(0, 80)}) models=${modelList.join(",")}`);
           if (refUrl) {
-            // Use image-start per model (supports imageRefUrl for img2img)
+            // Use image-start POST per model (POST avoids URL length limits with signed URLs)
             const items: any[] = [];
             removeAttachedImage();
             for (const m of modelList) {
               try {
-                const startRes = await serverGet(
-                  `/generate/image-start?prompt=${encodeURIComponent(prompt)}&model=${m}&aspectRatio=${aspectRatio}&imageRefUrl=${encodeURIComponent(refUrl)}&refSource=upload`
-                );
+                const startRes = await serverPost("/generate/image-start", {
+                  prompt, model: m, aspectRatio, imageRefUrl: refUrl, refSource: "upload",
+                });
                 if (startRes.success && startRes.generationId) {
                   // Poll for completion
                   let imageUrl: string | null = null;
@@ -802,9 +802,9 @@ export function StudioPage() {
           const items: any[] = [];
           for (const m of selectedModels) {
             try {
-              const startRes = await serverGet(
-                `/generate/image-start?prompt=${encodeURIComponent(result.prompt)}&model=${m}&aspectRatio=1:1&imageRefUrl=${encodeURIComponent(refUrl)}&refSource=upload`
-              );
+              const startRes = await serverPost("/generate/image-start", {
+                prompt: result.prompt, model: m, aspectRatio: "1:1", imageRefUrl: refUrl, refSource: "upload",
+              });
               if (startRes.success && startRes.generationId) {
                 let imageUrl: string | null = null;
                 for (let poll = 0; poll < 30; poll++) {
