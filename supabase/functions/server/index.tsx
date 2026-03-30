@@ -3458,16 +3458,19 @@ app.post("/generate/image-start", async (c) => {
 
     const isUploadRef = refSource === "upload";
     if (imageRefUrl && isUploadRef) {
-      // Use image_ref (not modify_image_ref) — better subject fidelity
+      // modify_image_ref = EDIT the actual image (preserves product, changes scene)
+      // image_ref = style reference only (doesn't preserve exact product)
+      // We use BOTH: modify_image_ref to edit + image_ref for extra fidelity
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
-      const noHumans = " Only the product alone, no people, no humans, no persons, no hands, no figures in the scene.";
+      const noHumans = " Remove all people and humans from the scene. Only the main product/vehicle/object remains, completely alone. No persons, no figures, no hands.";
       const sceneMap: Record<string, string> = {
-        "photoshoot": "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject." + noHumans,
-        "packshot": "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting from all sides, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution." + noHumans,
-        "lifestyle": "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography, the subject placed naturally in a real-world setting." + noHumans,
-        "flat lay": "Creative flat lay composition, top-down aerial view, arranged on a clean surface with complementary props, soft even lighting, pastel or neutral tones, magazine editorial style." + noHumans,
-        "cinématique": "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain texture, deep contrast shadows, rich cinematic color grading, widescreen 2.39:1 feel." + noHumans,
-        "default": "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render." + noHumans,
+        "photoshoot": "Remove background and people. Place the product alone on a seamless pure white cyclorama studio background. Professional softbox lighting with subtle reflections. Wide angle lens. Hyperrealistic 8k, ultra detailed, sharp focus." + noHumans,
+        "packshot": "Remove background and people. Product alone on neutral light grey gradient. Even diffused lighting, no harsh shadows. Centered, sharp focus. Commercial catalog, 8k." + noHumans,
+        "lifestyle": "Remove people. Place the product alone in a natural outdoor environment. Warm golden hour sunlight, depth of field, editorial photography." + noHumans,
+        "flat lay": "Remove people. Product alone in a creative flat lay, top-down aerial view, clean surface with complementary props, soft even lighting, magazine editorial style." + noHumans,
+        "cinématique": "Remove people. Product alone in a cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading." + noHumans,
+        "default": "Remove background and people. Product alone on clean studio background. Professional softbox lighting. Sharp focus. 8k hyperrealistic render." + noHumans,
       };
       const promptLower = rawPrompt.toLowerCase();
       let scenePrompt = sceneMap["default"];
@@ -3591,16 +3594,17 @@ app.get("/generate/image-start", async (c) => {
     // User uploads → modify_image_ref (PRESERVES the photo content, adapts for format)
     // Brand Image Bank → image_ref (STYLE reference, inspires the generation)
     if (imageRefUrl && isUploadRef) {
-      // Use image_ref (not modify_image_ref) — better subject fidelity
+      // BOTH modify_image_ref + image_ref for max fidelity
+      body.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
       body.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
       const promptLower = rawPrompt.toLowerCase();
-      const noHumans = " Only the product alone, no people, no humans, no persons, no hands, no figures in the scene.";
-      let scenePrompt = "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render." + noHumans;
-      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject." + noHumans;
-      else if (promptLower.includes("packshot")) scenePrompt = "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution." + noHumans;
-      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography." + noHumans;
-      else if (promptLower.includes("flat")) scenePrompt = "Creative flat lay, top-down aerial view, clean surface, complementary props, soft even lighting, magazine editorial style." + noHumans;
-      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading." + noHumans;
+      const noHumans = " Remove all people and humans from the scene. Only the main product/vehicle/object remains, completely alone. No persons, no figures, no hands.";
+      let scenePrompt = "Remove background and people. Product alone on clean studio background. Professional softbox lighting. Sharp focus. 8k hyperrealistic render." + noHumans;
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Remove background and people. Place the product alone on a seamless pure white cyclorama studio background. Professional softbox lighting with subtle reflections. Wide angle lens. Hyperrealistic 8k, ultra detailed, sharp focus." + noHumans;
+      else if (promptLower.includes("packshot")) scenePrompt = "Remove background and people. Product alone on neutral light grey gradient. Even diffused lighting, no harsh shadows. Centered, sharp focus. Commercial catalog, 8k." + noHumans;
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Remove people. Place the product alone in a natural outdoor environment. Warm golden hour sunlight, depth of field, editorial photography." + noHumans;
+      else if (promptLower.includes("flat")) scenePrompt = "Remove people. Product alone in a creative flat lay, top-down view, clean surface, soft even lighting, magazine editorial." + noHumans;
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Remove people. Product alone in a cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast." + noHumans;
       prompt = scenePrompt + antiTextSuffix;
       body.prompt = prompt;
       console.log(`[image-start] IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
