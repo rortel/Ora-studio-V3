@@ -98,9 +98,10 @@ export function StudioPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking, isGenerating]);
 
-  // Focus input on mount
+  // Focus input on mount + preload vault
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 300);
+    loadVault();
   }, []);
 
   const serverPost = useCallback((path: string, body: any, timeoutMs = 90_000) => {
@@ -520,10 +521,10 @@ export function StudioPage() {
         setContext(prev => ({ ...prev, mode: "campaign" }));
       }
 
-      // Load vault + products for campaign mode
+      // Load vault + products (always — brand context enriches all generations)
       let vaultData = vault;
       let productsData = products;
-      if (isCampaignMode && !vaultData) {
+      if (!vaultData) {
         const loaded = await loadVault();
         vaultData = loaded.vault;
         productsData = loaded.products;
