@@ -3459,15 +3459,26 @@ app.post("/generate/image-start", async (c) => {
     const isUploadRef = refSource === "upload";
     if (imageRefUrl && isUploadRef) {
       lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
-      // Ultra-minimal prompt: ONLY describe the desired background/scene change
-      // Do NOT describe the product — modify_image_ref weight=1.0 preserves it exactly
-      // Strip any product description from the prompt, keep only scene/environment words
-      const sceneOnly = rawPrompt
-        .replace(/product|luxury|commercial|quality|professional/gi, "")
-        .trim()
-        .slice(0, 200);
-      lumaBody.prompt = `Keep the exact same subject unchanged. Place it in: ${sceneOnly}. Soft shadows, clean composition.${antiTextSuffix}`;
-      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=1.0, scene prompt: ${lumaBody.prompt.slice(0, 100)}`);
+      // Prompt = ONLY studio/lighting/environment. NEVER describe the product.
+      // The photo reference IS the product truth. Prompt guides ONLY the scene.
+      // Map pill prompts to pure photography studio descriptions
+      const sceneMap: Record<string, string> = {
+        "photoshoot": "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.",
+        "packshot": "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting from all sides, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution.",
+        "lifestyle": "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography, the subject placed naturally in a real-world setting.",
+        "flat lay": "Creative flat lay composition, top-down aerial view, arranged on a clean surface with complementary props, soft even lighting, pastel or neutral tones, magazine editorial style.",
+        "cinématique": "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain texture, deep contrast shadows, rich cinematic color grading, widescreen 2.39:1 feel.",
+        "default": "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render.",
+      };
+      const promptLower = rawPrompt.toLowerCase();
+      let scenePrompt = sceneMap["default"];
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = sceneMap["photoshoot"];
+      else if (promptLower.includes("packshot")) scenePrompt = sceneMap["packshot"];
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = sceneMap["lifestyle"];
+      else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scenePrompt = sceneMap["flat lay"];
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scenePrompt = sceneMap["cinématique"];
+      lumaBody.prompt = scenePrompt + antiTextSuffix;
+      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=1.0, scene: ${scenePrompt.slice(0, 80)}...`);
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     }
@@ -3583,14 +3594,17 @@ app.get("/generate/image-start", async (c) => {
     if (imageRefUrl && isUploadRef) {
       // CLIENT UPLOAD: modify_image_ref weight=1.0 — maximum product preservation
       body.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
-      // Ultra-minimal prompt: ONLY scene/background, NOT the product
-      const sceneOnly = rawPrompt
-        .replace(/product|luxury|commercial|quality|professional/gi, "")
-        .trim()
-        .slice(0, 200);
-      prompt = `Keep the exact same subject unchanged. Place it in: ${sceneOnly}. Soft shadows, clean composition.${antiTextSuffix}`;
+      // Prompt = ONLY studio/lighting. NEVER describe the product.
+      const promptLower = rawPrompt.toLowerCase();
+      let scenePrompt = "Professional studio photography. Softbox lighting with subtle reflections. Clean background. Sharp focus on the subject. 8k hyperrealistic render.";
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Professional high-end studio photography. Dramatic softbox lighting with subtle reflections on the subject. Seamless pure white cyclorama background. Wide angle lens. Hyperrealistic 8k render, ultra detailed, sharp focus on subject.";
+      else if (promptLower.includes("packshot")) scenePrompt = "Clean packshot photography. Neutral light grey gradient background. Even diffused lighting, no harsh shadows. Centered framing, sharp focus. Commercial catalog style, 8k resolution.";
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Natural lifestyle scene, warm golden hour sunlight, authentic outdoor environment, depth of field, editorial photography.";
+      else if (promptLower.includes("flat")) scenePrompt = "Creative flat lay, top-down aerial view, clean surface, complementary props, soft even lighting, magazine editorial style.";
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast, rich cinematic color grading.";
+      prompt = scenePrompt + antiTextSuffix;
       body.prompt = prompt;
-      console.log(`[image-start] MODIFY_IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 100)}`);
+      console.log(`[image-start] MODIFY_IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
     } else if (imageRefUrl) {
       // BRAND IMAGE BANK: use image_ref as style reference
       body.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
