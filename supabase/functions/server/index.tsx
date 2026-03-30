@@ -3458,14 +3458,16 @@ app.post("/generate/image-start", async (c) => {
 
     const isUploadRef = refSource === "upload";
     if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
-      const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
-      let cleanPrompt = rawPrompt.slice(0, 300);
-      if (brandCtx?.brandName) {
-        cleanPrompt = cleanPrompt.replace(new RegExp(brandCtx.brandName, "gi"), "the product");
-      }
-      lumaBody.prompt = `${cleanPrompt}. CRITICAL: The product/subject must remain EXACTLY identical. Only change background, environment, lighting. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
-      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=0.95`);
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
+      // Ultra-minimal prompt: ONLY describe the desired background/scene change
+      // Do NOT describe the product — modify_image_ref weight=1.0 preserves it exactly
+      // Strip any product description from the prompt, keep only scene/environment words
+      const sceneOnly = rawPrompt
+        .replace(/product|luxury|commercial|quality|professional/gi, "")
+        .trim()
+        .slice(0, 200);
+      lumaBody.prompt = `Keep the exact same subject unchanged. Place it in: ${sceneOnly}. Soft shadows, clean composition.${antiTextSuffix}`;
+      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=1.0, scene prompt: ${lumaBody.prompt.slice(0, 100)}`);
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     }
@@ -3579,26 +3581,16 @@ app.get("/generate/image-start", async (c) => {
     // User uploads → modify_image_ref (PRESERVES the photo content, adapts for format)
     // Brand Image Bank → image_ref (STYLE reference, inspires the generation)
     if (imageRefUrl && isUploadRef) {
-      // CLIENT UPLOAD: use modify_image_ref to PRESERVE the actual product
-      // Weight 0.95 = preserve 95% of original product — only change background/environment
-      body.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
-      console.log(`[image-start] Using MODIFY_IMAGE_REF (upload, weight=0.95): ${imageRefUrl.slice(0, 100)}...`);
-      // Simplify prompt for modify mode — the product MUST stay identical
-      // Only the scene/background/lighting changes, NOT the product itself
-      const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
-      let cleanPrompt = rawPrompt.slice(0, 300);
-      // Strip brand name from the clean prompt too
-      if (brandCtx?.brandName) {
-        const lbn = brandCtx.brandName.toLowerCase();
-        let ci = cleanPrompt.toLowerCase().indexOf(lbn);
-        while (ci !== -1) {
-          cleanPrompt = cleanPrompt.slice(0, ci) + "the product" + cleanPrompt.slice(ci + brandCtx.brandName.length);
-          ci = cleanPrompt.toLowerCase().indexOf(lbn, ci + 11);
-        }
-      }
-      prompt = `${cleanPrompt}. CRITICAL: The product/subject in the photo must remain EXACTLY identical — same shape, colors, details, proportions, textures, logos. Only change the background, environment, lighting and scene composition. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
-      body.prompt = prompt; // Update body with simplified prompt
-      console.log(`[image-start] Simplified prompt for upload modify (${prompt.length} chars)`);
+      // CLIENT UPLOAD: modify_image_ref weight=1.0 — maximum product preservation
+      body.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
+      // Ultra-minimal prompt: ONLY scene/background, NOT the product
+      const sceneOnly = rawPrompt
+        .replace(/product|luxury|commercial|quality|professional/gi, "")
+        .trim()
+        .slice(0, 200);
+      prompt = `Keep the exact same subject unchanged. Place it in: ${sceneOnly}. Soft shadows, clean composition.${antiTextSuffix}`;
+      body.prompt = prompt;
+      console.log(`[image-start] MODIFY_IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 100)}`);
     } else if (imageRefUrl) {
       // BRAND IMAGE BANK: use image_ref as style reference
       body.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
@@ -12405,7 +12397,7 @@ app.get("/generate/cl-image-start", async (c) => {
 
     const lumaBody: any = { prompt, model: "photon-1", aspect_ratio: aspectRatio };
     if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     } else if (autoResolvedImageUrl) {
@@ -12949,7 +12941,7 @@ app.post("/campaign/generate-image", async (c) => {
       if (imageRefUrl) {
         if (refSource === "upload") {
           // User-uploaded photo: modify_image_ref preserves product identity, weight 0.95
-          b.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+          b.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
         } else {
           // Style reference: image_ref with weight 0.80
           b.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
