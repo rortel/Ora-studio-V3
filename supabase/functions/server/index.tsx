@@ -4838,7 +4838,10 @@ RÈGLES D'USAGE DES ACTIONS :
 
 CONTEXTE ACTUEL :
 MODE ACTIF : ${context.mode === "campaign" ? "🎯 CAMPAGNE — Vous êtes en mode campagne. Suivez le flux campagne." : "🎨 CRÉATION LIBRE — Vous êtes en mode création libre. NE PROPOSEZ JAMAIS de campagne. Répondez aux demandes directement (plan marketing = réponse texte, pas une campagne)."} | Date : ${today.toISOString().slice(0,10)}
-${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateur a attaché une photo. Elle sera utilisée automatiquement comme référence (img2img / img2vid). Mentionnez-le dans votre réponse. Adaptez vos questions de personnalisation.` : ""}
+${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateur a attaché une photo. Elle sera utilisée automatiquement comme référence pour :
+- IMAGE (img2img) : le sujet/produit de la photo est préservé, seul le décor/contexte change. Idéal pour : photoshoot studio, packshot, mise en scène produit, lifestyle, flat lay, ambiance spécifique, fond différent.
+- VIDÉO (img2vid) : la photo devient la première image de la vidéo, animée par l'IA.
+Mentionnez la photo dans votre réponse ("Je vais utiliser votre photo comme base..."). Proposez des idées adaptées : "Photoshoot studio sur fond blanc ?", "Mise en scène lifestyle ?", "Ambiance cinématique ?", "Animer en vidéo ?". Demandez le style, l'ambiance, le décor souhaité.` : ""}
 ${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}
 ${context.force_generate ? `\n⚠️ PRIORITÉ ABSOLUE : Retournez generate-campaign MAINTENANT. Déduisez TOUT du contexte marque. Formats par défaut : ["linkedin-post","instagram-post","facebook-post"]. AUCUNE question.` : ""}`;
 
