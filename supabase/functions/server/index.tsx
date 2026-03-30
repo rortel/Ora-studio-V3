@@ -4740,7 +4740,7 @@ RÈGLES DE TON :
   • Image : style (photo réaliste, illustration, 3D, flat design), palette de couleurs, composition, ambiance, format (carré, portrait, paysage)
   • Vidéo : durée, ambiance, mouvement de caméra, rythme, type (cinématique, dynamique, slow motion)
   • Texte : ton (inspirant, corporate, décalé, poétique), longueur, cible, plateforme
-  • Musique : genre, tempo, instruments, émotion, durée, avec ou sans voix
+  • Musique : genre (pop, électro, jazz, cinématique, lo-fi, hip-hop, classique…), tempo (BPM ou feeling : énergique, lent, mid-tempo), instruments principaux, émotion/ambiance, durée souhaitée, avec ou sans paroles (si paroles : thème, langue, style d'écriture), titre souhaité, style vocal (féminin, masculin, chœur, rap…), références d'artistes ou morceaux. Suno permet un contrôle très fin — encouragez l'utilisateur à décrire précisément ce qu'il entend dans sa tête
 - Si l'utilisateur donne déjà beaucoup de détails ou dit "go"/"lance"/"génère" → LANCEZ directement sans poser de questions
 - En CRÉATION LIBRE : NE DEMANDEZ JAMAIS "souhaitez-vous une campagne ?", NE proposez JAMAIS de basculer en mode campagne
 - Quand vous lancez la génération, récapitulez en 1 phrase ce que vous allez créer
