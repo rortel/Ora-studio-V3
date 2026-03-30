@@ -292,6 +292,7 @@ export function StudioPage() {
   // ── Execute generation action ──
   const executeAction = useCallback(async (action: StudioAction, msgId: string) => {
     setIsGenerating(true);
+    console.log(`[studio] executeAction type=${action.type} msgId=${msgId} params=`, JSON.stringify(action.params).slice(0, 200));
     try {
       let result: GeneratedResult | null = null;
 
@@ -300,6 +301,7 @@ export function StudioPage() {
           const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
           const modelList = Array.isArray(models) ? models : [models];
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
+          console.log(`[studio] generate-image refUrl=${refUrl ? "YES" : "NO"} (${refUrl.slice(0, 80)}) models=${modelList.join(",")}`);
           if (refUrl) {
             // Use image-start per model (supports imageRefUrl for img2img)
             const items: any[] = [];
@@ -981,22 +983,28 @@ export function StudioPage() {
                         { label: "Ambiance cinématique", prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
                         { label: "Animer en vidéo", prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
                       ].map(s => (
-                        <button key={s.label} onClick={() => {
-                          const refUrl = attachedImage.signedUrl!;
+                        <button key={s.label} onClick={async () => {
+                          const refUrl = attachedImage?.signedUrl;
+                          if (!refUrl) { toast.error("Photo pas encore uploadée, patientez..."); return; }
                           const msgId = `assist-pill-${Date.now()}`;
                           const userMsg: ChatMessage = { id: `user-pill-${Date.now()}`, role: "user", content: s.label };
+                          const actionType = s.type === "video" ? "generate-video" : "generate-image";
+                          const actionObj: StudioAction = { type: actionType, params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", models: ["ora-vision"], model: "ora-motion" } };
                           const assistMsg: ChatMessage = {
                             id: msgId, role: "assistant",
                             content: `Je vais utiliser votre photo comme base pour créer : ${s.label.toLowerCase()}.`,
                             isGenerating: true,
-                            action: { type: s.type === "video" ? "generate-video" : "generate-image", params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", model: s.type === "video" ? "ora-motion" : "ora-vision" } },
+                            action: actionObj,
                           };
                           if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
                           setMessages(prev => [...prev, userMsg, assistMsg]);
-                          executeAction(
-                            { type: s.type === "video" ? "generate-video" : "generate-image", params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", model: s.type === "video" ? "ora-motion" : "ora-vision" } },
-                            msgId
-                          );
+                          try {
+                            await executeAction(actionObj, msgId);
+                          } catch (err) {
+                            console.error("[studio] pill executeAction error:", err);
+                            toast.error("Erreur de génération");
+                            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: false } : m));
+                          }
                         }}
                           className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
                           style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
