@@ -877,25 +877,47 @@ export function StudioPage() {
           {/* ── Input bar ── */}
           <div className="flex-shrink-0 px-5 pb-5 pt-2">
             <div className="max-w-2xl mx-auto">
-              {/* Attached image preview */}
+              {/* Attached image preview + quick suggestions */}
               {attachedImage && (
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <div className="relative group">
-                    <img src={attachedImage.preview} className="w-14 h-14 rounded-lg object-cover" style={{ border: "1px solid var(--border)" }} alt="" />
-                    {attachedImage.uploading && (
-                      <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(0,0,0,0.5)" }}>
-                        <Loader2 size={16} className="animate-spin text-white" />
-                      </div>
-                    )}
-                    <button onClick={removeAttachedImage}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                      style={{ background: "var(--foreground)", color: "var(--background)" }}>
-                      <X size={10} />
-                    </button>
+                <div className="mb-2 px-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="relative group">
+                      <img src={attachedImage.preview} className="w-14 h-14 rounded-lg object-cover" style={{ border: "1px solid var(--border)" }} alt="" />
+                      {attachedImage.uploading && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(0,0,0,0.5)" }}>
+                          <Loader2 size={16} className="animate-spin text-white" />
+                        </div>
+                      )}
+                      <button onClick={removeAttachedImage}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ background: "var(--foreground)", color: "var(--background)" }}>
+                        <X size={10} />
+                      </button>
+                    </div>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      {attachedImage.uploading ? "Upload en cours..." : "Photo de référence — que souhaitez-vous en faire ?"}
+                    </span>
                   </div>
-                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                    {attachedImage.uploading ? "Upload en cours..." : "Photo de référence"}
-                  </span>
+                  {!attachedImage.uploading && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        "Photoshoot studio fond blanc",
+                        "Packshot produit",
+                        "Mise en scène lifestyle",
+                        "Flat lay créatif",
+                        "Ambiance cinématique",
+                        "Animer en vidéo",
+                      ].map(s => (
+                        <button key={s} onClick={() => handleSend(s)}
+                          className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
+                          style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
+                          onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <input type="file" ref={fileInputRef} accept="image/*" className="hidden"
