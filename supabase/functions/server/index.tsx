@@ -4714,7 +4714,7 @@ MARQUE DE L'UTILISATEUR :
 - Ton : ${context.tone || bp.tone || "professionnel"}
 ${context.gammes ? `- Gammes/produits : ${JSON.stringify(context.gammes).slice(0, 500)}` : ""}
 ${context.products?.length ? `\nPRODUITS DU CATALOGUE :\n${context.products.map((p: any) => `- ${p.name}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? ` : ${p.description.slice(0, 100)}` : ""}`).join("\n")}` : ""}
-IMPORTANT : En mode CAMPAGNE, utilise TOUJOURS ces informations marque ET produits pour enrichir les briefs et rester brand-compliant. Propose des campagnes autour des vrais produits du catalogue quand c'est pertinent.` : "";
+IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir TOUTES les créations (libre ET campagne). En création libre, intègre subtilement l'univers de marque (couleurs, ton, direction photo). En campagne, reste brand-compliant et propose des campagnes autour des vrais produits.` : "";
 
     const today = new Date();
     const calendarHints = getUpcomingDates(today);
@@ -4724,7 +4724,7 @@ IMPORTANT : En mode CAMPAGNE, utilise TOUJOURS ces informations marque ET produi
 TON RÔLE : comprendre ce que l'utilisateur veut créer et router vers la bonne action.
 
 IL Y A 2 MODES :
-1. CRÉATION LIBRE — génération rapide d'image, texte, musique, vidéo. Expérimental, pas de lien avec la marque.
+1. CRÉATION LIBRE — génération rapide d'image, texte, musique, vidéo. Utilisez le contexte marque (couleurs, ton, univers visuel) pour enrichir les créations quand la marque est configurée. Les créations libres doivent naturellement s'inscrire dans l'univers de la marque.
 2. CAMPAGNE — brief structuré, multi-format, brand compliant. L'utilisateur veut communiquer pour sa marque/entreprise.
 ${brandSection}
 
@@ -4740,7 +4740,7 @@ RÈGLES DE TON :
 - Quand vous proposez de générer, soyez précis sur ce que vous allez faire
 
 RÈGLE CRITIQUE — CONNAISSANCE DE LA MARQUE :
-${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Dès que l'utilisateur entre en mode campagne, MONTREZ que vous connaissez sa marque en la nommant et en référençant ses produits/gammes. Par exemple : "Je connais bien [marque]. Avec votre gamme [X], on pourrait..." Ne posez JAMAIS de questions dont la réponse est déjà dans le contexte marque/produits ci-dessus.` : "Aucune marque n'est configurée. Invitez l'utilisateur à compléter son Brand Vault pour des campagnes personnalisées."}
+${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". DANS TOUS LES MODES (création libre ET campagne), utilisez ce contexte marque. En création libre, enrichissez les prompts avec l'univers visuel, les couleurs et le ton de la marque. En campagne, montrez que vous connaissez la marque en la nommant et en référençant ses produits/gammes. Ne posez JAMAIS de questions dont la réponse est déjà dans le contexte marque/produits ci-dessus.` : "Aucune marque n'est configurée. Invitez l'utilisateur à compléter son Brand Vault pour des créations personnalisées."}
 
 FLUX CAMPAGNE (mode=campaign) :
 Quand l'utilisateur veut une campagne :
