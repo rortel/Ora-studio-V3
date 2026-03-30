@@ -1,62 +1,44 @@
 import { Link } from "react-router";
 import { Check, ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
-
-
-const plans = [
-  {
-    name: "Starter",
-    price: "29",
-    period: "/mo",
-    desc: "For individuals getting started.",
-    credits: "200 credits/mo",
-    features: [
-      "200 credits/month",
-      "10 AI models",
-      "Text + image generation",
-    ],
-    cta: "Start Starter",
-    highlighted: false,
-  },
-  {
-    name: "Pro",
-    price: "79",
-    period: "/mo",
-    desc: "Every model. Every format.",
-    credits: "1,500 credits/mo",
-    features: [
-      "1,500 credits/month",
-      "All 38+ models",
-      "Text, image, video, audio",
-      "Full Arena",
-      "Priority queue",
-      "Credit packs",
-    ],
-    cta: "Start Pro",
-    highlighted: true,
-  },
-  {
-    name: "Business",
-    price: "149",
-    period: "/mo",
-    desc: "Brand-safe content at scale.",
-    credits: "5,000 credits/mo",
-    features: [
-      "5,000 credits/month",
-      "Everything in Pro",
-      "Brand Vault",
-      "Campaign Lab",
-      "Auto Content Calendar",
-      "Auto-publish & scheduling",
-      "Brand Score",
-      "Priority support",
-    ],
-    cta: "Start Business",
-    highlighted: false,
-  },
-];
+import { useI18n } from "../lib/i18n";
 
 export function Pricing() {
+  const { t } = useI18n();
+
+  const plans = [
+    {
+      name: t("pricing.starter"),
+      price: "29",
+      period: "/mo",
+      desc: t("pricing.starterDesc"),
+      credits: t("pricing.starterCredits"),
+      features: [t("pricing.starterF1"), t("pricing.starterF2"), t("pricing.starterF3")],
+      cta: t("pricing.starterCta"),
+      highlighted: false,
+    },
+    {
+      name: t("pricing.pro"),
+      price: "79",
+      period: "/mo",
+      desc: t("pricing.proDesc"),
+      credits: t("pricing.proCredits"),
+      features: [t("pricing.proF1"), t("pricing.proF2"), t("pricing.proF3"), t("pricing.proF4"), t("pricing.proF5"), t("pricing.proF6")],
+      cta: t("pricing.proCta"),
+      highlighted: true,
+    },
+    {
+      name: t("pricing.business"),
+      price: "149",
+      period: "/mo",
+      desc: t("pricing.businessDesc"),
+      credits: t("pricing.businessCredits"),
+      features: [t("pricing.businessF1"), t("pricing.businessF2"), t("pricing.businessF3"), t("pricing.businessF4"), t("pricing.businessF5"), t("pricing.businessF6"), t("pricing.businessF7"), t("pricing.businessF8")],
+      cta: t("pricing.businessCta"),
+      highlighted: false,
+    },
+  ];
+
   return (
     <section id="pricing" className="py-28 md:py-36" style={{ background: "#F5F5F5" }}>
       <div className="max-w-[1080px] mx-auto px-6">
@@ -77,7 +59,7 @@ export function Pricing() {
               marginBottom: 16,
             }}
           >
-            Pricing
+            {t("pricing.label")}
           </p>
           <h2
             style={{
@@ -90,7 +72,7 @@ export function Pricing() {
               marginBottom: 12,
             }}
           >
-            Simple, transparent pricing
+            {t("pricing.title")}
           </h2>
           <p style={{
             fontSize: "15px",
@@ -100,7 +82,7 @@ export function Pricing() {
             maxWidth: 380,
             margin: "0 auto",
           }}>
-            Pay for credits. Use any model. Credits never expire.
+            {t("pricing.subtitle")}
           </p>
         </motion.div>
 
@@ -134,7 +116,7 @@ export function Pricing() {
                     fontFamily: "'Inter', sans-serif",
                   }}
                 >
-                  Popular
+                  {t("pricing.popular")}
                 </span>
               )}
 

@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { ArrowRight } from "lucide-react";
 import { Link } from "react-router";
 import heroVideo from "../../assets/hero-video.mp4";
+import { useI18n } from "../lib/i18n";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    HERO — Full-screen video background
@@ -14,10 +15,11 @@ const EASE = [0.16, 1, 0.3, 1] as const;
 export function Hero() {
   const [loaded, setLoaded] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
-    const t = setTimeout(() => setLoaded(true), 100);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setLoaded(true), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -76,7 +78,7 @@ export function Hero() {
               width: 5, height: 5, borderRadius: "50%",
               background: "#FFFFFF", display: "inline-block",
             }} />
-            Now with video generation
+            {t("hero.badge")}
           </span>
         </motion.div>
 
@@ -95,9 +97,9 @@ export function Hero() {
               color: "#FFFFFF",
             }}
           >
-            One studio,
+            {t("hero.headline1")}
             <br />
-            every AI
+            {t("hero.headline2")}
           </motion.h1>
         </div>
 
@@ -117,9 +119,9 @@ export function Hero() {
             letterSpacing: "-0.01em",
           }}
         >
-          All the best AI models in one place.
+          {t("hero.subtitle1")}
           <br className="hidden sm:block" />
-          Generate images, videos, copy — publish everywhere.
+          {t("hero.subtitle2")}
         </motion.p>
 
         {/* CTAs */}
@@ -141,7 +143,7 @@ export function Hero() {
               letterSpacing: "-0.01em",
             }}
           >
-            Start creating
+            {t("hero.cta")}
             <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <a
@@ -157,7 +159,7 @@ export function Hero() {
               border: "1px solid rgba(255,255,255,0.1)",
             }}
           >
-            How it works
+            {t("hero.ctaSecondary")}
           </a>
         </motion.div>
       </div>

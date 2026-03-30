@@ -3068,7 +3068,24 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       <div className="relative cursor-pointer"
                         style={{ aspectRatio: asset.type === "text" ? "3/2" : (fmt?.aspectRatio || "1/1"), background: "#0e0d0c", maxHeight: 280 }}
                         onClick={() => setSelectedAsset(asset)}>
-                        {asset.status === "ready" && asset.imageUrl ? (
+                        {asset.status === "ready" && asset.videoUrl ? (
+                          <div className="relative w-full h-full">
+                            <video
+                              src={asset.videoUrl}
+                              className="w-full h-full object-cover"
+                              muted
+                              autoPlay
+                              loop
+                              playsInline
+                              data-asset-id={asset.id}
+                            />
+                            {/* Brand logo overlay on video */}
+                            {brandLogoUrl && (
+                              <img src={brandLogoUrl} alt="Brand logo" className="absolute"
+                                style={{ bottom: 10, right: 10, width: "14%", maxWidth: 56, minWidth: 24, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 3 }} />
+                            )}
+                          </div>
+                        ) : asset.status === "ready" && asset.imageUrl ? (
                           <div className="relative w-full h-full">
                             {/* Carousel: show first slide with slide count badge */}
                             {asset.carouselSlides && asset.carouselSlides.length > 1 ? (
@@ -3125,28 +3142,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   />
                                 )}
                               </>
-                            )}
-                          </div>
-                        ) : asset.status === "ready" && asset.videoUrl ? (
-                          <div className="relative w-full h-full">
-                            <video
-                              src={asset.videoUrl}
-                              className="w-full h-full object-cover"
-                              muted
-                              playsInline
-                              data-asset-id={asset.id}
-                              onMouseEnter={e => {
-                                const v = e.target as HTMLVideoElement;
-                                v.play().catch(() => {});
-                              }}
-                              onMouseLeave={e => {
-                                const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0;
-                              }}
-                            />
-                            {/* Brand logo overlay on video */}
-                            {brandLogoUrl && (
-                              <img src={brandLogoUrl} alt="Brand logo" className="absolute"
-                                style={{ bottom: 10, right: 10, width: "14%", maxWidth: 56, minWidth: 24, height: "auto", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.08))", opacity: 0.9, borderRadius: 3 }} />
                             )}
                           </div>
                         ) : asset.status === "ready" && asset.type === "text" ? (
@@ -3669,7 +3664,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </div>
                 )}
                 {/* Single image (non-carousel) */}
-                {selectedAsset.imageUrl && (!selectedAsset.carouselSlides || selectedAsset.carouselSlides.length <= 1) && (
+                {selectedAsset.imageUrl && !selectedAsset.videoUrl && (!selectedAsset.carouselSlides || selectedAsset.carouselSlides.length <= 1) && (
                   <div className="relative inline-block w-full">
                     {assetTemplates[selectedAsset.formatId] && getTemplateById(assetTemplates[selectedAsset.formatId]) ? (
                       <div className="rounded-xl overflow-hidden" style={{ background: "#0e0d0c" }}>

@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
+import { useI18n } from "../lib/i18n";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    4 PILLARS — faithful to real app screens:
@@ -13,6 +14,21 @@ const f: React.CSSProperties = { fontFamily: "'Inter', sans-serif" };
 
 /* ── Pillar 1: Studio (Hub) — faithful to /hub screen ── */
 function StudioMockup() {
+  const { t } = useI18n();
+  const prompts = [t("studioExperience.promptBrandPattern"), t("studioExperience.promptAbstractHeader"), t("studioExperience.promptSocialVisual"), t("studioExperience.promptAdCreative")];
+  const contentTabs = [
+    { label: t("studioExperience.tabCampaign"), icon: "M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z", active: false },
+    { label: t("studioExperience.tabImage"), icon: "M3 3h18v18H3zM8.5 8.5a1 1 0 11-2 0 1 1 0 012 0M21 15l-5-5L5 21", active: true },
+    { label: t("studioExperience.tabText"), icon: "M4 7V4h16v3M9 20h6M12 4v16", active: false },
+    { label: t("studioExperience.tabFilm"), icon: "M4 4h16v16H4zM4 9h16M4 15h16M9 4v16M15 4v16", active: false },
+    { label: t("studioExperience.tabSound"), icon: "M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM21 16a3 3 0 11-6 0 3 3 0 016 0z", active: false },
+  ];
+  const navItems = [
+    { label: t("studioExperience.navHome"), icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", active: true },
+    { label: t("studioExperience.navCalendar"), icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18", active: false },
+    { label: t("studioExperience.navContent"), icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z", active: false },
+    { label: t("studioExperience.navBrand"), icon: "M12 2a10 10 0 100 20 10 10 0 000-20z", active: false },
+  ];
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#FAFAFA", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="p-6 md:p-8">
@@ -26,11 +42,11 @@ function StudioMockup() {
         >
           <div className="flex items-center gap-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M18 14l.75 2.25L21 17l-2.25.75L18 20l-.75-2.25L15 17l2.25-.75z"/></svg>
-            <span style={{ fontSize: "15px", fontWeight: 600, color: "#111", ...f }}>Studio</span>
+            <span style={{ fontSize: "15px", fontWeight: 600, color: "#111", ...f }}>{t("studioExperience.mStudioTitle")}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full" style={{ background: "#111" }} />
-            <span style={{ fontSize: "12px", color: "#666", ...f }}>4 models</span>
+            <span style={{ fontSize: "12px", color: "#666", ...f }}>{t("studioExperience.mStudioModels")}</span>
           </div>
         </motion.div>
 
@@ -45,15 +61,15 @@ function StudioMockup() {
           <div className="w-14 h-14 rounded-2xl mx-auto mb-4 flex items-center justify-center" style={{ background: "#F0F0F0" }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M18 14l.75 2.25L21 17l-2.25.75L18 20l-.75-2.25L15 17l2.25-.75z"/></svg>
           </div>
-          <h3 style={{ fontSize: "22px", fontWeight: 400, color: "#111", letterSpacing: "-0.02em", ...f }}>Generate anything</h3>
+          <h3 style={{ fontSize: "22px", fontWeight: 400, color: "#111", letterSpacing: "-0.02em", ...f }}>{t("studioExperience.mStudioHeading")}</h3>
           <p style={{ fontSize: "12px", color: "#999", lineHeight: 1.5, maxWidth: 340, margin: "8px auto 0", ...f }}>
-            Type what you need below. Select models to compare, then hit Enter. ORA generates from <b style={{ color: "#111" }}>4 models</b> — you pick the best.
+            {t("studioExperience.mStudioSubtitle")}
           </p>
         </motion.div>
 
         {/* Quick prompts — pop in */}
         <div className="flex items-center justify-center gap-2 flex-wrap mb-6">
-          {["Brand pattern", "Abstract header", "Social visual", "Ad creative"].map((s, i) => (
+          {prompts.map((s, i) => (
             <motion.span
               key={s}
               className="px-3 py-1.5 rounded-full"
@@ -70,24 +86,18 @@ function StudioMockup() {
 
         {/* Content type tabs — stagger in */}
         <div className="flex items-center gap-2 mb-4">
-          {[
-            { label: "Campaign", icon: "M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z", active: false },
-            { label: "Image", icon: "M3 3h18v18H3zM8.5 8.5a1 1 0 11-2 0 1 1 0 012 0M21 15l-5-5L5 21", active: true },
-            { label: "Text", icon: "M4 7V4h16v3M9 20h6M12 4v16", active: false },
-            { label: "Film", icon: "M4 4h16v16H4zM4 9h16M4 15h16M9 4v16M15 4v16", active: false },
-            { label: "Sound", icon: "M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM21 16a3 3 0 11-6 0 3 3 0 016 0z", active: false },
-          ].map((t, i) => (
+          {contentTabs.map((tab, i) => (
             <motion.span
-              key={t.label}
+              key={tab.label}
               className="flex items-center gap-1.5 px-3 py-2 rounded-full"
-              style={{ background: t.active ? "#111" : "#F5F5F5", color: t.active ? "#fff" : "#999", fontSize: "12px", fontWeight: 500, ...f }}
+              style={{ background: tab.active ? "#111" : "#F5F5F5", color: tab.active ? "#fff" : "#999", fontSize: "12px", fontWeight: 500, ...f }}
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.5 + i * 0.06, duration: 0.4 }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={t.icon}/></svg>
-              {t.label}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={tab.icon}/></svg>
+              {tab.label}
             </motion.span>
           ))}
         </div>
@@ -103,12 +113,12 @@ function StudioMockup() {
         >
           <div className="flex items-center gap-2 px-3 py-2.5">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BBB" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-            <span style={{ fontSize: "13px", color: "#BBB", flex: 1, ...f }}>Describe the image you want to create...</span>
+            <span style={{ fontSize: "13px", color: "#BBB", flex: 1, ...f }}>{t("studioExperience.mStudioPlaceholder")}</span>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#BBB" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
           </div>
           <div className="flex items-center justify-between px-3 py-1.5" style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-            <span style={{ fontSize: "10px", color: "#BBB", ...f }}>Drop image for Visual Lab</span>
-            <span style={{ fontSize: "10px", color: "#BBB", ...f }}>4 models selected</span>
+            <span style={{ fontSize: "10px", color: "#BBB", ...f }}>{t("studioExperience.mStudioDropzone")}</span>
+            <span style={{ fontSize: "10px", color: "#BBB", ...f }}>{t("studioExperience.mStudioModelsSelected")}</span>
           </div>
         </motion.div>
 
@@ -121,12 +131,7 @@ function StudioMockup() {
           viewport={{ once: true }}
           transition={{ delay: 0.9, duration: 0.5 }}
         >
-          {[
-            { label: "Home", icon: "M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z", active: true },
-            { label: "Calendar", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18", active: false },
-            { label: "Content", icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z", active: false },
-            { label: "Brand", icon: "M12 2a10 10 0 100 20 10 10 0 000-20z", active: false },
-          ].map((n) => (
+          {navItems.map((n) => (
             <div key={n.label} className="flex flex-col items-center gap-1">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={n.active ? "#111" : "#CCC"} strokeWidth="1.5"><path d={n.icon}/></svg>
               <span style={{ fontSize: "9px", fontWeight: n.active ? 600 : 400, color: n.active ? "#111" : "#CCC", ...f }}>{n.label}</span>
@@ -140,6 +145,7 @@ function StudioMockup() {
 
 /* ── Pillar 2: Edit (TemplateEditor) — faithful to real editor ── */
 function EditMockup() {
+  const { t } = useI18n();
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#18171A", border: "1px solid rgba(255,255,255,0.06)" }}>
       {/* Top toolbar */}
@@ -152,7 +158,7 @@ function EditMockup() {
         transition={{ duration: 0.5 }}
       >
         <div className="flex items-center gap-2">
-          <span style={{ fontSize: "12px", fontWeight: 500, color: "#FAFAFA", ...f }}>Sourdough bread — Hero</span>
+          <span style={{ fontSize: "12px", fontWeight: 500, color: "#FAFAFA", ...f }}>{t("studioExperience.mEditTitle")}</span>
           <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)", ...f }}>1200×628</span>
         </div>
         <div className="flex items-center gap-2">
@@ -165,8 +171,8 @@ function EditMockup() {
             </div>
           </div>
           <span className="px-2 py-1 rounded" style={{ background: "rgba(255,255,255,0.06)", fontSize: "10px", color: "rgba(255,255,255,0.5)", ...f }}>75%</span>
-          <span className="px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", fontSize: "10px", color: "rgba(255,255,255,0.5)", ...f }}>Export PNG</span>
-          <span className="px-3 py-1.5 rounded-lg" style={{ background: "#FAFAFA", fontSize: "10px", fontWeight: 500, color: "#111", ...f }}>Save</span>
+          <span className="px-3 py-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.06)", fontSize: "10px", color: "rgba(255,255,255,0.5)", ...f }}>{t("studioExperience.mEditExport")}</span>
+          <span className="px-3 py-1.5 rounded-lg" style={{ background: "#FAFAFA", fontSize: "10px", fontWeight: 500, color: "#111", ...f }}>{t("studioExperience.mEditSave")}</span>
         </div>
       </motion.div>
 
@@ -181,7 +187,7 @@ function EditMockup() {
           transition={{ delay: 0.2, duration: 0.6, ease: EASE }}
         >
           <div className="mb-3">
-            <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>Add element</span>
+            <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>{t("studioExperience.mEditAddElement")}</span>
             <div className="grid grid-cols-3 gap-1.5 mt-2">
               {["T", "□", "○", "▓", "—", "🖼"].map((icon, i) => (
                 <motion.div
@@ -199,7 +205,7 @@ function EditMockup() {
             </div>
           </div>
           <div className="mb-3">
-            <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>Layers</span>
+            <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>{t("studioExperience.mEditLayers")}</span>
             <div className="mt-2 space-y-1">
               {[
                 { name: "Headline text", icon: "📝", selected: true },
@@ -260,7 +266,7 @@ function EditMockup() {
                 ))}
               </div>
               <div className="mt-1">
-                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.7)", ...f }}>Maison Dupain — Handmade, every day</span>
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.7)", ...f }}>Maison Dupain · Handmade, every day</span>
               </div>
             </motion.div>
             {/* Logo in corner */}
@@ -286,11 +292,11 @@ function EditMockup() {
           viewport={{ once: true }}
           transition={{ delay: 0.4, duration: 0.6, ease: EASE }}
         >
-          <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>Properties</span>
+          <span style={{ fontSize: "9px", fontWeight: 500, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>{t("studioExperience.mEditProperties")}</span>
           <div className="mt-3 space-y-3">
             {/* Position */}
             <div>
-              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.06em", ...f }}>Position</span>
+              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.06em", ...f }}>{t("studioExperience.mEditPosition")}</span>
               <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                 {[{ l: "X", v: "5.0" }, { l: "Y", v: "72.0" }, { l: "W", v: "90.0" }, { l: "H", v: "12.0" }].map((p, i) => (
                   <motion.div
@@ -330,7 +336,7 @@ function EditMockup() {
                   <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.4)", ...f }}>5.5%</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", ...f }}>Font</span>
+                  <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", ...f }}>{t("studioExperience.mEditFont")}</span>
                   <span className="px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.04)", fontSize: "9px", color: "rgba(255,255,255,0.5)", ...f }}>Inter</span>
                   <span className="px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.04)", fontSize: "9px", color: "rgba(255,255,255,0.5)", ...f }}>600</span>
                 </div>
@@ -343,7 +349,7 @@ function EditMockup() {
             </div>
             {/* Color */}
             <div>
-              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.06em", ...f }}>Color</span>
+              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.06em", ...f }}>{t("studioExperience.mEditColor")}</span>
               <div className="flex items-center gap-2 mt-1.5">
                 <div className="w-6 h-6 rounded" style={{ background: "#FFFFFF", border: "1px solid rgba(255,255,255,0.1)" }} />
                 <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.5)", ...f }}>#FFFFFF</span>
@@ -351,7 +357,7 @@ function EditMockup() {
             </div>
             {/* Opacity */}
             <div className="flex items-center gap-1.5">
-              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", ...f }}>Opacity</span>
+              <span style={{ fontSize: "9px", color: "rgba(255,255,255,0.3)", ...f }}>{t("studioExperience.mEditOpacity")}</span>
               <div className="flex-1 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
                 <motion.div
                   className="h-full rounded-full"
@@ -373,6 +379,7 @@ function EditMockup() {
 
 /* ── Pillar 3: Brand Vault — animated ── */
 function BrandVaultMockup() {
+  const { t } = useI18n();
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#FAFAFA", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="p-6 md:p-8">
@@ -384,7 +391,7 @@ function BrandVaultMockup() {
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <span style={{ fontSize: "10px", fontWeight: 600, color: "#111", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>Brand Intelligence</span>
+          <span style={{ fontSize: "10px", fontWeight: 600, color: "#111", textTransform: "uppercase", letterSpacing: "0.08em", ...f }}>{t("studioExperience.mBrandTitle")}</span>
         </motion.div>
         <motion.div
           className="flex items-center justify-between mb-2"
@@ -406,7 +413,7 @@ function BrandVaultMockup() {
           viewport={{ once: true }}
           transition={{ delay: 0.2 }}
         >
-          Your brand DNA, extracted and structured. Drop a URL, a PDF, or an image.
+          {t("studioExperience.mBrandSubtitle")}
         </motion.p>
 
         {/* URL scanner */}
@@ -425,12 +432,12 @@ function BrandVaultMockup() {
             </div>
             <span className="flex items-center gap-1.5 px-4 py-2 rounded-xl" style={{ background: "#111", color: "#fff", fontSize: "12px", fontWeight: 500, ...f }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/></svg>
-              Scan
+              {t("studioExperience.mBrandScan")}
             </span>
           </div>
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ border: "1px dashed #DDD" }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CCC" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-            <span style={{ fontSize: "11px", color: "#CCC", ...f }}>Drop or click — PDF, PPT, DOCX, images (max 20 MB)</span>
+            <span style={{ fontSize: "11px", color: "#CCC", ...f }}>{t("studioExperience.mBrandDropzone")}</span>
           </div>
         </motion.div>
 
@@ -487,7 +494,7 @@ function BrandVaultMockup() {
           >
             <div className="flex items-center gap-2 mb-3">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>Brand Colors</span>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>{t("studioExperience.mBrandColors")}</span>
               <span className="px-1.5 py-0.5 rounded" style={{ background: "#F5F5F5", fontSize: "10px", color: "#999", ...f }}>5</span>
             </div>
             {/* Color strip — bars grow */}
@@ -537,7 +544,7 @@ function BrandVaultMockup() {
           >
             <div className="flex items-center gap-2 mb-3">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>Tone of Voice</span>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>{t("studioExperience.mBrandTone")}</span>
             </div>
             <motion.span
               className="inline-block px-2.5 py-1 rounded-lg mb-3"
@@ -606,157 +613,122 @@ function BrandVaultMockup() {
   );
 }
 
-/* ── Pillar 4: Campaign Lab — animated ── */
-function CampaignLabMockup() {
+/* ── Pillar 4: Publish — multi-platform distribution dashboard ── */
+function PublishMockup() {
+  const { t } = useI18n();
+  const platforms = [
+    { name: "Instagram", handle: "@maisondupainstudio", posts: 3, status: t("studioExperience.statusScheduled"), statusKey: "Scheduled", time: "Mon 10:00", color: "#E1306C" },
+    { name: "LinkedIn", handle: "Maison du Pain", posts: 2, status: t("studioExperience.statusScheduled"), statusKey: "Scheduled", time: "Mon 11:30", color: "#0A66C2" },
+    { name: "Facebook", handle: "Maison du Pain Bakery", posts: 2, status: t("studioExperience.statusPublished"), statusKey: "Published", time: "Today 09:00", color: "#1877F2" },
+    { name: "X (Twitter)", handle: "@maisonpain", posts: 1, status: t("studioExperience.statusDraft"), statusKey: "Draft", time: "—", color: "#111" },
+  ];
+
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#FAFAFA", border: "1px solid rgba(255,255,255,0.06)" }}>
       <div className="p-6 md:p-8">
         {/* Header */}
         <motion.div
-          className="flex items-center gap-3 mb-1"
+          className="flex items-center justify-between mb-6"
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F0F0F0" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z"/><path d="M18 14l.75 2.25L21 17l-2.25.75L18 20l-.75-2.25L15 17l2.25-.75z"/></svg>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "#111" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+            </div>
+            <div>
+              <span style={{ fontSize: "14px", fontWeight: 600, color: "#111", ...f, display: "block" }}>{t("studioExperience.mPublishTitle")}</span>
+              <span style={{ fontSize: "11px", color: "#999", ...f }}>Summer Collection 2025</span>
+            </div>
           </div>
-          <div>
-            <span style={{ fontSize: "18px", fontWeight: 700, color: "#111", ...f, display: "block" }}>Campaign Lab</span>
-            <span style={{ fontSize: "12px", color: "#999", ...f }}>One brief. Every format. Brand-compliant.</span>
-          </div>
+          <motion.span
+            className="px-3.5 py-1.5 rounded-full flex items-center gap-1.5"
+            style={{ background: "#111", color: "#fff", fontSize: "11px", fontWeight: 500, ...f }}
+            initial={{ scale: 0.8 }}
+            whileInView={{ scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.6, type: "spring", stiffness: 300 }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>
+            {t("studioExperience.mPublishAll")}
+          </motion.span>
         </motion.div>
 
-        {/* Brief textarea */}
-        <motion.div
-          className="rounded-2xl p-5 mt-5 mb-4"
-          style={{ background: "#fff", border: "1px solid #EBEBEB" }}
-          initial={{ opacity: 0, y: 15 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.15, duration: 0.6, ease: EASE }}
-        >
-          <p style={{ fontSize: "13px", color: "#333", lineHeight: 1.6, ...f }}>
-            Fresh batch of sourdough bread — showcase our artisan craftsmanship and invite customers to stop by this weekend.
-          </p>
-        </motion.div>
-
-        {/* Inspire me + reference */}
-        <motion.div
-          className="flex items-center gap-3 mb-5"
-          initial={{ opacity: 0, y: 10 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-        >
-          <span className="flex items-center gap-1.5 px-3 py-2 rounded-full" style={{ border: "1px solid #E5E5E5", fontSize: "12px", color: "#666", ...f }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-            Inspire me
-          </span>
-          <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl" style={{ border: "1px dashed #DDD" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CCC" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-            <span style={{ fontSize: "11px", color: "#CCC", ...f }}>Drop reference photos or click to upload</span>
-          </div>
-        </motion.div>
-
-        {/* Content type tabs */}
-        <div className="flex items-center gap-2 mb-5">
-          {[
-            { label: "Campaign", active: true },
-            { label: "Image", active: false },
-            { label: "Text", active: false },
-            { label: "Film", active: false },
-            { label: "Sound", active: false },
-          ].map((t, i) => (
-            <motion.span
-              key={t.label}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full"
-              style={{ background: t.active ? "#111" : "#F5F5F5", color: t.active ? "#fff" : "#999", fontSize: "12px", fontWeight: 500, ...f }}
-              initial={{ opacity: 0, y: 6 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.4 + i * 0.05 }}
-            >
-              {t.label}
-            </motion.span>
-          ))}
-        </div>
-
-        {/* Generated outputs — cards pop in one by one */}
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { platform: "Instagram", ratio: "4/5", img: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=85", copy: "Sourdough, time, and love. Our loaves are ready — are you?", status: "Scheduled · Sat 9 AM", color: "#2D7A2D" },
-            { platform: "Facebook", ratio: "16/9", img: "https://images.unsplash.com/photo-1608198093002-ad4e005484ec?w=400&q=85", copy: "Discover our latest batch, handmade with organic local flour.", status: "Scheduled · Sat 10 AM", color: "#2D7A2D" },
-            { platform: "LinkedIn", ratio: "1/1", img: "https://images.unsplash.com/photo-1556471013-0001958d2f12?w=400&q=85", copy: "Behind every loaf, 48 hours of fermentation and 3 generations of craft.", status: "Scheduled · Mon 8 AM", color: "#2D7A2D" },
-            { platform: "TikTok", ratio: "9/16", img: "https://images.unsplash.com/photo-1517433670267-08bbd4be890f?w=400&q=85", copy: "POV: you walk into the bakery at 6 AM...", status: "Draft", color: "#E5C100" },
-          ].map((p, i) => (
+        {/* Platform cards */}
+        <div className="space-y-3">
+          {platforms.map((p, i) => (
             <motion.div
-              key={p.platform}
-              className="rounded-xl overflow-hidden"
-              style={{ border: "1px solid #EBEBEB" }}
-              initial={{ opacity: 0, y: 25, scale: 0.9 }}
-              whileInView={{ opacity: 1, y: 0, scale: 1 }}
+              key={p.name}
+              className="flex items-center gap-4 px-4 py-3.5 rounded-xl"
+              style={{ background: "#fff", border: "1px solid #EBEBEB" }}
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: 0.55 + i * 0.13, duration: 0.6, ease: EASE }}
+              transition={{ delay: 0.15 + i * 0.1, duration: 0.5, ease: EASE }}
             >
-              <div style={{ aspectRatio: p.ratio, background: "#1A1A1A", position: "relative", maxHeight: 140 }}>
-                <img src={p.img} alt={p.platform} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-                <div className="absolute top-2 left-2 px-2 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", fontSize: "9px", fontWeight: 500, color: "#fff", ...f }}>{p.platform}</div>
+              {/* Platform dot */}
+              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: p.color }} />
+
+              {/* Platform info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>{p.name}</span>
+                  <span style={{ fontSize: "10px", color: "#BBB", ...f }}>{p.handle}</span>
+                </div>
+                <span style={{ fontSize: "11px", color: "#999", ...f }}>{p.posts} post{p.posts > 1 ? "s" : ""} · {p.time}</span>
               </div>
-              <div className="p-2.5 space-y-1" style={{ background: "#fff" }}>
-                <p style={{ fontSize: "9px", color: "#333", lineHeight: 1.4, ...f }}>{p.copy}</p>
-                <motion.div
-                  className="flex items-center gap-1"
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 1.0 + i * 0.1 }}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
-                  <span style={{ fontSize: "8px", color: "#999", ...f }}>{p.status}</span>
-                </motion.div>
-              </div>
+
+              {/* Status badge */}
+              <span
+                className="px-2.5 py-1 rounded-full flex-shrink-0"
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 500,
+                  ...f,
+                  background: p.statusKey === "Published" ? "#E8F5E9" : p.statusKey === "Scheduled" ? "#F5F5F5" : "#FFF8E1",
+                  color: p.statusKey === "Published" ? "#2E7D32" : p.statusKey === "Scheduled" ? "#666" : "#F57F17",
+                }}
+              >
+                {p.status}
+              </span>
             </motion.div>
           ))}
         </div>
+
+        {/* Summary bar */}
+        <motion.div
+          className="mt-5 flex items-center justify-between px-4 py-3 rounded-xl"
+          style={{ background: "#F5F5F5" }}
+          initial={{ opacity: 0, y: 10 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.7, duration: 0.5 }}
+        >
+          <div className="flex items-center gap-4">
+            <span style={{ fontSize: "11px", color: "#999", ...f }}>{t("studioExperience.mPublishTotal")}</span>
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#111", ...f }}>{t("studioExperience.mPublishPosts")}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span style={{ fontSize: "11px", color: "#999", ...f }}>{t("studioExperience.mPublishPlatforms")}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#2E7D32" }} />
+            <span style={{ fontSize: "11px", color: "#2E7D32", fontWeight: 500, ...f }}>{t("studioExperience.mPublishPublished")}</span>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
 }
 
-const pillars = [
-  {
-    num: "01",
-    label: "Studio",
-    title: "Generate from one place",
-    desc: "One prompt, 4 AI models in parallel. Images, text, video, audio — all in a single interface.",
-    Mockup: StudioMockup,
-  },
-  {
-    num: "02",
-    label: "Edit",
-    title: "Refine without leaving Ora",
-    desc: "Built-in editor with layers, typography, logo, and brand assets. Refine every creation before you publish.",
-    Mockup: EditMockup,
-  },
-  {
-    num: "03",
-    label: "Brand Vault",
-    title: "Always true to your brand",
-    desc: "Scan your website or drop a PDF. Ora extracts your logo, colors, and tone — every piece of content stays on brand.",
-    Mockup: BrandVaultMockup,
-  },
-  {
-    num: "04",
-    label: "Campaign Lab",
-    title: "One brief, every channel",
-    desc: "Describe your campaign. Ora generates the visuals and copy tailored for Instagram, Facebook, LinkedIn, TikTok — ready to publish.",
-    Mockup: CampaignLabMockup,
-  },
-];
-
 export function StudioExperience() {
+  const { t } = useI18n();
+  const pillars = [
+    { num: "01", label: t("studioExperience.p1Label"), title: t("studioExperience.p1Title"), desc: t("studioExperience.p1Desc"), Mockup: StudioMockup },
+    { num: "02", label: t("studioExperience.p2Label"), title: t("studioExperience.p2Title"), desc: t("studioExperience.p2Desc"), Mockup: EditMockup },
+    { num: "03", label: t("studioExperience.p3Label"), title: t("studioExperience.p3Title"), desc: t("studioExperience.p3Desc"), Mockup: BrandVaultMockup },
+    { num: "04", label: t("studioExperience.p4Label"), title: t("studioExperience.p4Title"), desc: t("studioExperience.p4Desc"), Mockup: PublishMockup },
+  ];
   return (
     <section className="py-28 md:py-40" style={{ background: "#111111" }}>
       <div className="max-w-[1200px] mx-auto px-4 md:px-6">
@@ -768,10 +740,10 @@ export function StudioExperience() {
           className="mb-20 md:mb-28 text-center"
         >
           <p style={{ fontSize: "12px", fontWeight: 500, color: "rgba(250,250,250,0.3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 16, ...f }}>
-            Beyond generation
+            {t("studioExperience.label")}
           </p>
           <h2 style={{ fontSize: "clamp(2.5rem, 5vw, 4.5rem)", fontWeight: 300, lineHeight: 1.05, letterSpacing: "-0.04em", color: "#FAFAFA", ...f }}>
-            Create. Brand. Publish.
+            {t("studioExperience.title")}
           </h2>
         </motion.div>
 
@@ -823,7 +795,7 @@ export function StudioExperience() {
             className="group inline-flex items-center gap-2 transition-all duration-300 hover:gap-3"
             style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", color: "#FAFAFA", fontSize: "14px", fontWeight: 500, padding: "12px 24px", borderRadius: 9999, ...f }}
           >
-            Try it free
+            {t("studioExperience.tryItFree")}
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
         </motion.div>
