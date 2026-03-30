@@ -60,6 +60,52 @@ const FORMAT_OPTIONS: { id: VideoFormat; label: string; icon: string; dimensions
   { id: "feed", label: "Feed Post", icon: "📐", dimensions: "1:1", duration: "15-30s" },
 ];
 
+/* ── Preview Panel with ResizeObserver ── */
+function PreviewPanel({ project }: { project: VideoProject }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 400, height: 700 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width: cw, height: ch } = entry.contentRect;
+      if (cw < 10 || ch < 10) return;
+      const pad = 48;
+      const maxW = cw - pad;
+      const maxH = ch - pad;
+      const aspect = project.width / project.height;
+      let w = maxW;
+      let h = w / aspect;
+      if (h > maxH) { h = maxH; w = h * aspect; }
+      setSize({ width: Math.round(w), height: Math.round(h) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [project.width, project.height]);
+
+  return (
+    <div ref={containerRef} className="flex-1 flex items-center justify-center bg-black/95">
+      <div className="rounded-xl overflow-hidden" style={{ width: size.width, height: size.height }}>
+        <Player
+          component={VideoComposition}
+          inputProps={{ project }}
+          compositionWidth={project.width}
+          compositionHeight={project.height}
+          durationInFrames={project.durationInFrames}
+          fps={project.fps}
+          style={{ width: "100%", height: "100%" }}
+          controls
+          autoPlay
+          loop
+          clickToPlay
+          acknowledgeRemotionLicense
+        />
+      </div>
+    </div>
+  );
+}
+
 export function VideoAssemblerPage() {
   const navigate = useNavigate();
   const { getAuthHeader } = useAuth();
@@ -152,7 +198,13 @@ export function VideoAssemblerPage() {
           plan: res.plan,
           type: "storyboard",
         };
-        setMessages(prev => [...prev, assistMsg]);
+        const guideMsg: ChatMessage = {
+          id: `guide-${Date.now()}`,
+          role: "assistant",
+          content: "Tu peux lancer la **Preview** pour visualiser le montage, ou ajuster le storyboard en me décrivant tes changements.",
+          type: "text",
+        };
+        setMessages(prev => [...prev, assistMsg, guideMsg]);
       } else {
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`, role: "assistant",
@@ -189,65 +241,87 @@ export function VideoAssemblerPage() {
     setPlan({ ...plan, scenes, totalDuration });
   }, [plan]);
 
-  // Build Remotion project from plan
+  // Build cinematic Remotion project from plan
   const buildProject = useCallback((): VideoProject | null => {
     if (!plan || plan.scenes.length === 0) return null;
 
     const fps = 30;
+    const transitionOverlap = Math.round(fps * 0.6); // 0.6s crossfade overlap
     const clips = selectedClips.length > 0 ? selectedClips : libraryAssets;
     const items: TrackItem[] = [];
     const textItems: TrackItem[] = [];
     let currentFrame = 0;
 
-    for (const scene of plan.scenes) {
+    for (let i = 0; i < plan.scenes.length; i++) {
+      const scene = plan.scenes[i];
       const durFrames = Math.round(scene.duration * fps);
       const clip = scene.clipIndex !== null ? clips[scene.clipIndex] : null;
+      const isFirst = i === 0;
+
+      // Determine transition type
+      const transType = isFirst ? "fade-black"
+        : scene.transition === "cut" ? undefined
+        : scene.transition === "fade-black" ? "fade-black"
+        : scene.transition === "fade-white" ? "fade-white"
+        : scene.transition === "wipe-left" ? "wipe-left"
+        : "crossfade"; // default to crossfade for cinematic feel
+
+      const transition = transType
+        ? { type: transType as any, durationInFrames: isFirst ? Math.round(fps * 0.8) : transitionOverlap }
+        : undefined;
 
       if (clip?.url) {
+        // Use "image" kind for photos (enables Ken Burns in VideoComposition)
+        const isVideo = clip.type === "video";
         items.push({
           id: `item-${scene.id}`,
           trackId: "video-track",
           from: currentFrame,
           durationInFrames: durFrames,
           sourceUrl: clip.url,
-          data: { kind: clip.type === "video" ? "video" : "image", volume: 1, x: 0, y: 0, width: 100, height: 100, opacity: 1 } as any,
-          transition: scene.transition === "crossfade"
-            ? { type: "crossfade", durationInFrames: Math.round(fps * 0.5) }
-            : scene.transition === "fade-black"
-              ? { type: "fade-black", durationInFrames: Math.round(fps * 0.5) }
-              : undefined,
+          data: isVideo
+            ? { kind: "video", volume: 0.3 } as any // lower volume, music takes over
+            : { kind: "image", x: 0, y: 0, width: 100, height: 100, opacity: 1 } as any,
+          transition,
         });
       } else {
-        // Placeholder black scene for missing clips
+        // Gradient background placeholder instead of plain black
         items.push({
           id: `item-${scene.id}`,
           trackId: "video-track",
           from: currentFrame,
           durationInFrames: durFrames,
-          data: { kind: "background", color: "#111111" } as any,
+          data: { kind: "background", color: "#0a0a0a" } as any,
+          transition,
         });
       }
 
-      // Text overlay
+      // Cinematic text overlay with better styling
       if (scene.textOverlay) {
-        const yPos = scene.textPosition === "top" ? 10 : scene.textPosition === "center" ? 40 : 75;
+        const yPos = scene.textPosition === "top" ? 8
+          : scene.textPosition === "center" ? 38
+          : 72;
+        // Text appears slightly after scene starts, disappears before scene ends
+        const textDelay = Math.round(fps * 0.4);
+        const textDur = durFrames - Math.round(fps * 0.8);
         textItems.push({
           id: `text-${scene.id}`,
           trackId: "text-track",
-          from: currentFrame,
-          durationInFrames: durFrames,
+          from: currentFrame + textDelay,
+          durationInFrames: Math.max(textDur, fps), // minimum 1s
           data: {
             kind: "text",
             text: scene.textOverlay,
-            x: 5, y: yPos, width: 90,
-            fontSize: 48, fontWeight: 700, fontFamily: "'Inter', sans-serif",
-            color: "#FFFFFF", backgroundColor: "rgba(0,0,0,0.5)",
+            x: 8, y: yPos, width: 84,
+            fontSize: 42, fontWeight: 700, fontFamily: "'Inter', sans-serif",
+            color: "#FFFFFF",
             align: "center" as const,
           },
         });
       }
 
-      currentFrame += durFrames;
+      // Overlap scenes for smooth transitions (except first)
+      currentFrame += durFrames - (isFirst ? 0 : transitionOverlap);
     }
 
     return {
@@ -298,6 +372,11 @@ export function VideoAssemblerPage() {
                 Edit
               </button>
               <button
+                onClick={() => {
+                  const proj = buildProject();
+                  if (!proj) return;
+                  toast.info("Export en cours de développement — le rendu serveur arrive bientôt !");
+                }}
                 className="flex items-center gap-2 px-4 py-2 rounded-full transition-all cursor-pointer"
                 style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
                 <Download size={14} /> Export
@@ -358,6 +437,7 @@ export function VideoAssemblerPage() {
                         clips={selectedClips.length > 0 ? selectedClips : libraryAssets}
                         onMoveScene={moveScene}
                         onRemoveScene={removeScene}
+                        onPreview={!showPreview ? () => setShowPreview(true) : undefined}
                       />
                     )}
                   </div>
@@ -456,29 +536,7 @@ export function VideoAssemblerPage() {
 
         {/* Preview side */}
         {showPreview && project && (
-          <div className="flex-1 flex items-center justify-center bg-black/95 p-8">
-            <div className="rounded-xl overflow-hidden" style={{
-              maxWidth: "100%", maxHeight: "100%",
-              width: project.width > project.height ? "100%" : "auto",
-              height: project.height >= project.width ? "100%" : "auto",
-              aspectRatio: `${project.width}/${project.height}`,
-            }}>
-              <Player
-                component={VideoComposition}
-                inputProps={{ project }}
-                compositionWidth={project.width}
-                compositionHeight={project.height}
-                durationInFrames={project.durationInFrames}
-                fps={project.fps}
-                style={{ width: "100%", height: "100%" }}
-                controls
-                autoPlay={false}
-                loop
-                clickToPlay
-                acknowledgeRemotionLicense
-              />
-            </div>
-          </div>
+          <PreviewPanel project={project} />
         )}
       </div>
     </div>
@@ -486,11 +544,12 @@ export function VideoAssemblerPage() {
 }
 
 /* ── Storyboard View ── */
-function StoryboardView({ plan, clips, onMoveScene, onRemoveScene }: {
+function StoryboardView({ plan, clips, onMoveScene, onRemoveScene, onPreview }: {
   plan: StoryboardPlan;
   clips: VideoLibraryAsset[];
   onMoveScene: (from: number, to: number) => void;
   onRemoveScene: (id: string) => void;
+  onPreview?: () => void;
 }) {
   const purposeColors: Record<string, string> = {
     hook: "#ef4444", tension: "#f59e0b", proof: "#3b82f6", emotion: "#8b5cf6", cta: "#10b981",
@@ -590,6 +649,15 @@ function StoryboardView({ plan, clips, onMoveScene, onRemoveScene }: {
           <Sparkles size={11} style={{ color: "#8b5cf6", marginTop: 2 }} />
           <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>{plan.suggestion}</p>
         </div>
+      )}
+
+      {/* Inline Preview button */}
+      {onPreview && (
+        <button onClick={onPreview}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl transition-all cursor-pointer"
+          style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
+          <Play size={14} /> Voir la preview
+        </button>
       )}
     </div>
   );
