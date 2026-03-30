@@ -4754,8 +4754,16 @@ INTERDIT EN CRÉATION LIBRE :
 ❌ Ne JAMAIS proposer de "lancer une campagne" ou "passer en mode campagne"
 ❌ Ne JAMAIS utiliser l'action generate-campaign
 ❌ Ne JAMAIS utiliser l'action start-campaign
-❌ Ne JAMAIS parler de "brief", "cible", "canaux", "multi-plateforme" dans un contexte campagne
-Si l'utilisateur parle de "produit", "marque", "lancement" → c'est une DEMANDE CRÉATIVE, pas une campagne. Générez ce qu'il demande.
+❌ Ne JAMAIS rediriger vers le mode campagne, même implicitement
+Si l'utilisateur demande "plan marketing", "stratégie digitale", "lancement produit", "recommandations" → RÉPONDEZ DIRECTEMENT en texte riche dans "reply". C'est une question, pas une campagne.
+Si l'utilisateur parle de "produit", "marque", "audience", "cible" → c'est du contexte pour sa création, pas une demande de campagne.
+
+EXEMPLES EN CRÉATION LIBRE :
+- "Fais-moi un plan marketing" → REPLY directement avec un plan structuré en markdown. PAS d'action.
+- "Crée une image de mon produit" → action generate-image
+- "Écris un post LinkedIn" → action generate-text
+- "Je veux une stratégie de contenu" → REPLY directement. PAS de campagne.
+- "Génère une vidéo promotionnelle" → action generate-video
 
 MARQUE EN CRÉATION LIBRE :
 ${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Enrichissez SILENCIEUSEMENT les prompts de génération (couleurs, style photo, ton) mais ne parlez PAS de la marque dans votre message texte. L'utilisateur crée librement.` : ""}
@@ -4829,7 +4837,7 @@ RÈGLES D'USAGE DES ACTIONS :
 "suggestions" = pills cliquables. 3 max. Courtes (5-8 mots).
 
 CONTEXTE ACTUEL :
-Mode : ${context.mode === "campaign" ? "🎯 CAMPAGNE" : "🎨 CRÉATION LIBRE"} | Date : ${today.toISOString().slice(0,10)}
+MODE ACTIF : ${context.mode === "campaign" ? "🎯 CAMPAGNE — Vous êtes en mode campagne. Suivez le flux campagne." : "🎨 CRÉATION LIBRE — Vous êtes en mode création libre. NE PROPOSEZ JAMAIS de campagne. Répondez aux demandes directement (plan marketing = réponse texte, pas une campagne)."} | Date : ${today.toISOString().slice(0,10)}
 ${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateur a attaché une photo. Elle sera utilisée automatiquement comme référence (img2img / img2vid). Mentionnez-le dans votre réponse. Adaptez vos questions de personnalisation.` : ""}
 ${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}
 ${context.force_generate ? `\n⚠️ PRIORITÉ ABSOLUE : Retournez generate-campaign MAINTENANT. Déduisez TOUT du contexte marque. Formats par défaut : ["linkedin-post","instagram-post","facebook-post"]. AUCUNE question.` : ""}`;

@@ -653,8 +653,8 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
-      // Campaign mode only if explicitly set (via "Campagne" button or start-campaign action)
-      // Never auto-detect from keywords — the AI handles routing via its own action system
+      // Default to "create" mode if not explicitly set to "campaign"
+      if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
       const isCampaignMode = context.mode === "campaign";
 
       // Load vault + products (always — brand context enriches all generations)
@@ -679,6 +679,7 @@ export function StudioPage() {
         history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         context: {
           ...context,
+          mode: context.mode || "create",
           ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
           ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
           ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
@@ -808,7 +809,7 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} />
+              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} />
             ) : (
               <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
                 {messages.map(msg => (
@@ -1032,7 +1033,7 @@ export function StudioPage() {
 }
 
 /* ── Welcome Screen ── */
-function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
+function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; onSetMode: (mode: string) => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-center px-6">
       <motion.div
@@ -1061,7 +1062,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-lg"
       >
         <button
-          onClick={() => onSend("Je veux créer quelque chose")}
+          onClick={() => { onSetMode("create"); onSend("Je veux créer quelque chose"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -1080,7 +1081,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         </button>
 
         <button
-          onClick={() => onSend("Je veux lancer une campagne")}
+          onClick={() => { onSetMode("campaign"); onSend("Je veux lancer une campagne"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -1112,7 +1113,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           "Écrire un texte percutant",
           "Générer une vidéo dynamique",
         ].map(s => (
-          <button key={s} onClick={() => onSend(s)}
+          <button key={s} onClick={() => { onSetMode("create"); onSend(s); }}
             className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
             style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", color: "var(--muted-foreground)" }}
             onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
