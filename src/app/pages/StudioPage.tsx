@@ -21,6 +21,7 @@ type ActionType =
   | "generate-text"
   | "generate-music"
   | "generate-video"
+  | "generate-campaign"
   | "start-campaign"
   | "start-video-montage"
   | "ask-clarification";
@@ -32,9 +33,21 @@ interface StudioAction {
 }
 
 interface GeneratedResult {
-  type: "image" | "text" | "music" | "video";
+  type: "image" | "text" | "music" | "video" | "campaign";
   items: { url?: string; text?: string; model: string; latencyMs?: number }[];
   prompt: string;
+  campaignPosts?: CampaignPost[];
+}
+
+interface CampaignPost {
+  format: string;
+  platform: string;
+  text: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  hashtags?: string;
+  headline?: string;
+  cta?: string;
 }
 
 interface ChatMessage {
@@ -55,6 +68,8 @@ export function StudioPage() {
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [context, setContext] = useState<Record<string, any>>({});
+  const [vault, setVault] = useState<any>(null);
+  const [vaultLoading, setVaultLoading] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -85,6 +100,22 @@ export function StudioPage() {
       signal: AbortSignal.timeout(180_000),
     }).then(r => r.json());
   }, []);
+
+  // Load vault for brand context
+  const loadVault = useCallback(async () => {
+    if (vault || vaultLoading) return vault;
+    setVaultLoading(true);
+    try {
+      const res = await serverPost("/vault/load", {});
+      if (res.success && res.vault) {
+        setVault(res.vault);
+        setVaultLoading(false);
+        return res.vault;
+      }
+    } catch (e) { console.warn("[studio] vault load failed:", e); }
+    setVaultLoading(false);
+    return null;
+  }, [vault, vaultLoading, serverPost]);
 
   // ── Execute generation action ──
   const executeAction = useCallback(async (action: StudioAction, msgId: string) => {
@@ -185,6 +216,74 @@ export function StudioPage() {
           result = { type: "video", prompt, items };
           break;
         }
+        case "generate-campaign": {
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto" } = action.params;
+
+          // 1. Generate texts for all formats
+          const textRes = await serverPost("/campaign/generate-texts", {
+            brief: brief || "",
+            targetAudience: targetAudience || "",
+            formats: formats.join(","),
+            campaignObjective: objective || "",
+            toneOfVoice: toneOfVoice || "",
+            contentAngle: contentAngle || "",
+            keyMessages: keyMessages || "",
+            callToAction: callToAction || "",
+            language,
+            model: "gpt-4o",
+          });
+
+          const posts: CampaignPost[] = [];
+          if (textRes.success && textRes.copyMap) {
+            for (const [formatId, copy] of Object.entries(textRes.copyMap) as [string, any][]) {
+              const platform = formatId.split("-")[0];
+              const text = copy.caption || copy.text || copy.copy || copy.body || copy.content || copy.message || "";
+              posts.push({
+                format: formatId,
+                platform,
+                text,
+                hashtags: Array.isArray(copy.hashtags) ? copy.hashtags.join(" ") : copy.hashtags || "",
+                headline: copy.headline || copy.subject || "",
+                cta: copy.ctaText || copy.cta || "",
+              });
+            }
+          }
+
+          // 2. Generate images for visual formats
+          const visualFormats = posts.filter(p =>
+            !p.format.includes("text") && !p.format.includes("article") && !p.format.includes("thread")
+          );
+          const imagePrompts = visualFormats.map(p => {
+            const copyEntry = (textRes.copyMap as any)?.[p.format];
+            return copyEntry?.imagePrompt || `${brief}, ${p.platform} ${p.format}, professional`;
+          });
+
+          for (let i = 0; i < Math.min(visualFormats.length, 4); i++) {
+            try {
+              const aspectRatio = visualFormats[i].format.includes("story") || visualFormats[i].format.includes("reel")
+                ? "9:16"
+                : visualFormats[i].format.includes("post") && visualFormats[i].platform === "instagram"
+                  ? "1:1"
+                  : "16:9";
+              const imgRes = await serverGet(
+                `/generate/image-via-get?prompt=${encodeURIComponent(imagePrompts[i])}&models=ora-vision&aspectRatio=${aspectRatio}`
+              );
+              if (imgRes.success && imgRes.results?.[0]?.result?.imageUrl) {
+                visualFormats[i].imageUrl = imgRes.results[0].result.imageUrl;
+              }
+            } catch { /* continue */ }
+          }
+
+          if (posts.length > 0) {
+            result = {
+              type: "campaign",
+              prompt: brief || "",
+              items: [],
+              campaignPosts: posts,
+            };
+          }
+          break;
+        }
         case "start-campaign": {
           setContext(prev => ({ ...prev, mode: "campaign", campaignBrief: action.params }));
           break;
@@ -258,10 +357,22 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
+      // Load vault for campaign mode or when "campagne" is mentioned
+      let vaultData = vault;
+      const isCampaignRelated = context.mode === "campaign" || /campagne|campaign|marque|brand/i.test(msg);
+      if (isCampaignRelated && !vaultData) {
+        vaultData = await loadVault();
+      }
+
       const res = await serverPost("/studio/chat", {
         message: msg,
         history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
-        context,
+        context: {
+          ...context,
+          ...(vaultData?.brand_platform ? { brand_platform: vaultData.brand_platform } : {}),
+          ...(vaultData?.gammes ? { gammes: vaultData.gammes } : {}),
+          ...(vaultData?.tone ? { tone: vaultData.tone } : {}),
+        },
       });
 
       if (res.success) {
@@ -271,12 +382,12 @@ export function StudioPage() {
           content: res.reply || "",
           action: res.action || null,
           suggestions: res.suggestions || [],
-          isGenerating: !!res.action && !["ask-clarification", "start-campaign", "start-video-montage"].includes(res.action?.type),
+          isGenerating: !!res.action && ["generate-image", "generate-text", "generate-music", "generate-video", "generate-campaign"].includes(res.action?.type),
         };
         setMessages(prev => [...prev, assistMsg]);
 
         // Auto-execute generation actions
-        if (res.action && ["generate-image", "generate-text", "generate-music", "generate-video"].includes(res.action.type)) {
+        if (res.action && ["generate-image", "generate-text", "generate-music", "generate-video", "generate-campaign"].includes(res.action.type)) {
           executeAction(res.action, assistMsg.id);
         } else if (res.action?.type === "start-campaign") {
           setContext(prev => ({ ...prev, mode: "campaign", campaignBrief: res.action.params }));
@@ -513,6 +624,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare }: {
               : msg.action?.type === "generate-text" ? "J'écris..."
               : msg.action?.type === "generate-music" ? "Je compose..."
               : msg.action?.type === "generate-video" ? "Je produis la vidéo..."
+              : msg.action?.type === "generate-campaign" ? "Je prépare ta campagne (textes + visuels)..."
               : "En cours..."}
           </span>
         </div>
@@ -627,6 +739,56 @@ function ResultCard({ result, onCompare }: {
             <div className="flex-1">
               <div style={{ fontSize: "12px", fontWeight: 600 }}>{item.model}</div>
               <audio controls src={item.url} className="w-full mt-1" style={{ height: 28 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (result.type === "campaign" && result.campaignPosts) {
+    return (
+      <div className="space-y-3">
+        {result.campaignPosts.map((post, i) => (
+          <div key={i} className="rounded-xl overflow-hidden"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            {/* Image if available */}
+            {post.imageUrl && (
+              <div className="relative" style={{ maxHeight: 200 }}>
+                <img src={post.imageUrl} className="w-full object-cover" style={{ maxHeight: 200 }} alt="" />
+                <a href={post.imageUrl} download target="_blank" rel="noreferrer"
+                  className="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center"
+                  style={{ background: "rgba(0,0,0,0.5)" }}>
+                  <Download size={12} style={{ color: "#fff" }} />
+                </a>
+              </div>
+            )}
+            {/* Content */}
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-md"
+                  style={{ background: "var(--secondary)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase" }}>
+                  {post.platform}
+                </span>
+                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                  {post.format.replace(post.platform + "-", "")}
+                </span>
+              </div>
+              {post.headline && (
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>{post.headline}</div>
+              )}
+              <div style={{ fontSize: "13px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                {post.text}
+              </div>
+              {post.hashtags && (
+                <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{post.hashtags}</div>
+              )}
+              {post.cta && (
+                <div className="flex items-center gap-1 mt-1">
+                  <ArrowRight size={10} />
+                  <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
+                </div>
+              )}
             </div>
           </div>
         ))}
