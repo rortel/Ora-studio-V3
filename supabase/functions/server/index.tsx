@@ -4799,6 +4799,7 @@ Si "compare" → ajoutez "compare": true dans l'action.
 Si "inspire me" / "surprise me" → proposez des concepts créatifs.
 
 CONTEXTE : ${context.mode ? `Mode: ${context.mode}` : "Aucun mode"} | Date: ${today.toISOString().slice(0,10)}
+${context.hasReferenceImage ? `\nPHOTO DE RÉFÉRENCE : L'utilisateur a joint une photo. Cette image sera automatiquement utilisée comme référence pour la génération d'image (img2img) ou de vidéo (img2vid). Mentionnez-le dans votre réponse ("Je vais utiliser votre photo comme base..."). Adaptez vos questions de personnalisation en conséquence.` : ""}
 ${context.campaignBrief ? `Brief en cours: ${JSON.stringify(context.campaignBrief)}` : ""}
 ${context.force_generate ? `\n⚠️ INSTRUCTION SYSTÈME PRIORITAIRE : Le message contient [GÉNÉREZ MAINTENANT]. Vous DEVEZ retourner une action generate-campaign dans votre JSON. Déduisez TOUS les champs manquants à partir du contexte marque/produits. Formats par défaut : ["linkedin-post","instagram-post","facebook-post"]. NE posez AUCUNE question supplémentaire.` : ""}`;
 

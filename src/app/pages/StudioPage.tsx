@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Send, Sparkles, ImageIcon, FileText, Music, Film, Mic, Square,
+  Send, Sparkles, ImageIcon, FileText, Music, Film, Mic, Square, Paperclip,
   Loader2, Download, Columns2, RefreshCw, Rocket,
   Play, ArrowRight, Wand2, Palette, ChevronLeft, ChevronRight, X,
   Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
@@ -176,6 +176,44 @@ export function StudioPage() {
     };
   }, []);
 
+  // ── Attached image (reference photo) ──
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; signedUrl?: string; uploading: boolean } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAttachImage = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) { toast.error("Fichier non supporté", { description: "Seules les images sont acceptées." }); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("Image trop lourde", { description: "Maximum 10 Mo." }); return; }
+    const preview = URL.createObjectURL(file);
+    setAttachedImage({ file, preview, uploading: true });
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/hub/upload-ref`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.signedUrl) {
+        setAttachedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl, uploading: false } : null);
+        toast.success("Photo ajoutée");
+      } else {
+        toast.error("Échec de l'upload", { description: data.error || "Erreur inconnue" });
+        setAttachedImage(null);
+        URL.revokeObjectURL(preview);
+      }
+    } catch (err: any) {
+      toast.error("Erreur d'upload", { description: err?.message || "Erreur réseau" });
+      setAttachedImage(null);
+      URL.revokeObjectURL(preview);
+    }
+  }, []);
+
+  const removeAttachedImage = useCallback(() => {
+    if (attachedImage?.preview) URL.revokeObjectURL(attachedImage.preview);
+    setAttachedImage(null);
+  }, [attachedImage]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking, isGenerating]);
@@ -233,12 +271,14 @@ export function StudioPage() {
       switch (action.type) {
         case "generate-image": {
           const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
+          const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           const allModels = action.compare
             ? ["ora-vision", "flux-pro", "midjourney", "dall-e"]
             : models;
           const res = await serverGet(
-            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${allModels.join(",")}&aspectRatio=${aspectRatio}`
+            `/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${allModels.join(",")}&aspectRatio=${aspectRatio}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
           );
+          if (refUrl) removeAttachedImage();
           if (res.success && res.results) {
             result = {
               type: "image",
@@ -307,13 +347,15 @@ export function StudioPage() {
         }
         case "generate-video": {
           const { prompt, model = "ora-motion" } = action.params;
+          const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           const allModels = action.compare
             ? ["ora-motion", "runway-gen3"]
             : [model];
           const items: any[] = [];
+          if (refUrl) removeAttachedImage();
           for (const m of allModels) {
             const startRes = await serverGet(
-              `/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${m}`
+              `/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${m}${refUrl ? `&imageUrl=${encodeURIComponent(refUrl)}` : ""}`
             );
             if (startRes.success && startRes.generationId) {
               const videoUrl = await pollVideo(startRes.generationId);
@@ -547,7 +589,7 @@ export function StudioPage() {
       toast.error("Erreur de génération. Réessaie.");
     }
     setIsGenerating(false);
-  }, [serverGet, serverPost, navigate]);
+  }, [serverGet, serverPost, navigate, attachedImage, removeAttachedImage]);
 
   // Polling helpers
   async function pollVideo(genId: string): Promise<string | null> {
@@ -625,6 +667,7 @@ export function StudioPage() {
           ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
           ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category })).slice(0, 20) } : {}),
           ...(forceGenerate ? { force_generate: true } : {}),
+          ...(attachedImage?.signedUrl ? { hasReferenceImage: true, referenceImageUrl: attachedImage.signedUrl } : {}),
         },
       });
 
@@ -668,7 +711,7 @@ export function StudioPage() {
       }]);
     }
     setIsThinking(false);
-  }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate]);
+  }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate, attachedImage]);
 
   // ── Compare handler ──
   const handleCompare = useCallback((result: GeneratedResult) => {
@@ -752,9 +795,36 @@ export function StudioPage() {
           {/* ── Input bar ── */}
           <div className="flex-shrink-0 px-5 pb-5 pt-2">
             <div className="max-w-2xl mx-auto">
+              {/* Attached image preview */}
+              {attachedImage && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="relative group">
+                    <img src={attachedImage.preview} className="w-14 h-14 rounded-lg object-cover" style={{ border: "1px solid var(--border)" }} alt="" />
+                    {attachedImage.uploading && (
+                      <div className="absolute inset-0 flex items-center justify-center rounded-lg" style={{ background: "rgba(0,0,0,0.5)" }}>
+                        <Loader2 size={16} className="animate-spin text-white" />
+                      </div>
+                    )}
+                    <button onClick={removeAttachedImage}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ background: "var(--foreground)", color: "var(--background)" }}>
+                      <X size={10} />
+                    </button>
+                  </div>
+                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                    {attachedImage.uploading ? "Upload en cours..." : "Photo de référence"}
+                  </span>
+                </div>
+              )}
+              <input type="file" ref={fileInputRef} accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleAttachImage(f); e.target.value = ""; }} />
               <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
                 style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                <Sparkles size={14} className="text-muted-foreground flex-shrink-0" />
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                  title="Joindre une photo">
+                  <Paperclip size={15} />
+                </button>
                 <input
                   ref={inputRef}
                   value={input}
