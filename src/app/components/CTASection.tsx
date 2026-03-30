@@ -1,8 +1,10 @@
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import { ArrowRight } from "lucide-react";
+import { useI18n } from "../lib/i18n";
 
 export function CTASection() {
+  const { t } = useI18n();
   return (
     <section className="py-32 md:py-44" style={{ background: "#FAFAFA" }}>
       <div className="max-w-[900px] mx-auto px-6 text-center">
@@ -21,7 +23,7 @@ export function CTASection() {
             marginBottom: 24,
           }}
         >
-          Ready to start?
+          {t("cta.title")}
         </motion.h2>
 
         <motion.p
@@ -38,7 +40,7 @@ export function CTASection() {
             marginBottom: 36,
           }}
         >
-          50 free credits. No card required.
+          {t("cta.subtitle")}
         </motion.p>
 
         <motion.div
@@ -59,7 +61,7 @@ export function CTASection() {
               fontFamily: "'Inter', sans-serif",
             }}
           >
-            Start creating
+            {t("cta.cta")}
             <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
           </Link>
           <Link
@@ -72,7 +74,7 @@ export function CTASection() {
               color: "#9A9590",
             }}
           >
-            View pricing
+            {t("cta.ctaSecondary")}
           </Link>
         </motion.div>
       </div>

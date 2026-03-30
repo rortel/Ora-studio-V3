@@ -4,6 +4,7 @@ import { Menu, X } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { motion, AnimatePresence } from "motion/react";
 import { OraLogo } from "./OraLogo";
+import { useI18n, type Locale } from "../lib/i18n";
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -11,6 +12,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { locale, setLocale, t } = useI18n();
 
   useEffect(() => {
     function handleScroll() {
@@ -25,8 +27,8 @@ export function Navbar() {
   const lightMode = isHome && !scrolled;
 
   const links = [
-    { label: "Models", href: "/models" },
-    { label: "Pricing", href: "/pricing" },
+    { label: t("nav.models"), href: "/models" },
+    { label: t("nav.pricing"), href: "/pricing" },
   ];
 
   return (
@@ -86,7 +88,7 @@ export function Navbar() {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Dashboard
+                {t("nav.dashboard")}
               </Link>
             ) : (
               <>
@@ -99,7 +101,7 @@ export function Navbar() {
                     color: lightMode ? "rgba(255,255,255,0.7)" : "var(--text-secondary)",
                   }}
                 >
-                  Sign in
+                  {t("nav.signIn")}
                 </Link>
                 <Link
                   to="/login?mode=signup"
@@ -112,10 +114,25 @@ export function Navbar() {
                     letterSpacing: "-0.01em",
                   }}
                 >
-                  Get started
+                  {t("nav.getStarted")}
                 </Link>
               </>
             )}
+            {/* Language toggle */}
+            <button
+              onClick={() => setLocale(locale === "en" ? "fr" : "en")}
+              className="px-2.5 py-1.5 rounded-full transition-all duration-200"
+              style={{
+                fontSize: "12px",
+                fontWeight: 500,
+                color: lightMode ? "rgba(255,255,255,0.6)" : "var(--text-secondary)",
+                background: lightMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.04)",
+                border: "1px solid",
+                borderColor: lightMode ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
+              }}
+            >
+              {locale === "en" ? "FR" : "EN"}
+            </button>
           </div>
 
           {/* Mobile hamburger */}
@@ -190,7 +207,7 @@ export function Navbar() {
                     fontWeight: 600,
                   }}
                 >
-                  Dashboard
+                  {t("nav.dashboard")}
                 </Link>
               ) : (
                 <>
@@ -205,7 +222,7 @@ export function Navbar() {
                       fontWeight: 600,
                     }}
                   >
-                    Get started
+                    {t("nav.getStarted")}
                   </Link>
                   <Link
                     to="/login"
@@ -217,7 +234,7 @@ export function Navbar() {
                       color: "var(--text-secondary)",
                     }}
                   >
-                    Sign in
+                    {t("nav.signIn")}
                   </Link>
                 </>
               )}

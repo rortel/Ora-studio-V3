@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, Minus } from "lucide-react";
-
-
-const faqs = [
-  { q: "What makes ORA different from ChatGPT or Midjourney?", a: "With ChatGPT you only get GPT. With Midjourney you only get Midjourney. ORA gives you 38+ models in one studio. Plus Arena to compare outputs side by side, Campaign Lab for multi-platform generation, and Brand Vault for automatic compliance." },
-  { q: "Which AI models are supported?", a: "GPT-5, GPT-4o, Claude 4.5, Gemini 2.5, DeepSeek V3, Mistral, Flux Pro 2, DALL-E 3, Photon 1, Leonardo AI, Luma Ray 2, Sora 2, Kling 2.1, Veo 3.1, Seedream V4, and many more. New models added monthly." },
-  { q: "How does Campaign Lab work?", a: "Write a brief. Choose your platforms. Campaign Lab generates images, videos, and copy adapted for each platform - all at once." },
-  { q: "What does one credit get?", a: "Text: 1 credit. Image: 4 credits. Audio: 4 credits. Code: 2 credits. Video (~10s): 100 credits. Credits never expire." },
-  { q: "Do unused credits roll over?", a: "Yes, always. Monthly credits and purchased packs roll over indefinitely." },
-  { q: "Is my content private?", a: "Yes. We don't train on your data. Full GDPR compliance." },
-];
+import { useI18n } from "../lib/i18n";
 
 export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
+  const { t } = useI18n();
+
+  const faqs = [
+    { q: t("faq.q1"), a: t("faq.a1") },
+    { q: t("faq.q2"), a: t("faq.a2") },
+    { q: t("faq.q3"), a: t("faq.a3") },
+    { q: t("faq.q4"), a: t("faq.a4") },
+    { q: t("faq.q5"), a: t("faq.a5") },
+    { q: t("faq.q6"), a: t("faq.a6") },
+  ];
 
   return (
     <section id="faq" className="py-28 md:py-36" style={{ background: "#FAFAFA" }}>
@@ -35,7 +36,7 @@ export function FAQ() {
               marginBottom: 16,
             }}
           >
-            FAQ
+            {t("faq.label")}
           </p>
           <h2
             style={{
@@ -47,7 +48,7 @@ export function FAQ() {
               fontFamily: "'Inter', sans-serif",
             }}
           >
-            Questions & answers
+            {t("faq.title")}
           </h2>
         </motion.div>
 

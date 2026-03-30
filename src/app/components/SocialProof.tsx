@@ -1,7 +1,7 @@
 const models = [
-  "GPT-5", "Claude 4.5", "Gemini 2.5", "Flux Pro 2", "DALL-E 3",
-  "Luma Ray 2", "Photon 1", "Sora 2", "Mistral", "Kling 2.1",
-  "DeepSeek V3", "Veo 3.1", "Seedream V4", "Leonardo AI", "Pika 2.0", "Runway Gen-3",
+  "GPT-4o", "GPT-4.1", "Claude Sonnet", "Claude Haiku", "Gemini 2.5 Flash",
+  "Luma Photon", "Photon Flash", "Flux Pro", "Flux Schnell", "DALL-E 3",
+  "Seedream", "Recraft V3", "Kling 2.1", "Veo 3", "Sora 2", "Runway Gen-3",
 ];
 
 export function SocialProof() {

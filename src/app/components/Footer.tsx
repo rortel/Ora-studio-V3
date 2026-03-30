@@ -1,16 +1,18 @@
 import { Link } from "react-router";
+import { useI18n } from "../lib/i18n";
 import { OraLogo } from "./OraLogo";
 
 
 export function Footer() {
+  const { t } = useI18n();
   const productLinks = [
-    { label: "Models", href: "/models" },
-    { label: "Pricing", href: "/pricing" },
-    { label: "Hub", href: "/hub" },
+    { label: t("footer.models"), href: "/models" },
+    { label: t("footer.pricing"), href: "/pricing" },
+    { label: t("footer.hub"), href: "/hub" },
   ];
   const companyLinks = [
-    { label: "Privacy", href: "#" },
-    { label: "Terms", href: "#" },
+    { label: t("footer.privacy"), href: "#" },
+    { label: t("footer.terms"), href: "#" },
   ];
 
   return (
@@ -30,7 +32,7 @@ export function Footer() {
                 maxWidth: 280,
               }}
             >
-              AI-powered brand content studio. One brief, every format, always on-brand.
+              {t("footer.tagline")}
             </p>
           </div>
 
@@ -48,7 +50,7 @@ export function Footer() {
                   marginBottom: 12,
                 }}
               >
-                Product
+                {t("footer.product")}
               </p>
               <div className="flex flex-col gap-2.5">
                 {productLinks.map((l) => (
@@ -80,7 +82,7 @@ export function Footer() {
                   marginBottom: 12,
                 }}
               >
-                Legal
+                {t("footer.legal")}
               </p>
               <div className="flex flex-col gap-2.5">
                 {companyLinks.map((l) => (
