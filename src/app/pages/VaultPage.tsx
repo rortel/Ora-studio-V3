@@ -7,7 +7,7 @@ import {
   Camera, Type, FileText, ArrowRight, RefreshCw,
   Instagram, Linkedin, Twitter, Facebook, Youtube,
   Building2, ShoppingBag, Eye, Paintbrush, Image as ImageIcon,
-  Layers, ChevronDown, Shield, Save, BookOpen,
+  Layers, ChevronDown, Shield, Save, BookOpen, Compass, MessageSquare, Send,
 } from "lucide-react";
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -62,6 +62,27 @@ interface VaultData {
   font_usage_rules: string | null;
   competitors: string | null;
   brand_guidelines_text: string | null;
+  // Brand Strategy (Platform de marque)
+  brand_platform: {
+    promise: string;
+    narrative_register: string;
+    creative_tension: string;
+    semiotic_codes: {
+      adopt: string[];
+      avoid: string[];
+      subvert: string[];
+    };
+    photo_direction: {
+      framing: string;
+      lighting: string;
+      human_presence: string;
+      composition: string;
+    };
+    reference_prompts: {
+      positive: string[];
+      negative: string[];
+    };
+  } | null;
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -71,6 +92,7 @@ const EMPTY_VAULT: VaultData = {
   fonts: [], confidence_score: 0, source_url: null, updatedAt: null,
   mission: null, vision: null, personality: null, usp: null, values: null,
   font_usage_rules: null, competitors: null, brand_guidelines_text: null,
+  brand_platform: null,
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -1238,6 +1260,28 @@ function VaultPageContent() {
                 </div>
               )}
 
+              {/* Brand Strategy — full width */}
+              <div className="md:col-span-2">
+                <SectionCard icon={Compass} title="Brand Strategy"
+                  count={vault.brand_platform ? 1 : 0}
+                  open={isOpen("strategy")} onToggle={() => toggleSection("strategy")}>
+                  {vault.brand_platform ? (
+                    <BrandStrategyDisplay platform={vault.brand_platform} onEdit={() => {
+                      setVault(prev => ({ ...prev, brand_platform: null }));
+                    }} />
+                  ) : (
+                    <BrandStrategyOnboarding
+                      vault={vault}
+                      onComplete={(platform) => {
+                        const updated = { ...vault, brand_platform: platform };
+                        setVault(updated);
+                        saveVault(updated);
+                      }}
+                    />
+                  )}
+                </SectionCard>
+              </div>
+
             </div>
 
             {/* Footer meta */}
@@ -1375,4 +1419,300 @@ function vaultHeaders(): Record<string, string> {
 
 function vaultFormHeaders(): Record<string, string> {
   return apiHeaders(false);
+}
+
+// ════════════════════════════════════════
+// BRAND STRATEGY — Display
+// ════════════════════════════════════════
+
+const REGISTER_LABELS: Record<string, { label: string; desc: string }> = {
+  transformation: { label: "Transformation", desc: "Show the after, never the process. The product is invisible, only its effect exists." },
+  connivence: { label: "Connivence", desc: "Speak to those who know. Shared references create belonging." },
+  tension: { label: "Tension", desc: "Name a problem no one dares to. Disrupt before reassuring." },
+  proof: { label: "Silent proof", desc: "Say nothing, show results. Absence of argument is the argument." },
+  culture: { label: "Culture", desc: "Don't talk about yourself. Talk about the world. Become a media." },
+};
+
+function BrandStrategyDisplay({ platform, onEdit }: {
+  platform: NonNullable<VaultData["brand_platform"]>;
+  onEdit: () => void;
+}) {
+  const reg = REGISTER_LABELS[platform.narrative_register] || { label: platform.narrative_register, desc: "" };
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+          This strategy is automatically injected into every generation — images, text, video, and audio.
+        </p>
+        <button onClick={onEdit}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+          style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
+          <RefreshCw size={11} /> Reconfigure
+        </button>
+      </div>
+
+      {/* Promise */}
+      <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+        <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+          Brand promise
+        </span>
+        <p style={{ fontSize: "14px", fontWeight: 500, lineHeight: 1.5, color: "var(--foreground)", marginTop: 6 }}>
+          "{platform.promise}"
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Narrative register */}
+        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Narrative register
+          </span>
+          <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)", marginTop: 4 }}>{reg.label}</p>
+          <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.4 }}>{reg.desc}</p>
+        </div>
+
+        {/* Creative tension */}
+        {platform.creative_tension && (
+          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Creative tension
+            </span>
+            <p style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)", marginTop: 4 }}>
+              {platform.creative_tension}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Semiotic codes */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {([
+          { key: "adopt" as const, label: "Codes to adopt", color: "#16a34a" },
+          { key: "avoid" as const, label: "Codes to avoid", color: "#dc2626" },
+          { key: "subvert" as const, label: "Codes to subvert", color: "#d97706" },
+        ] as const).map(({ key, label, color }) => (
+          platform.semiotic_codes[key].length > 0 && (
+            <div key={key} className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+              <span style={{ fontSize: "9px", fontWeight: 600, color, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                {label}
+              </span>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {platform.semiotic_codes[key].map((code, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded-full"
+                    style={{ fontSize: "10px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                    {code}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        ))}
+      </div>
+
+      {/* Photo direction */}
+      {platform.photo_direction && (
+        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+            Photographic direction
+          </span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+            {([
+              { label: "Framing", value: platform.photo_direction.framing },
+              { label: "Lighting", value: platform.photo_direction.lighting },
+              { label: "Human presence", value: platform.photo_direction.human_presence },
+              { label: "Composition", value: platform.photo_direction.composition },
+            ]).filter(f => f.value).map((field) => (
+              <div key={field.label}>
+                <span style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "uppercase" }}>{field.label}</span>
+                <p style={{ fontSize: "11px", color: "var(--foreground)", marginTop: 2 }}>{field.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════
+// BRAND STRATEGY — Conversational onboarding
+// ════════════════════════════════════════
+
+const ONBOARDING_QUESTIONS = [
+  { id: "promise", question: "What does your brand promise to its customers? Not what you do — what they gain.", placeholder: "e.g. We give teams back their evenings by eliminating busywork." },
+  { id: "show", question: "What do you want people to see in your communication? Describe the feeling, the world you want to show.", placeholder: "e.g. Freedom, lightness, people enjoying their time. Never screens or dashboards." },
+  { id: "never", question: "What should NEVER appear in your communication? What contradicts your brand?", placeholder: "e.g. Product screenshots, technical jargon, corporate blue, stock photos of handshakes." },
+  { id: "admire", question: "Name a brand whose communication you admire. What do you like about it?", placeholder: "e.g. Apple — they show the human benefit, never the specs. Clean, emotional, aspirational." },
+  { id: "tension", question: "What makes your brand interesting? What's the paradox or unexpected contrast?", placeholder: "e.g. High-tech but deeply human. Enterprise-grade but feels like a consumer app." },
+];
+
+function BrandStrategyOnboarding({ vault, onComplete }: {
+  vault: VaultData;
+  onComplete: (platform: NonNullable<VaultData["brand_platform"]>) => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [processing, setProcessing] = useState(false);
+  const [currentInput, setCurrentInput] = useState("");
+  const { accessToken } = useAuth();
+
+  const q = ONBOARDING_QUESTIONS[step];
+  const isLast = step === ONBOARDING_QUESTIONS.length - 1;
+
+  const handleSubmitAnswer = () => {
+    if (!currentInput.trim()) return;
+    const updated = { ...answers, [q.id]: currentInput.trim() };
+    setAnswers(updated);
+    setCurrentInput("");
+
+    if (isLast) {
+      synthesizePlatform(updated);
+    } else {
+      setStep(step + 1);
+    }
+  };
+
+  const synthesizePlatform = async (allAnswers: Record<string, string>) => {
+    setProcessing(true);
+    try {
+      const res = await fetch(apiUrl("/brand-engine/synthesize"), {
+        method: "POST",
+        headers: vaultHeaders(),
+        body: corsBody(accessToken || "", {
+          answers: allAnswers,
+          vaultContext: {
+            company_name: vault.company_name,
+            industry: vault.industry,
+            tagline: vault.tagline,
+            mission: vault.mission,
+            vision: vault.vision,
+            personality: vault.personality,
+            usp: vault.usp,
+            values: vault.values,
+            tone: vault.tone,
+            key_messages: vault.key_messages,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.platform) {
+        onComplete(data.platform);
+      } else {
+        // Fallback: build platform from raw answers
+        onComplete({
+          promise: allAnswers.promise || "",
+          narrative_register: "transformation",
+          creative_tension: allAnswers.tension || "",
+          semiotic_codes: {
+            adopt: allAnswers.show ? allAnswers.show.split(",").map(s => s.trim()).filter(Boolean).slice(0, 8) : [],
+            avoid: allAnswers.never ? allAnswers.never.split(",").map(s => s.trim()).filter(Boolean).slice(0, 8) : [],
+            subvert: [],
+          },
+          photo_direction: { framing: "", lighting: "natural", human_presence: "", composition: "" },
+          reference_prompts: { positive: [], negative: [] },
+        });
+      }
+    } catch {
+      // Fallback
+      onComplete({
+        promise: allAnswers.promise || "",
+        narrative_register: "transformation",
+        creative_tension: allAnswers.tension || "",
+        semiotic_codes: {
+          adopt: allAnswers.show ? allAnswers.show.split(",").map(s => s.trim()).filter(Boolean).slice(0, 8) : [],
+          avoid: allAnswers.never ? allAnswers.never.split(",").map(s => s.trim()).filter(Boolean).slice(0, 8) : [],
+          subvert: [],
+        },
+        photo_direction: { framing: "", lighting: "natural", human_presence: "", composition: "" },
+        reference_prompts: { positive: [], negative: [] },
+      });
+    }
+    setProcessing(false);
+  };
+
+  if (processing) {
+    return (
+      <div className="flex flex-col items-center py-8 gap-3">
+        <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
+        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Analyzing your brand strategy...</p>
+        <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>Extracting semiotic codes, narrative register, and photographic direction</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+        Answer {ONBOARDING_QUESTIONS.length} questions to define your brand strategy. This will guide every generation — images, text, video, and audio.
+      </p>
+
+      {/* Progress */}
+      <div className="flex gap-1">
+        {ONBOARDING_QUESTIONS.map((_, i) => (
+          <div key={i} className="h-1 flex-1 rounded-full transition-all"
+            style={{ background: i < step ? "var(--foreground)" : i === step ? "var(--accent)" : "var(--border)" }} />
+        ))}
+      </div>
+
+      {/* Question */}
+      <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+        <div className="flex items-start gap-3">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{ background: "rgba(17,17,17,0.08)" }}>
+            <MessageSquare size={13} style={{ color: "var(--accent)" }} />
+          </div>
+          <div className="flex-1">
+            <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)", lineHeight: 1.5 }}>
+              {q.question}
+            </p>
+            <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: 2 }}>
+              Question {step + 1} of {ONBOARDING_QUESTIONS.length}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Answer input */}
+      <div className="flex gap-2">
+        <textarea
+          value={currentInput}
+          onChange={(e) => setCurrentInput(e.target.value)}
+          placeholder={q.placeholder}
+          className="flex-1 rounded-xl px-4 py-3 resize-none transition-all"
+          style={{
+            background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)",
+            fontSize: "13px", lineHeight: 1.5, minHeight: 60, outline: "none",
+          }}
+          onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
+          onBlur={e => (e.target.style.border = "1px solid var(--border)")}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmitAnswer(); } }}
+        />
+        <button
+          onClick={handleSubmitAnswer}
+          disabled={!currentInput.trim()}
+          className="self-end w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer transition-all disabled:opacity-30"
+          style={{ background: "var(--foreground)", color: "var(--background)" }}>
+          {isLast ? <Check size={16} /> : <Send size={14} />}
+        </button>
+      </div>
+
+      {/* Previous answers */}
+      {Object.keys(answers).length > 0 && (
+        <div className="space-y-1.5">
+          {ONBOARDING_QUESTIONS.slice(0, step).map((prevQ) => (
+            answers[prevQ.id] && (
+              <div key={prevQ.id} className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                style={{ background: "rgba(26,23,20,0.02)" }}>
+                <Check size={11} className="mt-0.5 flex-shrink-0" style={{ color: "var(--accent)" }} />
+                <div>
+                  <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{prevQ.question.split("?")[0]}?</span>
+                  <p style={{ fontSize: "11px", color: "var(--foreground)", marginTop: 1 }}>{answers[prevQ.id]}</p>
+                </div>
+              </div>
+            )
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

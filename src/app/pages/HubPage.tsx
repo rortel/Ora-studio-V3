@@ -596,13 +596,34 @@ function HubPageContent() {
     setIsGenerating(true);
     setGenerationError(null);
     setActiveTab("generate");
-    const currentPrompt = prompt;
+    let currentPrompt = prompt;
     setPrompt("");
     const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     const isTextType = contentType === "text" || contentType === "code";
     const isImageType = contentType === "image";
     const token = getAuthToken();
+
+    // ── Brand Engine enrichment ──
+    // Load vault → if brand_platform exists, enrich the prompt before generation
+    try {
+      const vaultRes = await serverPost("/vault/load", {});
+      const bp = vaultRes?.vault?.brand_platform;
+      if (bp) {
+        const enrichRes = await serverPost("/brand-engine/enrich", {
+          prompt: currentPrompt,
+          contentType,
+          brand_platform: bp,
+        });
+        if (enrichRes?.success && enrichRes.wasEnriched && enrichRes.enrichedPrompt) {
+          console.log("[BrandEngine] Prompt enriched:", enrichRes.enrichedPrompt.slice(0, 120));
+          currentPrompt = enrichRes.enrichedPrompt;
+        }
+      }
+    } catch (e) {
+      console.warn("[BrandEngine] Enrichment skipped:", e);
+      // Continue with original prompt
+    }
 
     const genStartMs = Date.now();
     console.log("[HubPage] Generate:", { contentType, models: activeModels.map(m => m.id), prompt: currentPrompt.slice(0, 60) });

@@ -977,8 +977,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     if (language !== "auto") enrichedParts.push(`LANGUAGE: ${language}`);
     if (campaignStartDate) enrichedParts.push(`CAMPAIGN START DATE: ${campaignStartDate}`);
     if (campaignDuration) enrichedParts.push(`CAMPAIGN DURATION: ${campaignDuration}`);
-    const briefShort = enrichedParts.join("\n\n").slice(0, 2000);
+    let briefShort = enrichedParts.join("\n\n").slice(0, 2000);
     const urlsShort = (productUrls || "").slice(0, 300);
+
+    // ── Brand Engine: enrich brief with brand strategy ──
+    try {
+      const vaultRes = await serverPost("/vault/load", {});
+      const bp = vaultRes?.vault?.brand_platform;
+      if (bp) {
+        const enrichRes = await serverPost("/brand-engine/enrich", {
+          prompt: briefShort,
+          contentType: "campaign",
+          brand_platform: bp,
+        });
+        if (enrichRes?.success && enrichRes.wasEnriched && enrichRes.enrichedPrompt) {
+          console.log("[CampaignLab][BrandEngine] Brief enriched:", enrichRes.enrichedPrompt.slice(0, 120));
+          briefShort = enrichRes.enrichedPrompt.slice(0, 2000);
+        }
+      }
+    } catch (e) {
+      console.warn("[CampaignLab][BrandEngine] Enrichment skipped:", e);
+    }
 
     try {
       // ═══ PHASE 0: Upload ref photos (if any) ═══

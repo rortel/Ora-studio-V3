@@ -4257,6 +4257,200 @@ app.post("/vault", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BRAND ENGINE — Strategy synthesis & prompt enrichment
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// POST /brand-engine/synthesize
+// Takes 5 onboarding answers + vault context → returns structured brand_platform
+app.post("/brand-engine/synthesize", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { answers, vault } = body;
+
+    if (!answers || !Array.isArray(answers) || answers.length < 5) {
+      return c.json({ success: false, error: "5 onboarding answers required." }, 400);
+    }
+
+    const brandContext = vault
+      ? `Brand: ${vault.brandName || vault.company_name || "Unknown"}
+Industry: ${vault.industry || "N/A"}
+Tagline: ${vault.tagline || "N/A"}
+Products: ${(vault.products_services || []).join(", ") || "N/A"}
+Tone: ${vault.tone_of_voice || "N/A"}`
+      : "No existing brand data.";
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.4,
+        messages: [
+          {
+            role: "system",
+            content: `You are an elite brand strategist specializing in brand platforms (plateforme de marque), semiotic analysis, and creative direction. You synthesize raw brand insights into a structured brand platform.
+
+Return ONLY valid JSON — no markdown, no backticks, no explanation.
+
+JSON schema:
+{
+  "promise": "string — the core brand promise (what the brand commits to delivering)",
+  "narrative_register": "transformation | connivence | tension | proof | culture",
+  "creative_tension": "string — the productive tension that drives the brand narrative",
+  "semiotic_codes": {
+    "adopt": ["string — visual/verbal signs the brand should embrace"],
+    "avoid": ["string — signs that contradict the brand identity"],
+    "subvert": ["string — codes to reappropriate in an unexpected way"]
+  },
+  "photo_direction": {
+    "framing": "string — preferred shot types and distances",
+    "lighting": "string — lighting style and mood",
+    "human_presence": "string — how people appear (or don't) in visuals",
+    "composition": "string — layout rules, negative space, geometry"
+  },
+  "reference_prompts": {
+    "positive": ["string — 3-5 example prompts aligned with the brand"],
+    "negative": ["string — 3-5 anti-prompts to avoid"]
+  }
+}
+
+RESPOND IN THE SAME LANGUAGE as the user's answers.`
+          },
+          {
+            role: "user",
+            content: `Here is the brand context:
+${brandContext}
+
+Here are the 5 onboarding answers:
+
+1. What transformation does the brand promise?
+${answers[0]}
+
+2. What visual/verbal universe does the brand claim?
+${answers[1]}
+
+3. What should the brand NEVER do or say?
+${answers[2]}
+
+4. What creative tension drives the brand?
+${answers[3]}
+
+5. Describe the ideal photographic direction:
+${answers[4]}
+
+Synthesize this into a complete brand platform JSON.`
+          }
+        ]
+      })
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      console.error("[brand-engine/synthesize] AI error:", errText);
+      return c.json({ success: false, error: "AI synthesis failed." }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content || "";
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    const platform = JSON.parse(cleaned);
+
+    // Save to vault
+    const existing = await kv.get(`vault:${user.id}`) || {};
+    const updated = { ...existing, brand_platform: platform, updatedAt: new Date().toISOString() };
+    await saveVaultToKV(user.id, updated);
+
+    console.log(`[brand-engine/synthesize] user=${user.id.slice(0,8)} register=${platform.narrative_register}`);
+    return c.json({ success: true, platform });
+  } catch (err) {
+    console.error("[brand-engine/synthesize] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /brand-engine/enrich
+// Takes user prompt + contentType + brand_platform → returns enriched prompt
+app.post("/brand-engine/enrich", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { prompt, contentType, brand_platform } = body;
+
+    if (!prompt) return c.json({ success: false, error: "prompt required." }, 400);
+
+    // If no brand platform, return original prompt unchanged
+    if (!brand_platform) {
+      return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+    }
+
+    const bp = brand_platform;
+    const contentTypeLabel = contentType || "visual";
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content: `You are a brand-aware creative director. Your job is to enrich a user's creative prompt with brand strategy intelligence so the AI generation stays on-brand.
+
+Brand Platform:
+- Promise: ${bp.promise}
+- Narrative register: ${bp.narrative_register}
+- Creative tension: ${bp.creative_tension}
+- Semiotic codes to ADOPT: ${(bp.semiotic_codes?.adopt || []).join(", ")}
+- Semiotic codes to AVOID: ${(bp.semiotic_codes?.avoid || []).join(", ")}
+- Semiotic codes to SUBVERT: ${(bp.semiotic_codes?.subvert || []).join(", ")}
+- Photo direction: framing=${bp.photo_direction?.framing}, lighting=${bp.photo_direction?.lighting}, human_presence=${bp.photo_direction?.human_presence}, composition=${bp.photo_direction?.composition}
+- Positive reference prompts: ${(bp.reference_prompts?.positive || []).join(" | ")}
+- Negative reference prompts (avoid): ${(bp.reference_prompts?.negative || []).join(" | ")}
+
+Content type being generated: ${contentTypeLabel}
+
+RULES:
+1. Keep the user's original intent fully intact — do NOT change what they want to create.
+2. Enrich the prompt with brand-aligned direction: lighting, mood, composition, narrative angle.
+3. Add negative prompt elements from the "avoid" codes and negative references.
+4. Keep the enriched prompt concise — max 2-3 sentences added to the original.
+5. For text content: adjust tone to match the narrative register.
+6. For image/video: inject photographic direction cues.
+7. For audio/music: translate brand mood into sonic direction.
+8. Return ONLY the enriched prompt text. No explanation, no JSON, no markdown.`
+          },
+          {
+            role: "user",
+            content: `Original prompt: "${prompt}"
+Content type: ${contentTypeLabel}
+
+Return the enriched prompt:`
+          }
+        ]
+      })
+    });
+
+    if (!aiRes.ok) {
+      console.error("[brand-engine/enrich] AI error:", await aiRes.text());
+      // Fallback: return original prompt
+      return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+    }
+
+    const aiData = await aiRes.json();
+    const enrichedPrompt = (aiData.choices?.[0]?.message?.content || prompt).trim();
+
+    console.log(`[brand-engine/enrich] user=${user.id.slice(0,8)} type=${contentTypeLabel} enriched=${enrichedPrompt.length}chars`);
+    return c.json({ success: true, enrichedPrompt, wasEnriched: true });
+  } catch (err) {
+    console.error("[brand-engine/enrich] error:", err);
+    // Fallback: return original prompt
+    return c.json({ success: true, enrichedPrompt: prompt, wasEnriched: false });
+  }
+});
+
 // POST /vault/analyze — AI analysis of URL or text content (ENRICHED)
 // Accepts: { url, deep? } or { content, sourceName, sourceType }
 // Returns: { success, dna: { ... } }
