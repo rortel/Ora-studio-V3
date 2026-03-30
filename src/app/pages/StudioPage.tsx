@@ -573,8 +573,8 @@ export function StudioPage() {
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: "Oups, j'ai eu un souci. Réessaie !",
-          suggestions: ["Créer une image", "Lancer une campagne", "Surprise me"],
+          content: "Oups, j'ai eu un souci. Réessayez !",
+          suggestions: ["Créer une image", "Composer une musique", "Écrire un texte"],
         }]);
       }
     } catch {
@@ -744,7 +744,7 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
           <div>
             <div style={{ fontSize: "14px", fontWeight: 600 }}>Créer</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Image, vidéo, musique, texte. Comparez les modèles IA.
+              Image, vidéo, musique, texte. Personnalisez chaque détail.
             </div>
           </div>
         </button>
@@ -777,10 +777,10 @@ function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
         className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
       >
         {[
-          "Générer un visuel abstrait",
-          "Composer une musique chill",
-          "Surprise me",
-          "Monter une vidéo courte",
+          "Créer une image cinématique",
+          "Composer une musique inspirante",
+          "Écrire un texte percutant",
+          "Générer une vidéo dynamique",
         ].map(s => (
           <button key={s} onClick={() => onSend(s)}
             className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
