@@ -1585,24 +1585,37 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   }, [brief, campaignObjective, toneOverride, language]);
 
   // ── Save entire campaign to Library ──
-  const handleSaveCampaign = async (silent = false) => {
-    if (savingCampaign) return;
+  const savingRef = useRef(false);
+  const campaignSavedIdRef = useRef<string | null>(null);
+  // Keep ref in sync with state
+  useEffect(() => { campaignSavedIdRef.current = campaignSavedId; }, [campaignSavedId]);
+
+  const handleSaveCampaign = useCallback(async (silent = false) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSavingCampaign(true);
     try {
       const readyAssets = assets.filter(a => a.status === "ready");
-      if (readyAssets.length === 0) { if (!silent) toast.error("No ready assets to save"); setSavingCampaign(false); return; }
-      const campaignItem = buildCampaignItem(readyAssets, campaignSavedId || undefined);
-      await serverPost("/library/items", { item: campaignItem });
-      setCampaignSavedId(campaignItem.id);
-      if (!silent) toast.success(`Campaign saved to Library (${readyAssets.length} assets)`);
-      else console.log(`[CampaignLab] Auto-saved campaign ${campaignItem.id} (${readyAssets.length} assets)`);
+      if (readyAssets.length === 0) { if (!silent) toast.error("No ready assets to save"); savingRef.current = false; setSavingCampaign(false); return; }
+      const campaignItem = buildCampaignItem(readyAssets, campaignSavedIdRef.current || undefined);
+      const res = await serverPost("/library/items", { item: campaignItem });
+      if (res.success) {
+        setCampaignSavedId(campaignItem.id);
+        campaignSavedIdRef.current = campaignItem.id;
+        if (!silent) toast.success(`Campaign saved to Library (${readyAssets.length} assets)`);
+        else console.log(`[CampaignLab] Auto-saved campaign ${campaignItem.id} (${readyAssets.length} assets)`);
+      } else {
+        console.error("[CampaignLab] Save campaign failed:", res.error);
+        if (!silent) toast.error(`Save failed: ${res.error || "Unknown error"}`);
+      }
     } catch (err: any) {
       console.error("[CampaignLab] Save campaign error:", err);
       if (!silent) toast.error(`Save failed: ${err?.message || "Unknown error"}`);
     } finally {
+      savingRef.current = false;
       setSavingCampaign(false);
     }
-  };
+  }, [assets, buildCampaignItem, serverPost]);
 
   // ── Auto-save: save/update campaign whenever an asset becomes ready ──
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1624,7 +1637,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       }
     }, pendingCount === 0 ? 1500 : 5000); // faster save when all done
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
-  }, [phase, assets]);
+  }, [phase, assets, handleSaveCampaign]);
 
   // ── Refresh Zernio accounts list (must be before useEffect and handleConnectPlatform that use it) ──
   const refreshZernioAccounts = useCallback(() => {
