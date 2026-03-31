@@ -118,7 +118,20 @@ app.use("*", async (c, next) => {
 });
 
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
-app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 201, audio: "suno-start-poll" }));
+app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 202, audio: "suno-start-poll", credits: "tiered" }));
+
+// ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
+app.get("/credit-costs", (c) => {
+  return c.json({
+    text: TEXT_CREDIT_COST,
+    image: IMAGE_CREDIT_COST,
+    video: VIDEO_CREDIT_COST,
+    audio: { default: CREDIT_COST.audio },
+    defaults: { text: CREDIT_COST.text, image: CREDIT_COST.image, video: CREDIT_COST.video, audio: CREDIT_COST.audio, code: CREDIT_COST.code },
+    plans: PLAN_CREDITS,
+    creditValueEur: CREDIT_VALUE_EUR,
+  });
+});
 
 // ── DEBUG ECHO — returns exactly what the server receives (no auth needed) ──
 app.all("/debug/echo", async (c) => {
@@ -270,8 +283,83 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 }
 
 // ── Credit Helpers ───────────────────────────────────────────
-const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 200, generate: 1500, studio: 5000 };
-const CREDIT_COST = { text: 1, image: 5, video: 30, audio: 5, code: 2 } as const;
+const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 500, generate: 2000, studio: 7000 };
+
+// ── Legacy flat costs (kept for backward compat in edge cases) ──
+const CREDIT_COST = { text: 2, image: 5, video: 30, audio: 5, code: 2 } as const;
+
+// ── MODEL-AWARE CREDIT PRICING ──────────────────────────────
+// Tiers guarantee ≥60% margin on every call while staying competitive
+// CREDIT_VALUE_EUR = 0.10 → 1 credit = €0.10 revenue
+//
+// Text tiers:
+//   Economy  (1 cr = €0.10): haiku €0.005, gemini-flash €0.003, deepseek → margin 95%+
+//   Standard (2 cr = €0.20): gpt-4o €0.014, sonnet €0.017, gemini-pro → margin 88%+
+//   Premium  (3 cr = €0.30): gpt-5 €0.023, gpt-5.1 €0.028 → margin 91%+
+//   Ultra    (5 cr = €0.50): opus €0.069 → margin 86%
+//
+// Image tiers:
+//   Flash    (3 cr = €0.30): photon-flash, flux-schnell → margin 95%+
+//   Standard (5 cr = €0.50): photon-1, soul, seedream, leonardo → margin 94%+
+//   Premium  (8 cr = €0.80): dall-e €0.037, flux-pro €0.032, gpt-image → margin 95%+
+//
+// Video tiers:
+//   Flash    (20 cr = €2.00): ray-flash-2, dop, pika → margin 96%+
+//   Standard (30 cr = €3.00): ray-2, ora-motion, seedance → margin 95%+
+//   Premium  (40 cr = €4.00): kling-v2.1, seedance-v1 (pro i2v) → margin 97%+
+//
+// Audio: 5 credits flat (musicgen €0.046 → margin 91%)
+// Code:  same as text tier for the model used
+
+const TEXT_CREDIT_COST: Record<string, number> = {
+  // Economy — 1 credit
+  "claude-haiku": 1, "gemini-flash": 1, "deepseek": 1,
+  // Standard — 2 credits
+  "gpt-4o": 2, "claude-sonnet": 2, "gemini-pro": 2,
+  "ora-writer": 2, "ora-code": 2, "gpt-4o-code": 2, "claude-code": 2, "gemini-code": 2,
+  // Premium — 3 credits
+  "gpt-5": 3, "gpt-5.1": 3, "gpt-5.2": 3,
+  // Ultra — 5 credits
+  "claude-opus": 5,
+};
+
+const IMAGE_CREDIT_COST: Record<string, number> = {
+  // Flash — 3 credits
+  "photon-flash-1": 3, "flux-schnell-leo": 3,
+  // Standard — 5 credits
+  "ora-vision": 5, "photon-1": 5, "soul": 5, "seedream-v4": 5, "seedream-v4.5": 5,
+  "nano-banana": 5, "lucid-origin": 5, "lucid-realism": 5, "flux-dev-leo": 5,
+  "kontext-pro-leo": 5, "leonardo-phoenix": 5, "leonardo-lightning": 5, "leonardo-kino": 5,
+  "phoenix-1.0": 5, "phoenix-0.9": 5, "nano-banana-leo": 5, "nano-banana-pro-leo": 5,
+  "nano-banana-2-leo": 5, "ideogram-3-leo": 5, "seedream-4-leo": 5, "flux-pro-2-leo": 5,
+  // Premium — 8 credits
+  "dall-e": 8, "flux-pro": 8, "gpt-image-leo": 8,
+};
+
+const VIDEO_CREDIT_COST: Record<string, number> = {
+  // Flash — 20 credits
+  "ray-flash-2": 20, "pika": 20, "dop": 20, "seedance-1.0": 20,
+  // Standard — 30 credits
+  "ora-motion": 30, "ray-2": 30, "veo-3.1": 30, "sora-2": 30,
+  "seedance-2.0": 30, "seedance-1.5-pro": 30, "runway-gen3": 30,
+  // Premium — 40 credits
+  "kling-v2.1": 40, "seedance-v1": 40,
+};
+
+/** Get credit cost for a specific model. Falls back to type default. */
+function getModelCreditCost(type: "text" | "image" | "video" | "audio" | "code", model?: string): number {
+  if (model) {
+    if (type === "text" || type === "code") return TEXT_CREDIT_COST[model] ?? CREDIT_COST.text;
+    if (type === "image") return IMAGE_CREDIT_COST[model] ?? CREDIT_COST.image;
+    if (type === "video") return VIDEO_CREDIT_COST[model] ?? CREDIT_COST.video;
+  }
+  return CREDIT_COST[type] ?? 2;
+}
+
+/** Get revenue in EUR for a model-aware credit deduction */
+function getModelRevenue(type: "text" | "image" | "video" | "audio" | "code", model?: string): number {
+  return getModelCreditCost(type, model) * CREDIT_VALUE_EUR;
+}
 
 // Timeout wrapper for KV operations (prevents hanging on DB issues)
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -525,8 +613,9 @@ const PROVIDER_COSTS: Record<string, number> = {
 };
 
 const CREDIT_VALUE_EUR = 0.10;
+// Legacy flat revenue — use getModelRevenue(type, model) for accurate per-model tracking
 const REVENUE_PER_TYPE: Record<string, number> = {
-  text: 1 * CREDIT_VALUE_EUR, image: 5 * CREDIT_VALUE_EUR,
+  text: 2 * CREDIT_VALUE_EUR, image: 5 * CREDIT_VALUE_EUR,
   video: 30 * CREDIT_VALUE_EUR, audio: 5 * CREDIT_VALUE_EUR,
 };
 const USD_TO_EUR = 0.92;
@@ -2117,17 +2206,18 @@ app.post("/generate/text-multi", async (c) => {
     const MODEL_TIMEOUT = 90_000; // 90s per model (generateText has 30s internal timeout per attempt, chain can have 3 models)
     const results = await Promise.all(
       models.map(async (model: string) => {
-        if (user) deductCredit(user.id, 1).catch(() => {});
+        const credits = getModelCreditCost("text", model);
+        if (user) deductCredit(user.id, credits).catch(() => {});
         try {
-          console.log(`[text-multi] calling generateText(${model})...`);
+          console.log(`[text-multi] calling generateText(${model}), credits=${credits}...`);
           const result = await Promise.race([
             generateText({ prompt, model, systemPrompt, maxTokens }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
           ]);
           console.log(`[text-multi] ${model} OK in ${Date.now() - t0}ms, provider=${result.provider}`);
           if (user) logEvent("generation", { userId: user.id, type: "text", model }).catch(() => {});
-          logCost({ type: "text", model, provider: result.provider, costUsd: getProviderCost(result.provider, "text"), revenueEur: REVENUE_PER_TYPE.text, latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
-          return { success: true, result };
+          logCost({ type: "text", model, provider: result.provider, costUsd: getProviderCost(result.provider, "text"), revenueEur: getModelRevenue("text", model), latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
+          return { success: true, result, creditCost: credits };
         } catch (err) {
           console.log(`[text-multi] ${model} FAILED:`, err);
           logCost({ type: "text", model, provider: "unknown", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: false }).catch(() => {});
@@ -2169,17 +2259,18 @@ app.get("/generate/text-multi-get", async (c) => {
     const MODEL_TIMEOUT = 90_000;
     const results = await Promise.all(
       models.map(async (model: string) => {
-        if (user) deductCredit(user.id, 1).catch(() => {});
+        const credits = getModelCreditCost("text", model);
+        if (user) deductCredit(user.id, credits).catch(() => {});
         try {
-          console.log(`[text-multi-get] calling generateText(${model})...`);
+          console.log(`[text-multi-get] calling generateText(${model}), credits=${credits}...`);
           const result = await Promise.race([
             generateText({ prompt, model, systemPrompt, maxTokens }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
           ]);
           console.log(`[text-multi-get] ${model} OK in ${Date.now() - t0}ms, provider=${result.provider}`);
           if (user) logEvent("generation", { userId: user.id, type: "text", model }).catch(() => {});
-          logCost({ type: "text", model, provider: result.provider, costUsd: getProviderCost(result.provider, "text"), revenueEur: REVENUE_PER_TYPE.text, latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
-          return { success: true, result };
+          logCost({ type: "text", model, provider: result.provider, costUsd: getProviderCost(result.provider, "text"), revenueEur: getModelRevenue("text", model), latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
+          return { success: true, result, creditCost: credits };
         } catch (err) {
           console.log(`[text-multi-get] ${model} FAILED:`, err);
           logCost({ type: "text", model, provider: "unknown", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: false }).catch(() => {});
@@ -2226,17 +2317,18 @@ app.post("/generate/image-multi", async (c) => {
         console.log(`[image-multi] batch ${Math.floor(i / CONCURRENCY) + 1}: ${batch.join(",")}`);
         const batchResults = await Promise.all(
           batch.map(async (model: string) => {
+            const credits = getModelCreditCost("image", model);
             try {
-              if (user) deductCredit(user.id, 2).catch(() => {});
+              if (user) deductCredit(user.id, credits).catch(() => {});
               const result = await Promise.race([
                 generateImage({ prompt, model }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
               ]);
-              console.log(`[image-multi] ${model} OK (${Date.now() - t0}ms)`);
+              console.log(`[image-multi] ${model} OK (${Date.now() - t0}ms), credits=${credits}`);
               if (user) logEvent("generation", { userId: user.id, type: "image", model }).catch(() => {});
               const r = result as any;
-              logCost({ type: "image", model, provider: r.provider || "unknown", costUsd: getProviderCost(r.provider || "", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: r.latencyMs || (Date.now() - t0), userId: user?.id || "guest", success: true }).catch(() => {});
-              return { success: true, result };
+              logCost({ type: "image", model, provider: r.provider || "unknown", costUsd: getProviderCost(r.provider || "", "image"), revenueEur: getModelRevenue("image", model), latencyMs: r.latencyMs || (Date.now() - t0), userId: user?.id || "guest", success: true }).catch(() => {});
+              return { success: true, result, creditCost: credits };
             } catch (err) {
               console.log(`[image-multi] ${model} FAIL (${Date.now() - t0}ms): ${err}`);
               logCost({ type: "image", model, provider: "unknown", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: false }).catch(() => {});
@@ -2279,15 +2371,16 @@ app.post("/generate/video-multi", async (c) => {
 
     const work = Promise.all(
       models.map(async (model: string) => {
-        if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+        const credits = getModelCreditCost("video", model);
+        if (user) deductCredit(user.id, credits).catch(() => {});
         try {
           const result = await Promise.race([
             generateVideo({ prompt, model, imageUrl }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Model timeout: ${model}`)), VIDEO_MODEL_TIMEOUT)),
           ]);
           if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
-          logCost({ type: "video", model, provider: result.provider, costUsd: getProviderCost(result.provider, "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
-          return { success: true, result };
+          logCost({ type: "video", model, provider: result.provider, costUsd: getProviderCost(result.provider, "video"), revenueEur: getModelRevenue("video", model), latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
+          return { success: true, result, creditCost: credits };
         } catch (err) {
           logCost({ type: "video", model, provider: "unknown", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: false }).catch(() => {});
           return { success: false, error: String(err) };
@@ -2326,7 +2419,8 @@ app.get("/generate/video-via-get", async (c) => {
     const enhancedPrompt = await enhanceImagePrompt(prompt, !!imageUrl);
     console.log(`[video-get] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${!!imageUrl})`);
 
-    if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+    const credits = getModelCreditCost("video", model);
+    if (user) deductCredit(user.id, credits).catch(() => {});
 
     const result = await Promise.race([
       generateVideo({ prompt: enhancedPrompt, model, imageUrl }),
@@ -2334,7 +2428,7 @@ app.get("/generate/video-via-get", async (c) => {
     ]);
 
     if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
-    logCost({ type: "video", model, provider: result.provider, costUsd: getProviderCost(result.provider, "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
+    logCost({ type: "video", model, provider: result.provider, costUsd: getProviderCost(result.provider, "video"), revenueEur: getModelRevenue("video", model), latencyMs: result.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
 
     console.log(`[video-get] OK in ${Date.now() - t0}ms, provider=${result.provider}`);
     return c.json({ success: true, result });
@@ -2399,7 +2493,7 @@ app.get("/generate/video-start", async (c) => {
     ]);
     console.log(`[video-start] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${!!imageUrl})`);
 
-    if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("video", model)).catch(() => {});
 
     // Force anti-text suffix for video prompts too
     const antiTextVideo = ". No visible text, no letters, no words, no brand names, no logos anywhere in the video.";
@@ -2730,7 +2824,7 @@ app.post("/campaign/generate-texts", async (c) => {
     ];
     for (let i = 0; i < strats.length; i++) { try { copyMap = strats[i](); if (Object.keys(copyMap).length > 0) break; } catch {} }
 
-    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("text", "gpt-4o")).catch(() => {});
     const fmtCount = Object.keys(copyMap).length;
     console.log(`[campaign-texts-POST] DONE: ${fmtCount} fmts, ${usedProvider}, ${Date.now()-t0}ms`);
     return c.json({ success: true, copyMap, provider: usedProvider, formatCount: fmtCount, latencyMs: Date.now() - t0 });
@@ -2921,7 +3015,7 @@ ${fmtDesc}`;
     ];
     for (let i = 0; i < strats.length; i++) { try { copyMap = strats[i](); if (Object.keys(copyMap).length > 0) break; } catch {} }
 
-    if (user) deductCredit(user.id, CREDIT_COST.text).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("text", "gpt-4o")).catch(() => {});
     const fmtCount = Object.keys(copyMap).length;
     console.log(`[campaign-texts] DONE: ${fmtCount} formats, ${usedProvider}, ${Date.now()-t0}ms, keys=[${Object.keys(copyMap).join(",")}]`);
     return c.json({ success: true, copyMap, provider: usedProvider, formatCount: fmtCount, latencyMs: Date.now() - t0 });
@@ -3536,7 +3630,8 @@ app.post("/generate/image-start", async (c) => {
     console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
-    if (user) deductCredit(user.id, CREDIT_COST.image).catch(() => {});
+    const imgCredits = getModelCreditCost("image", model);
+    if (user) deductCredit(user.id, imgCredits).catch(() => {});
 
     const isUploadRef = refSource === "upload";
 
@@ -3741,7 +3836,7 @@ app.get("/generate/image-start", async (c) => {
       console.log(`[image-start] Fallback brand visual from query param (${prompt.length} chars)`);
     }
 
-    if (user) deductCredit(user.id, CREDIT_COST.image).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("image", model)).catch(() => {});
 
     // Force anti-text suffix on EVERY image prompt to prevent hallucinated brand names/logos
     const antiTextSuffix = ". ABSOLUTELY NO visible text, no letters, no words, no brand names, no logos, no signs, no labels, no writing anywhere in the image. Clean photographic image only.";
@@ -12054,7 +12149,7 @@ app.post("/auto-campaign/kling-start", async (c) => {
     const genId = generation.id;
     if (!genId) throw new Error(`Luma Ray: no generation id returned: ${JSON.stringify(generation).slice(0, 300)}`);
     
-    if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("video", "ray-2")).catch(() => {});
     console.log(`[auto-campaign/video-start] Luma Ray submitted genId=${genId}, state=${generation.state} in ${Date.now() - t0}ms`);
     return c.json({ success: true, taskId: genId, latencyMs: Date.now() - t0 });
   } catch (err) {
@@ -12664,7 +12759,7 @@ app.get("/generate/cl-video-start", async (c) => {
       prompt = `${rawPrompt}. Visual direction: ${brandVisualPrefix}. Cinematic brand aesthetic.`;
     }
 
-    if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("video", "ray-2")).catch(() => {});
 
     // Enhance/translate prompt
     const enhancedPrompt = await enhanceImagePrompt(prompt);
@@ -15273,7 +15368,7 @@ app.all("/generate/cl-hf-video-start", async (c) => {
       prompt = `${rawPrompt}. Visual direction: ${brandVisualPrefix}. Cinematic brand aesthetic.`;
     }
 
-    if (user) deductCredit(user.id, CREDIT_COST.video).catch(() => {});
+    if (user) deductCredit(user.id, getModelCreditCost("video", "ray-2")).catch(() => {});
 
     // Enhance/translate prompt
     const enhancedPrompt = await enhanceImagePrompt(prompt);
