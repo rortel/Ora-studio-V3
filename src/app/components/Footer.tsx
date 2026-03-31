@@ -11,8 +11,9 @@ export function Footer() {
     { label: t("footer.hub"), href: "/hub" },
   ];
   const companyLinks = [
-    { label: t("footer.privacy"), href: "#" },
-    { label: t("footer.terms"), href: "#" },
+    { label: t("footer.privacy"), href: "/privacy" },
+    { label: t("footer.terms"), href: "/terms" },
+    { label: t("footer.about"), href: "/about" },
   ];
 
   return (

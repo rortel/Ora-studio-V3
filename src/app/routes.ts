@@ -17,6 +17,9 @@ import { CalendarPage } from "./pages/CalendarPage";
 import { MusicPage } from "./pages/MusicPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { VideoAssemblerPage } from "./pages/VideoAssemblerPage";
+import { TermsPage } from "./pages/TermsPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
+import { AboutPage } from "./pages/AboutPage";
 
 /*
   ROUTE ACCESS MATRIX
@@ -55,6 +58,9 @@ export const router = createBrowserRouter([
       { path: "models", Component: AgentsPage },
       { path: "agents", Component: AgentsPage },
       { path: "login", Component: LoginPage },
+      { path: "terms", Component: TermsPage },
+      { path: "privacy", Component: PrivacyPage },
+      { path: "about", Component: AboutPage },
 
       // Authenticated routes (guard inside component)
       { path: "hub", Component: StudioPage },
