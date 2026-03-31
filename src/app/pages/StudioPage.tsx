@@ -83,8 +83,15 @@ const COMPARE_MODELS = {
     { id: "ora-vision", label: "ORA Vision", badge: "Luma Photon" },
     { id: "flux-pro", label: "Flux Pro", badge: "FAL" },
     { id: "dall-e", label: "DALL·E 3", badge: "OpenAI" },
-    { id: "midjourney", label: "Midjourney", badge: "Replicate" },
     { id: "seedream-v4", label: "SeDream v4", badge: "ByteDance" },
+    { id: "nano-banana", label: "Nano Banana", badge: "Higgsfield" },
+    { id: "lucid-realism", label: "Lucid Realism", badge: "Leonardo" },
+    { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Leonardo" },
+    { id: "ideogram-3-leo", label: "Ideogram v3", badge: "Leonardo" },
+    { id: "gpt-image-leo", label: "GPT Image", badge: "Leonardo" },
+    { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Leonardo" },
+    { id: "phoenix-1.0", label: "Phoenix 1.0", badge: "Leonardo" },
+    { id: "soul", label: "Soul", badge: "Higgsfield" },
   ],
   text: [
     { id: "gpt-5", label: "GPT-5", badge: "OpenAI" },
@@ -298,8 +305,10 @@ export function StudioPage() {
 
       switch (action.type) {
         case "generate-image": {
-          const { prompt, aspectRatio = "1:1", models = ["ora-vision"] } = action.params;
-          const modelList = Array.isArray(models) ? models : [models];
+          const { prompt, aspectRatio = "1:1", models } = action.params;
+          // Default to 3 models in parallel for richer creation results
+          const defaultModels = ["ora-vision", "flux-pro", "seedream-v4"];
+          const modelList = Array.isArray(models) ? models : models ? [models] : defaultModels;
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           console.log(`[studio] generate-image refUrl=${refUrl ? "YES" : "NO"} (${refUrl.slice(0, 80)}) models=${modelList.join(",")}`);
           if (refUrl) {
