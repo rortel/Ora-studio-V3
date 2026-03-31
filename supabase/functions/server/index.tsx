@@ -11299,6 +11299,190 @@ app.get("/admin/costs", async (c) => {
 });
 
 // ═════════════════════════════════════════════════════════════
+// ADMIN — EMAIL TEMPLATES & SENDING
+// ═════════════════════════════════════════════════════════════
+
+// Default email templates — stored in KV, admin-editable
+const DEFAULT_EMAIL_TEMPLATES: Record<string, { name: string; subject: string; html: string; variables: string[] }> = {
+  welcome: {
+    name: "Bienvenue",
+    subject: "Bienvenue sur ORA Studio",
+    html: `<h1>Bienvenue {{name}} 👋</h1><p>Votre compte ORA Studio est prêt. Vous disposez de <strong>50 crédits offerts</strong> pour découvrir la plateforme.</p><p>→ Générer des textes, images, vidéos et sons avec 38+ modèles IA<br>→ Comparer les résultats côte à côte dans l'Arena<br>→ Protéger votre identité de marque avec le Brand Vault</p><a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a>`,
+    variables: ["name"],
+  },
+  plan_confirmed: {
+    name: "Plan activé",
+    subject: "Votre plan {{plan}} est activé",
+    html: `<h1>Plan {{plan}} activé ✓</h1><p>Bonjour {{name}},</p><p>Votre plan <strong>{{plan}}</strong> est actif. Vous disposez de <strong>{{credits}} crédits</strong> ce mois-ci.</p><a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>`,
+    variables: ["name", "plan", "credits"],
+  },
+  low_credits: {
+    name: "Crédits bas",
+    subject: "Il vous reste {{remaining}} crédits sur ORA",
+    html: `<h1>Crédits bientôt épuisés</h1><p>Bonjour {{name}},</p><p>Il vous reste <strong>{{remaining}} crédits</strong>. Pour continuer à créer sans interruption, pensez à passer au plan supérieur.</p><a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a>`,
+    variables: ["name", "remaining"],
+  },
+  promo: {
+    name: "Promotion",
+    subject: "{{subject}}",
+    html: `<h1>{{headline}}</h1><p>{{body}}</p><a href="{{ctaUrl}}" class="btn">{{ctaText}}</a>`,
+    variables: ["subject", "headline", "body", "ctaUrl", "ctaText"],
+  },
+  newsletter: {
+    name: "Newsletter",
+    subject: "{{subject}}",
+    html: `<h1>{{headline}}</h1><p>{{body}}</p><p style="color:#999; font-size:12px;">Vous recevez cet email car vous êtes inscrit sur ORA Studio.</p>`,
+    variables: ["subject", "headline", "body"],
+  },
+  custom: {
+    name: "Email libre",
+    subject: "{{subject}}",
+    html: `{{content}}`,
+    variables: ["subject", "content"],
+  },
+};
+
+// Wrap template content in ORA email layout
+function wrapEmailTemplate(innerHtml: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body><div class="container"><div class="card">${innerHtml}<p style="color:#999; font-size:12px; margin-top:20px;">Des questions ? Répondez directement à cet email.</p></div>${emailFooter}</div></body></html>`;
+}
+
+// Replace {{variable}} in template
+function renderTemplate(template: string, vars: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+  }
+  return result;
+}
+
+// GET /admin/email/templates — list all templates
+app.post("/admin/email/templates", async (c) => {
+  try {
+    await requireAdmin(c);
+    // Check for custom templates in KV
+    const customTemplates = await kv.get("admin:email-templates");
+    const templates = customTemplates || DEFAULT_EMAIL_TEMPLATES;
+    return c.json({ success: true, templates });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/templates/save — save edited templates
+app.post("/admin/email/templates/save", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { templates } = body;
+    if (!templates) return c.json({ success: false, error: "Missing templates" }, 400);
+    await kv.set("admin:email-templates", templates);
+    return c.json({ success: true });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/send — send email to one or multiple recipients
+app.post("/admin/email/send", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { templateId, recipients, variables, subject: customSubject, html: customHtml } = body;
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return c.json({ success: false, error: "No recipients" }, 400);
+    }
+
+    // Load templates
+    const savedTemplates = await kv.get("admin:email-templates") || DEFAULT_EMAIL_TEMPLATES;
+    const template = savedTemplates[templateId];
+    if (!template && !customHtml) return c.json({ success: false, error: "Template not found" }, 400);
+
+    const vars = variables || {};
+    const finalSubject = customSubject || renderTemplate(template?.subject || "", vars);
+    const innerHtml = customHtml || renderTemplate(template?.html || "", vars);
+    const finalHtml = wrapEmailTemplate(innerHtml);
+
+    const results: Array<{ email: string; success: boolean; error?: string }> = [];
+    for (const email of recipients) {
+      const ok = await sendEmail(email, finalSubject, finalHtml);
+      results.push({ email, success: ok, error: ok ? undefined : "Send failed" });
+    }
+
+    const successCount = results.filter(r => r.success).length;
+    await logEvent("admin_email_sent", { templateId, recipientCount: recipients.length, successCount, subject: finalSubject });
+    return c.json({ success: true, sent: successCount, failed: recipients.length - successCount, results });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/send-all — broadcast to all users (with optional plan filter)
+app.post("/admin/email/send-all", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { templateId, variables, planFilter } = body;
+
+    const savedTemplates = await kv.get("admin:email-templates") || DEFAULT_EMAIL_TEMPLATES;
+    const template = savedTemplates[templateId];
+    if (!template) return c.json({ success: false, error: "Template not found" }, 400);
+
+    // Get all user profiles
+    const allProfiles = await kv.getByPrefix("user:");
+    const filteredProfiles = planFilter
+      ? allProfiles.filter((p: any) => p.plan === planFilter)
+      : allProfiles;
+
+    const recipients = filteredProfiles
+      .filter((p: any) => p.email && p.role !== "admin")
+      .map((p: any) => ({ email: p.email, name: p.name || p.email.split("@")[0] }));
+
+    if (recipients.length === 0) return c.json({ success: false, error: "No matching users" }, 400);
+
+    let successCount = 0;
+    for (const r of recipients) {
+      const vars = { ...variables, name: r.name };
+      const subject = renderTemplate(template.subject, vars);
+      const innerHtml = renderTemplate(template.html, vars);
+      const finalHtml = wrapEmailTemplate(innerHtml);
+      const ok = await sendEmail(r.email, subject, finalHtml);
+      if (ok) successCount++;
+    }
+
+    await logEvent("admin_email_broadcast", { templateId, planFilter, totalRecipients: recipients.length, successCount });
+    return c.json({ success: true, total: recipients.length, sent: successCount, failed: recipients.length - successCount });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/preview — preview rendered template
+app.post("/admin/email/preview", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { templateId, variables, customHtml } = body;
+
+    const savedTemplates = await kv.get("admin:email-templates") || DEFAULT_EMAIL_TEMPLATES;
+    const template = savedTemplates[templateId];
+    const vars = variables || {};
+    const innerHtml = customHtml || renderTemplate(template?.html || "", vars);
+    const subject = renderTemplate(template?.subject || "", vars);
+    const finalHtml = wrapEmailTemplate(innerHtml);
+
+    return c.json({ success: true, subject, html: finalHtml });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ═════════════════════════════════════════════════════════════
 // DEBUG / DIAGNOSTICS
 // ═════════════════════════════════════════════════════════════
 

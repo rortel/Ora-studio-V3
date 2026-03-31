@@ -5,7 +5,8 @@ import {
   Shield, Users, CreditCard, Activity, AlertTriangle,
   TrendingUp, RefreshCw, ChevronDown, ChevronUp, Search,
   Crown, Zap, Loader2, ArrowRight, Clock, Server,
-  DollarSign, BarChart3, Eye, Edit3, Check, X,
+  DollarSign, BarChart3, Eye, Edit3, Check, X, Mail,
+  Send, FileText, Copy, ChevronLeft,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { API_BASE, publicAnonKey, supabase } from "../lib/supabase";
@@ -47,7 +48,7 @@ interface SystemLog {
   timestamp: string;
 }
 
-type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "diagnostics";
+type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "emails" | "diagnostics";
 
 /* ═══════════════════════════════════
    COMPONENT
@@ -272,6 +273,7 @@ function AdminPageContent() {
     { id: "users", label: "Users", icon: Users },
     { id: "financial", label: "Financial", icon: DollarSign },
     { id: "costs", label: "Costs", icon: CreditCard },
+    { id: "emails", label: "Emails", icon: Mail },
     { id: "logs", label: "System Logs", icon: Activity },
     { id: "diagnostics", label: "Diagnostics", icon: AlertTriangle },
   ];
@@ -355,6 +357,7 @@ function AdminPageContent() {
         )}
         {tab === "financial" && overview && <FinancialTab overview={overview} users={users} />}
         {tab === "costs" && overview && <CostsTab overview={overview} users={users} preloadedCosts={costsData} onRefresh={fetchData} />}
+        {tab === "emails" && <EmailTab adminPost={adminPost} users={users} />}
         {tab === "logs" && <LogsTab logs={logs} />}
         {tab === "diagnostics" && <DiagnosticsTab authToken={accessToken || publicAnonKey} />}
 
@@ -1386,6 +1389,292 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
       </div>
     </div>
   );
+}
+
+/* ─── EMAIL TAB ─── */
+
+interface EmailTemplate {
+  name: string;
+  subject: string;
+  html: string;
+  variables: string[];
+}
+
+function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) => Promise<any>; users: AdminUser[] }) {
+  const [templates, setTemplates] = useState<Record<string, EmailTemplate>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [sendMode, setSendMode] = useState<"single" | "all">("single");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [planFilter, setPlanFilter] = useState<string>("");
+  const [variables, setVariables] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [editingHtml, setEditingHtml] = useState("");
+  const [editingSubject, setEditingSubject] = useState("");
+
+  useEffect(() => {
+    adminPost("/admin/email/templates")
+      .then((data) => {
+        if (data.success && data.templates) {
+          setTemplates(data.templates);
+          const firstId = Object.keys(data.templates)[0];
+          if (firstId) selectTemplate(firstId, data.templates);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const selectTemplate = (id: string, tpls?: Record<string, EmailTemplate>) => {
+    const t = (tpls || templates)[id];
+    if (!t) return;
+    setSelectedId(id);
+    setEditingSubject(t.subject);
+    setEditingHtml(t.html);
+    setShowPreview(false);
+    setResult(null);
+    const defaultVars: Record<string, string> = {};
+    for (const v of t.variables) {
+      defaultVars[v] = v === "name" ? "Prénom" : v === "plan" ? "Starter" : v === "credits" ? "500" : v === "remaining" ? "15" : v === "ctaUrl" ? "https://ora-studio.app/hub" : v === "ctaText" ? "Découvrir" : "";
+    }
+    setVariables(defaultVars);
+  };
+
+  const handlePreview = async () => {
+    if (!selectedId) return;
+    try {
+      const res = await adminPost("/admin/email/preview", { templateId: selectedId, variables, customHtml: editingHtml !== templates[selectedId]?.html ? editingHtml : undefined });
+      if (res.success) { setPreviewHtml(res.html); setShowPreview(true); }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleSend = async () => {
+    if (!selectedId) return;
+    setSending(true);
+    setResult(null);
+    try {
+      if (sendMode === "single") {
+        if (!recipientEmail.trim()) { setSending(false); return; }
+        const emails = recipientEmail.split(",").map(e => e.trim()).filter(Boolean);
+        const res = await adminPost("/admin/email/send", {
+          templateId: selectedId,
+          recipients: emails,
+          variables,
+          subject: editingSubject !== templates[selectedId]?.subject ? renderClientTemplate(editingSubject, variables) : undefined,
+          html: editingHtml !== templates[selectedId]?.html ? editingHtml : undefined,
+        });
+        if (res.success) setResult({ sent: res.sent, failed: res.failed });
+      } else {
+        const res = await adminPost("/admin/email/send-all", {
+          templateId: selectedId,
+          variables,
+          planFilter: planFilter || undefined,
+        });
+        if (res.success) setResult({ sent: res.sent, failed: res.failed });
+      }
+    } catch (err) { console.error(err); }
+    setSending(false);
+  };
+
+  const handleSaveTemplates = async () => {
+    if (!selectedId) return;
+    const updated = { ...templates, [selectedId]: { ...templates[selectedId], subject: editingSubject, html: editingHtml } };
+    try {
+      const res = await adminPost("/admin/email/templates/save", { templates: updated });
+      if (res.success) { setTemplates(updated); }
+    } catch (err) { console.error(err); }
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>;
+
+  const selected = selectedId ? templates[selectedId] : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Template selector */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {Object.entries(templates).map(([id, t]) => (
+          <button
+            key={id}
+            onClick={() => selectTemplate(id)}
+            className={`px-4 py-2 rounded-full border transition-colors cursor-pointer ${selectedId === id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"}`}
+            style={{ fontSize: "12px", fontWeight: 500 }}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
+
+      {selected && selectedId && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: Editor */}
+          <div className="space-y-4">
+            {/* Subject */}
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Objet</label>
+              <input
+                value={editingSubject}
+                onChange={(e) => setEditingSubject(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                style={{ fontSize: "13px" }}
+              />
+            </div>
+
+            {/* Variables */}
+            {selected.variables.length > 0 && (
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Variables</label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {selected.variables.map((v) => (
+                    <div key={v} className="flex items-center gap-2">
+                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)", minWidth: 80 }}>{`{{${v}}}`}</span>
+                      <input
+                        value={variables[v] || ""}
+                        onChange={(e) => setVariables(prev => ({ ...prev, [v]: e.target.value }))}
+                        className="flex-1 px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                        style={{ fontSize: "12px" }}
+                        placeholder={v}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* HTML Editor */}
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Contenu HTML</label>
+              <textarea
+                value={editingHtml}
+                onChange={(e) => setEditingHtml(e.target.value)}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground font-mono"
+                style={{ fontSize: "12px", minHeight: 200, resize: "vertical" }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePreview}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                style={{ fontSize: "12px", fontWeight: 500 }}
+              >
+                <Eye size={13} /> Prévisualiser
+              </button>
+              <button
+                onClick={handleSaveTemplates}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                style={{ fontSize: "12px", fontWeight: 500 }}
+              >
+                <Check size={13} /> Sauvegarder le template
+              </button>
+            </div>
+          </div>
+
+          {/* Right: Preview + Send */}
+          <div className="space-y-4">
+            {/* Preview */}
+            {showPreview && previewHtml && (
+              <div className="rounded-xl border border-border overflow-hidden" style={{ maxHeight: 350, overflowY: "auto" }}>
+                <div className="px-3 py-2 border-b border-border flex items-center gap-2" style={{ background: "var(--secondary)" }}>
+                  <Mail size={12} style={{ color: "var(--muted-foreground)" }} />
+                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--muted-foreground)" }}>Aperçu email</span>
+                </div>
+                <iframe
+                  srcDoc={previewHtml}
+                  className="w-full border-0"
+                  style={{ height: 300, background: "#fafafa" }}
+                  sandbox="allow-same-origin"
+                  title="Email preview"
+                />
+              </div>
+            )}
+
+            {/* Send section */}
+            <div className="rounded-xl border border-border p-4 space-y-3" style={{ background: "var(--secondary)" }}>
+              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>Envoyer</p>
+
+              {/* Send mode */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSendMode("single")}
+                  className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer ${sendMode === "single" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`}
+                >
+                  Email(s) ciblé(s)
+                </button>
+                <button
+                  onClick={() => setSendMode("all")}
+                  className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer ${sendMode === "all" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`}
+                >
+                  Tous les utilisateurs
+                </button>
+              </div>
+
+              {sendMode === "single" ? (
+                <input
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                  style={{ fontSize: "12px" }}
+                  placeholder="email@exemple.com (séparés par des virgules pour multiples)"
+                />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>Filtrer par plan :</span>
+                  <select
+                    value={planFilter}
+                    onChange={(e) => setPlanFilter(e.target.value)}
+                    className="px-2 py-1.5 rounded-md border border-border bg-background text-foreground cursor-pointer"
+                    style={{ fontSize: "12px" }}
+                  >
+                    <option value="">Tous les plans</option>
+                    <option value="free">Free</option>
+                    <option value="starter">Starter</option>
+                    <option value="generate">Pro</option>
+                    <option value="studio">Business</option>
+                  </select>
+                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                    ({users.filter(u => !planFilter || u.plan === planFilter).filter(u => u.role !== "admin").length} destinataires)
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-background cursor-pointer disabled:opacity-50"
+                style={{ background: "var(--foreground)", fontSize: "13px", fontWeight: 600 }}
+              >
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {sending ? "Envoi en cours..." : sendMode === "single" ? "Envoyer" : "Envoyer à tous"}
+              </button>
+
+              {/* Result */}
+              {result && (
+                <div className="flex items-center gap-2 mt-2">
+                  <Check size={14} style={{ color: "#22c55e" }} />
+                  <span style={{ fontSize: "12px", color: "var(--foreground)" }}>
+                    {result.sent} envoyé{result.sent > 1 ? "s" : ""}{result.failed > 0 ? ` · ${result.failed} échoué${result.failed > 1 ? "s" : ""}` : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderClientTemplate(template: string, vars: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+  }
+  return result;
 }
 
 /* ─── LOG ENTRY ─── */
