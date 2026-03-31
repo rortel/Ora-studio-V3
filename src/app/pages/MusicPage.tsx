@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
    TYPES
@@ -76,6 +77,7 @@ export function MusicPage() {
 }
 
 function MusicPageContent() {
+  const { t } = useI18n();
   const { getAuthHeader } = useAuth();
 
   // Data
@@ -278,11 +280,11 @@ function MusicPageContent() {
   const addToPlaylist = useCallback(async (playlistId: string, trackId: string) => {
     const pl = playlists.find(p => p.id === playlistId);
     if (!pl) return;
-    if (pl.trackIds.includes(trackId)) { toast("Already in playlist"); return; }
+    if (pl.trackIds.includes(trackId)) { toast(t("music.alreadyInPlaylist")); return; }
     const updated = { ...pl, trackIds: [...pl.trackIds, trackId] };
     await serverPost("/music/playlists/save", updated);
     setPlaylists(p => p.map(x => x.id === playlistId ? updated : x));
-    toast.success("Added to playlist");
+    toast.success(t("music.addedToPlaylist"));
   }, [playlists, serverPost]);
 
   const removeFromPlaylist = useCallback(async (playlistId: string, trackId: string) => {
@@ -398,14 +400,14 @@ function MusicPageContent() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "var(--foreground)" }}>
-              Music Studio
+              {t("music.title")}
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", color: "var(--text-tertiary)", fontWeight: 400 }}>
-              {tracks.length} track{tracks.length !== 1 ? "s" : ""}
+              {tracks.length} {tracks.length !== 1 ? t("music.tracks") : t("music.track")}
               {credits && (
                 <span className="ml-3 px-2 py-0.5 rounded-md" style={{ background: "var(--secondary)", fontSize: "12px", border: "1px solid var(--border)" }}>
                   <CreditCard size={10} className="inline mr-1" style={{ color: "var(--accent)" }} />
-                  {credits.creditsLeft ?? "?"} credits
+                  {credits.creditsLeft ?? "?"} {t("music.credits")}
                 </span>
               )}
             </p>
@@ -416,7 +418,7 @@ function MusicPageContent() {
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
-            Generate new
+            {t("music.generateNew")}
           </Link>
         </div>
 
@@ -426,11 +428,11 @@ function MusicPageContent() {
             {/* Navigation */}
             <div className="mb-6">
               <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
-                Library
+                {t("music.libraryLabel")}
               </span>
               <div className="mt-2 space-y-0.5">
-                <SidebarBtn icon={Music} label="All Tracks" count={tracks.length} active={view === "all"} onClick={() => { setView("all"); setActivePlaylistId(null); }} />
-                <SidebarBtn icon={Heart} label="Favorites" count={tracks.filter(t => favorites.includes(t.id) || favorites.includes(t.libraryId)).length} active={view === "favorites"} onClick={() => { setView("favorites"); setActivePlaylistId(null); }} />
+                <SidebarBtn icon={Music} label={t("music.allTracks")} count={tracks.length} active={view === "all"} onClick={() => { setView("all"); setActivePlaylistId(null); }} />
+                <SidebarBtn icon={Heart} label={t("music.favorites")} count={tracks.filter(tk => favorites.includes(tk.id) || favorites.includes(tk.libraryId)).length} active={view === "favorites"} onClick={() => { setView("favorites"); setActivePlaylistId(null); }} />
               </div>
             </div>
 
@@ -438,7 +440,7 @@ function MusicPageContent() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
-                  Playlists
+                  {t("music.playlists")}
                 </span>
                 <button onClick={() => setShowNewPlaylist(true)} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/5 cursor-pointer transition-colors">
                   <FolderPlus size={13} style={{ color: "var(--text-tertiary)" }} />
@@ -453,7 +455,7 @@ function MusicPageContent() {
                         value={newPlaylistName}
                         onChange={e => setNewPlaylistName(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") createPlaylist(); if (e.key === "Escape") { setShowNewPlaylist(false); setNewPlaylistName(""); } }}
-                        placeholder="Playlist name..."
+                        placeholder={t("music.playlistNamePlaceholder")}
                         autoFocus
                         className="flex-1 bg-transparent border-none outline-none min-w-0"
                         style={{ fontSize: "12px", color: "var(--foreground)" }}
@@ -507,7 +509,7 @@ function MusicPageContent() {
                   </div>
                 ))}
                 {playlists.length === 0 && !showNewPlaylist && (
-                  <p style={{ fontSize: "11px", color: "var(--text-secondary)", padding: "4px 10px" }}>No playlists yet</p>
+                  <p style={{ fontSize: "11px", color: "var(--text-secondary)", padding: "4px 10px" }}>{t("music.noPlaylistsYet")}</p>
                 )}
               </div>
             </div>
@@ -522,7 +524,7 @@ function MusicPageContent() {
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search tracks..."
+                  placeholder={t("music.searchPlaceholder")}
                   className="w-full pl-9 pr-4 py-2.5 rounded-lg border-none outline-none"
                   style={{ background: "var(--card)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }}
                 />
@@ -540,7 +542,7 @@ function MusicPageContent() {
                       border: sortMode === s ? "1px solid var(--border)" : "1px solid transparent",
                     }}
                   >
-                    {s === "recent" ? "Recent" : s === "title" ? "Title" : "Duration"}
+                    {s === "recent" ? t("music.sortRecent") : s === "title" ? t("music.sortTitle") : t("music.sortDuration")}
                   </button>
                 ))}
               </div>
@@ -554,14 +556,14 @@ function MusicPageContent() {
                   <Music size={28} style={{ color: "#FFF" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
-                  {view === "favorites" ? "No favorites yet" : view === "playlist" ? "Playlist is empty" : "No tracks yet"}
+                  {view === "favorites" ? t("music.noFavorites") : view === "playlist" ? t("music.playlistEmpty") : t("music.noTracks")}
                 </h2>
                 <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
-                  Generate audio from the Hub to start building your music library.
+                  {t("music.noTracksDesc")}
                 </p>
                 <Link to="/hub" className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
                   style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}>
-                  <Plus size={14} /> Open AI Hub
+                  <Plus size={14} /> {t("music.openAiHub")}
                 </Link>
               </div>
             ) : (
@@ -570,8 +572,8 @@ function MusicPageContent() {
                 <div className="flex items-center gap-3 px-3 py-2" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-secondary)" }}>
                   <div className="w-8" />
                   <div className="w-10" />
-                  <div className="flex-1">Title</div>
-                  <div className="w-[120px] hidden lg:block">Model</div>
+                  <div className="flex-1">{t("music.titleCol")}</div>
+                  <div className="w-[120px] hidden lg:block">{t("music.modelCol")}</div>
                   <div className="w-[60px] text-right"><Clock size={10} className="inline" /></div>
                   <div className="w-8" />
                   <div className="w-8" />
@@ -664,25 +666,25 @@ function MusicPageContent() {
               boxShadow: "0 12px 40px rgba(0,0,0,0.08)", minWidth: 200,
             }}
           >
-            <CtxItem icon={Play} label="Play" onClick={() => playTrack(contextTrack, filteredTracks)} />
-            <CtxItem icon={Heart} label={favorites.includes(contextTrack.id) ? "Remove from favorites" : "Add to favorites"} onClick={() => toggleFavorite(contextTrack.id || contextTrack.libraryId)} />
+            <CtxItem icon={Play} label={t("music.play")} onClick={() => playTrack(contextTrack, filteredTracks)} />
+            <CtxItem icon={Heart} label={favorites.includes(contextTrack.id) ? t("music.removeFromFavorites") : t("music.addToFavorites")} onClick={() => toggleFavorite(contextTrack.id || contextTrack.libraryId)} />
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
             {/* Add to playlist submenu */}
             {playlists.length > 0 && playlists.map(pl => (
-              <CtxItem key={pl.id} icon={ListMusic} label={`Add to "${pl.name}"`} onClick={() => addToPlaylist(pl.id, contextTrack.id || contextTrack.libraryId)} />
+              <CtxItem key={pl.id} icon={ListMusic} label={`${t("music.addToPlaylist")} "${pl.name}"`} onClick={() => addToPlaylist(pl.id, contextTrack.id || contextTrack.libraryId)} />
             ))}
             {view === "playlist" && activePlaylistId && (
-              <CtxItem icon={X} label="Remove from playlist" onClick={() => removeFromPlaylist(activePlaylistId, contextTrack.id || contextTrack.libraryId)} />
+              <CtxItem icon={X} label={t("music.removeFromPlaylist")} onClick={() => removeFromPlaylist(activePlaylistId, contextTrack.id || contextTrack.libraryId)} />
             )}
             <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
-            <CtxItem icon={Download} label="Download MP3" onClick={() => downloadTrack(contextTrack, "mp3")} />
+            <CtxItem icon={Download} label={t("music.downloadMp3")} onClick={() => downloadTrack(contextTrack, "mp3")} />
             {contextTrack.sunoTaskId && contextTrack.sunoAudioId && (
               <>
-                <CtxItem icon={FileAudio} label="Export WAV" loading={actionLoading === "wav"} onClick={() => callSunoAction("wav", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId }, "WAV Export")} />
-                <CtxItem icon={Scissors} label="Separate Stems" loading={actionLoading === "vocal-removal"} onClick={() => callSunoAction("vocal-removal", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId, type: "separate_vocal" }, "Vocal Separation")} />
-                <CtxItem icon={Video} label="Generate Music Video" loading={actionLoading === "mp4"} onClick={() => callSunoAction("mp4", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId }, "Music Video")} />
-                <CtxItem icon={ArrowUpFromLine} label="Extend Track" onClick={() => { setExtendTrack(contextTrack); setExtendPrompt(""); setExtendAt(""); }} />
-                <CtxItem icon={AlignLeft} label="Get Lyrics" loading={actionLoading === "lyrics"} onClick={() => {
+                <CtxItem icon={FileAudio} label={t("music.exportWav")} loading={actionLoading === "wav"} onClick={() => callSunoAction("wav", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId }, "WAV Export")} />
+                <CtxItem icon={Scissors} label={t("music.separateStems")} loading={actionLoading === "vocal-removal"} onClick={() => callSunoAction("vocal-removal", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId, type: "separate_vocal" }, "Vocal Separation")} />
+                <CtxItem icon={Video} label={t("music.generateMusicVideo")} loading={actionLoading === "mp4"} onClick={() => callSunoAction("mp4", { taskId: contextTrack.sunoTaskId, audioId: contextTrack.sunoAudioId }, "Music Video")} />
+                <CtxItem icon={ArrowUpFromLine} label={t("music.extendTrack")} onClick={() => { setExtendTrack(contextTrack); setExtendPrompt(""); setExtendAt(""); }} />
+                <CtxItem icon={AlignLeft} label={t("music.getLyrics")} loading={actionLoading === "lyrics"} onClick={() => {
                   setLyricsTrack(contextTrack);
                   setLyricsLoading(true);
                   callSunoAction("lyrics", { prompt: contextTrack.prompt || contextTrack.title }, "Lyrics").then(() => setLyricsLoading(false));
@@ -703,25 +705,25 @@ function MusicPageContent() {
               className="rounded-2xl p-6 w-full max-w-md"
               style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
-              <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", marginBottom: "4px" }}>Extend Track</h3>
-              <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "16px" }}>Continue "{extendTrack.title}" from a specific point</p>
+              <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", marginBottom: "4px" }}>{t("music.extendTitle")}</h3>
+              <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "16px" }}>{t("music.extendDesc")}</p>
               <div className="space-y-3">
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Continue at (seconds)</label>
-                  <input value={extendAt} onChange={e => setExtendAt(e.target.value)} placeholder="e.g. 30" type="number"
+                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("music.continueAt")}</label>
+                  <input value={extendAt} onChange={e => setExtendAt(e.target.value)} placeholder={t("music.continueAtPlaceholder")} type="number"
                     className="w-full mt-1 px-3 py-2 rounded-lg border-none outline-none"
                     style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Prompt (optional)</label>
-                  <input value={extendPrompt} onChange={e => setExtendPrompt(e.target.value)} placeholder="Describe how to continue..."
+                  <label style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("music.promptOptional")}</label>
+                  <input value={extendPrompt} onChange={e => setExtendPrompt(e.target.value)} placeholder={t("music.promptPlaceholder")}
                     className="w-full mt-1 px-3 py-2 rounded-lg border-none outline-none"
                     style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "13px", border: "1px solid var(--border)" }} />
                 </div>
                 <div className="flex gap-2 pt-2">
                   <button onClick={() => setExtendTrack(null)} className="flex-1 py-2.5 rounded-lg cursor-pointer"
                     style={{ background: "var(--secondary)", color: "var(--text-tertiary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border)" }}>
-                    Cancel
+                    {t("calendar.cancel")}
                   </button>
                   <button
                     disabled={!!actionLoading}
@@ -736,7 +738,7 @@ function MusicPageContent() {
                     className="flex-1 py-2.5 rounded-lg cursor-pointer flex items-center justify-center gap-2"
                     style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
                     {actionLoading === "extend" ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpFromLine size={14} />}
-                    Extend
+                    {t("music.extend")}
                   </button>
                 </div>
               </div>
@@ -756,7 +758,7 @@ function MusicPageContent() {
               style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", boxShadow: "0 24px 60px rgba(0,0,0,0.6)" }}
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)" }}>Lyrics</h3>
+                <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)" }}>{t("music.lyrics")}</h3>
                 <button onClick={() => { setLyricsTrack(null); setLyricsContent(""); }} className="w-8 h-8 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/5">
                   <X size={16} style={{ color: "var(--text-tertiary)" }} />
                 </button>
@@ -765,14 +767,14 @@ function MusicPageContent() {
               {lyricsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-                  <span className="ml-2" style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>Generating lyrics...</span>
+                  <span className="ml-2" style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>{t("music.generatingLyrics")}</span>
                 </div>
               ) : lyricsContent ? (
                 <pre style={{ fontSize: "14px", color: "var(--foreground)", lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
                   {lyricsContent}
                 </pre>
               ) : (
-                <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>No lyrics generated yet.</p>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{t("music.noLyricsYet")}</p>
               )}
             </motion.div>
           </motion.div>
@@ -790,7 +792,7 @@ function MusicPageContent() {
             style={{ background: "var(--card)", borderLeft: "1px solid var(--border)", boxShadow: "-8px 0 24px rgba(0,0,0,0.05)" }}
           >
             <div className="flex items-center justify-between p-4 sticky top-0" style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-              <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Queue ({queue.length})</span>
+              <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{t("music.queue")} ({queue.length})</span>
               <button onClick={() => setShowQueue(false)} className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer hover:bg-white/5">
                 <X size={14} style={{ color: "var(--text-tertiary)" }} />
               </button>

@@ -12,82 +12,78 @@ import {
 import { PulseIcon } from "../components/PulseMotif";
 import { useAuth } from "../lib/auth-context";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
-
-interface PlanOption {
-  id: "free" | "generate" | "studio";
-  name: string;
-  price: string;
-  period: string;
-  credits: string;
-  description: string;
-  features: string[];
-  icon: typeof Zap;
-  highlighted: boolean;
-}
-
-const plans: PlanOption[] = [
-  {
-    id: "free",
-    name: "Free",
-    price: "0",
-    period: "",
-    credits: "50 credits",
-    description: "Explore ORA with no commitment.",
-    features: [
-      "50 credits included",
-      "3 AI models (GPT-4o, Claude, Gemini)",
-      "Text and image generation",
-      "Basic Arena (2 models)",
-      "Credits never expire",
-    ],
-    icon: Zap,
-    highlighted: false,
-  },
-  {
-    id: "generate",
-    name: "Pro",
-    price: "\u20AC39",
-    period: "/month",
-    credits: "500 credits/month",
-    description: "Every model, every format.",
-    features: [
-      "500 credits/month included",
-      "All AI models (10+)",
-      "Text, image, code, audio, video",
-      "Full Arena (unlimited models)",
-      "Priority generation queue",
-      "Credit packs available",
-    ],
-    icon: Sparkles,
-    highlighted: true,
-  },
-  {
-    id: "studio",
-    name: "Business",
-    price: "\u20AC149",
-    period: "/month",
-    credits: "2,500 credits/month",
-    description: "On-brand content at scale.",
-    features: [
-      "2,500 credits/month included",
-      "Everything in Pro +",
-      "Brand Vault (brand identity)",
-      "Campaign Lab (multi-platform)",
-      "Canvas editor & Asset Builder",
-      "Brand Score & Content Calendar",
-      "Priority support",
-    ],
-    icon: Crown,
-    highlighted: false,
-  },
-];
+import { useI18n } from "../lib/i18n";
 
 export function SubscribePage() {
   const navigate = useNavigate();
   const { user, profile, accessToken, isLoading: authLoading, refreshProfile } = useAuth();
+  const { t } = useI18n();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const plans = [
+    {
+      id: "free" as const,
+      name: t("subscribe.freeName"),
+      price: "0",
+      priceLabel: t("subscribe.freePrice"),
+      period: "",
+      credits: t("subscribe.freeCredits"),
+      description: t("subscribe.freeDesc"),
+      features: [
+        t("subscribe.freeF1"),
+        t("subscribe.freeF2"),
+        t("subscribe.freeF3"),
+        t("subscribe.freeF4"),
+        t("subscribe.freeF5"),
+      ],
+      icon: Zap,
+      highlighted: false,
+      cta: t("subscribe.freeCta"),
+    },
+    {
+      id: "generate" as const,
+      name: t("subscribe.proName"),
+      price: t("subscribe.proPrice"),
+      priceLabel: t("subscribe.proPrice"),
+      period: t("subscribe.proPeriod"),
+      credits: t("subscribe.proCredits"),
+      description: t("subscribe.proDesc"),
+      features: [
+        t("subscribe.proF1"),
+        t("subscribe.proF2"),
+        t("subscribe.proF3"),
+        t("subscribe.proF4"),
+        t("subscribe.proF5"),
+        t("subscribe.proF6"),
+      ],
+      icon: Sparkles,
+      highlighted: true,
+      cta: t("subscribe.proCta"),
+    },
+    {
+      id: "studio" as const,
+      name: t("subscribe.businessName"),
+      price: t("subscribe.businessPrice"),
+      priceLabel: t("subscribe.businessPrice"),
+      period: t("subscribe.businessPeriod"),
+      credits: t("subscribe.businessCredits"),
+      description: t("subscribe.businessDesc"),
+      features: [
+        t("subscribe.businessF1"),
+        t("subscribe.businessF2"),
+        t("subscribe.businessF3"),
+        t("subscribe.businessF4"),
+        t("subscribe.businessF5"),
+        t("subscribe.businessF6"),
+        t("subscribe.businessF7"),
+      ],
+      icon: Crown,
+      highlighted: false,
+      cta: t("subscribe.businessCta"),
+    },
+  ];
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -128,7 +124,7 @@ export function SubscribePage() {
       navigate("/profile");
     } catch (err) {
       console.error("Choose plan exception:", err);
-      setError("Failed to activate plan. Please try again.");
+      setError(t("subscribe.errorActivation"));
       setLoading(false);
     }
   };
@@ -168,10 +164,10 @@ export function SubscribePage() {
               lineHeight: 1.2,
             }}
           >
-            Welcome{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}. Choose your plan.
+            {t("subscribe.welcomePrefix")}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}. {t("subscribe.heading")}
           </h1>
           <p className="text-muted-foreground" style={{ fontSize: "15px", lineHeight: 1.5 }}>
-            Start free or unlock the full power of ORA. You can upgrade anytime.
+            {t("subscribe.subtitle")}
           </p>
         </motion.div>
 
@@ -223,7 +219,7 @@ export function SubscribePage() {
                       letterSpacing: "0.04em",
                     }}
                   >
-                    POPULAR
+                    {t("subscribe.popular")}
                   </div>
                 )}
 
@@ -268,7 +264,7 @@ export function SubscribePage() {
                         lineHeight: 1,
                       }}
                     >
-                      {plan.price === "0" ? "Free" : plan.price}
+                      {plan.price === "0" ? plan.priceLabel : plan.price}
                     </span>
                     {plan.period && (
                       <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
@@ -335,11 +331,11 @@ export function SubscribePage() {
                   {isLoading ? (
                     <>
                       <Loader2 size={15} className="animate-spin" />
-                      Activating...
+                      {t("subscribe.activating")}
                     </>
                   ) : (
                     <>
-                      {plan.id === "free" ? "Continue with Free" : `Start ${plan.name}`}
+                      {plan.cta}
                       <ArrowRight size={15} />
                     </>
                   )}
@@ -357,7 +353,7 @@ export function SubscribePage() {
           className="text-center mt-8 text-muted-foreground"
           style={{ fontSize: "12px" }}
         >
-          No credit card required for the Free plan. You can upgrade or change plans at any time.
+          {t("subscribe.footerNote")}
         </motion.p>
       </div>
     </div>

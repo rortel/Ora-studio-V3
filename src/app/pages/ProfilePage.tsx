@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -234,6 +235,7 @@ export function ProfilePage() {
 
 function ProfilePageContent() {
   const { user: authCtxUser, profile, isAdmin, plan: authPlan, remainingCredits, signOut, isLoading: authLoading, accessToken } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -342,10 +344,10 @@ function ProfilePageContent() {
   }
 
   const tabs: { id: ProfileTab; label: string; icon: typeof User }[] = [
-    { id: "overview", label: "Overview", icon: BarChart3 },
-    { id: "library", label: "Library", icon: FolderOpen },
-    { id: "team", label: "Team", icon: Users },
-    { id: "settings", label: "Settings", icon: Settings },
+    { id: "overview", label: t("profile.tabOverview"), icon: BarChart3 },
+    { id: "library", label: t("profile.tabLibrary"), icon: FolderOpen },
+    { id: "team", label: t("profile.tabTeam"), icon: Users },
+    { id: "settings", label: t("profile.tabSettings"), icon: Settings },
   ];
 
   return (
@@ -359,19 +361,19 @@ function ProfilePageContent() {
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" />
                 <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                  Signed in as {authCtxUser.email}
+                  {t("profile.signedInAs")} {authCtxUser.email}
                 </span>
               </div>
               {!isAdmin && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border" style={{ fontSize: "11px" }}>
                   <Zap size={10} className="text-ora-signal" />
                   <span style={{ fontWeight: 500, color: "var(--foreground)" }}>{remainingCredits}</span>
-                  <span style={{ color: "var(--muted-foreground)" }}>credits remaining</span>
+                  <span style={{ color: "var(--muted-foreground)" }}>{t("profile.creditsRemaining")}</span>
                 </div>
               )}
               {isAdmin && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full" style={{ background: "var(--ora-signal-light)", fontSize: "11px", fontWeight: 500, color: "var(--ora-signal)" }}>
-                  <Shield size={10} /> Admin -- unlimited
+                  <Shield size={10} /> {t("profile.adminUnlimited")}
                 </span>
               )}
             </div>
@@ -405,14 +407,14 @@ function ProfilePageContent() {
                 <PlanBadge plan={user.plan} />
               </div>
               <p style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
-                {user.role} at {user.company}
+                {user.role} {t("profile.roleAt")} {user.company}
               </p>
               <div className="flex items-center gap-4 mt-1">
                 <span className="flex items-center gap-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
                   <Mail size={10} /> {user.email}
                 </span>
                 <span className="flex items-center gap-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                  <Calendar size={10} /> Joined {user.joinedDate}
+                  <Calendar size={10} /> {t("profile.joinedPrefix")} {user.joinedDate}
                 </span>
               </div>
             </div>
@@ -424,7 +426,7 @@ function ProfilePageContent() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-ora-signal/20 text-ora-signal hover:bg-ora-signal-light transition-colors"
                 style={{ fontSize: "12px", fontWeight: 500 }}
               >
-                <Shield size={13} /> Admin Dashboard
+                <Shield size={13} /> {t("profile.adminDashboard")}
               </Link>
             )}
             <button
@@ -432,7 +434,7 @@ function ProfilePageContent() {
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg border hover:bg-secondary transition-colors cursor-pointer"
               style={{ borderColor: "var(--border)", fontSize: "12px", fontWeight: 500 }}
             >
-              {authCtxUser ? "Sign out" : "Edit profile"}
+              {authCtxUser ? t("profile.signOut") : t("profile.editProfile")}
             </button>
           </div>
         </motion.div>
@@ -519,6 +521,7 @@ function PlanBadge({ plan }: { plan: PlanTier }) {
    ═══════════════════════════════════ */
 
 function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: UserProfile; plan: PlanDetails; activity: ActivityItem[]; library: LibraryAsset[]; isSubscriber: boolean }) {
+  const { t } = useI18n();
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
       <div className="space-y-6">
@@ -529,7 +532,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <CreditCard size={14} style={{ color: plan.color }} />
-                  <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Current plan</span>
+                  <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{t("profile.currentPlan")}</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span style={{ fontSize: "28px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.03em", lineHeight: 1.2 }}>
@@ -540,17 +543,17 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
               </div>
               {!isSubscriber ? (
                 <Link to="/pricing" className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity" style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}>
-                  <Zap size={14} /> Upgrade
+                  <Zap size={14} /> {t("profile.upgrade")}
                 </Link>
               ) : (
-                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Renews {plan.renewalDate}</span>
+                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.renews")} {plan.renewalDate}</span>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <UsageMeter label="Content pieces" used={plan.contentUsed} max={plan.contentMax} icon={FileText} unit="" />
-              <UsageMeter label="Active agents" used={plan.agents} max={plan.maxAgents} icon={Sparkles} unit="" />
-              <UsageMeter label="Brand Vaults" used={plan.vaults} max={plan.maxVaults} icon={BookOpen} unit="" />
-              <UsageMeter label="Storage" used={plan.storageUsed} max={plan.storageMax} icon={FolderOpen} unit=" GB" />
+              <UsageMeter label={t("profile.contentPieces")} used={plan.contentUsed} max={plan.contentMax} icon={FileText} unit="" />
+              <UsageMeter label={t("profile.activeAgents")} used={plan.agents} max={plan.maxAgents} icon={Sparkles} unit="" />
+              <UsageMeter label={t("profile.brandVaults")} used={plan.vaults} max={plan.maxVaults} icon={BookOpen} unit="" />
+              <UsageMeter label={t("profile.storage")} used={plan.storageUsed} max={plan.storageMax} icon={FolderOpen} unit=" GB" />
             </div>
           </div>
           {!isSubscriber && (
@@ -559,7 +562,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
                 <Crown size={14} className="text-ora-signal flex-shrink-0" />
                 <p className="flex-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>15 agents, Brand Vault, Studio, Flows, Remix, unlimited campaigns</p>
                 <Link to="/pricing" className="text-ora-signal flex items-center gap-1 flex-shrink-0" style={{ fontSize: "12px", fontWeight: 500 }}>
-                  See plans <ArrowRight size={12} />
+                  {t("profile.seePlans")} <ArrowRight size={12} />
                 </Link>
               </div>
             </div>
@@ -569,7 +572,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
       </div>
       {/* Activity */}
       <div className="border rounded-xl bg-card p-5" style={{ borderColor: "var(--border)", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
-        <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Recent activity</span>
+        <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{t("profile.recentActivity")}</span>
         <div className="mt-4 space-y-0">
           {activity.map((item, i) => {
             const Icon = item.icon;
@@ -626,15 +629,16 @@ function UsageMeter({ label, used, max, icon: Icon, unit }: { label: string; use
    ═══════════════════════════════════ */
 
 function QuickAccess({ isSubscriber }: { isSubscriber: boolean }) {
+  const { t } = useI18n();
   const items = [
-    { label: "AI Hub", desc: "Generate with multiple models", href: "/hub", icon: Sparkles, locked: false },
-    { label: "Library", desc: "Your saved content", href: "/hub/library", icon: BookOpen, locked: false },
-    { label: "Brand Vault", desc: "Your brand's DNA", href: "/hub/vault", icon: BookOpen, locked: !isSubscriber },
-    { label: "Analytics", desc: "Track performance", href: "/hub/analytics", icon: GitBranch, locked: !isSubscriber },
+    { label: t("profile.aiHub"), desc: t("profile.aiHubDesc"), href: "/hub", icon: Sparkles, locked: false },
+    { label: t("profile.libraryLabel"), desc: t("profile.libraryDesc"), href: "/hub/library", icon: BookOpen, locked: false },
+    { label: t("profile.brandVault"), desc: t("profile.brandVaultDesc"), href: "/hub/vault", icon: BookOpen, locked: !isSubscriber },
+    { label: t("profile.analyticsLabel"), desc: t("profile.analyticsDesc"), href: "/hub/analytics", icon: GitBranch, locked: !isSubscriber },
   ];
   return (
     <div>
-      <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>Quick access</span>
+      <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{t("profile.quickAccess")}</span>
       <div className="grid grid-cols-3 gap-2 mt-3">
         {items.map((item) => {
           const Icon = item.icon;
@@ -664,10 +668,10 @@ function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubs
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-5">
-        {types.map((t) => (
-          <button key={t} onClick={() => setFilter(t)}
-            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer ${filter === t ? "bg-ora-signal-light border-ora-signal/20 text-ora-signal" : "border-border text-muted-foreground hover:text-foreground"}`}
-            style={{ fontSize: "11px", fontWeight: filter === t ? 500 : 400, textTransform: "capitalize" }}>{t}</button>
+        {types.map((tp) => (
+          <button key={tp} onClick={() => setFilter(tp)}
+            className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer ${filter === tp ? "bg-ora-signal-light border-ora-signal/20 text-ora-signal" : "border-border text-muted-foreground hover:text-foreground"}`}
+            style={{ fontSize: "11px", fontWeight: filter === tp ? 500 : 400, textTransform: "capitalize" }}>{tp}</button>
         ))}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -702,20 +706,21 @@ function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubs
    ═══════════════════════════════════ */
 
 function TeamTab() {
+  const { t } = useI18n();
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)" }}>Team</h2>
-          <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{mockTeam.length} members</p>
+          <h2 style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)" }}>{t("profile.team")}</h2>
+          <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{mockTeam.length} {t("profile.members")}</p>
         </div>
         <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer" style={{ background: "var(--ora-signal)", fontSize: "12px", fontWeight: 500 }}>
-          <Users size={13} /> Invite member
+          <Users size={13} /> {t("profile.inviteMember")}
         </button>
       </div>
       <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "var(--border)" }}>
         <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-4 px-5 py-2.5 border-b bg-secondary/30" style={{ borderColor: "var(--border)" }}>
-          {["Member", "Email", "Role", "Status"].map((h) => (
+          {[t("profile.memberCol"), t("profile.emailCol"), t("profile.roleCol"), t("profile.statusCol")].map((h) => (
             <span key={h} style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{h}</span>
           ))}
         </div>
@@ -731,9 +736,9 @@ function TeamTab() {
             <span className="flex items-center px-2 py-0.5 rounded bg-secondary self-center justify-self-start" style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)" }}>{member.role}</span>
             <div className="flex items-center">
               {member.status === "active" ? (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#666666" }}><span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" /> Active</span>
+                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#666666" }}><span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" /> {t("profile.statusActive")}</span>
               ) : (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#999999" }}><Clock size={9} /> Invited</span>
+                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#999999" }}><Clock size={9} /> {t("profile.statusInvited")}</span>
               )}
             </div>
           </div>
@@ -755,6 +760,7 @@ const SOCIAL_PLATFORMS = [
 ];
 
 function SocialAccountsSection() {
+  const { t } = useI18n();
   const auth = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -825,7 +831,7 @@ function SocialAccountsSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Social Accounts</h3>
+        <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{t("profile.socialAccounts")}</h3>
         <button onClick={fetchAccounts} className="cursor-pointer p-1 rounded hover:bg-secondary transition-colors" title="Refresh">
           <RefreshCw size={12} className={`text-muted-foreground ${loading ? "animate-spin" : ""}`} />
         </button>
@@ -845,7 +851,7 @@ function SocialAccountsSection() {
                   <span style={{ fontSize: "13px", color: "var(--foreground)", fontWeight: 500 }}>{p.label}</span>
                   {connected && (
                     <span className="block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                      {connected.username ? `@${connected.username}` : "Connected"}
+                      {connected.username ? `@${connected.username}` : t("profile.connected")}
                     </span>
                   )}
                 </div>
@@ -854,7 +860,7 @@ function SocialAccountsSection() {
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(17,17,17,0.08)", fontSize: "10px", fontWeight: 600, color: "#666666" }}>
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
-                    Connected
+                    {t("profile.connected")}
                   </span>
                   <button
                     onClick={() => handleDisconnect(p.id, connected._id)}
@@ -862,7 +868,7 @@ function SocialAccountsSection() {
                     className="px-2 py-0.5 rounded text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                     style={{ fontSize: "10px", fontWeight: 500 }}
                   >
-                    {disconnecting === p.id ? "..." : "Disconnect"}
+                    {disconnecting === p.id ? "..." : t("profile.disconnect")}
                   </button>
                 </div>
               ) : (
@@ -873,7 +879,7 @@ function SocialAccountsSection() {
                   style={{ borderColor: "var(--border)", fontSize: "11px", fontWeight: 500, color: "var(--foreground)", opacity: connecting && !isConnecting ? 0.4 : 1 }}
                 >
                   {isConnecting ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                  {isConnecting ? "Connecting..." : "Connect"}
+                  {isConnecting ? t("profile.connecting") : t("profile.connect")}
                 </button>
               )}
             </div>
@@ -881,7 +887,7 @@ function SocialAccountsSection() {
         })}
       </div>
       <p className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-        Connect your social accounts to publish content directly from Campaign Lab.
+        {t("profile.socialAccountsDesc")}
       </p>
     </div>
   );
@@ -892,27 +898,28 @@ function SocialAccountsSection() {
    ═══════════════════════════════════ */
 
 function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authEmail?: string }) {
+  const { t } = useI18n();
   const sections = [
     {
-      title: "Profile",
+      title: t("profile.settingsProfile"),
       items: [
-        { label: "Display name", value: isSubscriber ? "Alex Martin" : "Alex Martin", editable: true },
-        { label: "Email", value: authEmail || (isSubscriber ? "alex@acmecorp.com" : "alex@martin-studio.com"), editable: true },
-        { label: "Company", value: isSubscriber ? "Acme Corp" : "Martin Studio", editable: true },
+        { label: t("profile.displayName"), value: isSubscriber ? "Alex Martin" : "Alex Martin", editable: true },
+        { label: t("profile.email"), value: authEmail || (isSubscriber ? "alex@acmecorp.com" : "alex@martin-studio.com"), editable: true },
+        { label: t("profile.company"), value: isSubscriber ? "Acme Corp" : "Martin Studio", editable: true },
       ],
     },
     {
-      title: "Notifications",
+      title: t("profile.notifications"),
       items: [
-        { label: "Campaign alerts", value: isSubscriber ? "Enabled" : "Disabled", editable: true },
-        { label: "Weekly digest", value: isSubscriber ? "Enabled" : "Disabled", editable: true },
+        { label: t("profile.campaignAlerts"), value: isSubscriber ? t("profile.enabled") : t("profile.disabled"), editable: true },
+        { label: t("profile.weeklyDigest"), value: isSubscriber ? t("profile.enabled") : t("profile.disabled"), editable: true },
       ],
     },
     {
-      title: "Integrations",
+      title: t("profile.integrations"),
       items: [
-        { label: "API key", value: isSubscriber ? "sk-ora-...7f3a" : "Upgrade required", editable: isSubscriber },
-        { label: "Figma Connect", value: isSubscriber ? "Connected" : "Upgrade required", editable: isSubscriber },
+        { label: t("profile.apiKey"), value: isSubscriber ? "sk-ora-...7f3a" : t("profile.upgradeRequired"), editable: isSubscriber },
+        { label: t("profile.figmaConnect"), value: isSubscriber ? t("profile.connected") : t("profile.upgradeRequired"), editable: isSubscriber },
       ],
     },
   ];
@@ -928,7 +935,7 @@ function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authE
                 <div className="flex items-center gap-3">
                   <span style={{ fontSize: "12px", color: "var(--muted-foreground)", opacity: item.editable ? 1 : 0.4 }}>{item.value}</span>
                   {item.editable ? (
-                    <button className="px-2.5 py-1 rounded-md border hover:bg-secondary cursor-pointer transition-colors" style={{ borderColor: "var(--border)", fontSize: "10px", fontWeight: 500 }}>Edit</button>
+                    <button className="px-2.5 py-1 rounded-md border hover:bg-secondary cursor-pointer transition-colors" style={{ borderColor: "var(--border)", fontSize: "10px", fontWeight: 500 }}>{t("profile.editBtn")}</button>
                   ) : (
                     <Lock size={10} className="text-muted-foreground/30" />
                   )}
@@ -939,14 +946,14 @@ function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authE
         </div>
       ))}
       <div>
-        <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 500, color: "var(--destructive)" }}>Danger zone</h3>
+        <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 500, color: "var(--destructive)" }}>{t("profile.dangerZone")}</h3>
         <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "rgba(212,24,61,0.15)" }}>
           <div className="flex items-center justify-between px-5 py-3">
             <div>
-              <p style={{ fontSize: "13px", color: "var(--foreground)" }}>Delete account</p>
-              <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Permanently delete your account and all data</p>
+              <p style={{ fontSize: "13px", color: "var(--foreground)" }}>{t("profile.deleteAccount")}</p>
+              <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.deleteAccountDesc")}</p>
             </div>
-            <button className="px-3 py-1.5 rounded-md border text-destructive hover:bg-destructive/5 cursor-pointer transition-colors" style={{ borderColor: "rgba(212,24,61,0.2)", fontSize: "11px", fontWeight: 500 }}>Delete</button>
+            <button className="px-3 py-1.5 rounded-md border text-destructive hover:bg-destructive/5 cursor-pointer transition-colors" style={{ borderColor: "rgba(212,24,61,0.2)", fontSize: "11px", fontWeight: 500 }}>{t("profile.deleteBtn")}</button>
           </div>
         </div>
       </div>

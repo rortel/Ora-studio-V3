@@ -2,90 +2,7 @@ import { motion } from "motion/react";
 import { Check, Minus, ArrowRight, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { FAQ } from "../components/FAQ";
-
-const plans = [
-  {
-    name: "Starter",
-    price: "\u20AC29",
-    period: "/month",
-    audience: "For individuals getting started with AI content.",
-    credits: "200 credits/month",
-    features: [
-      "200 credits/month included",
-      "10 AI models (GPT-4o, Claude, Gemini, etc.)",
-      "Text and image generation",
-      "Basic Arena (2 models)",
-      "Credits roll over indefinitely",
-    ],
-    cta: "Start Starter",
-    ctaHref: "/login?mode=signup",
-    highlighted: false,
-  },
-  {
-    name: "Pro",
-    price: "\u20AC79",
-    period: "/month",
-    audience: "For creators who need every model, every format.",
-    credits: "1,500 credits/month",
-    features: [
-      "1,500 credits/month included",
-      "All AI models (38+)",
-      "Text, image, video, audio",
-      "Full Arena (unlimited models)",
-      "Priority generation queue",
-      "Credit packs available",
-      "Credits roll over indefinitely",
-    ],
-    cta: "Start Pro",
-    ctaHref: "/login?mode=signup",
-    highlighted: true,
-  },
-  {
-    name: "Business",
-    price: "\u20AC149",
-    period: "/month",
-    audience: "For brands that need on-brand content at scale.",
-    credits: "5,000 credits/month",
-    features: [
-      "5,000 credits/month included",
-      "Everything in Pro +",
-      "Brand Vault (brand identity)",
-      "Campaign Lab (multi-platform)",
-      "Automated Content Calendar",
-      "Auto-publish & scheduling",
-      "Brand Score & compliance",
-      "Priority support",
-    ],
-    cta: "Start Business",
-    ctaHref: "/login?mode=signup",
-    highlighted: false,
-  },
-];
-
-const creditPacks = [
-  { name: "Pack S", price: "\u20AC19", credits: "1,000 credits", rate: "\u20AC0.019/cr" },
-  { name: "Pack M", price: "\u20AC79", credits: "5,000 credits", rate: "\u20AC0.016/cr" },
-  { name: "Pack L", price: "\u20AC249", credits: "20,000 credits", rate: "\u20AC0.012/cr" },
-];
-
-const comparisonFeatures = [
-  { name: "Credits", starter: "200/month", pro: "1,500/month", business: "5,000/month" },
-  { name: "AI Models", starter: "10 models", pro: "All 38+ models", business: "All 38+ models" },
-  { name: "Text generation", starter: true, pro: true, business: true },
-  { name: "Image generation", starter: true, pro: true, business: true },
-  { name: "Video generation", starter: false, pro: true, business: true },
-  { name: "Audio generation", starter: false, pro: true, business: true },
-  { name: "Arena (side-by-side)", starter: "2 models", pro: "Unlimited", business: "Unlimited" },
-  { name: "Brand Vault", starter: false, pro: false, business: true },
-  { name: "Campaign Lab", starter: false, pro: false, business: true },
-  { name: "Automated Content Calendar", starter: false, pro: false, business: true },
-  { name: "Auto-publish & scheduling", starter: false, pro: false, business: true },
-  { name: "Brand Score", starter: false, pro: false, business: true },
-  { name: "Generation queue", starter: "Standard", pro: "Priority", business: "Priority" },
-  { name: "Credit rollover", starter: "Unlimited", pro: "Unlimited", business: "Unlimited" },
-  { name: "Credit packs", starter: false, pro: true, business: true },
-  { name: "Support", starter: "Community", pro: "Email", business: "Priority" },
-];
+import { useI18n } from "../lib/i18n";
 
 function FeatureCell({ value }: { value: boolean | string }) {
   if (typeof value === "boolean") {
@@ -103,6 +20,92 @@ function FeatureCell({ value }: { value: boolean | string }) {
 }
 
 export function PricingPage() {
+  const { t } = useI18n();
+
+  const plans = [
+    {
+      name: t("pricingPage.starterName"),
+      price: t("pricingPage.starterPrice"),
+      period: t("pricingPage.starterPeriod"),
+      audience: t("pricingPage.starterAudience"),
+      credits: t("pricingPage.starterCredits"),
+      features: [
+        t("pricingPage.starterF1"),
+        t("pricingPage.starterF2"),
+        t("pricingPage.starterF3"),
+        t("pricingPage.starterF4"),
+        t("pricingPage.starterF5"),
+      ],
+      cta: t("pricingPage.starterCta"),
+      ctaHref: "/login?mode=signup",
+      highlighted: false,
+    },
+    {
+      name: t("pricingPage.proName"),
+      price: t("pricingPage.proPrice"),
+      period: t("pricingPage.proPeriod"),
+      audience: t("pricingPage.proAudience"),
+      credits: t("pricingPage.proCredits"),
+      features: [
+        t("pricingPage.proF1"),
+        t("pricingPage.proF2"),
+        t("pricingPage.proF3"),
+        t("pricingPage.proF4"),
+        t("pricingPage.proF5"),
+        t("pricingPage.proF6"),
+        t("pricingPage.proF7"),
+      ],
+      cta: t("pricingPage.proCta"),
+      ctaHref: "/login?mode=signup",
+      highlighted: true,
+    },
+    {
+      name: t("pricingPage.businessName"),
+      price: t("pricingPage.businessPrice"),
+      period: t("pricingPage.businessPeriod"),
+      audience: t("pricingPage.businessAudience"),
+      credits: t("pricingPage.businessCredits"),
+      features: [
+        t("pricingPage.businessF1"),
+        t("pricingPage.businessF2"),
+        t("pricingPage.businessF3"),
+        t("pricingPage.businessF4"),
+        t("pricingPage.businessF5"),
+        t("pricingPage.businessF6"),
+        t("pricingPage.businessF7"),
+        t("pricingPage.businessF8"),
+      ],
+      cta: t("pricingPage.businessCta"),
+      ctaHref: "/login?mode=signup",
+      highlighted: false,
+    },
+  ];
+
+  const creditPacks = [
+    { name: t("pricingPage.packSName"), price: "\u20AC19", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
+    { name: t("pricingPage.packMName"), price: "\u20AC79", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
+    { name: t("pricingPage.packLName"), price: "\u20AC249", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
+  ];
+
+  const comparisonFeatures: { name: string; starter: boolean | string; pro: boolean | string; business: boolean | string }[] = [
+    { name: t("pricingPage.compCredits"), starter: t("pricingPage.comp200mo"), pro: t("pricingPage.comp1500mo"), business: t("pricingPage.comp5000mo") },
+    { name: t("pricingPage.compAiModels"), starter: t("pricingPage.comp10models"), pro: t("pricingPage.compAll38"), business: t("pricingPage.compAll38") },
+    { name: t("pricingPage.compTextGen"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compImageGen"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compVideoGen"), starter: false, pro: true, business: true },
+    { name: t("pricingPage.compAudioGen"), starter: false, pro: true, business: true },
+    { name: t("pricingPage.compArena"), starter: t("pricingPage.comp2models"), pro: t("pricingPage.compUnlimited"), business: t("pricingPage.compUnlimited") },
+    { name: t("pricingPage.compBrandVault"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compCampaignLab"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compContentCalendar"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compAutoPublish"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compBrandScore"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compQueue"), starter: t("pricingPage.compStandard"), pro: t("pricingPage.compPriority"), business: t("pricingPage.compPriority") },
+    { name: t("pricingPage.compRollover"), starter: t("pricingPage.compUnlimited"), pro: t("pricingPage.compUnlimited"), business: t("pricingPage.compUnlimited") },
+    { name: t("pricingPage.compCreditPacks"), starter: false, pro: true, business: true },
+    { name: t("pricingPage.compSupport"), starter: t("pricingPage.compCommunity"), pro: t("pricingPage.compEmail"), business: t("pricingPage.compPriority") },
+  ];
+
   return (
     <>
       {/* Hero */}
@@ -125,7 +128,7 @@ export function PricingPage() {
                 border: "1px solid var(--border)",
               }}
             >
-              Pricing
+              {t("pricingPage.badge")}
             </span>
           </motion.div>
           <motion.h1
@@ -141,8 +144,8 @@ export function PricingPage() {
             }}
             className="mb-5"
           >
-            Simple pricing.{" "}
-            <span className="text-muted-foreground">Scale when you need to.</span>
+            {t("pricingPage.heroTitle1")}{" "}
+            <span className="text-muted-foreground">{t("pricingPage.heroTitle2")}</span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 12 }}
@@ -151,7 +154,7 @@ export function PricingPage() {
             className="max-w-[520px] mx-auto mb-4"
             style={{ fontSize: "16px", lineHeight: 1.55, color: "var(--text-tertiary)" }}
           >
-            Pay for credits, use any model. No per-model pricing, no hidden fees. Credits never expire.
+            {t("pricingPage.heroSubtitle")}
           </motion.p>
           <motion.p
             initial={{ opacity: 0 }}
@@ -160,7 +163,7 @@ export function PricingPage() {
             className="text-muted-foreground/60"
             style={{ fontSize: "13px", color: "var(--text-secondary)" }}
           >
-            Unlimited rollover. Cancel anytime.
+            {t("pricingPage.heroNote")}
           </motion.p>
         </div>
       </section>
@@ -196,7 +199,7 @@ export function PricingPage() {
                         letterSpacing: "0.05em",
                       }}
                     >
-                      MOST POPULAR
+                      {t("pricingPage.mostPopular")}
                     </span>
                   </div>
                 )}
@@ -326,14 +329,14 @@ export function PricingPage() {
                 className="text-foreground"
                 style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em" }}
               >
-                Need more credits?
+                {t("pricingPage.creditPacksTitle")}
               </h3>
             </div>
             <p
               className="text-muted-foreground"
               style={{ fontSize: "14px", lineHeight: 1.55 }}
             >
-              Top up anytime. Available on Pro and Business plans. Credits never expire.
+              {t("pricingPage.creditPacksSubtitle")}
             </p>
           </motion.div>
 
@@ -393,10 +396,10 @@ export function PricingPage() {
           >
             <div>
               <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
-                Enterprise
+                {t("pricingPage.enterpriseTitle")}
               </h3>
               <p className="mt-1" style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.55 }}>
-                Multi-brand, SSO, dedicated support, custom integrations, volume pricing. Let's talk.
+                {t("pricingPage.enterpriseDesc")}
               </p>
             </div>
             <Link
@@ -409,7 +412,7 @@ export function PricingPage() {
                 color: "var(--foreground)",
               }}
             >
-              Contact sales
+              {t("pricingPage.enterpriseCta")}
               <ArrowRight size={14} />
             </Link>
           </motion.div>
@@ -430,7 +433,7 @@ export function PricingPage() {
               letterSpacing: "-0.03em",
             }}
           >
-            Compare plans
+            {t("pricingPage.compareTitle")}
           </motion.h2>
 
           <div className="overflow-x-auto">
@@ -441,9 +444,9 @@ export function PricingPage() {
                     className="text-left py-3 pr-4"
                     style={{ fontSize: "12px", fontWeight: 500, color: "var(--muted-foreground)" }}
                   >
-                    Feature
+                    {t("pricingPage.featureLabel")}
                   </th>
-                  {["Starter", "Pro", "Business"].map((h) => (
+                  {[t("pricingPage.starterName"), t("pricingPage.proName"), t("pricingPage.businessName")].map((h) => (
                     <th
                       key={h}
                       className="text-center py-3 px-3"

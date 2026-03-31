@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ORA STUDIO — Unified conversational creation
@@ -119,6 +120,7 @@ const COMPARE_MODELS = {
 
 export function StudioPage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { getAuthHeader, accessToken, isLoading: authLoading } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -144,12 +146,12 @@ export function StudioPage() {
 
   const startRecording = useCallback(async () => {
     if (window.self !== window.top) {
-      toast.error("Micro bloqué en preview", { description: "Ouvrez l'app dans un nouvel onglet.", duration: 8000,
-        action: { label: "Ouvrir", onClick: () => window.open(window.location.href, "_blank") } });
+      toast.error(t("studio.micBlocked"), { description: t("studio.micBlockedDesc"), duration: 8000,
+        action: { label: t("studio.micOpen"), onClick: () => window.open(window.location.href, "_blank") } });
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error("Micro non disponible", { description: "Votre navigateur ne supporte pas l'enregistrement audio." });
+      toast.error(t("studio.micUnavailable"), { description: t("studio.micUnavailableDesc") });
       return;
     }
     try {
@@ -177,13 +179,13 @@ export function StudioPage() {
           const data = await res.json();
           if (data.success && data.text) {
             setInput(prev => (prev ? prev + " " + data.text : data.text));
-            toast.success("Voix transcrite", { description: data.text.slice(0, 60) + (data.text.length > 60 ? "..." : "") });
+            toast.success(t("studio.voiceTranscribed"), { description: data.text.slice(0, 60) + (data.text.length > 60 ? "..." : "") });
             setTimeout(() => inputRef.current?.focus(), 100);
           } else {
-            toast.error("Transcription échouée", { description: data.error || "Erreur inconnue" });
+            toast.error(t("studio.transcriptionFailed"), { description: data.error || "Erreur inconnue" });
           }
         } catch (err: any) {
-          toast.error("Erreur transcription", { description: err?.message || "Erreur réseau" });
+          toast.error(t("studio.transcriptionError"), { description: err?.message || "Erreur réseau" });
         }
         setIsTranscribing(false);
       };
@@ -194,11 +196,11 @@ export function StudioPage() {
       recordingTimerRef.current = setInterval(() => setRecordingDuration(d => d + 1), 1000);
     } catch (err: any) {
       if (err?.name === "NotAllowedError") {
-        toast.error("Accès micro refusé", { description: "Cliquez sur le cadenas dans la barre d'adresse pour autoriser le micro.", duration: 8000 });
+        toast.error(t("studio.micDenied"), { description: t("studio.micDeniedDesc"), duration: 8000 });
       } else if (err?.name === "NotFoundError") {
-        toast.error("Aucun micro détecté", { description: "Branchez un microphone et réessayez." });
+        toast.error(t("studio.noMicDetected"), { description: t("studio.noMicDetectedDesc") });
       } else {
-        toast.error("Erreur micro", { description: err?.message || "Impossible d'accéder au microphone." });
+        toast.error(t("studio.micError"), { description: err?.message || t("studio.micErrorDesc") });
       }
     }
   }, []);
@@ -221,8 +223,8 @@ export function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAttachImage = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) { toast.error("Fichier non supporté", { description: "Seules les images sont acceptées." }); return; }
-    if (file.size > 10 * 1024 * 1024) { toast.error("Image trop lourde", { description: "Maximum 10 Mo." }); return; }
+    if (!file.type.startsWith("image/")) { toast.error(t("studio.fileNotSupported"), { description: t("studio.fileNotSupportedDesc") }); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error(t("studio.imageTooLarge"), { description: t("studio.imageTooLargeDesc") }); return; }
     const preview = URL.createObjectURL(file);
     setAttachedImage({ file, preview, uploading: true });
     try {
@@ -236,14 +238,14 @@ export function StudioPage() {
       const data = await res.json();
       if (data.success && data.signedUrl) {
         setAttachedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl, uploading: false } : null);
-        toast.success("Photo ajoutée");
+        toast.success(t("studio.photoAdded"));
       } else {
-        toast.error("Échec de l'upload", { description: data.error || "Erreur inconnue" });
+        toast.error(t("studio.uploadFailed"), { description: data.error || "Erreur inconnue" });
         setAttachedImage(null);
         URL.revokeObjectURL(preview);
       }
     } catch (err: any) {
-      toast.error("Erreur d'upload", { description: err?.message || "Erreur réseau" });
+      toast.error(t("studio.uploadError"), { description: err?.message || "Erreur réseau" });
       setAttachedImage(null);
       URL.revokeObjectURL(preview);
     }
@@ -668,7 +670,7 @@ export function StudioPage() {
       setMessages(prev => prev.map(m =>
         m.id === msgId ? { ...m, isGenerating: false } : m
       ));
-      toast.error("Erreur de génération. Réessaie.");
+      toast.error(t("studio.generationError"));
     }
     setIsGenerating(false);
   }, [serverGet, serverPost, navigate, attachedImage, removeAttachedImage]);
@@ -714,8 +716,8 @@ export function StudioPage() {
       setMessages([{
         id: `assist-welcome-${Date.now()}`,
         role: "assistant",
-        content: "Bienvenue en mode création libre ! Que souhaitez-vous créer ?\n\nJe peux générer des **images**, **vidéos**, **musiques** et **textes**. Décrivez votre idée ou joignez une photo pour commencer.",
-        suggestions: ["Créer une image", "Générer une vidéo", "Composer une musique", "Écrire un texte"],
+        content: t("studio.welcomeCreateMode"),
+        suggestions: [t("studio.suggestImage"), t("studio.suggestVideoShort"), t("studio.suggestMusicShort"), t("studio.suggestTextShort")],
       }]);
       loadVault();
       return;
@@ -838,15 +840,15 @@ export function StudioPage() {
         setMessages(prev => [...prev, {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: "Oups, j'ai eu un souci. Réessayez !",
-          suggestions: ["Créer une image", "Composer une musique", "Écrire un texte"],
+          content: t("studio.oopsError"),
+          suggestions: [t("studio.suggestImage"), t("studio.suggestMusicShort"), t("studio.suggestTextShort")],
         }]);
       }
     } catch {
       setMessages(prev => [...prev, {
         id: `err-${Date.now()}`,
         role: "assistant",
-        content: "Connexion perdue. Réessaie.",
+        content: t("studio.connectionLost"),
         suggestions: [],
       }]);
     }
@@ -864,7 +866,7 @@ export function StudioPage() {
   const handleCompareGenerate = useCallback(async () => {
     if (!comparePicker) return;
     const { result, selectedModels } = comparePicker;
-    if (selectedModels.length < 2) { toast.error("Sélectionnez au moins 2 modèles"); return; }
+    if (selectedModels.length < 2) { toast.error(t("studio.selectAtLeast2")); return; }
     setComparePicker(null);
     setIsGenerating(true);
 
@@ -946,10 +948,10 @@ export function StudioPage() {
         };
         setMessages(prev => [...prev, msg]);
       } else {
-        toast.error("La comparaison a échoué");
+        toast.error(t("studio.comparisonFailed"));
       }
     } catch (err) {
-      toast.error("Erreur lors de la comparaison");
+      toast.error(t("studio.comparisonFailed"));
     }
     setIsGenerating(false);
   }, [comparePicker, serverGet]);
@@ -993,7 +995,7 @@ export function StudioPage() {
                     <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity }}
                       className="flex items-center gap-2">
                       <Sparkles size={14} className="text-muted-foreground" />
-                      <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>Je réfléchis...</span>
+                      <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{t("studio.thinking")}</span>
                     </motion.div>
                   </div>
                 )}
@@ -1008,7 +1010,7 @@ export function StudioPage() {
                     serverPost={serverPost}
                     serverGet={serverGet}
                     onClose={() => setFinalizingCampaign(null)}
-                    onSaved={() => { setFinalizingCampaign(null); toast.success("Campagne enregistrée !"); }}
+                    onSaved={() => { setFinalizingCampaign(null); toast.success(t("studio.campaignSaved")); }}
                   />
                 )}
 
@@ -1056,22 +1058,22 @@ export function StudioPage() {
                       </button>
                     </div>
                     <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                      {attachedImage.uploading ? "Upload en cours..." : "Photo de référence — que souhaitez-vous en faire ?"}
+                      {attachedImage.uploading ? t("studio.uploadInProgress") : t("studio.refPhotoQuestion")}
                     </span>
                   </div>
                   {!attachedImage.uploading && attachedImage.signedUrl && (
                     <div className="flex flex-wrap gap-1.5">
                       {[
-                        { label: "Photoshoot studio fond blanc", prompt: "Professional studio photoshoot, pure white background, luxury product photography, soft diffused studio lighting, clean minimalist composition, commercial quality", type: "image" as const },
-                        { label: "Packshot produit", prompt: "Clean product packshot, neutral gradient background, professional commercial photography, sharp focus, centered composition, studio lighting", type: "image" as const },
-                        { label: "Mise en scène lifestyle", prompt: "Lifestyle product scene, natural environment, warm golden hour lighting, authentic setting, editorial photography style, depth of field", type: "image" as const },
-                        { label: "Flat lay créatif", prompt: "Creative flat lay composition, top-down view, artistic arrangement with complementary props, soft shadows, pastel or neutral background, magazine style", type: "image" as const },
-                        { label: "Ambiance cinématique", prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
-                        { label: "Animer en vidéo", prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
+                        { label: t("studio.pillStudioWhite"), prompt: "Professional studio photoshoot, pure white background, luxury product photography, soft diffused studio lighting, clean minimalist composition, commercial quality", type: "image" as const },
+                        { label: t("studio.pillPackshot"), prompt: "Clean product packshot, neutral gradient background, professional commercial photography, sharp focus, centered composition, studio lighting", type: "image" as const },
+                        { label: t("studio.pillLifestyle"), prompt: "Lifestyle product scene, natural environment, warm golden hour lighting, authentic setting, editorial photography style, depth of field", type: "image" as const },
+                        { label: t("studio.pillFlatLay"), prompt: "Creative flat lay composition, top-down view, artistic arrangement with complementary props, soft shadows, pastel or neutral background, magazine style", type: "image" as const },
+                        { label: t("studio.pillCinematic"), prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
+                        { label: t("studio.pillAnimate"), prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
                       ].map(s => (
                         <button key={s.label} onClick={async () => {
                           const refUrl = attachedImage?.signedUrl;
-                          if (!refUrl) { toast.error("Photo pas encore uploadée, patientez..."); return; }
+                          if (!refUrl) { toast.error(t("studio.photoNotUploaded")); return; }
                           const msgId = `assist-pill-${Date.now()}`;
                           const userMsg: ChatMessage = { id: `user-pill-${Date.now()}`, role: "user", content: s.label };
                           const actionType = s.type === "video" ? "generate-video" : "generate-image";
@@ -1088,7 +1090,7 @@ export function StudioPage() {
                             await executeAction(actionObj, msgId);
                           } catch (err) {
                             console.error("[studio] pill executeAction error:", err);
-                            toast.error("Erreur de génération");
+                            toast.error(t("studio.generationError"));
                             setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: false } : m));
                           }
                         }}
@@ -1109,7 +1111,7 @@ export function StudioPage() {
                 style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
                 <button onClick={() => fileInputRef.current?.click()}
                   className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
-                  title="Joindre une photo">
+                  title={t("studio.attachPhoto")}>
                   <Paperclip size={15} />
                 </button>
                 <input
@@ -1117,20 +1119,20 @@ export function StudioPage() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder="Dites-moi ce que vous souhaitez créer..."
+                  placeholder={t("studio.placeholder")}
                   className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
                   style={{ fontSize: "14px" }}
                 />
                 {isTranscribing ? (
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <Loader2 size={14} className="animate-spin" style={{ color: "var(--foreground)" }} />
-                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 500 }}>Transcription...</span>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)", fontWeight: 500 }}>{t("studio.transcription")}</span>
                   </div>
                 ) : isRecording ? (
                   <button onClick={stopRecording}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all flex-shrink-0"
                     style={{ background: "rgba(212, 24, 61, 0.1)" }}
-                    title="Arrêter l'enregistrement">
+                    title={t("studio.stopRecording")}>
                     <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}>
                       <Square size={12} style={{ color: "#d4183d", fill: "#d4183d" }} />
                     </motion.div>
@@ -1141,7 +1143,7 @@ export function StudioPage() {
                 ) : (
                   <button onClick={startRecording} disabled={isThinking || isGenerating}
                     className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground transition-all flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Prompt vocal (Whisper)">
+                    title={t("studio.voicePrompt")}>
                     <Mic size={15} />
                   </button>
                 )}
@@ -1176,9 +1178,9 @@ export function StudioPage() {
               onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 700 }}>Comparer les modèles</h3>
+                  <h3 style={{ fontSize: "16px", fontWeight: 700 }}>{t("studio.compareModelsTitle")}</h3>
                   <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
-                    Sélectionnez les IA à comparer ({comparePicker.selectedModels.length} sélectionnées)
+                    {t("studio.compareModelsDesc")} ({comparePicker.selectedModels.length} {t("studio.compareSelectedSuffix")})
                   </p>
                 </div>
                 <button onClick={() => setComparePicker(null)} className="cursor-pointer" style={{ color: "var(--muted-foreground)" }}>
@@ -1227,7 +1229,7 @@ export function StudioPage() {
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
                 <Columns2 size={14} />
-                Comparer {comparePicker.selectedModels.length} modèles
+                {t("studio.compareBtn")} {comparePicker.selectedModels.length} {t("studio.compareModelsSuffix")}
               </button>
             </motion.div>
           </motion.div>
@@ -1239,6 +1241,7 @@ export function StudioPage() {
 
 /* ── Welcome Screen ── */
 function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; onSetMode: (mode: string) => void }) {
+  const { t } = useI18n();
   return (
     <div className="h-full flex flex-col items-center justify-center px-6">
       <motion.div
@@ -1252,10 +1255,10 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
           <Sparkles size={20} style={{ color: "var(--background)" }} />
         </div>
         <h1 style={{ fontSize: "26px", fontWeight: 700, lineHeight: 1.2 }}>
-          Que souhaitez-vous créer ?
+          {t("studio.welcomeTitle")}
         </h1>
         <p style={{ fontSize: "14px", color: "var(--muted-foreground)", marginTop: 8 }}>
-          Image, vidéo, musique, texte ou campagne complète. Dites-le moi.
+          {t("studio.welcomeSubtitle")}
         </p>
       </motion.div>
 
@@ -1278,9 +1281,9 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
             <Wand2 size={16} />
           </div>
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>Créer</div>
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.createMode")}</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Image, vidéo, musique, texte. Personnalisez chaque détail.
+              {t("studio.createModeDesc")}
             </div>
           </div>
         </button>
@@ -1297,9 +1300,9 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
             <Rocket size={16} />
           </div>
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>Campagne</div>
+            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.campaignMode")}</div>
             <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              Votre marque, vos produits, tous les réseaux.
+              {t("studio.campaignModeDesc")}
             </div>
           </div>
         </button>
@@ -1313,10 +1316,10 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
         className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
       >
         {[
-          "Créer une image cinématique",
-          "Composer une musique inspirante",
-          "Écrire un texte percutant",
-          "Générer une vidéo dynamique",
+          t("studio.suggestCinematic"),
+          t("studio.suggestMusic"),
+          t("studio.suggestText"),
+          t("studio.suggestVideo"),
         ].map(s => (
           <button key={s} onClick={() => { onSetMode("create"); onSend(s); }}
             className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
@@ -1351,6 +1354,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-3">
       {/* Text reply */}
@@ -1366,12 +1370,12 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
         <div className="flex items-center gap-2 px-4 py-3">
           <Loader2 size={14} className="animate-spin text-muted-foreground" />
           <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
-            {msg.action?.type === "generate-image" ? "Je crée tes visuels..."
-              : msg.action?.type === "generate-text" ? "J'écris..."
-              : msg.action?.type === "generate-music" ? "Je compose..."
-              : msg.action?.type === "generate-video" ? "Je produis la vidéo..."
-              : msg.action?.type === "generate-campaign" ? "Je prépare ta campagne (textes + visuels)..."
-              : "En cours..."}
+            {msg.action?.type === "generate-image" ? t("studio.generatingImages")
+              : msg.action?.type === "generate-text" ? t("studio.generatingText")
+              : msg.action?.type === "generate-music" ? t("studio.generatingMusic")
+              : msg.action?.type === "generate-video" ? t("studio.generatingVideo")
+              : msg.action?.type === "generate-campaign" ? t("studio.generatingCampaign")
+              : t("studio.generatingGeneric")}
           </span>
         </div>
       )}
@@ -1401,6 +1405,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 
 /* ── Campaign Carousel — fullscreen feel ── */
 function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?: string }) {
+  const { t } = useI18n();
   const [current, setCurrent] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [variantIdx, setVariantIdx] = useState<Record<number, number>>({});
@@ -1526,7 +1531,7 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
           {/* Model label for text variant */}
           {activeVariant && (
             <div style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", paddingTop: 4 }}>
-              Texte : {activeVariant.model}
+              {t("studio.textLabel")} : {activeVariant.model}
             </div>
           )}
         </div>
@@ -1629,6 +1634,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
   logoUrl?: string;
 }) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const toggleSelect = (i: number) => setSelected(prev => {
     const next = new Set(prev);
@@ -1648,11 +1654,11 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
               className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
               style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
               {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
-              {selected.size === result.items.length ? "Désélectionner" : "Tout sélectionner"}
+              {selected.size === result.items.length ? t("studio.deselectAll") : t("studio.selectAll")}
             </button>
             {selected.size > 0 && (
               <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
-                {selected.size}/{result.items.length} sélectionné{selected.size > 1 ? "s" : ""}
+                {selected.size}/{result.items.length} {selected.size > 1 ? t("studio.selectedPlural") : t("studio.selected")}
               </span>
             )}
           </div>
@@ -1702,7 +1708,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
             style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres IA
+            <Columns2 size={12} /> {t("studio.compareWithOtherAI")}
           </button>
           {selected.size > 0 && (
             <button onClick={() => {
@@ -1716,11 +1722,11 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
                   a.click();
                 }
               });
-              toast.success(`${selected.size} visuel${selected.size > 1 ? "s" : ""} téléchargé${selected.size > 1 ? "s" : ""}`);
+              toast.success(`${selected.size} ${selected.size > 1 ? t("studio.visualPlural") : t("studio.visualSingular")} ${selected.size > 1 ? t("studio.downloadedCountPlural") : t("studio.downloadedCount")}`);
             }}
               className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
               style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "12px", fontWeight: 600 }}>
-              <Download size={12} /> Télécharger {selected.size} visuel{selected.size > 1 ? "s" : ""}
+              <Download size={12} /> {t("studio.downloadCount")} {selected.size} {selected.size > 1 ? t("studio.visualPlural") : t("studio.visualSingular")}
             </button>
           )}
         </div>
@@ -1754,7 +1760,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
               {item.text}
             </div>
             {/* Copy button */}
-            <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success("Texte copié"); }}
+            <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success(t("studio.textCopied")); }}
               className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
               style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
               title="Copier">
@@ -1768,7 +1774,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
             style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            <Columns2 size={12} /> Comparer avec d'autres IA
+            <Columns2 size={12} /> {t("studio.compareWithOtherAI")}
           </button>
         </div>
       </div>
@@ -1806,8 +1812,8 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
           onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; }}
           onMouseLeave={e => { e.currentTarget.style.opacity = "1"; }}>
           <Rocket size={15} />
-          <span>Finaliser la campagne</span>
-          <span style={{ fontSize: "11px", opacity: 0.7, marginLeft: "auto" }}>Modifier, planifier, enregistrer</span>
+          <span>{t("studio.finalizeCampaign")}</span>
+          <span style={{ fontSize: "11px", opacity: 0.7, marginLeft: "auto" }}>{t("studio.finalizeDesc")}</span>
           <ArrowRight size={14} />
         </button>
       </div>
@@ -1823,11 +1829,11 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
               className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
               style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
               {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
-              {selected.size === result.items.length ? "Désélectionner" : "Tout sélectionner"}
+              {selected.size === result.items.length ? t("studio.deselectAll") : t("studio.selectAll")}
             </button>
             {selected.size > 0 && (
               <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
-                {selected.size}/{result.items.length} sélectionné{selected.size > 1 ? "s" : ""}
+                {selected.size}/{result.items.length} {selected.size > 1 ? t("studio.selectedPlural") : t("studio.selected")}
               </span>
             )}
           </div>
@@ -1850,7 +1856,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
               <a href={item.url} download target="_blank" rel="noreferrer"
                 className="flex items-center gap-1"
                 style={{ fontSize: "11px", color: "var(--foreground)" }}>
-                <Download size={10} /> Télécharger
+                <Download size={10} /> {t("studio.download")}
               </a>
             </div>
           </div>
@@ -1967,6 +1973,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useI18n();
   const [step, setStep] = useState<FinalizerStep>("review");
   const [posts, setPosts] = useState<CampaignPost[]>(initialPosts.map(p => ({ ...p })));
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -1977,9 +1984,9 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   const [aiScheduling, setAiScheduling] = useState(false);
 
   const steps: { key: FinalizerStep; label: string; icon: any }[] = [
-    { key: "review", label: "Revue & édition", icon: Pencil },
-    { key: "schedule", label: "Calendrier", icon: Calendar },
-    { key: "save", label: "Enregistrer", icon: Save },
+    { key: "review", label: t("studio.reviewAndEdit"), icon: Pencil },
+    { key: "schedule", label: t("studio.calendarLabel"), icon: Calendar },
+    { key: "save", label: t("studio.saveLabel"), icon: Save },
   ];
 
   // --- Step 1: Review ---
@@ -2014,9 +2021,9 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
           }
         });
         setScheduledDates(newDates);
-        toast.success(`${Object.keys(newDates).length} posts planifiés par l'IA`);
+        toast.success(`${Object.keys(newDates).length} ${t("studio.aiScheduled")}`);
       }
-    } catch { toast.error("Erreur de planification IA"); }
+    } catch { toast.error(t("studio.aiScheduleError")); }
     setAiScheduling(false);
   };
 
@@ -2085,7 +2092,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
       onSaved();
     } catch (err) {
       console.error("[finalizer] save failed:", err);
-      toast.error("Erreur lors de la sauvegarde");
+      toast.error(t("studio.saveError"));
     }
     setSaving(false);
   };
@@ -2102,7 +2109,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Rocket size={16} style={{ color: "var(--foreground)" }} />
-            <span style={{ fontSize: "14px", fontWeight: 700 }}>Finaliser la campagne</span>
+            <span style={{ fontSize: "14px", fontWeight: 700 }}>{t("studio.finalizeCampaign")}</span>
           </div>
           <button onClick={onClose}
             className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer"
@@ -2143,7 +2150,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
           {step === "review" && (
             <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
               <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: 8 }}>
-                {posts.length} post{posts.length > 1 ? "s" : ""} — cliquez pour modifier le texte, supprimer ou choisir une variante.
+                {posts.length} {posts.length > 1 ? t("studio.postsCountPlural") : t("studio.postsCount")} — {t("studio.clickToEdit")}
               </div>
               {posts.map((post, idx) => (
                 <div key={idx} className="rounded-xl overflow-hidden transition-all"
@@ -2163,7 +2170,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                     <div className="flex items-center gap-1.5">
                       {post.variants && post.variants.length > 1 && (
                         <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                          {post.variants.length} variantes
+                          {post.variants.length} {t("studio.variants")}
                         </span>
                       )}
                       <button onClick={(e) => { e.stopPropagation(); removePost(idx); }}
@@ -2188,7 +2195,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                       {/* Variant selector */}
                       {post.variants && post.variants.length > 1 && (
                         <div>
-                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Variante</label>
+                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 4 }}>{t("studio.variantLabel")}</label>
                           <div className="flex gap-1.5 flex-wrap">
                             {post.variants.map((v, vi) => (
                               <button
@@ -2220,11 +2227,11 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
 
                       {/* Headline */}
                       <div>
-                        <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Titre</label>
+                        <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>{t("studio.headlineLabel")}</label>
                         <input
                           value={post.headline || ""}
                           onChange={e => updatePost(idx, { headline: e.target.value })}
-                          placeholder="Titre / Accroche"
+                          placeholder={t("studio.headlinePlaceholder")}
                           className="w-full rounded-lg px-3 py-2 outline-none"
                           style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
                         />
@@ -2232,7 +2239,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
 
                       {/* Text */}
                       <div>
-                        <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Texte</label>
+                        <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>{t("studio.textFieldLabel")}</label>
                         <textarea
                           value={post.text}
                           onChange={e => updatePost(idx, { text: e.target.value })}
@@ -2244,7 +2251,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                       {/* Hashtags + CTA row */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>Hashtags</label>
+                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>{t("studio.hashtagsLabel")}</label>
                           <input
                             value={post.hashtags || ""}
                             onChange={e => updatePost(idx, { hashtags: e.target.value })}
@@ -2253,7 +2260,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>CTA</label>
+                          <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", display: "block", marginBottom: 3 }}>{t("studio.ctaLabel")}</label>
                           <input
                             value={post.cta || ""}
                             onChange={e => updatePost(idx, { cta: e.target.value })}
@@ -2274,7 +2281,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             <motion.div key="schedule" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <div className="flex items-center justify-between">
                 <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
-                  Planifiez chaque post ou laissez l'IA choisir les meilleurs créneaux.
+                  {t("studio.scheduleDesc")}
                 </div>
                 <button
                   onClick={handleAiSchedule}
@@ -2282,7 +2289,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
                   style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "11px", fontWeight: 600 }}>
                   {aiScheduling ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                  Planifier avec l'IA
+                  {t("studio.scheduleWithAI")}
                 </button>
               </div>
 
@@ -2335,7 +2342,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
               {/* Campaign name */}
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-                  Nom de la campagne
+                  {t("studio.campaignNameLabel")}
                 </label>
                 <input
                   value={campaignName}
@@ -2347,23 +2354,23 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
 
               {/* Summary */}
               <div className="rounded-xl p-4 space-y-3" style={{ background: "var(--secondary)" }}>
-                <div style={{ fontSize: "12px", fontWeight: 600 }}>Résumé</div>
+                <div style={{ fontSize: "12px", fontWeight: 600 }}>{t("studio.summaryLabel")}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center gap-2">
                     <FileText size={12} style={{ color: "var(--muted-foreground)" }} />
-                    <span style={{ fontSize: "12px" }}>{posts.length} contenus</span>
+                    <span style={{ fontSize: "12px" }}>{posts.length} {t("studio.contents")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Globe size={12} style={{ color: "var(--muted-foreground)" }} />
-                    <span style={{ fontSize: "12px" }}>{[...new Set(posts.map(p => p.platform))].length} plateformes</span>
+                    <span style={{ fontSize: "12px" }}>{[...new Set(posts.map(p => p.platform))].length} {t("studio.platforms")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <ImageIcon size={12} style={{ color: "var(--muted-foreground)" }} />
-                    <span style={{ fontSize: "12px" }}>{posts.filter(p => p.imageUrl).length} visuels</span>
+                    <span style={{ fontSize: "12px" }}>{posts.filter(p => p.imageUrl).length} {t("studio.visuals")}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={12} style={{ color: "var(--muted-foreground)" }} />
-                    <span style={{ fontSize: "12px" }}>{Object.values(scheduledDates).filter(s => s.date).length} planifiés</span>
+                    <span style={{ fontSize: "12px" }}>{Object.values(scheduledDates).filter(s => s.date).length} {t("studio.scheduledLabel")}</span>
                   </div>
                 </div>
 
@@ -2397,7 +2404,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
               {/* Save destinations */}
               <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
                 <CheckCircle2 size={12} />
-                <span>Sera enregistré dans votre bibliothèque</span>
+                <span>{t("studio.savedToLibrary")}</span>
               </div>
               {Object.values(scheduledDates).filter(s => s.date).length > 0 && (
                 <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
@@ -2421,7 +2428,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
           }}
           className="px-4 py-2 rounded-xl cursor-pointer transition-all"
           style={{ background: "var(--secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border)" }}>
-          {step === "review" ? "Annuler" : "Retour"}
+          {step === "review" ? t("studio.cancel") : t("studio.back")}
         </button>
 
         {step === "save" ? (
@@ -2431,7 +2438,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40"
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Enregistrer la campagne
+            {t("studio.saveCampaign")}
           </button>
         ) : (
           <button
@@ -2442,7 +2449,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             disabled={step === "review" && posts.length === 0}
             className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40"
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
-            Suivant
+            {t("studio.next")}
             <ArrowRight size={14} />
           </button>
         )}
@@ -2459,6 +2466,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   onCancel: () => void;
   serverPost: (path: string, body: any, timeoutMs?: number) => Promise<any>;
 }) {
+  const { t } = useI18n();
   const [brief, setBrief] = useState(params.brief || "");
   const [selectedFormats, setSelectedFormats] = useState<string[]>(
     params.formats || ["linkedin-post", "instagram-post", "facebook-post"]
@@ -2527,7 +2535,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
   const handleGenerate = () => {
     if (!selectedFormats.length) {
-      toast.error("Sélectionnez au moins un format");
+      toast.error(t("studio.selectAtLeastOneFormat"));
       return;
     }
     onGenerate({
@@ -2567,9 +2575,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             <Rocket size={14} style={{ color: "var(--background)" }} />
           </div>
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 700 }}>Configuration de campagne</div>
+            <div style={{ fontSize: "14px", fontWeight: 700 }}>{t("studio.configTitle")}</div>
             <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-              {brandName ? `Campagne pour ${brandName}` : "Ajustez les paramètres avant de générer"}
+              {brandName ? `${t("studio.campaignFor")} ${brandName}` : t("studio.adjustParams")}
             </div>
           </div>
         </div>
@@ -2588,7 +2596,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         <div>
           <div className="flex items-center justify-between mb-2">
             <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
-              Brief
+              {t("studio.briefLabel")}
             </label>
             <button
               onClick={handleInspireMe}
@@ -2598,13 +2606,13 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               onMouseEnter={e => { e.currentTarget.style.background = "var(--border)"; }}
               onMouseLeave={e => { e.currentTarget.style.background = "var(--secondary)"; }}>
               {inspiring ? <Loader2 size={11} className="animate-spin" /> : <Lightbulb size={11} />}
-              Inspire-moi
+              {t("studio.inspireMe")}
             </button>
           </div>
           <textarea
             value={brief}
             onChange={e => setBrief(e.target.value)}
-            placeholder="Décrivez l'objet de votre campagne..."
+            placeholder={t("studio.briefPlaceholder")}
             className="w-full rounded-xl px-3.5 py-2.5 resize-none outline-none transition-all"
             style={{
               background: "var(--secondary)", border: "1px solid var(--border)",
@@ -2620,7 +2628,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           <div>
             <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
               <Package size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
-              Produit / Gamme
+              {t("studio.productLabel")}
             </label>
             <div className="flex flex-wrap gap-2">
               <button
@@ -2633,7 +2641,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   borderColor: !selectedProduct ? "var(--foreground)" : "var(--border)",
                   fontSize: "12px", fontWeight: 500,
                 }}>
-                Marque globale
+                {t("studio.globalBrand")}
               </button>
               {products.map((p: any) => (
                 <button
@@ -2658,7 +2666,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         {/* Format selection */}
         <div>
           <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            Formats ({selectedFormats.length} sélectionnés)
+            {t("studio.formatsLabel")} ({selectedFormats.length} {t("studio.formatsSelected")})
           </label>
           <div className="space-y-3">
             {CONFIG_PLATFORMS.map(platform => {
@@ -2712,22 +2720,22 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         {/* Tone */}
         <div>
           <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            Ton
+            {t("studio.toneLabel")}
           </label>
           <div className="flex flex-wrap gap-1.5">
-            {TONE_OPTIONS.map(t => (
+            {TONE_OPTIONS.map(tn => (
               <button
-                key={t}
-                onClick={() => setTone(t)}
+                key={tn}
+                onClick={() => setTone(tn)}
                 className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
                 style={{
-                  background: tone === t ? "var(--foreground)" : "var(--secondary)",
-                  color: tone === t ? "var(--background)" : "var(--text-primary)",
+                  background: tone === tn ? "var(--foreground)" : "var(--secondary)",
+                  color: tone === tn ? "var(--background)" : "var(--text-primary)",
                   border: "1px solid",
-                  borderColor: tone === t ? "var(--foreground)" : "var(--border)",
+                  borderColor: tone === tn ? "var(--foreground)" : "var(--border)",
                   fontSize: "11px", fontWeight: 500,
                 }}>
-                {t}
+                {tn}
               </button>
             ))}
           </div>
@@ -2738,19 +2746,19 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           <div className="flex items-center gap-2 mb-3">
             <Columns2 size={13} style={{ color: "var(--foreground)" }} />
             <label style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Modèles IA
+              {t("studio.aiModelsLabel")}
             </label>
             <span style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500 }}>
-              — sélectionnez plusieurs pour comparer
+              — {t("studio.aiModelsCompareHint")}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                Texte
+                {t("studio.textLabel")}
                 {textModels.length > 1 && (
                   <span className="ml-1.5 px-1.5 py-0.5 rounded" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "9px", fontWeight: 700 }}>
-                    {textModels.length} modèles
+                    {textModels.length} {t("studio.modelsCount")}
                   </span>
                 )}
               </label>
@@ -2780,7 +2788,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                 Image
                 {imageModels.length > 1 && (
                   <span className="ml-1.5 px-1.5 py-0.5 rounded" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "9px", fontWeight: 700 }}>
-                    {imageModels.length} modèles
+                    {imageModels.length} {t("studio.modelsCount")}
                   </span>
                 )}
               </label>
@@ -2812,7 +2820,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         <div>
           <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
             <Languages size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
-            Langue
+            {t("studio.languageLabel")}
           </label>
           <div className="flex flex-wrap gap-1.5">
             {LANGUAGE_OPTIONS.map(l => (
@@ -2839,7 +2847,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           className="flex items-center gap-2 cursor-pointer transition-all w-full"
           style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground)" }}>
           <ChevronDown size={13} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
-          Affiner la campagne (objectif, cible, CTA, angle...)
+          {t("studio.refineAdvanced")}
         </button>
 
         <AnimatePresence>
@@ -2854,12 +2862,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* Objective */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  <Target size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Objectif
+                  <Target size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.objectiveLabel")}
                 </label>
                 <input
                   value={objective}
                   onChange={e => setObjective(e.target.value)}
-                  placeholder="Notoriété, engagement, conversion..."
+                  placeholder={t("studio.objectivePlaceholder")}
                   className="w-full rounded-lg px-3 py-2 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -2870,12 +2878,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* Target audience */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  Cible
+                  {t("studio.targetLabel")}
                 </label>
                 <input
                   value={targetAudience}
                   onChange={e => setTargetAudience(e.target.value)}
-                  placeholder="Dirigeants PME, marketeurs, freelances..."
+                  placeholder={t("studio.targetPlaceholder")}
                   className="w-full rounded-lg px-3 py-2 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -2886,12 +2894,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* CTA */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  Call-to-Action
+                  {t("studio.ctaFieldLabel")}
                 </label>
                 <input
                   value={callToAction}
                   onChange={e => setCallToAction(e.target.value)}
-                  placeholder="Découvrir, S'inscrire, En savoir plus..."
+                  placeholder={t("studio.ctaFieldPlaceholder")}
                   className="w-full rounded-lg px-3 py-2 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -2902,12 +2910,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* Content angle */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  Angle de contenu
+                  {t("studio.contentAngleLabel")}
                 </label>
                 <input
                   value={contentAngle}
                   onChange={e => setContentAngle(e.target.value)}
-                  placeholder="Storytelling, data-driven, témoignage..."
+                  placeholder={t("studio.contentAnglePlaceholder")}
                   className="w-full rounded-lg px-3 py-2 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -2918,12 +2926,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* Key messages */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  Messages clés
+                  {t("studio.keyMessagesLabel")}
                 </label>
                 <textarea
                   value={keyMessages}
                   onChange={e => setKeyMessages(e.target.value)}
-                  placeholder="Les points essentiels à communiquer..."
+                  placeholder={t("studio.keyMessagesPlaceholder")}
                   className="w-full rounded-lg px-3 py-2 resize-none outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", minHeight: 56 }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -2939,11 +2947,11 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       <div className="px-5 py-4 flex items-center justify-between gap-3"
         style={{ borderTop: "1px solid var(--border)" }}>
         <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-          {selectedFormats.length} format{selectedFormats.length > 1 ? "s" : ""}
+          {selectedFormats.length} {selectedFormats.length > 1 ? t("studio.formatPlural") : t("studio.formatSingular")}
           {selectedProduct && ` · ${products.find((p: any) => p.id === selectedProduct)?.name || "Produit"}`}
           {(textModels.length > 1 || imageModels.length > 1) && (
             <span style={{ color: "var(--foreground)", fontWeight: 600 }}>
-              {" · "}Comparaison {textModels.length > 1 ? `${textModels.length} textes` : ""}{textModels.length > 1 && imageModels.length > 1 ? " + " : ""}{imageModels.length > 1 ? `${imageModels.length} images` : ""}
+              {" · "}{t("studio.comparisonLabel")} {textModels.length > 1 ? `${textModels.length} ${t("studio.textsCount")}` : ""}{textModels.length > 1 && imageModels.length > 1 ? " + " : ""}{imageModels.length > 1 ? `${imageModels.length} ${t("studio.imagesCount")}` : ""}
             </span>
           )}
         </div>
@@ -2954,7 +2962,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             style={{ background: "var(--secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border)" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-            Annuler
+            {t("studio.cancel")}
           </button>
           <button
             onClick={handleGenerate}
@@ -2962,7 +2970,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40"
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
             <Sparkles size={14} />
-            Générer la campagne
+            {t("studio.generateCampaign")}
           </button>
         </div>
       </div>
