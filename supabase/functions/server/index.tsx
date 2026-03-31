@@ -461,6 +461,7 @@ const emailStyle = `
   body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111111; margin: 0; padding: 0; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
   .wrapper { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
   .header { text-align: center; padding: 32px 0 24px 0; }
+  .header img { height: 32px; width: auto; }
   .logo { font-size: 18px; font-weight: 700; color: #111111; letter-spacing: 0.12em; text-decoration: none; }
   .divider { width: 40px; height: 1px; background: #d4d4d4; margin: 0 auto 24px auto; }
   .card { background: #ffffff; border-radius: 16px; padding: 40px 36px; border: 1px solid #ebebeb; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
@@ -487,7 +488,7 @@ const emailStyle = `
 `;
 const emailFooter = `
   <div class="footer">
-    <div class="footer-brand">ORA STUDIO</div>
+    <div class="footer-brand"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="20" style="height:20px;width:auto;opacity:0.5;"></div>
     <div class="footer-tagline">Your Brand. Amplified.</div>
     <div class="footer-links">
       <a href="https://ora-studio.app">ora-studio.app</a> &nbsp;·&nbsp; <a href="https://ora-studio.app/privacy">Confidentialité</a> &nbsp;·&nbsp; <a href="mailto:hello@ora-studio.app">Contact</a>
@@ -500,7 +501,7 @@ function emailWelcome(name: string): { subject: string; html: string } {
     subject: "Bienvenue sur ORA Studio",
     html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
       <div class="wrapper">
-        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div>
         <div class="card">
           <h1>Bienvenue, ${name}.</h1>
           <p class="subtitle">Votre studio créatif IA est prêt.</p>
@@ -531,7 +532,7 @@ function emailPlanConfirmation(name: string, plan: string, credits: number): { s
     subject: `Plan ${planLabel} activé — ${credits.toLocaleString("fr-FR")} crédits disponibles`,
     html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
       <div class="wrapper">
-        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div>
         <div class="card">
           <h1>Plan ${planLabel} activé.</h1>
           <p class="subtitle">Merci pour votre confiance, ${name}.</p>
@@ -561,7 +562,7 @@ function emailLowCredits(name: string, remaining: number, plan: string): { subje
     subject: `Il vous reste ${remaining} crédit${remaining > 1 ? "s" : ""} sur ORA Studio`,
     html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
       <div class="wrapper">
-        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div>
         <div class="card">
           <h1>Crédits bientôt épuisés.</h1>
           <p class="subtitle">Un petit rappel, ${name}.</p>
@@ -11467,7 +11468,7 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, { name: string; subject: string; h
 
 // Wrap template content in ORA email layout
 function wrapEmailTemplate(innerHtml: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body><div class="container"><div class="card">${innerHtml}<p style="color:#999; font-size:12px; margin-top:20px;">Des questions ? Répondez directement à cet email.</p></div>${emailFooter}</div></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body><div class="wrapper"><div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div><div class="card">${innerHtml}<p style="color:#999; font-size:12px; margin-top:20px;">Des questions ? Répondez directement à cet email.</p></div>${emailFooter}</div></body></html>`;
 }
 
 // Replace {{variable}} in template
