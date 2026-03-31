@@ -708,6 +708,39 @@ export function StudioPage() {
       return;
     }
 
+    // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
+    if (msg === "__CAMPAIGN_MODE__") {
+      setContext(prev => ({ ...prev, mode: "campaign" }));
+      const loaded = await loadVault();
+      const brandName = loaded.vault?.brand_platform?.brand_name;
+      const productNames = loaded.products?.slice(0, 5).map((p: any) => p.name).filter(Boolean);
+      const hasBrand = !!brandName;
+      const hasProducts = productNames && productNames.length > 0;
+
+      let welcomeContent = "";
+      let suggestions: string[] = [];
+
+      if (hasBrand && hasProducts) {
+        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}** et vos produits.\n\nQuel produit ou sujet souhaitez-vous mettre en avant ?\n\n📦 Vos produits : ${productNames.join(", ")}`;
+        suggestions = productNames.slice(0, 3).map((n: string) => `Campagne ${n}`);
+        if (suggestions.length < 3) suggestions.push("Campagne de notoriété");
+      } else if (hasBrand) {
+        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}**.\n\nQuel est l'objectif de votre campagne ? Nouveau produit, promotion, notoriété, événement ?`;
+        suggestions = ["Lancement produit", "Promotion saisonnière", "Campagne de notoriété"];
+      } else {
+        welcomeContent = "Bienvenue en mode **Campagne** !\n\nPour créer une campagne cohérente avec votre marque, je vous recommande de **compléter votre Brand Vault** d'abord (logo, couleurs, ton, produits).\n\nSinon, décrivez simplement votre campagne et je m'adapte.";
+        suggestions = ["Compléter mon Brand Vault", "Lancer sans marque", "Campagne générique"];
+      }
+
+      setMessages([{
+        id: `assist-campaign-welcome-${Date.now()}`,
+        role: "assistant",
+        content: welcomeContent,
+        suggestions,
+      }]);
+      return;
+    }
+
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -1222,7 +1255,7 @@ function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; 
         </button>
 
         <button
-          onClick={() => { onSetMode("campaign"); onSend("Je veux lancer une campagne"); }}
+          onClick={() => { onSetMode("campaign"); onSend("__CAMPAIGN_MODE__"); }}
           className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
