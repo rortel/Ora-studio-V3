@@ -7,6 +7,7 @@ import {
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
   Instagram, Linkedin, Facebook, Camera, Clapperboard,
   Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router";
@@ -170,6 +171,10 @@ function LibraryPageContent() {
   const [moveTargetItem, setMoveTargetItem] = useState<string | null>(null);
   const [openCampaignId, setOpenCampaignId] = useState<string | null>(null); // which campaign folder is open
   const [downloadingCampaign, setDownloadingCampaign] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
   // Server call helper with proper Authorization header
@@ -285,6 +290,63 @@ function LibraryPageContent() {
     }
     setMoveTargetItem(null);
   }, [serverPost]);
+
+  // Upload files to library
+  const ACCEPTED_TYPES = "image/*,video/*,audio/*";
+  const handleUploadFiles = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter((f) => {
+      return f.type.startsWith("image/") || f.type.startsWith("video/") || f.type.startsWith("audio/");
+    });
+    if (fileArray.length === 0) { toast.error("Format non supporté. Utilisez des images, vidéos ou sons."); return; }
+    if (fileArray.some((f) => f.size > 200 * 1024 * 1024)) { toast.error("Fichier trop volumineux (max 200 Mo)"); return; }
+
+    setUploading(true);
+    setUploadProgress(0);
+    let uploaded = 0;
+
+    for (const file of fileArray) {
+      try {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        const data = await serverPost("/library/upload", {
+          fileName: file.name,
+          fileType: file.type,
+          fileData: base64,
+          folderId: activeFolderId,
+        });
+
+        if (data.success && data.item) {
+          setItems((prev) => [data.item, ...prev]);
+          uploaded++;
+        } else {
+          console.error("[Upload] Failed:", data.error);
+        }
+      } catch (err) {
+        console.error("[Upload] Error:", err);
+      }
+      setUploadProgress(Math.round(((fileArray.indexOf(file) + 1) / fileArray.length) * 100));
+    }
+
+    setUploading(false);
+    setUploadProgress(0);
+    if (uploaded > 0) {
+      const typeLabel = uploaded === 1 ? "fichier importé" : "fichiers importés";
+      toast.success(`${uploaded} ${typeLabel}`);
+    }
+  }, [serverPost, activeFolderId]);
+
+  // Drag & drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(false); }, []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragOver(false);
+    if (e.dataTransfer.files?.length) handleUploadFiles(e.dataTransfer.files);
+  }, [handleUploadFiles]);
 
   // Download asset
   const handleDownload = useCallback(async (item: LibraryItem) => {
@@ -427,7 +489,28 @@ function LibraryPageContent() {
   const typeBg: Record<string, string> = { image: "var(--accent)", film: "#444444", text: "#888888", code: "#666666", sound: "#999999" };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+      {/* Drag overlay */}
+      <AnimatePresence>
+        {isDragOver && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          >
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-4" style={{ background: "var(--foreground)" }}>
+                <Upload size={32} style={{ color: "var(--background)" }} />
+              </div>
+              <p style={{ fontSize: "20px", fontWeight: 600, color: "#fff", letterSpacing: "-0.02em" }}>Déposez vos fichiers ici</p>
+              <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.6)", marginTop: "8px" }}>Images, vidéos, sons</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-[1400px] mx-auto px-6 py-8 md:py-14">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -439,14 +522,33 @@ function LibraryPageContent() {
               {contentItems.length} {contentItems.length !== 1 ? t("library.assets") : t("library.asset")}, {campaignItems.length} {campaignItems.length !== 1 ? t("library.campaigns") : t("library.campaign")}
             </p>
           </div>
-          <Link
-            to="/hub"
-            className="flex items-center gap-2 px-6 py-3 rounded-lg transition-all hover:opacity-90"
-            style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
-          >
-            <Plus size={14} />
-            {t("library.generateNew")}
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-2 px-5 py-3 rounded-lg transition-all hover:opacity-80 cursor-pointer"
+              style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "14px", fontWeight: 500, border: "1px solid var(--border)" }}
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? `${uploadProgress}%` : "Importer"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_TYPES}
+              multiple
+              className="hidden"
+              onChange={(e) => { if (e.target.files?.length) handleUploadFiles(e.target.files); e.target.value = ""; }}
+            />
+            <Link
+              to="/hub"
+              className="flex items-center gap-2 px-5 py-3 rounded-lg transition-all hover:opacity-90"
+              style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
+            >
+              <Plus size={14} />
+              {t("library.generateNew")}
+            </Link>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -1000,14 +1102,24 @@ function LibraryPageContent() {
                     : t("library.noResultsDesc")}
                 </p>
                 {items.length === 0 && (
-                  <Link
-                    to="/hub"
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                    style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
-                  >
-                    <Rocket size={14} />
-                    {t("library.openAiHub")}
-                  </Link>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105 cursor-pointer"
+                      style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "14px", fontWeight: 500, border: "1px solid var(--border)" }}
+                    >
+                      <Upload size={14} />
+                      Importer vos fichiers
+                    </button>
+                    <Link
+                      to="/hub"
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
+                      style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
+                    >
+                      <Rocket size={14} />
+                      {t("library.openAiHub")}
+                    </Link>
+                  </div>
                 )}
               </div>
             ) : viewMode === "grid" ? (

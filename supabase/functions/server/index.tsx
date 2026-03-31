@@ -12882,6 +12882,93 @@ app.post("/library/items", async (c) => {
   }
 });
 
+// POST /library/upload — direct file upload (image, video, audio) to library
+// Accepts base64-encoded file data, stores in Supabase Storage, creates library item
+app.post("/library/upload", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { fileName, fileType, fileData, folderId } = body;
+    // fileData = base64 string (without data:... prefix or with it)
+    if (!fileName || !fileType || !fileData) {
+      return c.json({ success: false, error: "Missing fileName, fileType, or fileData" }, 400);
+    }
+
+    // Strip data URL prefix if present
+    const base64 = fileData.includes(",") ? fileData.split(",")[1] : fileData;
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+    if (bytes.byteLength < 100) return c.json({ success: false, error: "File too small" }, 400);
+    if (bytes.byteLength > 200_000_000) return c.json({ success: false, error: "File too large (max 200MB)" }, 400);
+
+    // Determine asset type from MIME
+    let assetType: "image" | "film" | "sound" = "image";
+    if (fileType.startsWith("video/")) assetType = "film";
+    else if (fileType.startsWith("audio/")) assetType = "sound";
+
+    // Determine extension
+    let ext = "bin";
+    if (fileType.includes("png")) ext = "png";
+    else if (fileType.includes("jpeg") || fileType.includes("jpg")) ext = "jpg";
+    else if (fileType.includes("webp")) ext = "webp";
+    else if (fileType.includes("gif")) ext = "gif";
+    else if (fileType.includes("svg")) ext = "svg";
+    else if (fileType.includes("mp4")) ext = "mp4";
+    else if (fileType.includes("webm")) ext = "webm";
+    else if (fileType.includes("mov") || fileType.includes("quicktime")) ext = "mov";
+    else if (fileType.includes("mp3") || fileType.includes("mpeg")) ext = "mp3";
+    else if (fileType.includes("wav")) ext = "wav";
+    else if (fileType.includes("ogg")) ext = "ogg";
+    else if (fileType.includes("aac")) ext = "aac";
+
+    await ensureGeneratedAssetsBucket();
+    const sb = supabaseAdmin();
+    const itemId = crypto.randomUUID();
+    const storagePath = `${user.id}/${Date.now()}-${itemId.slice(0, 12)}-upload.${ext}`;
+
+    const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, bytes, { contentType: fileType, upsert: true });
+    if (upErr) return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
+
+    const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+    const signedUrl = signedData?.signedUrl || "";
+
+    // Build preview based on type
+    let preview: any = {};
+    const cleanName = fileName.replace(/\.[^/.]+$/, ""); // remove extension
+    if (assetType === "image") {
+      preview = { kind: "image", palette: [], label: cleanName, imageUrl: signedUrl, imageUrlStoragePath: storagePath };
+    } else if (assetType === "film") {
+      preview = { kind: "film", duration: "?", frames: [], fps: 0, videoUrl: signedUrl, videoUrlStoragePath: storagePath };
+    } else if (assetType === "sound") {
+      preview = { kind: "sound", waveform: [], duration: "?", audioUrl: signedUrl, audioUrlStoragePath: storagePath };
+    }
+
+    const libItem = {
+      id: itemId,
+      type: assetType,
+      model: { id: "upload", name: "Import", provider: "user", speed: "instant", quality: 0 },
+      prompt: "",
+      customName: cleanName,
+      timestamp: new Date().toISOString(),
+      preview,
+      folderId: folderId || null,
+      savedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      userId: user.id,
+      source: "upload",
+    };
+
+    await kv.set(`lib:${user.id}:${itemId}`, libItem);
+    console.log(`[library/upload] Uploaded ${assetType} "${cleanName}" (${(bytes.byteLength / 1024).toFixed(0)}KB) for user ${user.id}`);
+    return c.json({ success: true, item: libItem });
+  } catch (err) {
+    console.log(`[library/upload] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 // PUT /library/items/:id — update item (move to folder, rename, etc.)
 app.put("/library/items/:id", async (c) => {
   try {
