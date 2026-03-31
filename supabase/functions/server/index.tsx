@@ -3517,9 +3517,8 @@ async function isolateProductFromImage(imageUrl: string): Promise<string | null>
 }
 
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
-// Pipeline for product photos:
-// PRIMARY: Flux Pro img2img on ORIGINAL image with very low strength (preserves product pixels)
-// FALLBACK: Luma character_ref with BiRefNet-cleaned image (preserves visual identity)
+// PRIMARY: Photoroom API — removes bg, replaces with studio scene, preserves product 100%
+// FALLBACK: Luma Photon modify_image_ref
 app.post("/generate/image-start", async (c) => {
   const t0 = Date.now();
   try {
@@ -3541,100 +3540,94 @@ app.post("/generate/image-start", async (c) => {
 
     const isUploadRef = refSource === "upload";
 
-    // ═══ PRODUCT PHOTO REFERENCE ═══
+    // ═══ PRODUCT PHOTO REFERENCE — PHOTOROOM API ═══
+    // Photoroom = non-generative: removes bg/people, keeps product pixels 100% intact
+    // Then adds studio background, shadows, relighting
     if (imageRefUrl && isUploadRef) {
-      const falKey = Deno.env.get("FAL_API_KEY");
-      if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
+      const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
 
-      // ── Scene prompt + strength mapping ──
-      // IMPORTANT: strength = how much to CHANGE. Low = more preservation of original.
-      // 0.18 = 82% original pixels kept → product shape, logo, colors intact
-      // 0.50+ = major scene change → product may be altered
-      const sceneMap: Record<string, { prompt: string; strength: number }> = {
-        "photoshoot": { prompt: "Professional studio photoshoot, seamless pure white cyclorama background, professional softbox lighting with subtle reflections, wide angle, hyperrealistic 8k, ultra detailed, sharp focus, commercial product photography, clean minimalist, product alone, no people, no humans, no persons", strength: 0.18 },
-        "packshot": { prompt: "Commercial packshot, neutral light grey gradient background, even diffused lighting, no harsh shadows, centered product, sharp focus, catalog photography, 8k, product alone, no people, no humans", strength: 0.18 },
-        "lifestyle": { prompt: "Product in beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography, bokeh background, product alone, no people, no humans", strength: 0.40 },
-        "flat lay": { prompt: "Creative flat lay arrangement, top-down aerial view, clean marble surface with complementary props, soft even lighting, magazine editorial style, product alone, no people, no humans", strength: 0.45 },
-        "cinématique": { prompt: "Cinematic wide shot, dramatic moody lighting, anamorphic lens flare, film grain, deep contrast, rich cinematic color grading, dark atmospheric, product alone, no people, no humans", strength: 0.45 },
-        "default": { prompt: "Professional studio, clean white background, soft diffused studio lighting, product photography, 8k hyperrealistic, sharp focus, product alone, no people, no humans", strength: 0.18 },
-      };
-      const promptLower = rawPrompt.toLowerCase();
-      let scene = sceneMap["default"];
-      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scene = sceneMap["photoshoot"];
-      else if (promptLower.includes("packshot")) scene = sceneMap["packshot"];
-      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scene = sceneMap["lifestyle"];
-      else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scene = sceneMap["flat lay"];
-      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scene = sceneMap["cinématique"];
+      if (photoroomKey) {
+        // ── Scene config per pill type ──
+        const promptLower = rawPrompt.toLowerCase();
+        type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: boolean; beautify?: string; outputSize: string; padding: string };
+        const sceneMap: Record<string, PhotoroomScene> = {
+          "photoshoot": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "packshot":   { bgColor: "F0F0F0", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.08" },
+          "lifestyle":  { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "flat lay":   { bgColor: "FFFFFF", shadow: "ai.floating", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "cinématique": { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "default":    { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+        };
+        let scene = sceneMap["default"];
+        if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scene = sceneMap["photoshoot"];
+        else if (promptLower.includes("packshot")) scene = sceneMap["packshot"];
+        else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scene = sceneMap["lifestyle"];
+        else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scene = sceneMap["flat lay"];
+        else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scene = sceneMap["cinématique"];
 
-      const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
-      const falImageSize = falSizeMap[aspectRatio] || "square_hd";
+        // ── Build Photoroom GET URL ──
+        // GET https://image-api.photoroom.com/v2/edit?imageUrl=...&removeBackground=true&...
+        const params = new URLSearchParams();
+        params.set("imageUrl", imageRefUrl);
+        params.set("removeBackground", "true");
+        if (scene.bgColor) params.set("background.color", scene.bgColor);
+        if (scene.bgPrompt) params.set("background.prompt", scene.bgPrompt);
+        params.set("shadow.mode", scene.shadow);
+        if (scene.lighting) params.set("lighting.mode", "ai.auto");
+        if (scene.beautify) params.set("beautify.mode", scene.beautify);
+        params.set("outputSize", scene.outputSize);
+        params.set("padding", scene.padding);
+        params.set("export.format", "png");
 
-      // ═══ STRATEGY 1: Flux Pro img2img on ORIGINAL image (not transparent!) ═══
-      // Uses the ORIGINAL image directly — Flux preserves pixels at low strength
-      // Transparent PNGs cause garbage results, so NEVER send BiRefNet output to Flux
-      console.log(`[image-start-POST] STRATEGY 1: Flux img2img on ORIGINAL, strength=${scene.strength}, size=${falImageSize}`);
+        const photoroomUrl = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
+        console.log(`[image-start-POST] PHOTOROOM: ${photoroomUrl.slice(0, 120)}...`);
 
-      for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
         try {
-          const falBody = {
-            prompt: scene.prompt,
-            image_url: imageRefUrl, // ← ORIGINAL image, NOT transparent
-            strength: scene.strength,
-            image_size: falImageSize,
-            num_images: 1,
-            enable_safety_checker: true,
-            num_inference_steps: 28,
-            guidance_scale: 7.5,
-          };
-          console.log(`[image-start-POST] Trying FAL ${falModel}...`);
-          const res = await fetch(`https://fal.run/${falModel}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-            body: JSON.stringify(falBody),
+          const prRes = await fetch(photoroomUrl, {
+            headers: { "x-api-key": photoroomKey },
           });
-          if (!res.ok) {
-            const errBody = await res.text();
-            console.log(`[image-start-POST] FAL ${falModel} error ${res.status}: ${errBody.slice(0, 200)}`);
-            continue;
+
+          if (prRes.ok) {
+            // Response is binary image — upload to Supabase Storage
+            const imageBuffer = await prRes.arrayBuffer();
+            const fileName = `photoroom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+            const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
+
+            const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+              .from("make-cad57f79-media")
+              .upload(storagePath, imageBuffer, { contentType: "image/png", upsert: true });
+
+            if (uploadError) {
+              console.log(`[image-start-POST] Photoroom upload error: ${uploadError.message}`);
+            } else {
+              const { data: signedData } = await supabaseAdmin.storage
+                .from("make-cad57f79-media")
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
+
+              const imageUrl = signedData?.signedUrl;
+              if (imageUrl) {
+                console.log(`[image-start-POST] PHOTOROOM OK in ${Date.now() - t0}ms — ${imageUrl.slice(0, 80)}`);
+                return c.json({ success: true, imageUrl, provider: "photoroom", directResult: true });
+              }
+            }
+          } else {
+            const errBody = await prRes.text();
+            console.log(`[image-start-POST] Photoroom error ${prRes.status}: ${errBody.slice(0, 300)}`);
           }
-          const data = await res.json();
-          const imageUrl = data.images?.[0]?.url;
-          if (imageUrl) {
-            console.log(`[image-start-POST] FAL ${falModel} OK in ${Date.now() - t0}ms`);
-            return c.json({ success: true, imageUrl, provider: `fal/${falModel}`, directResult: true });
-          }
-        } catch (err) { console.log(`[image-start-POST] FAL ${falModel} error: ${err}`); }
+        } catch (err) { console.log(`[image-start-POST] Photoroom error: ${err}`); }
+      } else {
+        console.log(`[image-start-POST] PHOTOROOM_API_KEY not configured, skipping`);
       }
 
-      // ═══ STRATEGY 2: Luma character_ref with BiRefNet-cleaned image ═══
-      // BiRefNet isolates product → Luma character_ref preserves visual identity in new scene
-      console.log(`[image-start-POST] STRATEGY 2: BiRefNet + Luma character_ref...`);
-      let cleanUrl: string | null = null;
-      try {
-        const bgRes = await fetch("https://fal.run/fal-ai/birefnet", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-          body: JSON.stringify({ image_url: imageRefUrl }),
-        });
-        if (bgRes.ok) {
-          const bgData = await bgRes.json();
-          cleanUrl = bgData.image?.url || null;
-          console.log(`[image-start-POST] BiRefNet OK: ${cleanUrl?.slice(0, 60)}`);
-        } else {
-          console.log(`[image-start-POST] BiRefNet error ${bgRes.status}`);
-        }
-      } catch (err) { console.log(`[image-start-POST] BiRefNet error: ${err}`); }
-
-      const lumaRefUrl = cleanUrl || imageRefUrl;
+      // ═══ FALLBACK: Luma Photon modify_image_ref ═══
+      console.log(`[image-start-POST] Fallback to Luma modify_image_ref...`);
       const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
       const lumaBody: any = {
-        prompt: scene.prompt,
+        prompt: "Professional studio photoshoot, pure white background, product alone, no people, no humans. " + rawPrompt,
         model: "photon-1",
         aspect_ratio: lumaArMap[aspectRatio] || "1:1",
-        // character_ref preserves visual identity (shape, colors, logos)
-        character_ref: { identity0: { images: [lumaRefUrl] } },
+        modify_image_ref: { url: imageRefUrl, weight: 1.0 },
       };
-      console.log(`[image-start-POST] Luma character_ref with ${cleanUrl ? "CLEAN" : "ORIGINAL"} image...`);
       const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
         method: "POST",
         headers: { Authorization: `Bearer ${Deno.env.get("LUMA_API_KEY")}`, "Content-Type": "application/json" },
@@ -3643,12 +3636,12 @@ app.post("/generate/image-start", async (c) => {
       if (lumaRes.ok) {
         const generation = await lumaRes.json();
         if (generation.id) {
-          console.log(`[image-start-POST] Luma character_ref OK ${Date.now() - t0}ms, genId=${generation.id}`);
+          console.log(`[image-start-POST] Luma fallback OK ${Date.now() - t0}ms, genId=${generation.id}`);
           return c.json({ success: true, generationId: generation.id, state: generation.state || "queued" });
         }
       }
       const errText = lumaRes.ok ? "no id" : await lumaRes.text();
-      console.error(`[image-start-POST] Luma character_ref error: ${errText.slice(0, 200)}`);
+      console.error(`[image-start-POST] All providers failed. Luma: ${errText.slice(0, 200)}`);
       return c.json({ success: false, error: "All providers failed" }, 500);
     }
 
