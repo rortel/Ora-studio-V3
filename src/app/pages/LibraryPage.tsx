@@ -577,7 +577,7 @@ function LibraryPageContent() {
                               disabled={isDownloading}
                               className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
                               style={{ background: "var(--border)" }}
-                              title="Download all"
+                              title="Download all HD"
                             >
                               {isDownloading ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : <Download size={11} style={{ color: "var(--text-tertiary)" }} />}
                             </button>
@@ -732,7 +732,7 @@ function LibraryPageContent() {
                                   onClick={() => downloadAssetFile(asset, getItemName(openItem))}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
                                   style={{ background: "rgba(17,17,17,0.03)" }}
-                                  title="Download"
+                                  title="Download HD"
                                 >
                                   <Download size={12} style={{ color: "#7A7572" }} />
                                 </button>

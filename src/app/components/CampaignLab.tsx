@@ -1613,9 +1613,15 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     if (readyCount === 0) return;
     // Debounce: wait 3s after last status change, then auto-save
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => {
+    autoSaveTimerRef.current = setTimeout(async () => {
       console.log(`[CampaignLab] Auto-save triggered: ${readyCount} ready, ${pendingCount} pending`);
-      handleSaveCampaign(true);
+      await handleSaveCampaign(true);
+      if (pendingCount === 0) {
+        toast.success(`Campagne sauvegardée dans Library (${readyCount} assets)`, {
+          duration: 3000,
+          action: { label: "Voir", onClick: () => window.location.href = "/hub/library" },
+        });
+      }
     }, pendingCount === 0 ? 1500 : 5000); // faster save when all done
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
   }, [phase, assets]);

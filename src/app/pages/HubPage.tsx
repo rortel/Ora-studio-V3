@@ -587,9 +587,22 @@ function HubPageContent() {
     if (newItems.length > 0) {
       setLibrary(prev => [...newItems, ...prev]);
       console.log(`[HubPage] Auto-saving ${newItems.length} items to server...`);
+      let savedCount = 0;
       for (const item of newItems) {
         serverPost("/library/items", { item: { id: item.id, type: item.type, model: item.model, prompt: item.prompt, timestamp: item.timestamp, preview: item.preview, saved: true, tags: item.tags, source: item.source, savedAt: new Date().toISOString(), updatedAt: new Date().toISOString() } })
-          .then(data => { if (!data.success) console.warn(`[HubPage] Auto-save failed for ${item.id}:`, data.error); })
+          .then(data => {
+            if (data.success) {
+              savedCount++;
+              if (savedCount === newItems.length) {
+                const typeLabel = newItems[0]?.type === "image" ? "Image" : newItems[0]?.type === "film" ? "Vidéo" : newItems[0]?.type === "sound" ? "Audio" : newItems[0]?.type === "text" ? "Texte" : "Contenu";
+                const plural = newItems.length > 1 ? "s" : "";
+                toast.success(`${newItems.length} ${typeLabel}${plural} sauvegardé${plural} dans Library`, {
+                  duration: 3000,
+                  action: { label: "Voir", onClick: () => window.location.href = "/hub/library" },
+                });
+              }
+            } else { console.warn(`[HubPage] Auto-save failed for ${item.id}:`, data.error); }
+          })
           .catch(err => console.warn("[HubPage] Auto-save error:", err));
       }
     }
@@ -2358,7 +2371,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
             <button onClick={() => onExport(currentItem)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
-              <Download size={14} /> Export
+              <Download size={14} /> Export HD
             </button>
           </div>
 
@@ -3163,7 +3176,7 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
             <button onClick={onExport}
               className="flex items-center gap-2.5 px-6 py-3 rounded-xl bg-white/10 text-white/70 hover:text-white hover:bg-white/20 cursor-pointer transition-all"
               style={{ fontSize: "15px", fontWeight: 500 }}>
-              <Download size={16} /> Export
+              <Download size={16} /> Export HD
             </button>
             <button onClick={onClose}
               className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/25 cursor-pointer transition-all ml-3">
@@ -3247,7 +3260,7 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
               {item.saved ? "Saved to Library" : "Save to Library"}
             </button>
             <button onClick={onExport} className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-secondary cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "13px" }}>
-              <Download size={14} /> Export
+              <Download size={14} /> Export HD
             </button>
             <div className="flex-1" />
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer" style={{ fontSize: "13px" }}>Close</button>
