@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router";
 import { OraLogo } from "../components/OraLogo";
 import { ArrowRight, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
+import { useI18n } from "../lib/i18n";
 
 const ADMIN_EMAIL = "romainortel@gmail.com";
 
@@ -12,6 +13,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, profile, isLoading: authLoading } = useAuth();
+  const { t } = useI18n();
   const initialMode = searchParams.get("mode") === "signup" ? "signup" : "signin";
   const [mode, setMode] = useState<"signin" | "signup" | "reset">(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -48,16 +50,14 @@ export function LoginPage() {
       if (authError) {
         console.error("Sign in error:", authError.message);
         if (authError.message === "Invalid login credentials") {
-          setError(
-            "Invalid credentials. Either the account doesn't exist yet (click \"Start free\" below to create one) or you signed up via Google (use \"Continue with Google\" instead)."
-          );
+          setError(t("login.errorInvalidCredentials"));
         } else {
           setError(authError.message);
         }
         return;
       }
       console.log("Signed in:", data.session?.user?.id);
-      // Redirect based on email: admin → /admin, others → /profile
+      // Redirect based on email: admin -> /admin, others -> /profile
       const userEmail = data.session?.user?.email?.toLowerCase() || "";
       if (userEmail === ADMIN_EMAIL) {
         navigate("/admin");
@@ -66,7 +66,7 @@ export function LoginPage() {
       }
     } catch (err) {
       console.error("Sign in exception:", err);
-      setError("An unexpected error occurred. Please try again.");
+      setError(t("login.errorUnexpected"));
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,7 @@ export function LoginPage() {
       if (data.error) {
         console.error("Signup error:", data.error);
         if (data.error.includes("already been registered") || data.error.includes("already exists")) {
-          setError("This email is already registered. Try signing in instead, or use Google.");
+          setError(t("login.errorAlreadyRegistered"));
         } else {
           setError(data.error);
         }
@@ -111,20 +111,20 @@ export function LoginPage() {
 
       if (signInError) {
         console.error("Auto sign-in after signup failed:", signInError.message);
-        setSuccess("Account created! Please sign in with your credentials.");
+        setSuccess(t("login.successAccountCreated"));
         setMode("signin");
         return;
       }
 
       console.log("Signed up and in:", signInData.session?.user?.id);
-      // After signup → subscription page to choose plan
+      // After signup -> subscription page to choose plan
       navigate("/subscribe");
     } catch (err: any) {
       console.error("Signup exception:", err);
       if (err?.name === "AbortError") {
-        setError("Server is starting up (cold start). Please try again in a few seconds.");
+        setError(t("login.errorColdStart"));
       } else {
-        setError("An unexpected error occurred. Please try again.");
+        setError(t("login.errorUnexpected"));
       }
     } finally {
       setLoading(false);
@@ -145,11 +145,11 @@ export function LoginPage() {
         console.error("Reset password error:", resetError.message);
         setError(resetError.message);
       } else {
-        setSuccess("Password reset email sent. Check your inbox.");
+        setSuccess(t("login.successResetSent"));
       }
     } catch (err) {
       console.error("Reset password exception:", err);
-      setError("Failed to send reset email. Please try again.");
+      setError(t("login.errorResetFailed"));
     }
     setLoading(false);
   };
@@ -171,9 +171,7 @@ export function LoginPage() {
       if (oauthError) {
         console.error("Google OAuth error:", oauthError.message);
         if (oauthError.message.includes("provider is not enabled")) {
-          setError(
-            "Google login is not yet configured on this Supabase project. Go to Supabase Dashboard → Authentication → Providers → Google and enable it."
-          );
+          setError(t("login.errorGoogleNotConfigured"));
         } else {
           setError(oauthError.message);
         }
@@ -182,7 +180,7 @@ export function LoginPage() {
       }
       if (data?.url) {
         console.log("[GoogleAuth] Opening auth URL:", data.url);
-        // Try multiple redirect strategies — iframe sandboxing can block window.location
+        // Try multiple redirect strategies -- iframe sandboxing can block window.location
         try {
           // Strategy 1: top-level redirect (works if not deeply sandboxed)
           const target = window.top || window.parent || window;
@@ -202,11 +200,11 @@ export function LoginPage() {
         return;
       }
       console.warn("[GoogleAuth] No URL returned and no error");
-      setError("Google sign-in did not return a redirect URL. Please try again.");
+      setError(t("login.errorGoogleNoUrl"));
       setLoading(false);
     } catch (err) {
       console.error("Google OAuth exception:", err);
-      setError("Google sign-in failed. Please try again.");
+      setError(t("login.errorGoogleFailed"));
       setLoading(false);
     }
   };
@@ -218,9 +216,9 @@ export function LoginPage() {
   };
 
   const titles = {
-    signin: { heading: "Welcome back", sub: "Sign in to your ORA account." },
-    signup: { heading: "Create your account", sub: "Start free with 50 credits. No credit card." },
-    reset: { heading: "Reset password", sub: "We'll send a reset link to your email." },
+    signin: { heading: t("login.signinHeading"), sub: t("login.signinSub") },
+    signup: { heading: t("login.signupHeading"), sub: t("login.signupSub") },
+    reset: { heading: t("login.resetHeading"), sub: t("login.resetSub") },
   };
 
   // Show loading while checking auth
@@ -297,13 +295,13 @@ export function LoginPage() {
                   <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#AAAAAA"/>
                   <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#666666"/>
                 </svg>
-                Continue with Google
+                {t("login.continueWithGoogle")}
               </button>
 
               {/* Divider */}
               <div className="flex items-center gap-3 mb-5">
                 <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>or</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{t("login.dividerOr")}</span>
                 <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
               </div>
             </>
@@ -317,13 +315,13 @@ export function LoginPage() {
             {mode === "signup" && (
               <div>
                 <label className="block text-foreground mb-1.5" style={{ fontSize: '13px', fontWeight: 450 }}>
-                  Full name
+                  {t("login.labelFullName")}
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Jane Smith"
+                  placeholder={t("login.placeholderFullName")}
                   className="w-full bg-input-background border border-border rounded-lg px-3.5 py-2.5 text-foreground placeholder:text-muted-foreground/40"
                   style={{ fontSize: '14px' }}
                 />
@@ -331,13 +329,13 @@ export function LoginPage() {
             )}
             <div>
               <label className="block text-foreground mb-1.5" style={{ fontSize: '13px', fontWeight: 450 }}>
-                Email
+                {t("login.labelEmail")}
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
+                placeholder={t("login.placeholderEmail")}
                 required
                 className="w-full bg-input-background border border-border rounded-lg px-3.5 py-2.5 text-foreground placeholder:text-muted-foreground/40"
                 style={{ fontSize: '14px' }}
@@ -346,7 +344,7 @@ export function LoginPage() {
             {mode !== "reset" && (
               <div>
                 <label className="block text-foreground mb-1.5" style={{ fontSize: '13px', fontWeight: 450 }}>
-                  Password
+                  {t("login.labelPassword")}
                 </label>
                 <div className="relative">
                   <input
@@ -379,11 +377,11 @@ export function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  {mode === "signup" ? "Creating..." : mode === "reset" ? "Sending..." : "Signing in..."}
+                  {mode === "signup" ? t("login.btnCreating") : mode === "reset" ? t("login.btnSending") : t("login.btnSigningIn")}
                 </>
               ) : (
                 <>
-                  {mode === "signup" ? "Create account" : mode === "reset" ? "Send reset link" : "Sign in"}
+                  {mode === "signup" ? t("login.btnCreateAccount") : mode === "reset" ? t("login.btnSendResetLink") : t("login.btnSignIn")}
                   <ArrowRight size={15} />
                 </>
               )}
@@ -397,7 +395,7 @@ export function LoginPage() {
                 className="text-ora-signal hover:underline cursor-pointer"
                 style={{ fontSize: '13px' }}
               >
-                Forgot password?
+                {t("login.forgotPassword")}
               </button>
             </p>
           )}
@@ -409,7 +407,7 @@ export function LoginPage() {
                 className="text-ora-signal hover:underline cursor-pointer"
                 style={{ fontSize: '13px' }}
               >
-                Back to sign in
+                {t("login.backToSignIn")}
               </button>
             </p>
           )}
@@ -418,14 +416,14 @@ export function LoginPage() {
         {/* Toggle signin/signup */}
         {mode !== "reset" && (
           <p className="text-center mt-6 text-muted-foreground" style={{ fontSize: '14px' }}>
-            {mode === "signup" ? "Already have an account?" : "Don't have an account?"}
+            {mode === "signup" ? t("login.alreadyHaveAccount") : t("login.dontHaveAccount")}
             {" "}
             <button
               onClick={() => switchMode(mode === "signup" ? "signin" : "signup")}
               className="text-ora-signal hover:underline cursor-pointer"
               style={{ fontSize: '14px', fontWeight: 500 }}
             >
-              {mode === "signup" ? "Sign in" : "Start free"}
+              {mode === "signup" ? t("login.switchSignIn") : t("login.switchStartFree")}
             </button>
           </p>
         )}

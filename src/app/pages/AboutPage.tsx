@@ -2,54 +2,27 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import { OraLogo } from "../components/OraLogo";
 import { Layers, GitCompareArrows, Shield, Zap } from "lucide-react";
+import { useI18n } from "../lib/i18n";
 
-const features = [
-  {
-    icon: Layers,
-    title: "+38 modèles d'IA",
-    description:
-      "Texte, image, vidéo, audio — accédez aux meilleurs modèles du marché depuis une seule interface.",
-  },
-  {
-    icon: GitCompareArrows,
-    title: "Comparez en un clic",
-    description:
-      "Envoyez un prompt à plusieurs modèles simultanément et choisissez le meilleur résultat.",
-  },
-  {
-    icon: Shield,
-    title: "Brand Vault",
-    description:
-      "Votre identité de marque connectée à chaque création : charte graphique, ton, logos et assets.",
-  },
-  {
-    icon: Zap,
-    title: "De l'idée à la publication",
-    description:
-      "15 minutes suffisent pour passer d'un brief à un contenu professionnel prêt à publier.",
-  },
-];
-
-const values = [
-  {
-    title: "Innovation",
-    description: "Nous intégrons les derniers modèles d'IA dès leur sortie pour vous donner une longueur d'avance.",
-  },
-  {
-    title: "Simplicité",
-    description: "Une interface pensée pour que la puissance de l'IA reste accessible à tous les créatifs.",
-  },
-  {
-    title: "Qualité",
-    description: "Chaque fonctionnalité est conçue pour produire des résultats de niveau professionnel.",
-  },
-  {
-    title: "Transparence",
-    description: "Tarifs clairs, données protégées, contenus qui vous appartiennent. Pas de zones grises.",
-  },
-];
+const featureIcons = [Layers, GitCompareArrows, Shield, Zap] as const;
 
 export function AboutPage() {
+  const { t } = useI18n();
+
+  const features = [
+    { icon: featureIcons[0], title: t("about.feature1Title"), description: t("about.feature1Desc") },
+    { icon: featureIcons[1], title: t("about.feature2Title"), description: t("about.feature2Desc") },
+    { icon: featureIcons[2], title: t("about.feature3Title"), description: t("about.feature3Desc") },
+    { icon: featureIcons[3], title: t("about.feature4Title"), description: t("about.feature4Desc") },
+  ];
+
+  const values = [
+    { title: t("about.value1Title"), description: t("about.value1Desc") },
+    { title: t("about.value2Title"), description: t("about.value2Desc") },
+    { title: t("about.value3Title"), description: t("about.value3Desc") },
+    { title: t("about.value4Title"), description: t("about.value4Desc") },
+  ];
+
   return (
     <div>
       {/* Hero — dark */}
@@ -76,7 +49,7 @@ export function AboutPage() {
                 lineHeight: 1.1,
               }}
             >
-              Create with every AI.
+              {t("about.heroHeadline")}
             </h1>
             <p
               className="mt-2"
@@ -89,7 +62,7 @@ export function AboutPage() {
                 lineHeight: 1.3,
               }}
             >
-              As simple as a message.
+              {t("about.heroSubHeadline")}
             </p>
           </motion.div>
 
@@ -106,9 +79,7 @@ export function AboutPage() {
               maxWidth: 560,
             }}
           >
-            ORA Studio est la plateforme qui démocratise la création de contenu
-            professionnel grâce à l'intelligence artificielle. Une seule interface,
-            tous les modèles, des résultats exceptionnels.
+            {t("about.heroDesc")}
           </motion.p>
         </div>
 
@@ -143,7 +114,7 @@ export function AboutPage() {
                 textTransform: "uppercase",
               }}
             >
-              Notre mission
+              {t("about.missionLabel")}
             </p>
             <h2
               style={{
@@ -155,7 +126,7 @@ export function AboutPage() {
                 lineHeight: 1.15,
               }}
             >
-              Démocratiser la création de contenu professionnel grâce à l'IA
+              {t("about.missionTitle")}
             </h2>
             <p
               className="mt-6"
@@ -167,10 +138,7 @@ export function AboutPage() {
                 maxWidth: 600,
               }}
             >
-              Nous croyons que chaque créateur, entrepreneur et équipe marketing
-              devrait pouvoir produire du contenu de qualité professionnelle — sans
-              expertise technique, sans multiplier les outils, sans compromis sur
-              la qualité.
+              {t("about.missionDesc")}
             </p>
           </motion.div>
         </div>
@@ -193,7 +161,7 @@ export function AboutPage() {
               textTransform: "uppercase",
             }}
           >
-            Ce qui rend ORA différent
+            {t("about.featuresLabel")}
           </motion.p>
           <motion.h2
             className="text-center mb-14"
@@ -211,13 +179,13 @@ export function AboutPage() {
               marginTop: 8,
             }}
           >
-            Tout ce dont vous avez besoin, au même endroit
+            {t("about.featuresTitle")}
           </motion.h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {features.map((f, i) => (
               <motion.div
-                key={f.title}
+                key={i}
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }}
@@ -279,7 +247,7 @@ export function AboutPage() {
               textTransform: "uppercase",
             }}
           >
-            Nos valeurs
+            {t("about.valuesLabel")}
           </motion.p>
           <motion.h2
             className="mb-12"
@@ -296,13 +264,13 @@ export function AboutPage() {
               lineHeight: 1.2,
             }}
           >
-            Ce en quoi nous croyons
+            {t("about.valuesTitle")}
           </motion.h2>
 
           <div className="flex flex-col gap-8">
             {values.map((v, i) => (
               <motion.div
-                key={v.title}
+                key={i}
                 initial={{ opacity: 0, x: -12 }}
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: "-40px" }}
@@ -362,7 +330,7 @@ export function AboutPage() {
                 lineHeight: 1.15,
               }}
             >
-              Rejoignez-nous
+              {t("about.ctaTitle")}
             </h2>
             <p
               className="mt-4 mx-auto"
@@ -374,8 +342,7 @@ export function AboutPage() {
                 maxWidth: 440,
               }}
             >
-              50 crédits offerts pour découvrir la puissance d'ORA Studio.
-              Aucune carte bancaire requise.
+              {t("about.ctaDesc")}
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
@@ -390,7 +357,7 @@ export function AboutPage() {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Créer votre compte gratuit
+                {t("about.ctaButton")}
               </Link>
               <a
                 href="mailto:hello@ora-studio.app"

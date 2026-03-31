@@ -1,6 +1,7 @@
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Link } from "react-router";
@@ -42,13 +43,13 @@ interface CalendarEvent {
   deployedAt?: string;
 }
 
-const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
-  draft: { label: "Draft", bg: "rgba(107,107,123,0.08)", text: "var(--muted-foreground)" },
-  scheduled: { label: "Scheduled", bg: "var(--ora-signal-light)", text: "var(--ora-signal)" },
-  published: { label: "Published", bg: "rgba(17,17,17,0.08)", text: "#666666" },
-  review: { label: "In review", bg: "rgba(17,17,17,0.08)", text: "#999999" },
-  deploying: { label: "Deploying...", bg: "rgba(17,17,17,0.08)", text: "var(--ora-signal)" },
-  failed: { label: "Failed", bg: "rgba(212,24,61,0.08)", text: "#d4183d" },
+const statusStyles: Record<string, { bg: string; text: string }> = {
+  draft: { bg: "rgba(107,107,123,0.08)", text: "var(--muted-foreground)" },
+  scheduled: { bg: "var(--ora-signal-light)", text: "var(--ora-signal)" },
+  published: { bg: "rgba(17,17,17,0.08)", text: "#666666" },
+  review: { bg: "rgba(17,17,17,0.08)", text: "#999999" },
+  deploying: { bg: "rgba(17,17,17,0.08)", text: "var(--ora-signal)" },
+  failed: { bg: "rgba(212,24,61,0.08)", text: "#d4183d" },
 };
 
 const channelIconMap: Record<string, typeof Linkedin> = {
@@ -61,8 +62,7 @@ const channelColors: Record<string, string> = {
   Facebook: "#666666", TikTok: "#666666", YouTube: "#666666", Pinterest: "#666666",
 };
 
-const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+// daysOfWeek and monthNames moved inside CalendarPageContent to use t()
 
 export function CalendarPage() {
   return (
@@ -73,6 +73,7 @@ export function CalendarPage() {
 }
 
 function CalendarPageContent() {
+  const { t } = useI18n();
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate());
@@ -88,6 +89,17 @@ function CalendarPageContent() {
   const [deployingAll, setDeployingAll] = useState(false);
 
   const { getAuthHeader } = useAuth();
+
+  const daysOfWeek = [t("calendar.dayMon"), t("calendar.dayTue"), t("calendar.dayWed"), t("calendar.dayThu"), t("calendar.dayFri"), t("calendar.daySat"), t("calendar.daySun")];
+  const monthNames = [t("calendar.monthJanuary"), t("calendar.monthFebruary"), t("calendar.monthMarch"), t("calendar.monthApril"), t("calendar.monthMay"), t("calendar.monthJune"), t("calendar.monthJuly"), t("calendar.monthAugust"), t("calendar.monthSeptember"), t("calendar.monthOctober"), t("calendar.monthNovember"), t("calendar.monthDecember")];
+  const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
+    draft: { label: t("calendar.statusDraft"), ...statusStyles.draft },
+    scheduled: { label: t("calendar.statusScheduled"), ...statusStyles.scheduled },
+    published: { label: t("calendar.statusPublished"), ...statusStyles.published },
+    review: { label: t("calendar.statusReview"), ...statusStyles.review },
+    deploying: { label: t("calendar.statusDeploying"), ...statusStyles.deploying },
+    failed: { label: t("calendar.statusFailed"), ...statusStyles.failed },
+  };
 
   const loadEvents = useCallback(async () => {
     try {
@@ -273,12 +285,12 @@ function CalendarPageContent() {
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-foreground" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>Content Calendar</h1>
+                <h1 className="text-foreground" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>{t("calendar.title")}</h1>
                 {stats.total > 0 && (
-                  <span className="px-2.5 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)", background: "var(--ora-signal-light)" }}>{stats.total} pieces</span>
+                  <span className="px-2.5 py-0.5 rounded-full" style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)", background: "var(--ora-signal-light)" }}>{stats.total} {t("calendar.pieces")}</span>
                 )}
               </div>
-              <p className="text-muted-foreground" style={{ fontSize: "15px" }}>Plan, schedule, and publish across all channels.</p>
+              <p className="text-muted-foreground" style={{ fontSize: "15px" }}>{t("calendar.subtitle")}</p>
             </div>
             <div className="flex items-center gap-3">
               {deployableCount > 0 && (
@@ -294,13 +306,13 @@ function CalendarPageContent() {
                   }}
                 >
                   {deployingAll ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />}
-                  {deployingAll ? "Deploying..." : `Deploy All (${deployableCount})`}
+                  {deployingAll ? t("calendar.deploying") : `${t("calendar.deployAll")} (${deployableCount})`}
                 </button>
               )}
               <button onClick={() => { if (selectedDay) setShowNew(true); }}
                 className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
                 style={{ fontSize: "14px", fontWeight: 500 }}>
-                <Plus size={15} /> New Content
+                <Plus size={15} /> {t("calendar.newContent")}
               </button>
             </div>
           </div>
@@ -311,10 +323,10 @@ function CalendarPageContent() {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Total this month", value: stats.total, icon: Calendar },
-            { label: "Scheduled", value: stats.scheduled, icon: Clock },
-            { label: "Drafts", value: stats.drafts, icon: FileText },
-            { label: "Published", value: stats.published, icon: CheckCircle2 },
+            { label: t("calendar.totalThisMonth"), value: stats.total, icon: Calendar },
+            { label: t("calendar.scheduled"), value: stats.scheduled, icon: Clock },
+            { label: t("calendar.drafts"), value: stats.drafts, icon: FileText },
+            { label: t("calendar.published"), value: stats.published, icon: CheckCircle2 },
           ].map((stat, i) => {
             const Icon = stat.icon;
             return (
@@ -368,7 +380,7 @@ function CalendarPageContent() {
                                 {e.status === "published" ? "* " : ""}{e.title.length > 16 ? e.title.slice(0, 16) + "..." : e.title}
                               </div>
                             ))}
-                            {dayEvents.length > 3 && <span style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>+{dayEvents.length - 3} more</span>}
+                            {dayEvents.length > 3 && <span style={{ fontSize: "9px", color: "var(--muted-foreground)" }}>+{dayEvents.length - 3} {t("calendar.more")}</span>}
                           </div>
                         </>
                       )}
@@ -380,13 +392,13 @@ function CalendarPageContent() {
               {monthEvents.length === 0 && (
                 <div className="text-center py-10 border-t border-border mt-2">
                   <Calendar size={28} className="mx-auto mb-3 text-muted-foreground/20" />
-                  <p className="text-foreground mb-1" style={{ fontSize: "15px", fontWeight: 500 }}>No content planned this month</p>
-                  <p className="text-muted-foreground mb-4" style={{ fontSize: "13px", lineHeight: 1.5 }}>
-                    Generate a campaign in Campaign Lab and click<br />"Plan Editorial Calendar" to populate your schedule.
+                  <p className="text-foreground mb-1" style={{ fontSize: "15px", fontWeight: 500 }}>{t("calendar.noContentPlanned")}</p>
+                  <p className="text-muted-foreground mb-4" style={{ fontSize: "13px", lineHeight: 1.5, whiteSpace: "pre-line" }}>
+                    {t("calendar.noContentPlannedDesc")}
                   </p>
                   <Link to="/campaign-lab" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-opacity hover:opacity-90"
                     style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}>
-                    Open Campaign Lab
+                    {t("calendar.openCampaignLab")}
                   </Link>
                 </div>
               )}
@@ -398,7 +410,7 @@ function CalendarPageContent() {
                 className="bg-card border border-border rounded-xl" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
                 <div className="flex items-center justify-between p-4 pb-0">
                   <h3 className="text-foreground" style={{ fontSize: "15px", fontWeight: 500 }}>
-                    {selectedDay ? `${monthNames[currentMonth]} ${selectedDay}` : "Select a day"}
+                    {selectedDay ? `${monthNames[currentMonth]} ${selectedDay}` : t("calendar.selectDay")}
                   </h3>
                   {selectedDay && (
                     <button onClick={() => setShowNew(true)} className="p-1 rounded-md hover:bg-secondary text-muted-foreground cursor-pointer"><Plus size={14} /></button>
@@ -411,7 +423,7 @@ function CalendarPageContent() {
                     {showNew && selectedDay && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-4">
                         <div className="border border-ora-signal/20 rounded-lg p-3 space-y-2 bg-ora-signal-light/20">
-                          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Content title..."
+                          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={t("calendar.contentTitle")}
                             className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/50 focus:border-ora-signal outline-none" style={{ fontSize: "13px" }} />
                           <div className="flex gap-2">
                             <select value={newChannel} onChange={(e) => setNewChannel(e.target.value)}
@@ -425,9 +437,9 @@ function CalendarPageContent() {
                             <button onClick={handleCreate} disabled={creating || !newTitle.trim()}
                               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-white cursor-pointer disabled:opacity-40"
                               style={{ background: "var(--ora-signal)", fontSize: "12px", fontWeight: 500 }}>
-                              {creating ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Add
+                              {creating ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} {t("calendar.add")}
                             </button>
-                            <button onClick={() => setShowNew(false)} className="px-3 py-2 rounded-md border border-border text-muted-foreground cursor-pointer" style={{ fontSize: "12px" }}>Cancel</button>
+                            <button onClick={() => setShowNew(false)} className="px-3 py-2 rounded-md border border-border text-muted-foreground cursor-pointer" style={{ fontSize: "12px" }}>{t("calendar.cancel")}</button>
                           </div>
                         </div>
                       </motion.div>
@@ -501,7 +513,7 @@ function CalendarPageContent() {
                                         <div className="flex items-center gap-1.5 mb-3">
                                           <Eye size={11} className="text-muted-foreground" />
                                           <span className="uppercase tracking-wider text-muted-foreground" style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "0.1em" }}>
-                                            Post preview
+                                            {t("calendar.postPreview")}
                                           </span>
                                         </div>
 
@@ -512,7 +524,7 @@ function CalendarPageContent() {
                                               <Icon size={12} style={{ color: event.color }} />
                                             </div>
                                             <div>
-                                              <span className="block text-foreground" style={{ fontSize: "11px", fontWeight: 600, lineHeight: 1.2 }}>Your Brand</span>
+                                              <span className="block text-foreground" style={{ fontSize: "11px", fontWeight: 600, lineHeight: 1.2 }}>{t("calendar.yourBrand")}</span>
                                               <span className="block text-muted-foreground" style={{ fontSize: "9px", lineHeight: 1.2 }}>{event.time} - {event.channel}</span>
                                             </div>
                                           </div>
@@ -544,7 +556,7 @@ function CalendarPageContent() {
                                                   <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: event.color + "20" }}>
                                                     <Play size={16} style={{ color: event.color }} />
                                                   </div>
-                                                  <span className="text-muted-foreground" style={{ fontSize: "10px" }}>Play video</span>
+                                                  <span className="text-muted-foreground" style={{ fontSize: "10px" }}>{t("calendar.playVideo")}</span>
                                                 </a>
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); downloadAsset(event.videoUrl!, `ora-${event.channel}-${event.id}.mp4`, "video"); }}
@@ -617,19 +629,19 @@ function CalendarPageContent() {
                                               }}
                                             >
                                               {isDeploying ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                                              {isDeploying ? "Deploying..." : "Deploy"}
+                                              {isDeploying ? t("calendar.deploying") : t("calendar.deploy")}
                                             </button>
                                           )}
                                           {event.status === "published" && (
                                             <span className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: "11px", fontWeight: 600, background: "rgba(17,17,17,0.08)", color: "#666666" }}>
-                                              <CheckCircle2 size={11} /> Published
+                                              <CheckCircle2 size={11} /> {t("calendar.statusPublished")}
                                             </span>
                                           )}
                                           {event.zernioPostUrl && (
                                             <a href={event.zernioPostUrl} target="_blank" rel="noopener noreferrer"
                                               className="flex items-center gap-1 px-2 py-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
                                               style={{ fontSize: "11px", border: "1px solid var(--border)" }}>
-                                              <ExternalLink size={10} /> View post
+                                              <ExternalLink size={10} /> {t("calendar.viewPost")}
                                             </a>
                                           )}
                                         </div>
@@ -637,8 +649,8 @@ function CalendarPageContent() {
                                     ) : (
                                       <div className="text-center py-5 px-3.5">
                                         <FileText size={16} className="mx-auto mb-2 text-muted-foreground/30" />
-                                        <p className="text-muted-foreground" style={{ fontSize: "11px" }}>No content generated yet for this post.</p>
-                                        <p className="text-muted-foreground/60 mt-0.5" style={{ fontSize: "10px" }}>Generate assets in Campaign Lab to see a preview.</p>
+                                        <p className="text-muted-foreground" style={{ fontSize: "11px" }}>{t("calendar.noContentGenerated")}</p>
+                                        <p className="text-muted-foreground/60 mt-0.5" style={{ fontSize: "10px" }}>{t("calendar.noContentGeneratedDesc")}</p>
                                       </div>
                                     )}
                                   </div>
@@ -652,9 +664,9 @@ function CalendarPageContent() {
                   ) : selectedDay ? (
                     <div className="text-center py-8">
                       <Calendar size={24} className="mx-auto mb-3 text-muted-foreground/30" />
-                      <p className="text-muted-foreground" style={{ fontSize: "13px" }}>Nothing scheduled for this day.</p>
+                      <p className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("calendar.nothingScheduled")}</p>
                       <button onClick={() => setShowNew(true)} className="inline-flex items-center gap-1.5 mt-3 text-ora-signal hover:opacity-80 transition-opacity cursor-pointer" style={{ fontSize: "13px", fontWeight: 500 }}>
-                        <Plus size={13} /> Create content
+                        <Plus size={13} /> {t("calendar.createContent")}
                       </button>
                     </div>
                   ) : null}

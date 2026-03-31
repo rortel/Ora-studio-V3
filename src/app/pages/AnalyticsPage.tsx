@@ -1,6 +1,7 @@
 import { API_BASE, apiUrl, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
@@ -57,6 +58,7 @@ export function AnalyticsPage() {
 }
 
 function AnalyticsPageContent() {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState(defaultKpis);
   const [weeklyData, setWeeklyData] = useState(defaultWeeklyData);
@@ -87,12 +89,12 @@ function AnalyticsPageContent() {
 
         // Build KPIs from real data
         setKpis([
-          { label: "Brand Health Score", value: a.avgBrandScore > 0 ? String(a.avgBrandScore) : "--", suffix: a.avgBrandScore > 0 ? "/100" : "", trend: a.avgBrandScore > 90 ? "+strong" : a.avgBrandScore > 0 ? "active" : "--", dir: a.avgBrandScore > 80 ? "up" : "flat" },
-          { label: "Content Produced", value: String(a.totalPieces), suffix: " pieces", trend: a.totalPieces > 0 ? "active" : "--", dir: a.totalPieces > 0 ? "up" : "flat" },
-          { label: "Campaigns", value: String(a.totalCampaigns), suffix: "", trend: a.totalCampaigns > 0 ? `${a.totalCampaigns} total` : "--", dir: a.totalCampaigns > 0 ? "up" : "flat" },
-          { label: "Calendar Events", value: String(a.totalEvents), suffix: "", trend: a.totalEvents > 0 ? "scheduled" : "--", dir: a.totalEvents > 0 ? "up" : "flat" },
-          { label: "Brand Scans", value: String(a.brandScans), suffix: "", trend: a.brandScans > 0 ? "analyzed" : "--", dir: a.brandScans > 0 ? "up" : "flat" },
-          { label: "Brand Vault", value: a.hasVault ? "Active" : "Not set", suffix: "", trend: a.hasVault ? "configured" : "setup needed", dir: a.hasVault ? "up" : "flat" },
+          { label: t("analytics.brandHealthScore"), value: a.avgBrandScore > 0 ? String(a.avgBrandScore) : "--", suffix: a.avgBrandScore > 0 ? "/100" : "", trend: a.avgBrandScore > 90 ? "+strong" : a.avgBrandScore > 0 ? "active" : "--", dir: a.avgBrandScore > 80 ? "up" : "flat" },
+          { label: t("analytics.contentProduced"), value: String(a.totalPieces), suffix: ` ${t("analytics.pieces")}`, trend: a.totalPieces > 0 ? "active" : "--", dir: a.totalPieces > 0 ? "up" : "flat" },
+          { label: t("analytics.campaignsLabel"), value: String(a.totalCampaigns), suffix: "", trend: a.totalCampaigns > 0 ? `${a.totalCampaigns} total` : "--", dir: a.totalCampaigns > 0 ? "up" : "flat" },
+          { label: t("analytics.calendarEvents"), value: String(a.totalEvents), suffix: "", trend: a.totalEvents > 0 ? t("analytics.scheduledLabel").toLowerCase() : "--", dir: a.totalEvents > 0 ? "up" : "flat" },
+          { label: t("analytics.brandScans"), value: String(a.brandScans), suffix: "", trend: a.brandScans > 0 ? "analyzed" : "--", dir: a.brandScans > 0 ? "up" : "flat" },
+          { label: t("analytics.brandVault"), value: a.hasVault ? t("analytics.active") : t("analytics.notSet"), suffix: "", trend: a.hasVault ? t("analytics.configured") : t("analytics.setupNeeded"), dir: a.hasVault ? "up" : "flat" },
         ]);
 
         // Build format performance from campaigns
@@ -138,7 +140,7 @@ function AnalyticsPageContent() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getAuthHeader]);
+  }, [getAuthHeader, t]);
 
   const loadSocialAnalytics = useCallback(async () => {
     setSocialLoading(true);
@@ -192,13 +194,13 @@ function AnalyticsPageContent() {
           {/* Navigation handled by sidebar */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-foreground mb-1" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>Analytics</h1>
-              <p className="text-muted-foreground" style={{ fontSize: "15px" }}>Real-time data from your campaigns, calendar, and brand scans.</p>
+              <h1 className="text-foreground mb-1" style={{ fontSize: "28px", fontWeight: 300, letterSpacing: "-0.04em" }}>{t("analytics.title")}</h1>
+              <p className="text-muted-foreground" style={{ fontSize: "15px" }}>{t("analytics.subtitle")}</p>
             </div>
             <button onClick={handleRefresh} disabled={refreshing}
               className="flex items-center gap-2 border border-border px-4 py-2 rounded-lg text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
               style={{ fontSize: "13px", fontWeight: 500 }}>
-              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> Refresh
+              <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> {t("analytics.refresh")}
             </button>
           </div>
         </div>
@@ -229,7 +231,7 @@ function AnalyticsPageContent() {
           {/* Content production chart */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
             className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>Content Production</h3>
+            <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>{t("analytics.contentProduction")}</h3>
             {weeklyData.some((d) => d.pieces > 0) ? (
               <div className="flex items-end gap-3 h-[180px]">
                 {weeklyData.map((d, i) => (
@@ -247,7 +249,7 @@ function AnalyticsPageContent() {
               </div>
             ) : (
               <div className="flex items-center justify-center h-[180px]">
-                <p className="text-muted-foreground" style={{ fontSize: "13px" }}>No production data yet. Create campaigns to see metrics.</p>
+                <p className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("analytics.noProductionData")}</p>
               </div>
             )}
           </motion.div>
@@ -255,7 +257,7 @@ function AnalyticsPageContent() {
           {/* Format performance */}
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
             className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>Format Performance</h3>
+            <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>{t("analytics.formatPerformance")}</h3>
             {formatPerformance.some((f) => f.avgScore > 0) ? (
               <div className="space-y-3.5">
                 {formatPerformance.filter((f) => f.avgScore > 0 || f.pieces > 0).map((f) => (
@@ -266,13 +268,13 @@ function AnalyticsPageContent() {
                         className="h-full bg-ora-signal rounded-full" />
                     </div>
                     <span className="text-ora-signal flex-shrink-0" style={{ fontSize: "13px", fontWeight: 600 }}>{f.avgScore || "--"}</span>
-                    <span className="text-muted-foreground flex-shrink-0 w-16 text-right" style={{ fontSize: "12px" }}>{f.pieces} pieces</span>
+                    <span className="text-muted-foreground flex-shrink-0 w-16 text-right" style={{ fontSize: "12px" }}>{f.pieces} {t("analytics.pieces")}</span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="flex items-center justify-center h-[180px]">
-                <p className="text-muted-foreground" style={{ fontSize: "13px" }}>No format data yet. Create campaigns with format targets.</p>
+                <p className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("analytics.noFormatData")}</p>
               </div>
             )}
           </motion.div>
@@ -281,7 +283,7 @@ function AnalyticsPageContent() {
         {/* Social Deployment Analytics */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }}
           className="bg-card border border-border rounded-xl p-6 mb-10">
-          <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>Social Media Deployment</h3>
+          <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>{t("analytics.socialDeployment")}</h3>
           {socialLoading || metricsLoading ? (
             <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin text-ora-signal" /></div>
           ) : socialData && (socialData.summary?.totalDeployed > 0 || socialData.summary?.totalScheduled > 0) ? (
@@ -291,21 +293,21 @@ function AnalyticsPageContent() {
                 <div className="p-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.12)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <CheckCircle2 size={12} style={{ color: "#666666" }} />
-                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Published</span>
+                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>{t("analytics.publishedLabel")}</span>
                   </div>
                   <span className="text-foreground" style={{ fontSize: "22px", fontWeight: 500 }}>{socialData.summary.totalDeployed}</span>
                 </div>
                 <div className="p-3 rounded-lg" style={{ background: "var(--ora-signal-light)", border: "1px solid rgba(17,17,17,0.12)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <Clock size={12} className="text-ora-signal" />
-                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Scheduled</span>
+                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>{t("analytics.scheduledLabel")}</span>
                   </div>
                   <span className="text-foreground" style={{ fontSize: "22px", fontWeight: 500 }}>{socialData.summary.totalScheduled}</span>
                 </div>
                 <div className="p-3 rounded-lg" style={{ background: "rgba(212,24,61,0.04)", border: "1px solid rgba(212,24,61,0.1)" }}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <AlertCircle size={12} className="text-destructive" />
-                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>Failed</span>
+                    <span className="text-muted-foreground" style={{ fontSize: "11px" }}>{t("analytics.failedLabel")}</span>
                   </div>
                   <span className="text-foreground" style={{ fontSize: "22px", fontWeight: 500 }}>{socialData.summary.totalFailed}</span>
                 </div>
@@ -314,7 +316,7 @@ function AnalyticsPageContent() {
               {/* Per-platform breakdown */}
               {Object.keys(socialData.summary.platforms || {}).length > 0 && (
                 <div className="mb-6">
-                  <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>By Platform</span>
+                  <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>{t("analytics.byPlatform")}</span>
                   <div className="space-y-2.5">
                     {Object.entries(socialData.summary.platforms).map(([platform, data]: [string, any]) => (
                       <div key={platform} className="flex items-center gap-3 p-2.5 rounded-lg border border-border">
@@ -351,7 +353,7 @@ function AnalyticsPageContent() {
               {/* Recent posts */}
               {socialData.posts?.length > 0 && (
                 <div>
-                  <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>Recent Posts</span>
+                  <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>{t("analytics.recentPosts")}</span>
                   <div className="space-y-2">
                     {socialData.posts.slice(0, 8).map((post: any) => (
                       <div key={post.id} className="flex items-center justify-between py-2 border-b border-border/50">
@@ -386,8 +388,8 @@ function AnalyticsPageContent() {
           ) : (
             <div className="text-center py-10">
               <Send size={22} className="mx-auto mb-3 text-muted-foreground/20" />
-              <p className="text-muted-foreground" style={{ fontSize: "13px" }}>No social deployments yet.</p>
-              <p className="text-muted-foreground/60 mt-1" style={{ fontSize: "12px" }}>Deploy content from Campaign Lab or Calendar to see platform metrics.</p>
+              <p className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("analytics.noSocialDeployments")}</p>
+              <p className="text-muted-foreground/60 mt-1" style={{ fontSize: "12px" }}>{t("analytics.noSocialDeploymentsDesc")}</p>
             </div>
           )}
         </motion.div>
@@ -396,20 +398,20 @@ function AnalyticsPageContent() {
         {postMetrics && postMetrics.posts?.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
             className="bg-card border border-border rounded-xl p-6 mb-10">
-            <h3 className="text-foreground mb-2" style={{ fontSize: "16px", fontWeight: 500 }}>Post Performance</h3>
-            <p className="text-muted-foreground mb-5" style={{ fontSize: "13px" }}>Engagement metrics fetched from your connected social platforms via Zernio.</p>
+            <h3 className="text-foreground mb-2" style={{ fontSize: "16px", fontWeight: 500 }}>{t("analytics.postPerformance")}</h3>
+            <p className="text-muted-foreground mb-5" style={{ fontSize: "13px" }}>{t("analytics.postPerformanceDesc")}</p>
 
             {/* Totals KPIs */}
             {postMetrics.totals && (postMetrics.totals.likes > 0 || postMetrics.totals.impressions > 0 || postMetrics.totals.comments > 0) && (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
                 {[
-                  { label: "Impressions", value: postMetrics.totals.impressions, icon: Eye },
-                  { label: "Likes", value: postMetrics.totals.likes, icon: Heart },
-                  { label: "Comments", value: postMetrics.totals.comments, icon: MessageSquare },
-                  { label: "Shares", value: postMetrics.totals.shares, icon: Share2 },
-                  { label: "Clicks", value: postMetrics.totals.clicks, icon: MousePointer },
-                  { label: "Saves", value: postMetrics.totals.saves, icon: Bookmark },
-                  { label: "Reach", value: postMetrics.totals.reach, icon: TrendingUp },
+                  { label: t("analytics.impressions"), value: postMetrics.totals.impressions, icon: Eye },
+                  { label: t("analytics.likes"), value: postMetrics.totals.likes, icon: Heart },
+                  { label: t("analytics.comments"), value: postMetrics.totals.comments, icon: MessageSquare },
+                  { label: t("analytics.shares"), value: postMetrics.totals.shares, icon: Share2 },
+                  { label: t("analytics.clicks"), value: postMetrics.totals.clicks, icon: MousePointer },
+                  { label: t("analytics.saves"), value: postMetrics.totals.saves, icon: Bookmark },
+                  { label: t("analytics.reach"), value: postMetrics.totals.reach, icon: TrendingUp },
                 ].filter(m => m.value > 0).map((m) => {
                   const Icon = m.icon;
                   return (
@@ -426,7 +428,7 @@ function AnalyticsPageContent() {
                   <div className="p-3 rounded-lg border border-ora-signal/20" style={{ background: "var(--ora-signal-light)" }}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <ThumbsUp size={11} className="text-ora-signal" />
-                      <span className="text-muted-foreground" style={{ fontSize: "10px", fontWeight: 500 }}>Eng. Rate</span>
+                      <span className="text-muted-foreground" style={{ fontSize: "10px", fontWeight: 500 }}>{t("analytics.engRate")}</span>
                     </div>
                     <span className="text-ora-signal" style={{ fontSize: "20px", fontWeight: 600 }}>{postMetrics.totals.engagementRate}</span>
                   </div>
@@ -437,18 +439,18 @@ function AnalyticsPageContent() {
             {/* Per-platform metrics */}
             {postMetrics.byPlatform && Object.keys(postMetrics.byPlatform).length > 0 && (
               <div className="mb-6">
-                <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>Platform Breakdown</span>
+                <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>{t("analytics.platformBreakdown")}</span>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-border">
-                        <th className="text-left py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}>Platform</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}>Posts</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Eye size={10} className="inline" /> Views</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Heart size={10} className="inline" /> Likes</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><MessageSquare size={10} className="inline" /> Comments</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Share2 size={10} className="inline" /> Shares</th>
-                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><MousePointer size={10} className="inline" /> Clicks</th>
+                        <th className="text-left py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}>{t("analytics.platform")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}>{t("analytics.posts")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Eye size={10} className="inline" /> {t("analytics.views")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Heart size={10} className="inline" /> {t("analytics.likes")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><MessageSquare size={10} className="inline" /> {t("analytics.comments")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><Share2 size={10} className="inline" /> {t("analytics.shares")}</th>
+                        <th className="text-right py-2 text-muted-foreground" style={{ fontSize: "11px", fontWeight: 500 }}><MousePointer size={10} className="inline" /> {t("analytics.clicks")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -471,7 +473,7 @@ function AnalyticsPageContent() {
 
             {/* Individual post metrics */}
             <div>
-              <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>Individual Posts</span>
+              <span className="text-muted-foreground uppercase tracking-wider block mb-3" style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.08em" }}>{t("analytics.individualPosts")}</span>
               <div className="space-y-2">
                 {postMetrics.posts.slice(0, 15).map((post: any, idx: number) => {
                   const m = post.metrics || {};
@@ -501,7 +503,7 @@ function AnalyticsPageContent() {
                           </>
                         ) : (
                           <span className="text-muted-foreground/50" style={{ fontSize: "10px" }}>
-                            {post._hasAnalytics === false ? "No analytics available yet" : "Pending..."}
+                            {post._hasAnalytics === false ? t("analytics.noAnalyticsYet") : t("analytics.pending")}
                           </span>
                         )}
                         <span className="text-muted-foreground" style={{ fontSize: "10px" }}>{(post.publishedAt || post.scheduledAt || "")?.slice(0, 10)}</span>
@@ -520,17 +522,17 @@ function AnalyticsPageContent() {
         {/* Recent campaigns table */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="bg-card border border-border rounded-xl p-6">
-          <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>Campaign Activity</h3>
+          <h3 className="text-foreground mb-5" style={{ fontSize: "16px", fontWeight: 500 }}>{t("analytics.campaignActivity")}</h3>
           {campaignList.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="text-left py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>Campaign</th>
-                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>Score</th>
-                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>Pieces</th>
-                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>Status</th>
-                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>Date</th>
+                    <th className="text-left py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{t("analytics.campaignCol")}</th>
+                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{t("analytics.scoreCol")}</th>
+                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{t("analytics.piecesCol")}</th>
+                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{t("analytics.statusCol")}</th>
+                    <th className="text-right py-2.5 text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{t("analytics.dateCol")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -555,9 +557,9 @@ function AnalyticsPageContent() {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-muted-foreground" style={{ fontSize: "13px" }}>No campaign data yet.</p>
+              <p className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("analytics.noCampaignData")}</p>
               <Link to="/hub" className="inline-flex items-center gap-1 mt-2 text-ora-signal" style={{ fontSize: "13px", fontWeight: 500 }}>
-                Create your first campaign <TrendingUp size={12} />
+                {t("analytics.createFirstCampaign")} <TrendingUp size={12} />
               </Link>
             </div>
           )}

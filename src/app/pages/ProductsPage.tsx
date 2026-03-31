@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 
 // ══════════════════════════════════════
 // Types
@@ -75,6 +76,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "CAD", "AUD", "JPY"];
 export function ProductsPage() {
   const { accessToken } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,16 +101,16 @@ export function ProductsPage() {
 
   // ── Load all products ──
   const loadProducts = useCallback(async () => {
-    if (!accessToken) { setLoading(false); setError("Vous devez être connecté."); return; }
+    if (!accessToken) { setLoading(false); setError(t("products.mustBeLoggedIn")); return; }
     setLoading(true); setError(null);
     try {
       const res = await listJson("/products/list", accessToken);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.success && Array.isArray(data.products)) setProducts(data.products);
-      else throw new Error(data.error || "Réponse inattendue");
+      else throw new Error(data.error || t("products.unexpectedResponse"));
     } catch (err: any) {
-      setError(err?.message || "Erreur de chargement");
+      setError(err?.message || t("products.loadError"));
     } finally { setLoading(false); }
   }, [accessToken]);
 
@@ -140,15 +142,15 @@ export function ProductsPage() {
         if (p.price) setPrice(p.price); if (p.currency) setCurrency(p.currency);
         if (p.category) setCategory(p.category); if (p.features?.length) setFeatures(p.features);
         if (p.imageUrls?.length) setScrapedImageUrls(p.imageUrls);
-        toast.success(`Informations extraites${p.imageUrls?.length ? ` + ${p.imageUrls.length} photo(s)` : ""}`);
-      } else toast.error(data.error || "Impossible d'extraire");
-    } catch { toast.error("Erreur lors de l'extraction"); }
+        toast.success(`${t("products.extractedInfo")}${p.imageUrls?.length ? ` + ${p.imageUrls.length} photo(s)` : ""}`);
+      } else toast.error(data.error || t("products.extractFailed"));
+    } catch { toast.error(t("products.extractError")); }
     finally { setScraping(false); }
   };
 
   const handleSave = async () => {
-    if (!accessToken) { toast.error("Non connecté"); return; }
-    if (!name.trim()) { toast.error("Le nom est requis"); return; }
+    if (!accessToken) { toast.error(t("products.notConnected")); return; }
+    if (!name.trim()) { toast.error(t("products.nameRequired")); return; }
     setSaving(true);
     try {
       const payload = { name: name.trim(), description: description.trim(), url: url.trim(),
@@ -158,7 +160,7 @@ export function ProductsPage() {
       const res = await postJson(path, accessToken, payload, isEdit ? "PUT" : "POST");
       const data = await res.json();
       if (data.success) {
-        toast.success(isEdit ? "Produit mis à jour" : "Produit créé");
+        toast.success(isEdit ? t("products.productUpdated") : t("products.productCreated"));
         const productId = data.product?.id || data.id;
         if (!isEdit && scrapedImageUrls.length > 0 && productId) {
           toast.info(`Import de ${scrapedImageUrls.length} photo(s)...`);
@@ -169,8 +171,8 @@ export function ProductsPage() {
           } catch {}
         }
         setDialogOpen(false); resetForm(); await loadProducts();
-      } else toast.error(data.error || "Erreur");
-    } catch { toast.error("Erreur réseau"); }
+      } else toast.error(data.error || "Error");
+    } catch { toast.error(t("products.networkError")); }
     finally { setSaving(false); }
   };
 
@@ -179,9 +181,9 @@ export function ProductsPage() {
     try {
       const res = await postJson(`/products/${id}`, accessToken, {}, "DELETE");
       const data = await res.json();
-      if (data.success) { toast.success("Produit supprimé"); setDeleteConfirm(null); setProducts(prev => prev.filter(p => p.id !== id)); }
-      else toast.error(data.error || "Erreur");
-    } catch { toast.error("Erreur réseau"); }
+      if (data.success) { toast.success(t("products.productDeleted")); setDeleteConfirm(null); setProducts(prev => prev.filter(p => p.id !== id)); }
+      else toast.error(data.error || "Error");
+    } catch { toast.error(t("products.networkError")); }
   };
 
   const handleImageUpload = async (productId: string, files: FileList) => {
@@ -191,10 +193,10 @@ export function ProductsPage() {
       const res = await postFormData(`/products/${productId}/images`, accessToken, files);
       const data = await res.json();
       if (data.success) {
-        toast.success(`${files.length} image(s) ajoutée(s)`); await loadProducts();
+        toast.success(`${files.length} ${t("products.imageAdded")}`); await loadProducts();
         if (editingProduct && data.product) setEditingProduct(data.product);
-      } else toast.error(data.error || "Erreur d'upload");
-    } catch { toast.error("Erreur d'upload"); }
+      } else toast.error(data.error || t("products.uploadError"));
+    } catch { toast.error(t("products.uploadError")); }
     finally { setUploadingImages(false); }
   };
 
@@ -204,10 +206,10 @@ export function ProductsPage() {
       const res = await postJson(`/products/${productId}/images/${imageId}`, accessToken, {}, "DELETE");
       const data = await res.json();
       if (data.success) {
-        toast.success("Image supprimée"); await loadProducts();
+        toast.success(t("products.imageDeleted")); await loadProducts();
         if (editingProduct) setEditingProduct(prev => prev ? { ...prev, images: prev.images.filter(img => img.id !== imageId) } : null);
       }
-    } catch { toast.error("Erreur de suppression"); }
+    } catch { toast.error(t("products.networkError")); }
   };
 
   const addFeature = () => setFeatures(prev => [...prev, ""]);
@@ -240,7 +242,7 @@ export function ProductsPage() {
                 className="inline-flex items-center gap-1.5 mb-3 transition-colors"
                 style={{ fontSize: "13px", color: "var(--text-tertiary)" }}
               >
-                <ArrowLeft size={14} /> Back to Brand
+                <ArrowLeft size={14} /> {t("products.backToBrand")}
               </Link>
               <h1
                 style={{
@@ -252,10 +254,10 @@ export function ProductsPage() {
                   lineHeight: 1.1,
                 }}
               >
-                Products & Services
+                {t("products.title")}
               </h1>
               <p style={{ fontSize: "15px", color: "var(--text-secondary)", marginTop: 6 }}>
-                Manage your catalogue to generate targeted campaigns
+                {t("products.subtitle")}
               </p>
             </div>
 
@@ -270,7 +272,7 @@ export function ProductsPage() {
                 boxShadow: "0 4px 12px rgba(17,17,17,0.25)",
               }}
             >
-              <Plus size={16} /> New Product
+              <Plus size={16} /> {t("products.newProduct")}
             </button>
           </div>
 
@@ -292,7 +294,7 @@ export function ProductsPage() {
               <button onClick={loadProducts}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl cursor-pointer text-[13px] font-medium"
                 style={{ background: "var(--secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-                Réessayer
+                {t("products.retry")}
               </button>
             </div>
           )}
@@ -310,15 +312,15 @@ export function ProductsPage() {
                 <Package size={28} style={{ color: "var(--accent)" }} />
               </div>
               <p style={{ fontSize: "18px", fontWeight: 600, fontFamily: "'Inter', sans-serif", color: "var(--text-primary)", marginBottom: 4 }}>
-                No products yet
+                {t("products.noProducts")}
               </p>
               <p style={{ fontSize: "14px", color: "var(--text-secondary)", marginBottom: 20 }}>
-                Add your first product to generate targeted campaigns
+                {t("products.noProductsDesc")}
               </p>
               <button onClick={openCreate}
                 className="flex items-center gap-2 px-5 py-3 rounded-xl cursor-pointer transition-all hover:opacity-90"
                 style={{ background: "var(--accent)", color: "#fff", fontSize: "14px", fontWeight: 500 }}>
-                <Plus size={16} /> Create Product
+                <Plus size={16} /> {t("products.createProduct")}
               </button>
             </div>
           )}
@@ -387,7 +389,7 @@ export function ProductsPage() {
                         <div className="flex items-center gap-1.5 mb-4">
                           <List size={12} style={{ color: "var(--text-tertiary)" }} />
                           <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
-                            {product.features.length} feature{product.features.length > 1 ? "s" : ""}
+                            {product.features.length} {product.features.length > 1 ? t("products.featuresPlural") : t("products.features")}
                           </span>
                         </div>
                       )}
@@ -396,7 +398,7 @@ export function ProductsPage() {
                       <button onClick={() => navigate(`/hub?type=campaign&productId=${product.id}`)}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl cursor-pointer transition-all hover:opacity-90 mb-3"
                         style={{ background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "13px", fontWeight: 500 }}>
-                        <Sparkles size={14} /> Generate Campaign
+                        <Sparkles size={14} /> {t("products.generateCampaign")}
                       </button>
 
                       {/* Actions */}
@@ -406,21 +408,21 @@ export function ProductsPage() {
                           style={{ color: "var(--text-secondary)" }}
                           onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <Edit3 size={12} /> Edit
+                          <Edit3 size={12} /> {t("products.edit")}
                         </button>
                         {deleteConfirm === product.id ? (
                           <>
                             <button onClick={() => handleDelete(product.id)}
                               className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg cursor-pointer text-[12px] font-semibold"
                               style={{ color: "var(--destructive)", background: "rgba(220,38,38,0.08)" }}>
-                              <Check size={12} /> Confirm
+                              <Check size={12} /> {t("products.confirm")}
                             </button>
                             <button onClick={() => setDeleteConfirm(null)}
                               className="px-3 py-2 rounded-lg cursor-pointer text-[12px]"
                               style={{ color: "var(--text-tertiary)" }}
                               onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                               onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                              Cancel
+                              {t("products.cancel")}
                             </button>
                           </>
                         ) : (
@@ -429,7 +431,7 @@ export function ProductsPage() {
                             style={{ color: "var(--text-secondary)" }}
                             onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                             onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                            <Trash2 size={12} /> Delete
+                            <Trash2 size={12} /> {t("products.delete")}
                           </button>
                         )}
                       </div>
@@ -466,7 +468,7 @@ export function ProductsPage() {
                   <div className="flex items-center justify-between px-6 py-5"
                     style={{ borderBottom: "1px solid var(--border)" }}>
                     <h2 style={{ fontSize: "18px", fontWeight: 600, fontFamily: "'Inter', sans-serif", color: "var(--text-primary)" }}>
-                      {editingProduct ? "Edit Product" : "New Product"}
+                      {editingProduct ? t("products.editProduct") : t("products.newProduct")}
                     </h2>
                     <button onClick={() => setDialogOpen(false)}
                       className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
@@ -483,10 +485,10 @@ export function ProductsPage() {
                     <div>
                       <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
                         style={{ color: "var(--text-tertiary)" }}>
-                        <Package size={12} /> Product Name *
+                        <Package size={12} /> {t("products.productName")} *
                       </label>
                       <input type="text" value={name} onChange={e => setName(e.target.value)}
-                        placeholder="e.g. Premium Wireless Headphones" style={inputSx}
+                        placeholder={t("products.productNamePlaceholder")} style={inputSx}
                         onFocus={e => e.target.style.borderColor = "var(--accent)"}
                         onBlur={e => e.target.style.borderColor = "var(--border)"} />
                     </div>
@@ -494,9 +496,9 @@ export function ProductsPage() {
                     {/* Description */}
                     <div>
                       <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-tertiary)" }}>Description</label>
+                        style={{ color: "var(--text-tertiary)" }}>{t("products.description")}</label>
                       <textarea value={description} onChange={e => setDescription(e.target.value)}
-                        placeholder="Describe your product..." rows={3}
+                        placeholder={t("products.descriptionPlaceholder")} rows={3}
                         style={{ ...inputSx, resize: "none" } as any}
                         onFocus={e => e.target.style.borderColor = "var(--accent)"}
                         onBlur={e => e.target.style.borderColor = "var(--border)"} />
@@ -506,11 +508,11 @@ export function ProductsPage() {
                     <div>
                       <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
                         style={{ color: "var(--text-tertiary)" }}>
-                        <LinkIcon size={12} /> Product URL
+                        <LinkIcon size={12} /> {t("products.productUrl")}
                       </label>
                       <div className="flex gap-2">
                         <input type="url" value={url} onChange={e => setUrl(e.target.value)}
-                          placeholder="https://your-store.com/product"
+                          placeholder={t("products.productUrlPlaceholder")}
                           style={{ ...inputSx, flex: 1 }}
                           onFocus={e => e.target.style.borderColor = "var(--accent)"}
                           onBlur={e => e.target.style.borderColor = "var(--border)"} />
@@ -518,7 +520,7 @@ export function ProductsPage() {
                           className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 whitespace-nowrap text-[12px] font-medium"
                           style={{ background: "var(--accent-warm-light)", border: "1px solid var(--accent-warm-medium)", color: "var(--accent)" }}>
                           {scraping ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                          {scraping ? "Fetching..." : "Auto-fill"}
+                          {scraping ? t("products.fetching") : t("products.autoFill")}
                         </button>
                       </div>
                     </div>
@@ -527,7 +529,7 @@ export function ProductsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                          style={{ color: "var(--text-tertiary)" }}><DollarSign size={12} /> Price</label>
+                          style={{ color: "var(--text-tertiary)" }}><DollarSign size={12} /> {t("products.price")}</label>
                         <input type="text" value={price} onChange={e => setPrice(e.target.value)}
                           placeholder="29.99" style={inputSx}
                           onFocus={e => e.target.style.borderColor = "var(--accent)"}
@@ -535,7 +537,7 @@ export function ProductsPage() {
                       </div>
                       <div>
                         <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                          style={{ color: "var(--text-tertiary)" }}>Currency</label>
+                          style={{ color: "var(--text-tertiary)" }}>{t("products.currency")}</label>
                         <select value={currency} onChange={e => setCurrency(e.target.value)}
                           style={{ ...inputSx, appearance: "none", cursor: "pointer" } as any}>
                           {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -546,9 +548,9 @@ export function ProductsPage() {
                     {/* Category */}
                     <div>
                       <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-tertiary)" }}><Tag size={12} /> Category</label>
+                        style={{ color: "var(--text-tertiary)" }}><Tag size={12} /> {t("products.category")}</label>
                       <input type="text" value={category} onChange={e => setCategory(e.target.value)}
-                        placeholder="e.g. Electronics, Fashion, SaaS..."
+                        placeholder={t("products.categoryPlaceholder")}
                         style={inputSx}
                         onFocus={e => e.target.style.borderColor = "var(--accent)"}
                         onBlur={e => e.target.style.borderColor = "var(--border)"} />
@@ -557,13 +559,13 @@ export function ProductsPage() {
                     {/* Features */}
                     <div>
                       <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                        style={{ color: "var(--text-tertiary)" }}><List size={12} /> Key Features</label>
+                        style={{ color: "var(--text-tertiary)" }}><List size={12} /> {t("products.keyFeatures")}</label>
                       <div className="space-y-2">
                         {features.map((feat, idx) => (
                           <div key={idx} className="flex items-center gap-2">
                             <input type="text" value={feat}
                               onChange={e => updateFeature(idx, e.target.value)}
-                              placeholder={`Feature ${idx + 1}`}
+                              placeholder={`${t("products.featurePlaceholder")} ${idx + 1}`}
                               style={{ ...inputSx, flex: 1 }}
                               onFocus={e => e.target.style.borderColor = "var(--accent)"}
                               onBlur={e => e.target.style.borderColor = "var(--border)"} />
@@ -583,7 +585,7 @@ export function ProductsPage() {
                           style={{ color: "var(--text-secondary)" }}
                           onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                          <Plus size={12} /> Add feature
+                          <Plus size={12} /> {t("products.addFeature")}
                         </button>
                       </div>
                     </div>
@@ -593,7 +595,7 @@ export function ProductsPage() {
                       <div>
                         <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
                           style={{ color: "var(--text-tertiary)" }}>
-                          <ImageIcon size={12} /> Photos trouvées ({scrapedImageUrls.length})
+                          <ImageIcon size={12} /> {t("products.photosFound")} ({scrapedImageUrls.length})
                         </label>
                         <div className="grid grid-cols-4 gap-2 mb-2">
                           {scrapedImageUrls.map((imgUrl, idx) => (
@@ -610,7 +612,7 @@ export function ProductsPage() {
                           ))}
                         </div>
                         <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
-                          Ces images seront importées à la création
+                          {t("products.photosImportNote")}
                         </p>
                       </div>
                     )}
@@ -619,7 +621,7 @@ export function ProductsPage() {
                     {editingProduct && (
                       <div>
                         <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
-                          style={{ color: "var(--text-tertiary)" }}><ImageIcon size={12} /> Product Images</label>
+                          style={{ color: "var(--text-tertiary)" }}><ImageIcon size={12} /> {t("products.productImages")}</label>
                         {editingProduct.images?.length > 0 && (
                           <div className="grid grid-cols-4 gap-2 mb-3">
                             {editingProduct.images.map(img => (
@@ -651,7 +653,7 @@ export function ProductsPage() {
                           onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                           {uploadingImages ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                          {uploadingImages ? "Uploading..." : "Upload Images"}
+                          {uploadingImages ? t("products.uploading") : t("products.uploadImages")}
                         </button>
                       </div>
                     )}
@@ -665,13 +667,13 @@ export function ProductsPage() {
                       style={{ color: "var(--text-secondary)" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      Cancel
+                      {t("products.cancel")}
                     </button>
                     <button onClick={handleSave} disabled={saving || !name.trim()}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 text-[13px] font-medium"
                       style={{ background: "var(--accent)", color: "#fff" }}>
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                      {saving ? "Saving..." : (editingProduct ? "Save Changes" : "Create Product")}
+                      {saving ? t("products.saving") : (editingProduct ? t("products.saveChanges") : t("products.createProduct"))}
                     </button>
                   </div>
                 </motion.div>

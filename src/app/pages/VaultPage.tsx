@@ -12,6 +12,7 @@ import {
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 import { ImageBank } from "../components/ImageBank";
 // PDF.js loaded lazily (only when a PDF is dropped)
 let pdfjsReady: typeof import("pdfjs-dist") | null = null;
@@ -256,6 +257,7 @@ export function VaultPage() {
 // ── Main ──
 
 function VaultPageContent() {
+  const { t } = useI18n();
   const [vault, setVault] = useState<VaultData>(EMPTY_VAULT);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -800,10 +802,10 @@ function VaultPageContent() {
               Brand Intelligence
             </p>
             <h1 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.15, color: "var(--foreground)" }}>
-              Brand Vault
+              {t("vault.title")}
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", lineHeight: 1.55, color: "var(--text-tertiary)", fontWeight: 400, maxWidth: 460 }}>
-              Your brand DNA, extracted and structured. Drop a URL, a PDF, or an image.
+              {t("vault.subtitle")}
             </p>
           </div>
           {hasData && (
@@ -830,7 +832,7 @@ function VaultPageContent() {
               ) : (
                 <Save size={14} />
               )}
-              {saving ? "Saving..." : saveOk ? "Saved" : "Save"}
+              {saving ? t("vault.saving") : saveOk ? t("vault.saved") : t("vault.save")}
             </motion.button>
           )}
         </div>
@@ -879,7 +881,7 @@ function VaultPageContent() {
           }}>
           <Upload size={14} style={{ color: "rgba(26,23,20,0.18)" }} />
           <span style={{ fontSize: "12px", color: "rgba(26,23,20,0.18)", fontWeight: 400 }}>
-            Drop or click — PDF, PPT, DOCX, images (max 20 MB)
+            {t("vault.dropzone")}
           </span>
           <input ref={fileRef} type="file" className="hidden"
             accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.jpg,.jpeg,.png,.webp,.svg"
@@ -986,7 +988,7 @@ function VaultPageContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* Colors */}
-              <SectionCard icon={Palette} title="Brand Colors" count={vault.colors.length}
+              <SectionCard icon={Palette} title={t("vault.colors")} count={vault.colors.length}
                 open={isOpen("colors")} onToggle={() => toggleSection("colors")}>
                 {vault.colors.length > 0 ? (
                   <div className="space-y-3">
@@ -1012,7 +1014,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Tone of Voice */}
-              <SectionCard icon={Megaphone} title="Tone of Voice" count={vault.tone?.adjectives?.length || 0}
+              <SectionCard icon={Megaphone} title={t("vault.tone")} count={vault.tone?.adjectives?.length || 0}
                 open={isOpen("tone")} onToggle={() => toggleSection("tone")}>
                 {vault.tone ? (
                   <div className="space-y-3">
@@ -1023,10 +1025,10 @@ function VaultPageContent() {
                       </span>
                     )}
                     <div className="grid grid-cols-2 gap-2.5">
-                      <ToneGauge label="Formality" value={vault.tone.formality} />
-                      <ToneGauge label="Confidence" value={vault.tone.confidence} />
-                      <ToneGauge label="Warmth" value={vault.tone.warmth} />
-                      <ToneGauge label="Humor" value={vault.tone.humor} />
+                      <ToneGauge label={t("vault.formality")} value={vault.tone.formality} />
+                      <ToneGauge label={t("vault.confidence")} value={vault.tone.confidence} />
+                      <ToneGauge label={t("vault.warmth")} value={vault.tone.warmth} />
+                      <ToneGauge label={t("vault.humor")} value={vault.tone.humor} />
                     </div>
                     {vault.tone.adjectives?.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
@@ -1043,7 +1045,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Audiences */}
-              <SectionCard icon={Users} title="Target Audiences" count={vault.target_audiences.length}
+              <SectionCard icon={Users} title={t("vault.targetAudiences")} count={vault.target_audiences.length}
                 open={isOpen("audiences")} onToggle={() => toggleSection("audiences")}>
                 {vault.target_audiences.length > 0 ? (
                   <div className="space-y-2">
@@ -1061,7 +1063,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Products */}
-              <SectionCard icon={ShoppingBag} title="Products & Services" count={vault.products_services.length}
+              <SectionCard icon={ShoppingBag} title={t("vault.products")} count={vault.products_services.length}
                 open={isOpen("products")} onToggle={() => toggleSection("products")}>
                 {vault.products_services.length > 0 ? (
                   <div>
@@ -1076,7 +1078,7 @@ function VaultPageContent() {
                     <Link to="/hub/vault/products"
                       className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all hover:opacity-90"
                       style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                      <ShoppingBag size={14} /> Manage Product Catalogue
+                      <ShoppingBag size={14} /> {t("vault.manageProducts")}
                     </Link>
                   </div>
                 ) : (
@@ -1085,22 +1087,22 @@ function VaultPageContent() {
                     <Link to="/hub/vault/products"
                       className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl mt-3 transition-all hover:opacity-90"
                       style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                      <Plus size={14} /> Add Products
+                      <Plus size={14} /> {t("vault.manageProducts")}
                     </Link>
                   </div>
                 )}
               </SectionCard>
 
               {/* Visual Style */}
-              <SectionCard icon={Camera} title="Visual Style" count={vault.photo_style ? 4 : 0}
+              <SectionCard icon={Camera} title={t("vault.photoStyle")} count={vault.photo_style ? 4 : 0}
                 open={isOpen("photo")} onToggle={() => toggleSection("photo")}>
                 {vault.photo_style ? (
                   <div className="grid grid-cols-2 gap-2.5">
                     {[
-                      { label: "Framing", value: vault.photo_style.framing },
-                      { label: "Mood", value: vault.photo_style.mood },
-                      { label: "Lighting", value: vault.photo_style.lighting },
-                      { label: "Subjects", value: vault.photo_style.subjects },
+                      { label: t("vault.framing"), value: vault.photo_style.framing },
+                      { label: t("vault.mood"), value: vault.photo_style.mood },
+                      { label: t("vault.lighting"), value: vault.photo_style.lighting },
+                      { label: t("vault.subjects"), value: vault.photo_style.subjects },
                     ].filter(x => x.value).map((x, i) => (
                       <div key={i} className="p-2.5 rounded-lg"
                         style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
@@ -1115,7 +1117,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Social Presence */}
-              <SectionCard icon={Target} title="Social Presence"
+              <SectionCard icon={Target} title={t("vault.socialPresence")}
                 count={vault.social_presence.filter(s => s.detected).length}
                 open={isOpen("social")} onToggle={() => toggleSection("social")}>
                 {vault.social_presence.filter(s => s.detected).length > 0 ? (
@@ -1138,7 +1140,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Typography */}
-              <SectionCard icon={Type} title="Typography" count={vault.fonts.length}
+              <SectionCard icon={Type} title={t("vault.fonts")} count={vault.fonts.length}
                 open={isOpen("fonts")} onToggle={() => toggleSection("fonts")}>
                 {vault.fonts.length > 0 ? (
                   <div className="space-y-1.5">
@@ -1154,7 +1156,7 @@ function VaultPageContent() {
               </SectionCard>
 
               {/* Key Messages */}
-              <SectionCard icon={FileText} title="Key Messages" count={vault.key_messages.length}
+              <SectionCard icon={FileText} title={t("vault.keyMessages")} count={vault.key_messages.length}
                 open={isOpen("messages")} onToggle={() => toggleSection("messages")}>
                 {vault.key_messages.length > 0 ? (
                   <div className="space-y-1.5">
@@ -1171,7 +1173,7 @@ function VaultPageContent() {
 
               {/* Vocabulary -- full width */}
               <div className="md:col-span-2">
-                <SectionCard icon={Paintbrush} title="Vocabulary"
+                <SectionCard icon={Paintbrush} title={t("vault.approvedTerms") + " / " + t("vault.forbiddenTerms")}
                   count={vault.approved_terms.length + vault.forbidden_terms.length}
                   open={isOpen("vocab")} onToggle={() => toggleSection("vocab")}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1179,7 +1181,7 @@ function VaultPageContent() {
                       <div className="flex items-center gap-2 mb-2.5">
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
                         <span style={{ fontSize: "10px", fontWeight: 600, color: "#666666", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Approved
+                          {t("vault.approvedTerms")}
                         </span>
                       </div>
                       {vault.approved_terms.length > 0 ? (
@@ -1197,7 +1199,7 @@ function VaultPageContent() {
                       <div className="flex items-center gap-2 mb-2.5">
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#DC2626" }} />
                         <span style={{ fontSize: "10px", fontWeight: 600, color: "#DC2626", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          Forbidden
+                          {t("vault.forbiddenTerms")}
                         </span>
                       </div>
                       {vault.forbidden_terms.length > 0 ? (
@@ -1218,7 +1220,7 @@ function VaultPageContent() {
               {/* Brand Charter -- full width */}
               {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
                 <div ref={charterRef} className="md:col-span-2">
-                  <SectionCard icon={BookOpen} title="Brand Charter"
+                  <SectionCard icon={BookOpen} title={t("vault.brandGuidelines")}
                     count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
                     open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
                     <div className="space-y-3">
@@ -1227,13 +1229,13 @@ function VaultPageContent() {
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {[
-                          { label: "Mission", value: vault.mission, key: "mission" },
-                          { label: "Vision", value: vault.vision, key: "vision" },
-                          { label: "Personality", value: vault.personality, key: "personality" },
-                          { label: "USP", value: vault.usp, key: "usp" },
-                          { label: "Values", value: vault.values, key: "values" },
-                          { label: "Font usage rules", value: vault.font_usage_rules, key: "font_usage_rules" },
-                          { label: "Competitors", value: vault.competitors, key: "competitors" },
+                          { label: t("vault.mission"), value: vault.mission, key: "mission" },
+                          { label: t("vault.vision"), value: vault.vision, key: "vision" },
+                          { label: t("vault.personality"), value: vault.personality, key: "personality" },
+                          { label: t("vault.usp"), value: vault.usp, key: "usp" },
+                          { label: t("vault.values"), value: vault.values, key: "values" },
+                          { label: t("vault.fontUsageRules"), value: vault.font_usage_rules, key: "font_usage_rules" },
+                          { label: t("vault.competitors"), value: vault.competitors, key: "competitors" },
                         ].filter(x => x.value).map((field) => (
                           <div key={field.key} className="p-3 rounded-lg"
                             style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
@@ -1248,7 +1250,7 @@ function VaultPageContent() {
                         <div className="p-3 rounded-lg"
                           style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
                           <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            Brand guidelines
+                            {t("vault.brandGuidelines")}
                           </span>
                           <p style={{ fontSize: "12px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 4, whiteSpace: "pre-line" }}>
                             {vault.brand_guidelines_text}
@@ -1262,7 +1264,7 @@ function VaultPageContent() {
 
               {/* Brand Strategy — full width */}
               <div className="md:col-span-2">
-                <SectionCard icon={Compass} title="Brand Strategy"
+                <SectionCard icon={Compass} title={t("vault.brandPlatform")}
                   count={vault.brand_platform ? 1 : 0}
                   open={isOpen("strategy")} onToggle={() => toggleSection("strategy")}>
                   {vault.brand_platform ? (
@@ -1287,7 +1289,7 @@ function VaultPageContent() {
             {/* Footer meta */}
             {vault.updatedAt && (
               <p className="text-center pt-6" style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 400 }}>
-                Last updated {new Date(vault.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                {t("vault.lastUpdated")} {new Date(vault.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                 {vault.source_url && <> from <span style={{ color: "var(--foreground)" }}>{vault.source_url}</span></>}
               </p>
             )}
@@ -1308,10 +1310,10 @@ function VaultPageContent() {
             <Building2 size={24} style={{ color: "var(--accent)" }} />
           </div>
           <h3 style={{ fontSize: "20px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
-            No brand data yet
+            {t("vault.noVault")}
           </h3>
           <p className="max-w-[380px] mx-auto mt-2" style={{ fontSize: "14px", lineHeight: 1.6, color: "var(--text-tertiary)", fontWeight: 400 }}>
-            Enter your company URL or upload a brand guidelines document above. ORA will extract everything automatically.
+            {t("vault.noVaultDesc")}
           </p>
         </motion.div>
       )}

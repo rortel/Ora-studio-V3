@@ -13,6 +13,7 @@ import { Link, useSearchParams } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
    TYPES
@@ -146,6 +147,7 @@ export function LibraryPage() {
 }
 
 function LibraryPageContent() {
+  const { t } = useI18n();
   const { getAuthHeader } = useAuth();
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") === "campaigns" ? "campaigns" : "content";
@@ -310,7 +312,7 @@ function LibraryPageContent() {
       a.download = `${getItemName(item).slice(0, 40)}${ext}`;
       a.click();
       URL.revokeObjectURL(a.href);
-      toast.success("Download started");
+      toast.success(t("library.downloadStarted"));
     } catch {
       // Fallback: open in new tab
       window.open(url, "_blank");
@@ -367,7 +369,7 @@ function LibraryPageContent() {
 
   // Copy text to clipboard
   const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text).then(() => toast.success("Copied!")).catch(() => {});
+    navigator.clipboard.writeText(text).then(() => toast.success(t("library.copied"))).catch(() => {});
   }, []);
 
   // Split items by type
@@ -398,20 +400,20 @@ function LibraryPageContent() {
   const unfiledCount = items.filter((item) => !item.folderId).length;
 
   const sortLabels: Record<SortMode, string> = {
-    "date-desc": "Newest first",
-    "date-asc": "Oldest first",
-    "name-asc": "Name A-Z",
-    "name-desc": "Name Z-A",
-    "modified-desc": "Last modified",
+    "date-desc": t("library.sortNewest"),
+    "date-asc": t("library.sortOldest"),
+    "name-asc": t("library.sortNameAZ"),
+    "name-desc": t("library.sortNameZA"),
+    "modified-desc": t("library.sortModified"),
   };
 
   const typeOptions = [
-    { id: "all", label: "All" },
-    { id: "image", label: "Images" },
-    { id: "text", label: "Text" },
-    { id: "code", label: "Code" },
-    { id: "film", label: "Film" },
-    { id: "sound", label: "Sound" },
+    { id: "all", label: t("library.typeAll") },
+    { id: "image", label: t("library.typeImages") },
+    { id: "text", label: t("library.typeText") },
+    { id: "code", label: t("library.typeCode") },
+    { id: "film", label: t("library.typeFilm") },
+    { id: "sound", label: t("library.typeSound") },
   ];
 
   if (loading) {
@@ -431,10 +433,10 @@ function LibraryPageContent() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "var(--foreground)" }}>
-              Library
+              {t("library.title")}
             </h1>
             <p className="mt-2" style={{ fontSize: "15px", color: "var(--text-tertiary)", fontWeight: 400 }}>
-              {contentItems.length} asset{contentItems.length !== 1 ? "s" : ""}, {campaignItems.length} campaign{campaignItems.length !== 1 ? "s" : ""}
+              {contentItems.length} {contentItems.length !== 1 ? t("library.assets") : t("library.asset")}, {campaignItems.length} {campaignItems.length !== 1 ? t("library.campaigns") : t("library.campaign")}
             </p>
           </div>
           <Link
@@ -443,7 +445,7 @@ function LibraryPageContent() {
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
           >
             <Plus size={14} />
-            Generate new
+            {t("library.generateNew")}
           </Link>
         </div>
 
@@ -459,7 +461,7 @@ function LibraryPageContent() {
               border: activeTab === "content" ? "none" : "1px solid var(--border)",
             }}
           >
-            Generated Content
+            {t("library.contentTab")}
             <span className="ml-1.5" style={{ fontSize: "11px", opacity: 0.6 }}>({contentItems.length})</span>
           </button>
           <button
@@ -472,7 +474,7 @@ function LibraryPageContent() {
               border: activeTab === "campaigns" ? "none" : "1px solid var(--border)",
             }}
           >
-            Campaigns
+            {t("library.campaignsTab")}
             <span className="ml-1.5" style={{ fontSize: "11px", opacity: 0.6 }}>({campaignItems.length})</span>
           </button>
         </div>
@@ -487,10 +489,10 @@ function LibraryPageContent() {
                   <Sparkles size={28} style={{ color: "#FFF" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
-                  No campaigns yet
+                  {t("library.noCampaigns")}
                 </h2>
                 <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
-                  Create a campaign from the AI Hub using Campaign Lab. Your campaigns will automatically appear here.
+                  {t("library.noCampaignsDesc")}
                 </p>
                 <Link
                   to="/hub"
@@ -498,7 +500,7 @@ function LibraryPageContent() {
                   style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
                 >
                   <Rocket size={14} />
-                  Open AI Hub
+                  {t("library.openAiHub")}
                 </Link>
               </div>
             ) : !openCampaignId ? (
@@ -555,7 +557,7 @@ function LibraryPageContent() {
                             })}
                           </div>
                           <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(0,0,0,0.08)", backdropFilter: "blur(4px)", fontSize: "10px", fontWeight: 600, color: "#fff" }}>
-                            {deliverableCount} asset{deliverableCount !== 1 ? "s" : ""}
+                            {deliverableCount} {deliverableCount !== 1 ? t("library.assets") : t("library.asset")}
                           </span>
                         </div>
                       </div>
@@ -609,14 +611,14 @@ function LibraryPageContent() {
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
                       style={{ background: "rgba(17,17,17,0.03)", border: "1px solid rgba(17,17,17,0.04)", fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)" }}
                     >
-                      <ChevronRight size={12} className="rotate-180" /> Back
+                      <ChevronRight size={12} className="rotate-180" /> {t("library.back")}
                     </button>
                     <div className="flex-1 min-w-0">
                       <h3 className="truncate" style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)" }}>
                         {headline || getItemName(openItem)}
                       </h3>
                       <div className="flex items-center gap-3 mt-1">
-                        <span style={{ fontSize: "11px", color: "#7A7572" }}>{deliverableCount} assets</span>
+                        <span style={{ fontSize: "11px", color: "#7A7572" }}>{deliverableCount} {t("library.assets")}</span>
                         <div className="flex items-center gap-1">
                           {platforms.map((p: string, pi: number) => {
                             const PIcon = getPlatformIcon(p);
@@ -636,14 +638,14 @@ function LibraryPageContent() {
                       style={{ background: "rgba(17,17,17,0.1)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 600 }}
                     >
                       {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                      Download All
+                      {t("library.downloadAll")}
                     </button>
                   </div>
 
                   {/* Brief */}
                   {cBrief && (
                     <div className="mb-5 px-4 py-3 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}>
-                      <p style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Brief</p>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "#7A7572", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>{t("library.brief")}</p>
                       <p style={{ fontSize: "13px", color: "#C4BEB8", lineHeight: 1.6 }}>{cBrief.slice(0, 500)}{cBrief.length > 500 ? "..." : ""}</p>
                     </div>
                   )}
@@ -755,7 +757,7 @@ function LibraryPageContent() {
                             {/* Brand-compliant badge */}
                             <div className="flex items-center gap-1 mt-2">
                               <Check size={11} style={{ color: "#666666" }} />
-                              <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>Brand-compliant</span>
+                              <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>{t("library.brandCompliant")}</span>
                             </div>
                           </div>
                         </motion.div>
@@ -775,7 +777,7 @@ function LibraryPageContent() {
           <div className="w-[220px] flex-shrink-0 hidden md:block">
             <div className="flex items-center justify-between mb-3">
               <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
-                Collections
+                {t("library.collections")}
               </span>
               <button
                 onClick={() => setShowNewFolder(true)}
@@ -795,7 +797,7 @@ function LibraryPageContent() {
                       value={newFolderName}
                       onChange={(e) => setNewFolderName(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleCreateFolder(); if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); } }}
-                      placeholder="Folder name..."
+                      placeholder={t("library.newFolderPlaceholder")}
                       autoFocus
                       className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40 min-w-0"
                       style={{ fontSize: "12px" }}
@@ -813,7 +815,7 @@ function LibraryPageContent() {
               className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-colors cursor-pointer mb-0.5 ${activeFolderId === null ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
             >
               <FolderOpen size={14} />
-              <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: activeFolderId === null ? 500 : 400 }}>All items</span>
+              <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: activeFolderId === null ? 500 : 400 }}>{t("library.allItems")}</span>
               <span style={{ fontSize: "10px", color: activeFolderId === null ? "var(--ora-signal)" : "var(--muted-foreground)" }}>{items.length}</span>
             </button>
 
@@ -824,7 +826,7 @@ function LibraryPageContent() {
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-colors cursor-pointer mb-0.5 ${activeFolderId === "__unfiled__" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-secondary"}`}
               >
                 <FolderOpen size={14} />
-                <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: activeFolderId === "__unfiled__" ? 500 : 400 }}>Unfiled</span>
+                <span className="flex-1 text-left truncate" style={{ fontSize: "13px", fontWeight: activeFolderId === "__unfiled__" ? 500 : 400 }}>{t("library.unfiled")}</span>
                 <span style={{ fontSize: "10px", color: activeFolderId === "__unfiled__" ? "var(--ora-signal)" : "var(--muted-foreground)" }}>{unfiledCount}</span>
               </button>
             )}
@@ -882,7 +884,7 @@ function LibraryPageContent() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search assets..."
+                  placeholder={t("library.searchPlaceholder")}
                   className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40 min-w-0"
                   style={{ fontSize: "13px" }}
                 />
@@ -990,12 +992,12 @@ function LibraryPageContent() {
                   <BookOpen size={28} style={{ color: "#FFF" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
-                  {items.length === 0 ? "Your library is empty" : "No matching items"}
+                  {items.length === 0 ? t("library.noContent") : t("library.noResults")}
                 </h2>
                 <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 380, margin: "0 auto 24px" }}>
                   {items.length === 0
-                    ? "Generate content in the AI Hub and save your favorites here. They'll be organized and always available."
-                    : "Try adjusting your search or filters."}
+                    ? t("library.noContentDesc")
+                    : t("library.noResultsDesc")}
                 </p>
                 {items.length === 0 && (
                   <Link
@@ -1004,7 +1006,7 @@ function LibraryPageContent() {
                     style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
                   >
                     <Rocket size={14} />
-                    Open AI Hub
+                    {t("library.openAiHub")}
                   </Link>
                 )}
               </div>
@@ -1189,7 +1191,7 @@ function LibraryPageContent() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-5 py-4 border-b border-border">
-                <h3 style={{ fontSize: "16px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)" }}>Move to folder</h3>
+                <h3 style={{ fontSize: "16px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)" }}>{t("library.moveTo")}</h3>
               </div>
               <div className="p-3 max-h-[300px] overflow-y-auto">
                 <button
@@ -1197,7 +1199,7 @@ function LibraryPageContent() {
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
                 >
                   <FolderOpen size={15} className="text-muted-foreground" />
-                  <span style={{ fontSize: "13px", color: "var(--foreground)" }}>No folder (unfiled)</span>
+                  <span style={{ fontSize: "13px", color: "var(--foreground)" }}>{t("library.unfiled")}</span>
                 </button>
                 {folders.map((folder) => (
                   <button
@@ -1216,7 +1218,7 @@ function LibraryPageContent() {
                   onClick={() => setMoveTargetItem(null)}
                   className="px-4 py-2 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
                   style={{ fontSize: "13px" }}
-                >Cancel</button>
+                >{t("calendar.cancel")}</button>
               </div>
             </motion.div>
           </motion.div>
@@ -1252,7 +1254,7 @@ function LibraryPageContent() {
                       className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white transition-all cursor-pointer hover:scale-105"
                       style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}
                     >
-                      <Download size={14} /> Download HD
+                      <Download size={14} /> {t("library.download")}
                     </button>
                     <button
                       onClick={() => setPreviewItem(null)}
@@ -1296,7 +1298,7 @@ function LibraryPageContent() {
                         className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
                         style={{ background: "rgba(17,17,17,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
                       >
-                        <Copy size={14} /> Copy
+                        <Copy size={14} /> {t("library.copyText")}
                       </button>
                     )}
                     <button
@@ -1304,13 +1306,13 @@ function LibraryPageContent() {
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer"
                       style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}
                     >
-                      <Download size={14} /> Download
+                      <Download size={14} /> {t("library.download")}
                     </button>
                     <button
                       onClick={() => setPreviewItem(null)}
                       className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground cursor-pointer"
                       style={{ fontSize: "13px" }}
-                    >Close</button>
+                    >{t("calendar.cancel")}</button>
                   </div>
                 </>
               )}
