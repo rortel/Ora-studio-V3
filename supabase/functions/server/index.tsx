@@ -456,63 +456,133 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return false; }
 }
 
-// ── Email templates ──
+// ── Email templates — ORA Brand System ──
 const emailStyle = `
-  body { font-family: Inter, -apple-system, sans-serif; color: #111; margin: 0; padding: 0; background: #fafafa; }
-  .container { max-width: 520px; margin: 0 auto; padding: 40px 24px; }
-  .card { background: #fff; border-radius: 16px; padding: 32px; border: 1px solid #ebebeb; }
-  h1 { font-size: 22px; font-weight: 700; margin: 0 0 16px 0; }
-  p { font-size: 14px; line-height: 1.7; color: #666; margin: 0 0 12px 0; }
-  .btn { display: inline-block; padding: 12px 28px; background: #111; color: #fff; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; margin: 16px 0; }
-  .footer { text-align: center; padding: 24px 0; font-size: 11px; color: #999; }
-  .footer a { color: #999; }
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111111; margin: 0; padding: 0; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
+  .wrapper { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
+  .header { text-align: center; padding: 32px 0 24px 0; }
+  .logo { font-size: 18px; font-weight: 700; color: #111111; letter-spacing: 0.12em; text-decoration: none; }
+  .divider { width: 40px; height: 1px; background: #d4d4d4; margin: 0 auto 24px auto; }
+  .card { background: #ffffff; border-radius: 16px; padding: 40px 36px; border: 1px solid #ebebeb; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  h1 { font-size: 24px; font-weight: 700; color: #111111; margin: 0 0 8px 0; letter-spacing: -0.02em; line-height: 1.3; }
+  .subtitle { font-size: 13px; color: #999999; margin: 0 0 28px 0; font-weight: 400; }
+  p { font-size: 14px; line-height: 1.75; color: #666666; margin: 0 0 16px 0; }
+  strong { color: #111111; font-weight: 600; }
+  .feature-list { margin: 20px 0; padding: 0; }
+  .feature { display: flex; align-items: flex-start; margin-bottom: 12px; font-size: 13px; line-height: 1.6; color: #666666; }
+  .feature-dot { width: 6px; height: 6px; background: #111111; border-radius: 50%; margin: 7px 12px 0 0; flex-shrink: 0; }
+  .btn { display: inline-block; padding: 14px 32px; background: #111111; color: #ffffff !important; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; margin: 24px 0 8px 0; }
+  .btn-outline { display: inline-block; padding: 12px 28px; background: transparent; color: #111111 !important; border: 1.5px solid #111111; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; margin: 8px 8px 8px 0; }
+  .highlight-box { background: #fafafa; border: 1px solid #ebebeb; border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
+  .highlight-box p { margin: 0; }
+  .stat { text-align: center; }
+  .stat-value { font-size: 36px; font-weight: 700; color: #111111; letter-spacing: -0.02em; }
+  .stat-label { font-size: 12px; color: #999999; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+  .note { font-size: 12px; color: #999999; margin-top: 24px; padding-top: 20px; border-top: 1px solid #ebebeb; }
+  .footer { text-align: center; padding: 28px 0 0 0; }
+  .footer-brand { font-size: 12px; font-weight: 600; color: #999999; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .footer-tagline { font-size: 11px; color: #d4d4d4; font-style: italic; margin-bottom: 12px; }
+  .footer-links { font-size: 11px; color: #999999; }
+  .footer-links a { color: #999999; text-decoration: underline; }
 `;
-const emailFooter = `<div class="footer"><p>ORA Studio — Your Brand. Amplified.<br><a href="https://ora-studio.app">ora-studio.app</a> · <a href="https://ora-studio.app/privacy">Confidentialité</a></p></div>`;
+const emailFooter = `
+  <div class="footer">
+    <div class="footer-brand">ORA STUDIO</div>
+    <div class="footer-tagline">Your Brand. Amplified.</div>
+    <div class="footer-links">
+      <a href="https://ora-studio.app">ora-studio.app</a> &nbsp;·&nbsp; <a href="https://ora-studio.app/privacy">Confidentialité</a> &nbsp;·&nbsp; <a href="mailto:hello@ora-studio.app">Contact</a>
+    </div>
+  </div>
+`;
 
 function emailWelcome(name: string): { subject: string; html: string } {
   return {
     subject: "Bienvenue sur ORA Studio",
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
-      <div class="container"><div class="card">
-        <h1>Bienvenue ${name} 👋</h1>
-        <p>Votre compte ORA Studio est prêt. Vous disposez de <strong>50 crédits offerts</strong> pour découvrir la plateforme.</p>
-        <p>Avec ORA, vous pouvez :</p>
-        <p>→ Générer des textes, images, vidéos et sons avec 38+ modèles IA<br>
-           → Comparer les résultats côte à côte dans l'Arena<br>
-           → Protéger votre identité de marque avec le Brand Vault<br>
-           → Lancer des campagnes multi-format en un clic</p>
-        <a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a>
-        <p style="color:#999; font-size:12px;">Des questions ? Répondez directement à cet email.</p>
-      </div>${emailFooter}</div></body></html>`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
+      <div class="wrapper">
+        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="card">
+          <h1>Bienvenue, ${name}.</h1>
+          <p class="subtitle">Votre studio créatif IA est prêt.</p>
+          <p>Vous disposez de <strong>50 crédits offerts</strong> pour explorer la plateforme et créer vos premiers contenus.</p>
+
+          <div class="highlight-box">
+            <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Générer des textes, images, vidéos et sons avec <strong>38+ modèles IA</strong></span></div>
+            <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Comparer les résultats côte à côte dans <strong>l'Arena</strong></span></div>
+            <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Protéger votre identité avec le <strong>Brand Vault</strong></span></div>
+            <div class="feature" style="margin-bottom:0;"><span class="feature-dot"></span><span>Lancer des campagnes multi-format en <strong>un clic</strong></span></div>
+          </div>
+
+          <div style="text-align:center;">
+            <a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a>
+          </div>
+
+          <p class="note">Des questions ? Répondez directement à cet email — nous lisons tout.</p>
+        </div>
+        ${emailFooter}
+      </div></body></html>`,
   };
 }
 
 function emailPlanConfirmation(name: string, plan: string, credits: number): { subject: string; html: string } {
   const planNames: Record<string, string> = { free: "Free", starter: "Starter", generate: "Pro", studio: "Business" };
+  const planLabel = planNames[plan] || plan;
   return {
-    subject: `Votre plan ${planNames[plan] || plan} est activé`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
-      <div class="container"><div class="card">
-        <h1>Plan ${planNames[plan] || plan} activé ✓</h1>
-        <p>Bonjour ${name},</p>
-        <p>Votre plan <strong>${planNames[plan] || plan}</strong> est actif. Vous disposez de <strong>${credits.toLocaleString("fr-FR")} crédits</strong> ce mois-ci.</p>
-        <p>Utilisez-les pour générer du contenu professionnel avec les meilleurs modèles IA du marché.</p>
-        <a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>
-      </div>${emailFooter}</div></body></html>`,
+    subject: `Plan ${planLabel} activé — ${credits.toLocaleString("fr-FR")} crédits disponibles`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
+      <div class="wrapper">
+        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="card">
+          <h1>Plan ${planLabel} activé.</h1>
+          <p class="subtitle">Merci pour votre confiance, ${name}.</p>
+
+          <div class="highlight-box">
+            <div class="stat">
+              <div class="stat-value">${credits.toLocaleString("fr-FR")}</div>
+              <div class="stat-label">crédits disponibles</div>
+            </div>
+          </div>
+
+          <p>Utilisez-les pour générer du contenu professionnel avec les meilleurs modèles IA du marché — texte, image, vidéo, audio.</p>
+
+          <div style="text-align:center;">
+            <a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>
+          </div>
+
+          <p class="note">Votre plan se renouvelle chaque mois. Gérez votre abonnement depuis votre <a href="https://ora-studio.app/profile" style="color:#666;">profil</a>.</p>
+        </div>
+        ${emailFooter}
+      </div></body></html>`,
   };
 }
 
 function emailLowCredits(name: string, remaining: number, plan: string): { subject: string; html: string } {
   return {
-    subject: `Il vous reste ${remaining} crédit${remaining > 1 ? "s" : ""} sur ORA`,
-    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
-      <div class="container"><div class="card">
-        <h1>Crédits bientôt épuisés</h1>
-        <p>Bonjour ${name},</p>
-        <p>Il vous reste <strong>${remaining} crédit${remaining > 1 ? "s" : ""}</strong> sur votre plan actuel. Pour continuer à créer sans interruption, pensez à passer au plan supérieur.</p>
-        <a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a>
-        <p style="color:#999; font-size:12px;">Vous recevez cet email car vos crédits sont inférieurs à 10% de votre quota.</p>
-      </div>${emailFooter}</div></body></html>`,
+    subject: `Il vous reste ${remaining} crédit${remaining > 1 ? "s" : ""} sur ORA Studio`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${emailStyle}</style></head><body>
+      <div class="wrapper">
+        <div class="header"><a href="https://ora-studio.app" class="logo">ORA STUDIO</a></div>
+        <div class="card">
+          <h1>Crédits bientôt épuisés.</h1>
+          <p class="subtitle">Un petit rappel, ${name}.</p>
+
+          <div class="highlight-box">
+            <div class="stat">
+              <div class="stat-value">${remaining}</div>
+              <div class="stat-label">crédits restants</div>
+            </div>
+          </div>
+
+          <p>Pour continuer à créer sans interruption, passez au plan supérieur ou rechargez vos crédits.</p>
+
+          <div style="text-align:center;">
+            <a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a>
+          </div>
+
+          <p class="note">Vous recevez cet email car vos crédits sont inférieurs à 10% de votre quota mensuel.</p>
+        </div>
+        ${emailFooter}
+      </div></body></html>`,
   };
 }
 
@@ -11307,32 +11377,85 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, { name: string; subject: string; h
   welcome: {
     name: "Bienvenue",
     subject: "Bienvenue sur ORA Studio",
-    html: `<h1>Bienvenue {{name}} 👋</h1><p>Votre compte ORA Studio est prêt. Vous disposez de <strong>50 crédits offerts</strong> pour découvrir la plateforme.</p><p>→ Générer des textes, images, vidéos et sons avec 38+ modèles IA<br>→ Comparer les résultats côte à côte dans l'Arena<br>→ Protéger votre identité de marque avec le Brand Vault</p><a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a>`,
+    html: `<h1>Bienvenue, {{name}}.</h1>
+<p class="subtitle">Votre studio créatif IA est prêt.</p>
+<p>Vous disposez de <strong>50 crédits offerts</strong> pour explorer la plateforme et créer vos premiers contenus.</p>
+<div class="highlight-box">
+  <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Générer des textes, images, vidéos et sons avec <strong>38+ modèles IA</strong></span></div>
+  <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Comparer les résultats dans <strong>l'Arena</strong></span></div>
+  <div class="feature" style="margin-bottom:10px;"><span class="feature-dot"></span><span>Protéger votre identité avec le <strong>Brand Vault</strong></span></div>
+  <div class="feature" style="margin-bottom:0;"><span class="feature-dot"></span><span>Lancer des campagnes multi-format en <strong>un clic</strong></span></div>
+</div>
+<div style="text-align:center;"><a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a></div>`,
     variables: ["name"],
   },
   plan_confirmed: {
     name: "Plan activé",
-    subject: "Votre plan {{plan}} est activé",
-    html: `<h1>Plan {{plan}} activé ✓</h1><p>Bonjour {{name}},</p><p>Votre plan <strong>{{plan}}</strong> est actif. Vous disposez de <strong>{{credits}} crédits</strong> ce mois-ci.</p><a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>`,
+    subject: "Plan {{plan}} activé — {{credits}} crédits disponibles",
+    html: `<h1>Plan {{plan}} activé.</h1>
+<p class="subtitle">Merci pour votre confiance, {{name}}.</p>
+<div class="highlight-box">
+  <div class="stat">
+    <div class="stat-value">{{credits}}</div>
+    <div class="stat-label">crédits disponibles</div>
+  </div>
+</div>
+<p>Utilisez-les pour générer du contenu professionnel — texte, image, vidéo, audio — avec les meilleurs modèles IA du marché.</p>
+<div style="text-align:center;"><a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a></div>`,
     variables: ["name", "plan", "credits"],
   },
   low_credits: {
     name: "Crédits bas",
-    subject: "Il vous reste {{remaining}} crédits sur ORA",
-    html: `<h1>Crédits bientôt épuisés</h1><p>Bonjour {{name}},</p><p>Il vous reste <strong>{{remaining}} crédits</strong>. Pour continuer à créer sans interruption, pensez à passer au plan supérieur.</p><a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a>`,
+    subject: "Il vous reste {{remaining}} crédits sur ORA Studio",
+    html: `<h1>Crédits bientôt épuisés.</h1>
+<p class="subtitle">Un petit rappel, {{name}}.</p>
+<div class="highlight-box">
+  <div class="stat">
+    <div class="stat-value">{{remaining}}</div>
+    <div class="stat-label">crédits restants</div>
+  </div>
+</div>
+<p>Pour continuer à créer sans interruption, passez au plan supérieur ou rechargez vos crédits.</p>
+<div style="text-align:center;"><a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a></div>
+<p class="note">Vous recevez cet email car vos crédits sont inférieurs à 10% de votre quota.</p>`,
     variables: ["name", "remaining"],
+  },
+  launch: {
+    name: "Lancement",
+    subject: "{{subject}}",
+    html: `<h1>{{headline}}</h1>
+<p class="subtitle">{{subtitle}}</p>
+<p>{{body}}</p>
+<div style="text-align:center;">
+  <a href="{{ctaUrl}}" class="btn">{{ctaText}}</a>
+</div>`,
+    variables: ["subject", "headline", "subtitle", "body", "ctaUrl", "ctaText"],
   },
   promo: {
     name: "Promotion",
     subject: "{{subject}}",
-    html: `<h1>{{headline}}</h1><p>{{body}}</p><a href="{{ctaUrl}}" class="btn">{{ctaText}}</a>`,
-    variables: ["subject", "headline", "body", "ctaUrl", "ctaText"],
+    html: `<h1>{{headline}}</h1>
+<p>{{body}}</p>
+<div class="highlight-box" style="text-align:center;">
+  <div class="stat-value" style="font-size:28px;">{{offer}}</div>
+  <div class="stat-label">offre limitée</div>
+</div>
+<div style="text-align:center;">
+  <a href="{{ctaUrl}}" class="btn">{{ctaText}}</a>
+</div>`,
+    variables: ["subject", "headline", "body", "offer", "ctaUrl", "ctaText"],
   },
   newsletter: {
     name: "Newsletter",
     subject: "{{subject}}",
-    html: `<h1>{{headline}}</h1><p>{{body}}</p><p style="color:#999; font-size:12px;">Vous recevez cet email car vous êtes inscrit sur ORA Studio.</p>`,
-    variables: ["subject", "headline", "body"],
+    html: `<h1>{{headline}}</h1>
+<p class="subtitle">{{subtitle}}</p>
+<p>{{body}}</p>
+<div style="text-align:center;margin:24px 0;">
+  <a href="https://ora-studio.app/hub" class="btn-outline">Accéder au Studio</a>
+</div>
+<p class="note">Vous recevez cet email car vous êtes inscrit sur ORA Studio. <a href="https://ora-studio.app/profile" style="color:#999;">Se désinscrire</a></p>`,
+    variables: ["subject", "headline", "subtitle", "body"],
   },
   custom: {
     name: "Email libre",
