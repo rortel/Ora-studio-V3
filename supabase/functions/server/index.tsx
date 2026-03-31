@@ -395,15 +395,34 @@ async function getOrCreateProfile(userId: string, email: string, name?: string) 
 async function deductCredit(userId: string, amount = 1): Promise<boolean> {
   try {
     const profile = await withTimeout(kv.get(`user:${userId}`), 3_000, "kv.get deduct");
-    if (!profile) return true; // laisser passer si KV lent
+    if (!profile) {
+      console.log(`[deductCredit] No profile for ${userId.slice(0,8)} — BLOCKING (KV miss)`);
+      return false; // block if profile not found — no free rides
+    }
     if (profile.role === "admin") return true;
     const remaining = (profile.credits || 0) - (profile.creditsUsed || 0);
     if (remaining < amount) return false;
     profile.creditsUsed = (profile.creditsUsed || 0) + amount;
     kv.set(`user:${userId}`, profile).catch(() => {}); // fire-and-forget
+
+    // ── Low credits alert: send email when < 10% remaining ──
+    const totalCredits = profile.credits || 0;
+    const newRemaining = remaining - amount;
+    const threshold = Math.max(totalCredits * 0.1, 5);
+    const prevRemaining = remaining;
+    // Only send once: when crossing the threshold (previous was above, now below)
+    if (newRemaining <= threshold && prevRemaining > threshold && totalCredits > 0) {
+      const name = profile.name || profile.email?.split("@")[0] || "there";
+      const email = profile.email;
+      if (email) {
+        const { subject, html } = emailLowCredits(name, newRemaining, profile.plan || "free");
+        sendEmail(email, subject, html).catch(() => {}); // fire-and-forget
+      }
+    }
     return true;
-  } catch {
-    return true; // KV timeout → laisser passer
+  } catch (err) {
+    console.log(`[deductCredit] KV timeout for ${userId.slice(0,8)} — BLOCKING: ${err}`);
+    return false; // block on timeout — prevents free generation under load
   }
 }
 
@@ -412,6 +431,89 @@ async function logEvent(type: string, details: any) {
     const id = `log:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await kv.set(id, { id, type, details, timestamp: new Date().toISOString() });
   } catch (e) { console.log("[logEvent] failed:", e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRANSACTIONAL EMAILS — Resend API (https://resend.com)
+// Set RESEND_API_KEY in Supabase secrets. Sends from hello@ora-studio.app
+// ══════════════════════════════════════════════════════════════
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
+const EMAIL_FROM = "ORA Studio <hello@ora-studio.app>";
+
+async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+  if (!RESEND_API_KEY) { console.log("[email] RESEND_API_KEY not set — skipping"); return false; }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = await res.json();
+    if (res.ok) { console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`); return true; }
+    console.log(`[email] Failed "${subject}" to ${to}: ${JSON.stringify(data)}`);
+    return false;
+  } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return false; }
+}
+
+// ── Email templates ──
+const emailStyle = `
+  body { font-family: Inter, -apple-system, sans-serif; color: #111; margin: 0; padding: 0; background: #fafafa; }
+  .container { max-width: 520px; margin: 0 auto; padding: 40px 24px; }
+  .card { background: #fff; border-radius: 16px; padding: 32px; border: 1px solid #ebebeb; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 16px 0; }
+  p { font-size: 14px; line-height: 1.7; color: #666; margin: 0 0 12px 0; }
+  .btn { display: inline-block; padding: 12px 28px; background: #111; color: #fff; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; margin: 16px 0; }
+  .footer { text-align: center; padding: 24px 0; font-size: 11px; color: #999; }
+  .footer a { color: #999; }
+`;
+const emailFooter = `<div class="footer"><p>ORA Studio — Your Brand. Amplified.<br><a href="https://ora-studio.app">ora-studio.app</a> · <a href="https://ora-studio.app/privacy">Confidentialité</a></p></div>`;
+
+function emailWelcome(name: string): { subject: string; html: string } {
+  return {
+    subject: "Bienvenue sur ORA Studio",
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
+      <div class="container"><div class="card">
+        <h1>Bienvenue ${name} 👋</h1>
+        <p>Votre compte ORA Studio est prêt. Vous disposez de <strong>50 crédits offerts</strong> pour découvrir la plateforme.</p>
+        <p>Avec ORA, vous pouvez :</p>
+        <p>→ Générer des textes, images, vidéos et sons avec 38+ modèles IA<br>
+           → Comparer les résultats côte à côte dans l'Arena<br>
+           → Protéger votre identité de marque avec le Brand Vault<br>
+           → Lancer des campagnes multi-format en un clic</p>
+        <a href="https://ora-studio.app/hub" class="btn">Commencer à créer</a>
+        <p style="color:#999; font-size:12px;">Des questions ? Répondez directement à cet email.</p>
+      </div>${emailFooter}</div></body></html>`,
+  };
+}
+
+function emailPlanConfirmation(name: string, plan: string, credits: number): { subject: string; html: string } {
+  const planNames: Record<string, string> = { free: "Free", starter: "Starter", generate: "Pro", studio: "Business" };
+  return {
+    subject: `Votre plan ${planNames[plan] || plan} est activé`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
+      <div class="container"><div class="card">
+        <h1>Plan ${planNames[plan] || plan} activé ✓</h1>
+        <p>Bonjour ${name},</p>
+        <p>Votre plan <strong>${planNames[plan] || plan}</strong> est actif. Vous disposez de <strong>${credits.toLocaleString("fr-FR")} crédits</strong> ce mois-ci.</p>
+        <p>Utilisez-les pour générer du contenu professionnel avec les meilleurs modèles IA du marché.</p>
+        <a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>
+      </div>${emailFooter}</div></body></html>`,
+  };
+}
+
+function emailLowCredits(name: string, remaining: number, plan: string): { subject: string; html: string } {
+  return {
+    subject: `Il vous reste ${remaining} crédit${remaining > 1 ? "s" : ""} sur ORA`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body>
+      <div class="container"><div class="card">
+        <h1>Crédits bientôt épuisés</h1>
+        <p>Bonjour ${name},</p>
+        <p>Il vous reste <strong>${remaining} crédit${remaining > 1 ? "s" : ""}</strong> sur votre plan actuel. Pour continuer à créer sans interruption, pensez à passer au plan supérieur.</p>
+        <a href="https://ora-studio.app/subscribe" class="btn">Voir les plans</a>
+        <p style="color:#999; font-size:12px;">Vous recevez cet email car vos crédits sont inférieurs à 10% de votre quota.</p>
+      </div>${emailFooter}</div></body></html>`,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1983,6 +2085,10 @@ app.post("/auth/signup", async (c) => {
     if (data.user) {
       await getOrCreateProfile(data.user.id, email, name);
       await logEvent("signup", { email, userId: data.user.id });
+      // Send welcome email (fire-and-forget)
+      const welcomeName = name || email.split("@")[0];
+      const { subject: ws, html: wh } = emailWelcome(welcomeName);
+      sendEmail(email, ws, wh).catch(() => {});
     }
     return c.json({ success: true, user: { id: data.user?.id, email } });
   } catch (err) {
@@ -2176,6 +2282,10 @@ app.post("/auth/choose-plan", async (c) => {
     profile.credits = PLAN_CREDITS[plan] || PLAN_CREDITS.free;
     await kv.set(`user:${user.id}`, profile);
     await logEvent("plan_change", { userId: user.id, email: user.email, plan });
+    // Send plan confirmation email (fire-and-forget)
+    const planName = profile.name || user.email.split("@")[0];
+    const { subject: ps, html: ph } = emailPlanConfirmation(planName, plan, profile.credits);
+    sendEmail(user.email, ps, ph).catch(() => {});
     return c.json({ success: true, profile });
   } catch (err) {
     return c.json({ error: `Choose plan error: ${err}` }, 500);

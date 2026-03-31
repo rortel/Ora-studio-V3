@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Navbar } from "../components/Navbar";
 import { Footer } from "../components/Footer";
 import { AppSidebar } from "../components/AppSidebar";
+import { CookieBanner } from "../components/CookieBanner";
 import { Loader2 } from "lucide-react";
 
 function PageLoader() {
@@ -85,6 +86,7 @@ export function RootLayout() {
           <Footer />
         </>
       )}
+      <CookieBanner />
     </div>
   );
 }
