@@ -3412,7 +3412,112 @@ app.post("/generate/campaign-plan", async (c) => {
   }
 });
 
+// ── PRODUCT ISOLATION (FAL Qwen-Image-Layered → BiRefNet fallback) ──
+// Qwen-Image-Layered decomposes image into semantic RGBA layers.
+// Layer 0 = main subject (the product) cleanly isolated from people/background.
+// Better than simple bg removal: semantic understanding of what IS the product.
+async function isolateProductFromImage(imageUrl: string): Promise<string | null> {
+  const falKey = Deno.env.get("FAL_API_KEY");
+  if (!falKey) { console.log("[isolate] FAL_API_KEY not configured, skipping"); return null; }
+  const start = Date.now();
+
+  // ── Strategy 1: Qwen-Image-Layered (semantic decomposition) ──
+  try {
+    console.log(`[isolate] Sending to Qwen-Image-Layered: ${imageUrl.slice(0, 80)}...`);
+    // Submit to queue
+    const submitRes = await fetch("https://queue.fal.run/fal-ai/qwen-image-layered", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+      body: JSON.stringify({
+        image_url: imageUrl,
+        prompt: "Isolate the main product or vehicle. Remove all people, humans, and background.",
+        num_layers: 2, // 2 layers: product (layer 0) + everything else (layer 1)
+        num_inference_steps: 28,
+        guidance_scale: 5,
+        output_format: "png",
+      }),
+    });
+    if (!submitRes.ok) {
+      const errBody = await submitRes.text();
+      console.log(`[isolate] Qwen submit error ${submitRes.status}: ${errBody.slice(0, 200)}`);
+    } else {
+      const submitData = await submitRes.json();
+      const requestId = submitData.request_id;
+
+      // Check if synchronous result (images already present)
+      if (submitData.images?.[0]?.url) {
+        console.log(`[isolate] Qwen sync result in ${Date.now() - start}ms — layer0: ${submitData.images[0].url.slice(0, 80)}`);
+        return submitData.images[0].url;
+      }
+
+      if (requestId) {
+        console.log(`[isolate] Qwen queued, requestId=${requestId}, polling...`);
+        // Poll for completion (max 60s — leave room for Flux img2img step after)
+        let elapsed = 0;
+        while (elapsed < 60_000) {
+          await new Promise(r => setTimeout(r, 3_000));
+          elapsed += 3_000;
+          try {
+            const statusRes = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${requestId}/status`, {
+              headers: { Authorization: `Key ${falKey}` },
+            });
+            if (!statusRes.ok) { console.log(`[isolate] Qwen poll ${statusRes.status} (${elapsed / 1000}s)`); continue; }
+            const statusData = await statusRes.json();
+            if (statusData.status === "COMPLETED") {
+              // Fetch result
+              const resultRes = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${requestId}`, {
+                headers: { Authorization: `Key ${falKey}` },
+              });
+              const resultData = await resultRes.json();
+              // Layer 0 = main subject (the product)
+              const productLayerUrl = resultData.images?.[0]?.url;
+              if (productLayerUrl) {
+                console.log(`[isolate] Qwen OK in ${Date.now() - start}ms — product layer: ${productLayerUrl.slice(0, 80)}`);
+                return productLayerUrl;
+              }
+              console.log(`[isolate] Qwen completed but no layer 0:`, JSON.stringify(resultData).slice(0, 200));
+              break;
+            }
+            if (statusData.status === "FAILED") {
+              console.log(`[isolate] Qwen FAILED: ${statusData.error || "unknown"}`);
+              break;
+            }
+            console.log(`[isolate] Qwen poll: status=${statusData.status} (${elapsed / 1000}s)`);
+          } catch (pollErr) { console.log(`[isolate] Qwen poll error: ${pollErr}`); }
+        }
+      }
+    }
+  } catch (err) { console.log(`[isolate] Qwen error: ${err}`); }
+
+  // ── Strategy 2: BiRefNet fallback (simple background removal) ──
+  try {
+    console.log(`[isolate] Fallback to BiRefNet (${Date.now() - start}ms elapsed)...`);
+    const res = await fetch("https://fal.run/fal-ai/birefnet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+      body: JSON.stringify({ image_url: imageUrl }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.log(`[isolate] BiRefNet error ${res.status}: ${errBody.slice(0, 200)}`);
+      return null;
+    }
+    const data = await res.json();
+    const cleanUrl = data.image?.url;
+    if (cleanUrl) {
+      console.log(`[isolate] BiRefNet OK in ${Date.now() - start}ms — clean: ${cleanUrl.slice(0, 80)}`);
+      return cleanUrl;
+    }
+    console.log(`[isolate] BiRefNet no URL:`, JSON.stringify(data).slice(0, 200));
+    return null;
+  } catch (err) {
+    console.log(`[isolate] BiRefNet error: ${err}`);
+    return null;
+  }
+}
+
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
+// Uses 2-step pipeline for product photos: BiRefNet bg removal → FAL Flux img2img (pixel-preserving)
 app.post("/generate/image-start", async (c) => {
   const t0 = Date.now();
   try {
@@ -3426,13 +3531,113 @@ app.post("/generate/image-start", async (c) => {
     const model = body.model || c.req.query("model") || "photon-1";
     const imageRefUrl = body.imageRefUrl || c.req.query("imageRefUrl") || undefined;
     const refSource = body.refSource || c.req.query("refSource") || "";
-    const brandVisualPrefix = body.brandVisual || c.req.query("brandVisual") || "";
 
-    const fullUrl = c.req.url;
-    console.log(`[image-start-POST] URL len=${fullUrl.length}, prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}`);
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
-    // ── SERVER-SIDE BRAND CONTEXT ──
+    if (user) deductCredit(user.id, CREDIT_COST.image).catch(() => {});
+
+    const isUploadRef = refSource === "upload";
+
+    // ═══ PRODUCT PHOTO REFERENCE: 2-step pipeline ═══
+    // Step 1: FAL BiRefNet removes background + people → clean product only
+    // Step 2: FAL Flux img2img with LOW strength → preserves product pixels, changes scene
+    if (imageRefUrl && isUploadRef) {
+      const falKey = Deno.env.get("FAL_API_KEY");
+      if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
+
+      // ── Step 1: Isolate product (remove people + background) ──
+      console.log(`[image-start-POST] STEP 1: Product isolation (Qwen Layered → BiRefNet fallback)...`);
+      const cleanRefUrl = await isolateProductFromImage(imageRefUrl);
+      const productImageUrl = cleanRefUrl || imageRefUrl;
+      console.log(`[image-start-POST] BG_REMOVED=${!!cleanRefUrl} (${Date.now() - t0}ms)`);
+
+      // ── Scene prompt mapping ──
+      const sceneMap: Record<string, { prompt: string; strength: number }> = {
+        "photoshoot": { prompt: "Professional studio photoshoot, seamless pure white cyclorama background, professional softbox lighting with subtle reflections, wide angle, hyperrealistic 8k, ultra detailed, sharp focus, commercial product photography, clean minimalist, no people, no humans", strength: 0.35 },
+        "packshot": { prompt: "Commercial packshot, neutral light grey gradient background, even diffused lighting, no harsh shadows, centered product, sharp focus, catalog photography, 8k, no people, no humans", strength: 0.30 },
+        "lifestyle": { prompt: "Product in natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography, bokeh background, no people, no humans", strength: 0.50 },
+        "flat lay": { prompt: "Creative flat lay arrangement, top-down aerial view, clean marble surface with complementary props, soft even lighting, magazine editorial style, no people, no humans", strength: 0.50 },
+        "cinématique": { prompt: "Cinematic wide shot, dramatic moody lighting, anamorphic lens flare, film grain, deep contrast, rich cinematic color grading, dark atmospheric, no people, no humans", strength: 0.55 },
+        "default": { prompt: "Professional studio, clean white background, soft diffused studio lighting, product photography, 8k hyperrealistic, sharp focus, no people, no humans", strength: 0.35 },
+      };
+      const promptLower = rawPrompt.toLowerCase();
+      let scene = sceneMap["default"];
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scene = sceneMap["photoshoot"];
+      else if (promptLower.includes("packshot")) scene = sceneMap["packshot"];
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scene = sceneMap["lifestyle"];
+      else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scene = sceneMap["flat lay"];
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scene = sceneMap["cinématique"];
+
+      // ── Step 2: FAL Flux img2img (pixel-preserving denoising) ──
+      // Low strength = HIGH preservation of original pixels (product shape, logo, colors stay intact)
+      // Only the background/scene changes based on the prompt
+      const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
+      const falImageSize = falSizeMap[aspectRatio] || "square_hd";
+
+      console.log(`[image-start-POST] STEP 2: FAL Flux img2img, strength=${scene.strength}, size=${falImageSize}, scene=${scene.prompt.slice(0, 60)}...`);
+
+      // Try Flux Pro first, then Flux Dev as fallback
+      for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
+        try {
+          const falBody = {
+            prompt: scene.prompt,
+            image_url: productImageUrl,
+            strength: scene.strength,
+            image_size: falImageSize,
+            num_images: 1,
+            enable_safety_checker: true,
+            num_inference_steps: 28,
+            guidance_scale: 7.5,
+          };
+          console.log(`[image-start-POST] Trying FAL ${falModel}...`);
+          const res = await fetch(`https://fal.run/${falModel}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+            body: JSON.stringify(falBody),
+          });
+          if (!res.ok) {
+            const errBody = await res.text();
+            console.log(`[image-start-POST] FAL ${falModel} error ${res.status}: ${errBody.slice(0, 200)}`);
+            continue;
+          }
+          const data = await res.json();
+          const imageUrl = data.images?.[0]?.url;
+          if (imageUrl) {
+            console.log(`[image-start-POST] FAL ${falModel} OK in ${Date.now() - t0}ms — imageUrl: ${imageUrl.slice(0, 80)}`);
+            // Return imageUrl directly (no polling needed — FAL is synchronous)
+            return c.json({ success: true, imageUrl, provider: `fal/${falModel}`, directResult: true });
+          }
+        } catch (err) { console.log(`[image-start-POST] FAL ${falModel} error: ${err}`); }
+      }
+
+      // ── Fallback: Luma Photon with modify_image_ref ──
+      console.log(`[image-start-POST] FAL failed, falling back to Luma modify_image_ref...`);
+      const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
+      const lumaBody: any = {
+        prompt: scene.prompt,
+        model: "photon-1",
+        aspect_ratio: lumaArMap[aspectRatio] || "1:1",
+        modify_image_ref: { url: productImageUrl, weight: 1.0 },
+      };
+      const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${Deno.env.get("LUMA_API_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify(lumaBody),
+      });
+      if (lumaRes.ok) {
+        const generation = await lumaRes.json();
+        if (generation.id) {
+          console.log(`[image-start-POST] Luma fallback OK ${Date.now() - t0}ms, genId=${generation.id}`);
+          return c.json({ success: true, generationId: generation.id, state: generation.state || "queued" });
+        }
+      }
+      const errText = await lumaRes.text();
+      console.error(`[image-start-POST] Luma fallback error ${lumaRes.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: "All image generation providers failed" }, 500);
+    }
+
+    // ═══ NO REF or non-upload ref: Standard Luma generation ═══
     let prompt = rawPrompt;
     let brandCtx: BrandContext | null = null;
     if (user) {
@@ -3440,54 +3645,34 @@ app.post("/generate/image-start", async (c) => {
         brandCtx = await buildBrandContext(user.id);
         if (brandCtx) {
           prompt = enrichPromptWithBrand(prompt, brandCtx, aspectRatio);
-          console.log(`[image-start-POST] Brand-enriched prompt (${prompt.length} chars)`);
         }
       } catch (err) { console.log(`[image-start-POST] buildBrandContext failed: ${err}`); }
     }
-
     const antiTextSuffix = ". No visible text, letters, numbers, words, watermarks, labels or typography in the image.";
     if (brandCtx?.brandName) {
       const bn = brandCtx.brandName;
-      const before = prompt;
       prompt = prompt.replace(new RegExp(bn, "gi"), "the product");
-      if (before !== prompt) console.log(`[image-start-POST] Stripped brand name "${bn}"`);
     }
 
-    const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
-    const lumaBody: any = { prompt: prompt + antiTextSuffix, model: "photon-1", aspect_ratio: lumaArMap[aspectRatio] || "1:1" };
-
-    const isUploadRef = refSource === "upload";
-    if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
-      const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
-      let cleanPrompt = rawPrompt.slice(0, 300);
-      if (brandCtx?.brandName) {
-        cleanPrompt = cleanPrompt.replace(new RegExp(brandCtx.brandName, "gi"), "the product");
-      }
-      lumaBody.prompt = `${cleanPrompt}. CRITICAL: The product/subject must remain EXACTLY identical. Only change background, environment, lighting. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
-      console.log(`[image-start-POST] MODIFY_IMAGE_REF weight=0.95`);
-    } else if (imageRefUrl) {
-      lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
+    const lumaArMap2: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
+    const lumaBody2: any = { prompt: prompt + antiTextSuffix, model: "photon-1", aspect_ratio: lumaArMap2[aspectRatio] || "1:1" };
+    if (imageRefUrl) {
+      lumaBody2.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     }
-
-    console.log(`[image-start-POST] Luma body: prompt=${lumaBody.prompt?.length} chars, model=photon-1, ratio=${lumaBody.aspect_ratio}, hasModifyRef=${!!lumaBody.modify_image_ref}`);
 
     const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
       method: "POST",
       headers: { Authorization: `Bearer ${Deno.env.get("LUMA_API_KEY")}`, "Content-Type": "application/json" },
-      body: JSON.stringify(lumaBody),
+      body: JSON.stringify(lumaBody2),
     });
-
     if (!lumaRes.ok) {
       const errText = await lumaRes.text();
       console.error(`[image-start-POST] Luma error ${lumaRes.status}: ${errText.slice(0, 200)}`);
       return c.json({ success: false, error: `Luma error: ${lumaRes.status}` }, 500);
     }
-
     const generation = await lumaRes.json();
     const genId = generation.id;
     if (!genId) return c.json({ success: false, error: "No generation ID" }, 500);
-
     console.log(`[image-start-POST] OK ${Date.now() - t0}ms, genId=${genId}`);
     return c.json({ success: true, generationId: genId, state: generation.state || "queued" });
   } catch (err) {
@@ -3579,26 +3764,20 @@ app.get("/generate/image-start", async (c) => {
     // User uploads → modify_image_ref (PRESERVES the photo content, adapts for format)
     // Brand Image Bank → image_ref (STYLE reference, inspires the generation)
     if (imageRefUrl && isUploadRef) {
-      // CLIENT UPLOAD: use modify_image_ref to PRESERVE the actual product
-      // Weight 0.95 = preserve 95% of original product — only change background/environment
-      body.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
-      console.log(`[image-start] Using MODIFY_IMAGE_REF (upload, weight=0.95): ${imageRefUrl.slice(0, 100)}...`);
-      // Simplify prompt for modify mode — the product MUST stay identical
-      // Only the scene/background/lighting changes, NOT the product itself
-      const formatHint = aspectRatio === "9:16" ? "vertical story format" : aspectRatio === "1:1" ? "square format" : "landscape format";
-      let cleanPrompt = rawPrompt.slice(0, 300);
-      // Strip brand name from the clean prompt too
-      if (brandCtx?.brandName) {
-        const lbn = brandCtx.brandName.toLowerCase();
-        let ci = cleanPrompt.toLowerCase().indexOf(lbn);
-        while (ci !== -1) {
-          cleanPrompt = cleanPrompt.slice(0, ci) + "the product" + cleanPrompt.slice(ci + brandCtx.brandName.length);
-          ci = cleanPrompt.toLowerCase().indexOf(lbn, ci + 11);
-        }
-      }
-      prompt = `${cleanPrompt}. CRITICAL: The product/subject in the photo must remain EXACTLY identical — same shape, colors, details, proportions, textures, logos. Only change the background, environment, lighting and scene composition. ${formatHint}. Professional commercial photography.${antiTextSuffix}`;
-      body.prompt = prompt; // Update body with simplified prompt
-      console.log(`[image-start] Simplified prompt for upload modify (${prompt.length} chars)`);
+      // BOTH modify_image_ref + image_ref for max fidelity
+      body.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
+      body.image_ref = [{ url: imageRefUrl, weight: 1.0 }];
+      const promptLower = rawPrompt.toLowerCase();
+      const noHumans = " Remove all people and humans from the scene. Only the main product/vehicle/object remains, completely alone. No persons, no figures, no hands.";
+      let scenePrompt = "Remove background and people. Product alone on clean studio background. Professional softbox lighting. Sharp focus. 8k hyperrealistic render." + noHumans;
+      if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scenePrompt = "Remove background and people. Place the product alone on a seamless pure white cyclorama studio background. Professional softbox lighting with subtle reflections. Wide angle lens. Hyperrealistic 8k, ultra detailed, sharp focus." + noHumans;
+      else if (promptLower.includes("packshot")) scenePrompt = "Remove background and people. Product alone on neutral light grey gradient. Even diffused lighting, no harsh shadows. Centered, sharp focus. Commercial catalog, 8k." + noHumans;
+      else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scenePrompt = "Remove people. Place the product alone in a natural outdoor environment. Warm golden hour sunlight, depth of field, editorial photography." + noHumans;
+      else if (promptLower.includes("flat")) scenePrompt = "Remove people. Product alone in a creative flat lay, top-down view, clean surface, soft even lighting, magazine editorial." + noHumans;
+      else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("dramatic")) scenePrompt = "Remove people. Product alone in a cinematic wide shot, dramatic moody lighting, anamorphic lens, film grain, deep contrast." + noHumans;
+      prompt = scenePrompt + antiTextSuffix;
+      body.prompt = prompt;
+      console.log(`[image-start] IMAGE_REF weight=1.0, scene: ${prompt.slice(0, 80)}`);
     } else if (imageRefUrl) {
       // BRAND IMAGE BANK: use image_ref as style reference
       body.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
@@ -12405,7 +12584,7 @@ app.get("/generate/cl-image-start", async (c) => {
 
     const lumaBody: any = { prompt, model: "photon-1", aspect_ratio: aspectRatio };
     if (imageRefUrl && isUploadRef) {
-      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+      lumaBody.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
     } else if (imageRefUrl) {
       lumaBody.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
     } else if (autoResolvedImageUrl) {
@@ -12949,7 +13128,7 @@ app.post("/campaign/generate-image", async (c) => {
       if (imageRefUrl) {
         if (refSource === "upload") {
           // User-uploaded photo: modify_image_ref preserves product identity, weight 0.95
-          b.modify_image_ref = { url: imageRefUrl, weight: 0.95 };
+          b.modify_image_ref = { url: imageRefUrl, weight: 1.0 };
         } else {
           // Style reference: image_ref with weight 0.80
           b.image_ref = [{ url: imageRefUrl, weight: 0.80 }];

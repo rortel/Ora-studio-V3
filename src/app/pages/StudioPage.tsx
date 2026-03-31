@@ -310,9 +310,13 @@ export function StudioPage() {
               try {
                 const startRes = await serverPost("/generate/image-start", {
                   prompt, model: m, aspectRatio, imageRefUrl: refUrl, refSource: "upload",
-                });
-                if (startRes.success && startRes.generationId) {
-                  // Poll for completion
+                }, 180_000); // 180s timeout: Qwen isolation (~60s) + Flux img2img (~20s)
+                if (startRes.success && startRes.directResult && startRes.imageUrl) {
+                  // FAL Flux img2img returns result directly (no polling needed)
+                  console.log(`[studio] image-start direct result from ${startRes.provider || "fal"}`);
+                  items.push({ url: startRes.imageUrl, model: m, latencyMs: 0 });
+                } else if (startRes.success && startRes.generationId) {
+                  // Luma fallback — poll for completion
                   let imageUrl: string | null = null;
                   for (let poll = 0; poll < 30; poll++) {
                     await new Promise(r => setTimeout(r, 3000));
@@ -804,8 +808,11 @@ export function StudioPage() {
             try {
               const startRes = await serverPost("/generate/image-start", {
                 prompt: result.prompt, model: m, aspectRatio: "1:1", imageRefUrl: refUrl, refSource: "upload",
-              });
-              if (startRes.success && startRes.generationId) {
+              }, 180_000);
+              if (startRes.success && startRes.directResult && startRes.imageUrl) {
+                // FAL direct result (no polling)
+                items.push({ url: startRes.imageUrl, model: m, latencyMs: 0 });
+              } else if (startRes.success && startRes.generationId) {
                 let imageUrl: string | null = null;
                 for (let poll = 0; poll < 30; poll++) {
                   await new Promise(r => setTimeout(r, 3000));
