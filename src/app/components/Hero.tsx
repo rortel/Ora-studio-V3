@@ -35,7 +35,7 @@ export function Hero() {
         loop
         playsInline
         className="absolute inset-0 h-full w-full object-cover"
-        style={{ zIndex: 0, transform: "scale(1.05)", transformOrigin: "center center" }}
+        style={{ zIndex: 0, transform: "scale(1.15)", transformOrigin: "center center" }}
         src={heroVideo}
       />
 
