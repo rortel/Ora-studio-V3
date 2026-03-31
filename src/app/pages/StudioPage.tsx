@@ -976,6 +976,13 @@ export function StudioPage() {
                         onSuggestion={handleSend}
                         onCompare={handleCompare}
                         onFinalize={(posts, logoUrl, brief) => setFinalizingCampaign({ posts, logoUrl, brief })}
+                        onEdit={(item, type, prompt) => {
+                          if (type === "image" && item.url) {
+                            handleSend(`Édite cette image : garde le même sujet mais propose une variante différente. Image originale: ${item.url}`);
+                          } else if (type === "text" && item.text) {
+                            handleSend(`Réécris ce texte avec une approche différente : "${item.text.slice(0, 200)}"`);
+                          }
+                        }}
                       />
                     )}
                   </div>
@@ -1337,11 +1344,12 @@ function UserBubble({ content }: { content: string }) {
 }
 
 /* ── Assistant message ── */
-function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize }: {
+function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: {
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1370,7 +1378,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize }: {
 
       {/* Generated results */}
       {msg.result && (
-        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} logoUrl={msg.result.logoUrl} />
+        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} logoUrl={msg.result.logoUrl} />
       )}
 
       {/* Suggestions */}
@@ -1614,26 +1622,69 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
 }
 
 /* ── Result card ── */
-function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
+function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
   logoUrl?: string;
 }) {
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const toggleSelect = (i: number) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
+  const selectAll = () => setSelected(new Set(result.items.map((_, i) => i)));
+  const clearSelection = () => setSelected(new Set());
+
   if (result.type === "image") {
     return (
       <div className="space-y-2">
+        {/* Selection bar */}
+        {result.items.length > 1 && (
+          <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            <button onClick={selected.size === result.items.length ? clearSelection : selectAll}
+              className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
+              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
+              {selected.size === result.items.length ? "Désélectionner" : "Tout sélectionner"}
+            </button>
+            {selected.size > 0 && (
+              <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
+                {selected.size}/{result.items.length} sélectionné{selected.size > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
         <div className={`grid gap-2 ${result.items.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
           {result.items.map((item, i) => (
-            <div key={i} className="relative rounded-xl overflow-hidden group"
-              style={{ background: "#111", aspectRatio: "1" }}>
+            <div key={i} className="relative rounded-xl overflow-hidden group cursor-pointer"
+              style={{ background: "#111", aspectRatio: "1", outline: selected.has(i) ? "3px solid var(--foreground)" : "none", outlineOffset: "-3px" }}
+              onClick={() => result.items.length > 1 && toggleSelect(i)}>
               <img src={item.url} className="w-full h-full object-cover" alt="" />
+              {/* Selection indicator */}
+              {result.items.length > 1 && (
+                <div className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center transition-all"
+                  style={{ background: selected.has(i) ? "var(--foreground)" : "rgba(0,0,0,0.5)", border: "2px solid rgba(255,255,255,0.8)" }}>
+                  {selected.has(i) && <Check size={12} style={{ color: "var(--background)" }} />}
+                </div>
+              )}
               <div className="absolute bottom-0 inset-x-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.7))" }}>
                 <div className="flex items-center justify-between">
                   <span style={{ fontSize: "10px", color: "#fff", fontWeight: 500 }}>{item.model}</span>
                   <div className="flex gap-1">
+                    {onEdit && (
+                      <button onClick={e => { e.stopPropagation(); onEdit(item, "image", result.prompt); }}
+                        className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer"
+                        style={{ background: "rgba(255,255,255,0.2)" }}
+                        title="Éditer">
+                        <Pencil size={10} style={{ color: "#fff" }} />
+                      </button>
+                    )}
                     <a href={item.url} download target="_blank" rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
                       className="w-6 h-6 rounded-md flex items-center justify-center"
                       style={{ background: "rgba(255,255,255,0.2)" }}>
                       <Download size={10} style={{ color: "#fff" }} />
@@ -1644,13 +1695,35 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             </div>
           ))}
         </div>
-        <button onClick={() => onCompare(result)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-          <Columns2 size={12} /> Comparer avec d'autres IA
-        </button>
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => onCompare(result)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+            <Columns2 size={12} /> Comparer avec d'autres IA
+          </button>
+          {selected.size > 0 && (
+            <button onClick={() => {
+              const selectedItems = result.items.filter((_, i) => selected.has(i));
+              selectedItems.forEach(item => {
+                if (item.url) {
+                  const a = document.createElement("a");
+                  a.href = item.url;
+                  a.download = "";
+                  a.target = "_blank";
+                  a.click();
+                }
+              });
+              toast.success(`${selected.size} visuel${selected.size > 1 ? "s" : ""} téléchargé${selected.size > 1 ? "s" : ""}`);
+            }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "12px", fontWeight: 600 }}>
+              <Download size={12} /> Télécharger {selected.size} visuel{selected.size > 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -1659,10 +1732,19 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
     return (
       <div className="space-y-2">
         {result.items.map((item, i) => (
-          <div key={i} className="rounded-xl p-4"
-            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <div key={i} className="rounded-xl p-4 relative"
+            style={{
+              background: "var(--card)",
+              border: selected.has(i) ? "2px solid var(--foreground)" : "1px solid var(--border)",
+              cursor: result.items.length > 1 ? "pointer" : "default",
+            }}
+            onClick={() => result.items.length > 1 && toggleSelect(i)}>
             {result.items.length > 1 && (
               <div className="flex items-center gap-2 mb-2">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: selected.has(i) ? "var(--foreground)" : "var(--secondary)", border: "1.5px solid var(--border)" }}>
+                  {selected.has(i) && <Check size={10} style={{ color: "var(--background)" }} />}
+                </div>
                 <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase" }}>
                   {item.model}
                 </span>
@@ -1671,15 +1753,24 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
             <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
               {item.text}
             </div>
+            {/* Copy button */}
+            <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success("Texte copié"); }}
+              className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
+              title="Copier">
+              <BookOpen size={12} />
+            </button>
           </div>
         ))}
-        <button onClick={() => onCompare(result)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
-          style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-          <Columns2 size={12} /> Comparer avec d'autres IA
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => onCompare(result)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+            style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+            <Columns2 size={12} /> Comparer avec d'autres IA
+          </button>
+        </div>
       </div>
     );
   }
@@ -1726,12 +1817,36 @@ function ResultCard({ result, onCompare, onFinalize, logoUrl }: {
   if (result.type === "video") {
     return (
       <div className="space-y-2">
+        {result.items.length > 1 && (
+          <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            <button onClick={selected.size === result.items.length ? clearSelection : selectAll}
+              className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
+              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
+              {selected.size === result.items.length ? "Désélectionner" : "Tout sélectionner"}
+            </button>
+            {selected.size > 0 && (
+              <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
+                {selected.size}/{result.items.length} sélectionné{selected.size > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
         {result.items.map((item, i) => (
           <div key={i} className="rounded-xl overflow-hidden"
-            style={{ background: "#111", border: "1px solid var(--border)" }}>
+            style={{ background: "#111", border: selected.has(i) ? "2px solid var(--foreground)" : "1px solid var(--border)" }}>
             <video controls src={item.url} className="w-full" style={{ maxHeight: 400 }} />
             <div className="px-3 py-2 flex items-center justify-between">
-              <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{item.model}</span>
+              <div className="flex items-center gap-2">
+                {result.items.length > 1 && (
+                  <button onClick={() => toggleSelect(i)}
+                    className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer"
+                    style={{ background: selected.has(i) ? "var(--foreground)" : "var(--secondary)", border: "1.5px solid var(--border)" }}>
+                    {selected.has(i) && <Check size={10} style={{ color: "var(--background)" }} />}
+                  </button>
+                )}
+                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{item.model}</span>
+              </div>
               <a href={item.url} download target="_blank" rel="noreferrer"
                 className="flex items-center gap-1"
                 style={{ fontSize: "11px", color: "var(--foreground)" }}>
