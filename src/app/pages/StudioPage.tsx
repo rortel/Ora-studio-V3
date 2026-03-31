@@ -283,8 +283,8 @@ export function StudioPage() {
   }, []);
 
   // Load vault + products for brand context
-  const loadVault = useCallback(async () => {
-    if (vault || vaultLoading) return { vault, products };
+  const loadVault = useCallback(async (force = false) => {
+    if (!force && (vault || vaultLoading)) return { vault, products };
     setVaultLoading(true);
     try {
       const [vaultRes, productsRes] = await Promise.all([
@@ -711,7 +711,7 @@ export function StudioPage() {
     // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
     if (msg === "__CAMPAIGN_MODE__") {
       setContext(prev => ({ ...prev, mode: "campaign" }));
-      const loaded = await loadVault();
+      const loaded = await loadVault(true);
       const brandName = loaded.vault?.brand_platform?.brand_name;
       const productNames = loaded.products?.slice(0, 5).map((p: any) => p.name).filter(Boolean);
       const hasBrand = !!brandName;
