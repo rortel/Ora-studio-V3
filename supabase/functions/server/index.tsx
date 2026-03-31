@@ -3517,7 +3517,9 @@ async function isolateProductFromImage(imageUrl: string): Promise<string | null>
 }
 
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
-// Uses 2-step pipeline for product photos: BiRefNet bg removal → FAL Flux img2img (pixel-preserving)
+// Pipeline for product photos:
+// PRIMARY: Flux Pro img2img on ORIGINAL image with very low strength (preserves product pixels)
+// FALLBACK: Luma character_ref with BiRefNet-cleaned image (preserves visual identity)
 app.post("/generate/image-start", async (c) => {
   const t0 = Date.now();
   try {
@@ -3539,27 +3541,22 @@ app.post("/generate/image-start", async (c) => {
 
     const isUploadRef = refSource === "upload";
 
-    // ═══ PRODUCT PHOTO REFERENCE: 2-step pipeline ═══
-    // Step 1: FAL BiRefNet removes background + people → clean product only
-    // Step 2: FAL Flux img2img with LOW strength → preserves product pixels, changes scene
+    // ═══ PRODUCT PHOTO REFERENCE ═══
     if (imageRefUrl && isUploadRef) {
       const falKey = Deno.env.get("FAL_API_KEY");
       if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
 
-      // ── Step 1: Isolate product (remove people + background) ──
-      console.log(`[image-start-POST] STEP 1: Product isolation (Qwen Layered → BiRefNet fallback)...`);
-      const cleanRefUrl = await isolateProductFromImage(imageRefUrl);
-      const productImageUrl = cleanRefUrl || imageRefUrl;
-      console.log(`[image-start-POST] BG_REMOVED=${!!cleanRefUrl} (${Date.now() - t0}ms)`);
-
-      // ── Scene prompt mapping ──
+      // ── Scene prompt + strength mapping ──
+      // IMPORTANT: strength = how much to CHANGE. Low = more preservation of original.
+      // 0.18 = 82% original pixels kept → product shape, logo, colors intact
+      // 0.50+ = major scene change → product may be altered
       const sceneMap: Record<string, { prompt: string; strength: number }> = {
-        "photoshoot": { prompt: "Professional studio photoshoot, seamless pure white cyclorama background, professional softbox lighting with subtle reflections, wide angle, hyperrealistic 8k, ultra detailed, sharp focus, commercial product photography, clean minimalist, no people, no humans", strength: 0.35 },
-        "packshot": { prompt: "Commercial packshot, neutral light grey gradient background, even diffused lighting, no harsh shadows, centered product, sharp focus, catalog photography, 8k, no people, no humans", strength: 0.30 },
-        "lifestyle": { prompt: "Product in natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography, bokeh background, no people, no humans", strength: 0.50 },
-        "flat lay": { prompt: "Creative flat lay arrangement, top-down aerial view, clean marble surface with complementary props, soft even lighting, magazine editorial style, no people, no humans", strength: 0.50 },
-        "cinématique": { prompt: "Cinematic wide shot, dramatic moody lighting, anamorphic lens flare, film grain, deep contrast, rich cinematic color grading, dark atmospheric, no people, no humans", strength: 0.55 },
-        "default": { prompt: "Professional studio, clean white background, soft diffused studio lighting, product photography, 8k hyperrealistic, sharp focus, no people, no humans", strength: 0.35 },
+        "photoshoot": { prompt: "Professional studio photoshoot, seamless pure white cyclorama background, professional softbox lighting with subtle reflections, wide angle, hyperrealistic 8k, ultra detailed, sharp focus, commercial product photography, clean minimalist, product alone, no people, no humans, no persons", strength: 0.18 },
+        "packshot": { prompt: "Commercial packshot, neutral light grey gradient background, even diffused lighting, no harsh shadows, centered product, sharp focus, catalog photography, 8k, product alone, no people, no humans", strength: 0.18 },
+        "lifestyle": { prompt: "Product in beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography, bokeh background, product alone, no people, no humans", strength: 0.40 },
+        "flat lay": { prompt: "Creative flat lay arrangement, top-down aerial view, clean marble surface with complementary props, soft even lighting, magazine editorial style, product alone, no people, no humans", strength: 0.45 },
+        "cinématique": { prompt: "Cinematic wide shot, dramatic moody lighting, anamorphic lens flare, film grain, deep contrast, rich cinematic color grading, dark atmospheric, product alone, no people, no humans", strength: 0.45 },
+        "default": { prompt: "Professional studio, clean white background, soft diffused studio lighting, product photography, 8k hyperrealistic, sharp focus, product alone, no people, no humans", strength: 0.18 },
       };
       const promptLower = rawPrompt.toLowerCase();
       let scene = sceneMap["default"];
@@ -3569,20 +3566,19 @@ app.post("/generate/image-start", async (c) => {
       else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scene = sceneMap["flat lay"];
       else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scene = sceneMap["cinématique"];
 
-      // ── Step 2: FAL Flux img2img (pixel-preserving denoising) ──
-      // Low strength = HIGH preservation of original pixels (product shape, logo, colors stay intact)
-      // Only the background/scene changes based on the prompt
       const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
       const falImageSize = falSizeMap[aspectRatio] || "square_hd";
 
-      console.log(`[image-start-POST] STEP 2: FAL Flux img2img, strength=${scene.strength}, size=${falImageSize}, scene=${scene.prompt.slice(0, 60)}...`);
+      // ═══ STRATEGY 1: Flux Pro img2img on ORIGINAL image (not transparent!) ═══
+      // Uses the ORIGINAL image directly — Flux preserves pixels at low strength
+      // Transparent PNGs cause garbage results, so NEVER send BiRefNet output to Flux
+      console.log(`[image-start-POST] STRATEGY 1: Flux img2img on ORIGINAL, strength=${scene.strength}, size=${falImageSize}`);
 
-      // Try Flux Pro first, then Flux Dev as fallback
       for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
         try {
           const falBody = {
             prompt: scene.prompt,
-            image_url: productImageUrl,
+            image_url: imageRefUrl, // ← ORIGINAL image, NOT transparent
             strength: scene.strength,
             image_size: falImageSize,
             num_images: 1,
@@ -3604,22 +3600,41 @@ app.post("/generate/image-start", async (c) => {
           const data = await res.json();
           const imageUrl = data.images?.[0]?.url;
           if (imageUrl) {
-            console.log(`[image-start-POST] FAL ${falModel} OK in ${Date.now() - t0}ms — imageUrl: ${imageUrl.slice(0, 80)}`);
-            // Return imageUrl directly (no polling needed — FAL is synchronous)
+            console.log(`[image-start-POST] FAL ${falModel} OK in ${Date.now() - t0}ms`);
             return c.json({ success: true, imageUrl, provider: `fal/${falModel}`, directResult: true });
           }
         } catch (err) { console.log(`[image-start-POST] FAL ${falModel} error: ${err}`); }
       }
 
-      // ── Fallback: Luma Photon with modify_image_ref ──
-      console.log(`[image-start-POST] FAL failed, falling back to Luma modify_image_ref...`);
+      // ═══ STRATEGY 2: Luma character_ref with BiRefNet-cleaned image ═══
+      // BiRefNet isolates product → Luma character_ref preserves visual identity in new scene
+      console.log(`[image-start-POST] STRATEGY 2: BiRefNet + Luma character_ref...`);
+      let cleanUrl: string | null = null;
+      try {
+        const bgRes = await fetch("https://fal.run/fal-ai/birefnet", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+          body: JSON.stringify({ image_url: imageRefUrl }),
+        });
+        if (bgRes.ok) {
+          const bgData = await bgRes.json();
+          cleanUrl = bgData.image?.url || null;
+          console.log(`[image-start-POST] BiRefNet OK: ${cleanUrl?.slice(0, 60)}`);
+        } else {
+          console.log(`[image-start-POST] BiRefNet error ${bgRes.status}`);
+        }
+      } catch (err) { console.log(`[image-start-POST] BiRefNet error: ${err}`); }
+
+      const lumaRefUrl = cleanUrl || imageRefUrl;
       const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
       const lumaBody: any = {
         prompt: scene.prompt,
         model: "photon-1",
         aspect_ratio: lumaArMap[aspectRatio] || "1:1",
-        modify_image_ref: { url: productImageUrl, weight: 1.0 },
+        // character_ref preserves visual identity (shape, colors, logos)
+        character_ref: { identity0: { images: [lumaRefUrl] } },
       };
+      console.log(`[image-start-POST] Luma character_ref with ${cleanUrl ? "CLEAN" : "ORIGINAL"} image...`);
       const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
         method: "POST",
         headers: { Authorization: `Bearer ${Deno.env.get("LUMA_API_KEY")}`, "Content-Type": "application/json" },
@@ -3628,13 +3643,13 @@ app.post("/generate/image-start", async (c) => {
       if (lumaRes.ok) {
         const generation = await lumaRes.json();
         if (generation.id) {
-          console.log(`[image-start-POST] Luma fallback OK ${Date.now() - t0}ms, genId=${generation.id}`);
+          console.log(`[image-start-POST] Luma character_ref OK ${Date.now() - t0}ms, genId=${generation.id}`);
           return c.json({ success: true, generationId: generation.id, state: generation.state || "queued" });
         }
       }
-      const errText = await lumaRes.text();
-      console.error(`[image-start-POST] Luma fallback error ${lumaRes.status}: ${errText.slice(0, 200)}`);
-      return c.json({ success: false, error: "All image generation providers failed" }, 500);
+      const errText = lumaRes.ok ? "no id" : await lumaRes.text();
+      console.error(`[image-start-POST] Luma character_ref error: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: "All providers failed" }, 500);
     }
 
     // ═══ NO REF or non-upload ref: Standard Luma generation ═══
