@@ -303,7 +303,7 @@ export function StudioPage() {
         serverPost("/vault/load", {}),
         serverPost("/products/list", {}),
       ]);
-      console.log("[studio] loadVault results:", { vaultSuccess: vaultRes.success, productsSuccess: productsRes.success, hasVault: !!vaultRes.vault, productsCount: productsRes.products?.length });
+      console.log("[studio] loadVault results:", JSON.stringify({ vaultSuccess: vaultRes.success, productsSuccess: productsRes.success, hasVault: !!vaultRes.vault, brandName: vaultRes.vault?.brandName || vaultRes.vault?.company_name, productsCount: productsRes.products?.length }));
       const v = vaultRes.success && vaultRes.vault ? vaultRes.vault : null;
       const p = productsRes.success && Array.isArray(productsRes.products) ? productsRes.products : [];
       if (v) setVault(v);
@@ -735,7 +735,8 @@ export function StudioPage() {
         console.log(`[studio] Campaign: token after wait = ${token ? "OK" : "STILL EMPTY"}`);
       }
       const loaded = await loadVault(true);
-      const brandName = loaded.vault?.brand_platform?.brand_name;
+      console.log("[studio] Campaign vault loaded:", JSON.stringify(loaded.vault ? Object.keys(loaded.vault) : null), "products:", loaded.products?.length);
+      const brandName = loaded.vault?.brandName || loaded.vault?.company_name || loaded.vault?.brand_platform?.brand_name;
       const productNames = loaded.products?.slice(0, 5).map((p: any) => p.name).filter(Boolean);
       const hasBrand = !!brandName;
       const hasProducts = productNames && productNames.length > 0;
