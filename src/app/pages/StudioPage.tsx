@@ -263,11 +263,11 @@ export function StudioPage() {
     setTimeout(() => inputRef.current?.focus(), 300);
   }, []);
 
-  // Preload vault once auth is ready
+  // Always load fresh vault when auth is ready (user may have changed brand)
   useEffect(() => {
-    if (accessToken && !vault && !vaultLoading) {
-      console.log("[studio] auth ready, preloading vault...");
-      loadVault();
+    if (accessToken) {
+      console.log("[studio] auth ready, loading fresh vault...");
+      loadVault(true);
     }
   }, [accessToken]);
 
