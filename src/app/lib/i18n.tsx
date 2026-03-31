@@ -242,6 +242,7 @@ const en = {
     hub: "Hub",
     privacy: "Privacy",
     terms: "Terms",
+    about: "About",
   },
 };
 
@@ -426,5 +427,6 @@ const fr = {
     hub: "Hub",
     privacy: "Confidentialité",
     terms: "Conditions",
+    about: "À propos",
   },
 };
