@@ -119,7 +119,7 @@ const COMPARE_MODELS = {
 
 export function StudioPage() {
   const navigate = useNavigate();
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, accessToken, isLoading: authLoading } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -258,14 +258,22 @@ export function StudioPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking, isGenerating]);
 
-  // Focus input on mount + preload vault
+  // Focus input on mount
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 300);
-    loadVault();
   }, []);
+
+  // Preload vault once auth is ready
+  useEffect(() => {
+    if (accessToken && !vault && !vaultLoading) {
+      console.log("[studio] auth ready, preloading vault...");
+      loadVault();
+    }
+  }, [accessToken]);
 
   const serverPost = useCallback((path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
+    console.log(`[serverPost] ${path} token=${token ? token.slice(0, 20) + "..." : "EMPTY"}`);
     return fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
@@ -284,13 +292,18 @@ export function StudioPage() {
 
   // Load vault + products for brand context
   const loadVault = useCallback(async (force = false) => {
-    if (!force && (vault || vaultLoading)) return { vault, products };
+    if (!force && (vault || vaultLoading)) {
+      console.log(`[studio] loadVault skip: vault=${!!vault} vaultLoading=${vaultLoading}`);
+      return { vault, products };
+    }
+    console.log(`[studio] loadVault: fetching... (force=${force})`);
     setVaultLoading(true);
     try {
       const [vaultRes, productsRes] = await Promise.all([
         serverPost("/vault/load", {}),
         serverPost("/products/list", {}),
       ]);
+      console.log("[studio] loadVault results:", { vaultSuccess: vaultRes.success, productsSuccess: productsRes.success, hasVault: !!vaultRes.vault, productsCount: productsRes.products?.length });
       const v = vaultRes.success && vaultRes.vault ? vaultRes.vault : null;
       const p = productsRes.success && Array.isArray(productsRes.products) ? productsRes.products : [];
       if (v) setVault(v);
@@ -711,6 +724,16 @@ export function StudioPage() {
     // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
     if (msg === "__CAMPAIGN_MODE__") {
       setContext(prev => ({ ...prev, mode: "campaign" }));
+      // Wait for auth token if not ready yet (max 5s)
+      let token = getAuthHeader();
+      if (!token) {
+        console.log("[studio] Campaign: waiting for auth token...");
+        for (let i = 0; i < 50 && !token; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          token = getAuthHeader();
+        }
+        console.log(`[studio] Campaign: token after wait = ${token ? "OK" : "STILL EMPTY"}`);
+      }
       const loaded = await loadVault(true);
       const brandName = loaded.vault?.brand_platform?.brand_name;
       const productNames = loaded.products?.slice(0, 5).map((p: any) => p.name).filter(Boolean);
