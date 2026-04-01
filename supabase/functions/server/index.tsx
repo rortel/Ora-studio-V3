@@ -2384,23 +2384,6 @@ app.post("/generate/text-multi", async (c) => {
     console.log(`[text-multi] prompt="${prompt?.slice(0, 60)}", models=${JSON.stringify(models)}, user=${user?.id || "guest"}`);
     if (!prompt || !models?.length) return c.json({ error: "prompt and models required" }, 400);
 
-    // ── Inject Brand Vault context into system prompt ──
-    let enrichedSystemPrompt = systemPrompt || "";
-    if (user) {
-      try {
-        const brandCtx = await buildBrandContext(user.id);
-        if (brandCtx) {
-          const brandBlock = buildBrandBlock(brandCtx);
-          if (brandBlock) {
-            enrichedSystemPrompt = (enrichedSystemPrompt ? enrichedSystemPrompt + "\n" : "") + brandBlock;
-            console.log(`[text-multi] Brand context injected for user ${user.id} (${brandCtx.brandName || "unnamed"})`);
-          }
-        }
-      } catch (err) {
-        console.log(`[text-multi] Brand context fetch failed (continuing without):`, err);
-      }
-    }
-
     const MODEL_TIMEOUT = 90_000; // 90s per model (generateText has 30s internal timeout per attempt, chain can have 3 models)
     const results = await Promise.all(
       models.map(async (model: string) => {
@@ -2409,7 +2392,7 @@ app.post("/generate/text-multi", async (c) => {
         try {
           console.log(`[text-multi] calling generateText(${model}), credits=${credits}...`);
           const result = await Promise.race([
-            generateText({ prompt, model, systemPrompt: enrichedSystemPrompt, maxTokens }),
+            generateText({ prompt, model, systemPrompt, maxTokens }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
           ]);
           console.log(`[text-multi] ${model} OK in ${Date.now() - t0}ms, provider=${result.provider}`);
@@ -2453,23 +2436,6 @@ app.get("/generate/text-multi-get", async (c) => {
     console.log(`[text-multi-get] prompt="${prompt.slice(0, 60)}", models=${JSON.stringify(models)}, user=${user?.id || "guest"}`);
     if (!prompt || !models.length) return c.json({ error: "prompt and models required" }, 400);
 
-    // ── Inject Brand Vault context into system prompt ──
-    let enrichedSystemPrompt = systemPrompt || "";
-    if (user) {
-      try {
-        const brandCtx = await buildBrandContext(user.id);
-        if (brandCtx) {
-          const brandBlock = buildBrandBlock(brandCtx);
-          if (brandBlock) {
-            enrichedSystemPrompt = (enrichedSystemPrompt ? enrichedSystemPrompt + "\n" : "") + brandBlock;
-            console.log(`[text-multi-get] Brand context injected for user ${user.id}`);
-          }
-        }
-      } catch (err) {
-        console.log(`[text-multi-get] Brand context fetch failed (continuing without):`, err);
-      }
-    }
-
     const maxTokens = parseInt(maxTokensStr, 10) || 2048;
     const MODEL_TIMEOUT = 90_000;
     const results = await Promise.all(
@@ -2479,7 +2445,7 @@ app.get("/generate/text-multi-get", async (c) => {
         try {
           console.log(`[text-multi-get] calling generateText(${model}), credits=${credits}...`);
           const result = await Promise.race([
-            generateText({ prompt, model, systemPrompt: enrichedSystemPrompt, maxTokens }),
+            generateText({ prompt, model, systemPrompt, maxTokens }),
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
           ]);
           console.log(`[text-multi-get] ${model} OK in ${Date.now() - t0}ms, provider=${result.provider}`);
