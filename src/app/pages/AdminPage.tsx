@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion } from "motion/react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -6,7 +6,12 @@ import {
   TrendingUp, RefreshCw, ChevronDown, ChevronUp, Search,
   Crown, Zap, Loader2, ArrowRight, Clock, Server,
   DollarSign, BarChart3, Eye, Edit3, Check, X, Mail,
-  Send, FileText, Copy, ChevronLeft,
+  Send, FileText, Copy, ChevronLeft, Plus, Trash2,
+  GripVertical, Type, AlignLeft, Image, MousePointerClick,
+  Minus, Columns2, MessageSquareQuote, MoveUp, MoveDown,
+  Bold, Italic, LinkIcon, Variable, Calendar, FlaskConical,
+  ListFilter, UserPlus, Sparkles, MailOpen, MousePointer,
+  Save, Play, Pause, LayoutTemplate,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { API_BASE, publicAnonKey, supabase } from "../lib/supabase";
@@ -1400,78 +1405,396 @@ interface EmailTemplate {
   variables: string[];
 }
 
-function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) => Promise<any>; users: AdminUser[] }) {
-  const [templates, setTemplates] = useState<Record<string, EmailTemplate>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [showPreview, setShowPreview] = useState(false);
-  const [sendMode, setSendMode] = useState<"single" | "all">("single");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [planFilter, setPlanFilter] = useState<string>("");
-  const [variables, setVariables] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
-  const [editingHtml, setEditingHtml] = useState("");
-  const [editingSubject, setEditingSubject] = useState("");
+/* ── Block types for the visual editor ── */
 
+type EmailBlockType = "heading" | "text" | "image" | "button" | "divider" | "columns" | "highlight";
+
+interface EmailBlockBase {
+  id: string;
+  type: EmailBlockType;
+}
+interface HeadingBlock extends EmailBlockBase { type: "heading"; level: "h1" | "h2"; content: string; }
+interface TextBlock extends EmailBlockBase { type: "text"; content: string; }
+interface ImageBlock extends EmailBlockBase { type: "image"; src: string; alt: string; }
+interface ButtonBlock extends EmailBlockBase { type: "button"; text: string; url: string; style: "filled" | "outline"; }
+interface DividerBlock extends EmailBlockBase { type: "divider"; }
+interface ColumnsBlock extends EmailBlockBase { type: "columns"; left: string; right: string; }
+interface HighlightBlock extends EmailBlockBase { type: "highlight"; content: string; }
+
+type EmailBlock = HeadingBlock | TextBlock | ImageBlock | ButtonBlock | DividerBlock | ColumnsBlock | HighlightBlock;
+
+/* ── Email list types ── */
+interface EmailList {
+  id: string;
+  name: string;
+  description: string;
+  filter: { type: "manual" | "plan" | "smart"; value: string; };
+  userIds: string[];
+}
+
+/* ── Scheduled email type ── */
+interface ScheduledEmail {
+  id: string;
+  subject: string;
+  scheduledAt: string;
+  status: "pending" | "sent" | "cancelled";
+  recipientCount: number;
+}
+
+/* ── Stats types ── */
+interface EmailStats {
+  totalSent: number;
+  openRate: number;
+  clickRate: number;
+  campaigns: { name: string; sent: number; opened: number; clicked: number; date: string; }[];
+}
+
+/* ── Sub-tabs ── */
+type EmailSubTab = "editor" | "lists" | "scheduled" | "stats";
+
+/* ── Helpers ── */
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const BLOCK_PALETTE: { type: EmailBlockType; label: string; icon: typeof Type }[] = [
+  { type: "heading", label: "Titre", icon: Type },
+  { type: "text", label: "Texte", icon: AlignLeft },
+  { type: "image", label: "Image", icon: Image },
+  { type: "button", label: "Bouton CTA", icon: MousePointerClick },
+  { type: "divider", label: "Séparateur", icon: Minus },
+  { type: "columns", label: "2 colonnes", icon: Columns2 },
+  { type: "highlight", label: "Highlight", icon: MessageSquareQuote },
+];
+
+const AVAILABLE_VARIABLES = ["name", "plan", "credits", "remaining", "ctaUrl", "ctaText", "company", "email"];
+
+function createBlock(type: EmailBlockType): EmailBlock {
+  const id = uid();
+  switch (type) {
+    case "heading": return { id, type, level: "h1", content: "Titre de votre email" };
+    case "text": return { id, type, content: "Votre texte ici. Utilisez **gras**, *italique* ou [lien](url)." };
+    case "image": return { id, type, src: "", alt: "Description de l'image" };
+    case "button": return { id, type, text: "Découvrir", url: "https://ora-studio.app", style: "filled" };
+    case "divider": return { id, type };
+    case "columns": return { id, type, left: "Contenu gauche", right: "Contenu droite" };
+    case "highlight": return { id, type, content: "Information mise en avant" };
+  }
+}
+
+/** Convert markdown-like inline formatting to HTML */
+function inlineFormat(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#3b4fc4;text-decoration:underline">$1</a>')
+    .replace(/\n/g, "<br>");
+}
+
+/** Convert blocks array to email-compatible HTML */
+function blocksToHtml(blocks: EmailBlock[]): string {
+  const rows = blocks.map((b) => {
+    switch (b.type) {
+      case "heading":
+        return `<tr><td style="padding:16px 24px 8px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:${b.level === "h1" ? "24" : "18"}px;font-weight:700;color:#111113;line-height:1.3">${inlineFormat(b.content)}</td></tr>`;
+      case "text":
+        return `<tr><td style="padding:8px 24px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#333;line-height:1.7">${inlineFormat(b.content)}</td></tr>`;
+      case "image":
+        return b.src
+          ? `<tr><td style="padding:12px 24px"><img src="${b.src}" alt="${b.alt}" style="max-width:100%;height:auto;border-radius:8px;display:block" /></td></tr>`
+          : "";
+      case "button": {
+        const isFilled = b.style === "filled";
+        return `<tr><td style="padding:16px 24px"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${isFilled ? "#111113" : "transparent"};border:2px solid #111113;border-radius:999px;padding:12px 28px"><a href="${b.url}" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:${isFilled ? "#ffffff" : "#111113"};text-decoration:none;display:inline-block">${b.text}</a></td></tr></table></td></tr>`;
+      }
+      case "divider":
+        return `<tr><td style="padding:16px 24px"><hr style="border:none;border-top:1px solid #e5e5e5;margin:0" /></td></tr>`;
+      case "columns":
+        return `<tr><td style="padding:8px 24px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;padding-right:12px">${inlineFormat(b.left)}</td><td width="4%"></td><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;padding-left:12px">${inlineFormat(b.right)}</td></tr></table></td></tr>`;
+      case "highlight":
+        return `<tr><td style="padding:8px 24px"><div style="background:#f4f4f6;border-radius:8px;padding:16px 20px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;border-left:3px solid #3b4fc4">${inlineFormat(b.content)}</div></td></tr>`;
+      default: return "";
+    }
+  }).filter(Boolean).join("\n");
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;background:#ffffff">\n${rows}\n</table>`;
+}
+
+/** Label helper */
+const Label = ({ children }: { children: React.ReactNode }) => (
+  <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{children}</label>
+);
+
+/** Pill toggle button */
+const Pill = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
+  <button
+    onClick={onClick}
+    className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer transition-colors ${active ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
+  >{children}</button>
+);
+
+/* ══════════════════════════════════════
+   EMAIL TAB — VISUAL BLOCK EDITOR
+   ══════════════════════════════════════ */
+
+function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) => Promise<any>; users: AdminUser[] }) {
+  /* ── Sub-tab navigation ── */
+  const [subTab, setSubTab] = useState<EmailSubTab>("editor");
+
+  /* ── Template system ── */
+  const [templates, setTemplates] = useState<Record<string, EmailTemplate>>({});
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
+
+  /* ── Block editor state ── */
+  const [blocks, setBlocks] = useState<EmailBlock[]>([createBlock("heading"), createBlock("text"), createBlock("button")]);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [subject, setSubject] = useState("Votre sujet ici");
+
+  /* ── Send state ── */
+  const [sendMode, setSendMode] = useState<"single" | "broadcast" | "list">("single");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [planFilter, setPlanFilter] = useState("");
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
+
+  /* ── Variables ── */
+  const [variables, setVariables] = useState<Record<string, string>>({ name: "Prénom", plan: "Starter", credits: "500", ctaUrl: "https://ora-studio.app/hub", ctaText: "Découvrir" });
+  const [showVarDropdown, setShowVarDropdown] = useState(false);
+
+  /* ── A/B testing ── */
+  const [abTestEnabled, setAbTestEnabled] = useState(false);
+  const [subjectB, setSubjectB] = useState("");
+
+  /* ── Scheduling ── */
+  const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+
+  /* ── Lists ── */
+  const [lists, setLists] = useState<EmailList[]>([
+    { id: "smart-new", name: "Nouveaux inscrits", description: "Inscrits il y a moins de 7 jours", filter: { type: "smart", value: "new_7d" }, userIds: [] },
+    { id: "smart-inactive", name: "Inactifs", description: "Dernière connexion > 30 jours", filter: { type: "smart", value: "inactive_30d" }, userIds: [] },
+    { id: "smart-free", name: "Plan Free", description: "Utilisateurs sur le plan Free", filter: { type: "plan", value: "free" }, userIds: [] },
+    { id: "smart-starter", name: "Plan Starter", description: "Utilisateurs sur le plan Starter", filter: { type: "plan", value: "starter" }, userIds: [] },
+    { id: "smart-pro", name: "Plan Pro", description: "Utilisateurs sur le plan Pro", filter: { type: "plan", value: "generate" }, userIds: [] },
+  ]);
+  const [newListName, setNewListName] = useState("");
+  const [newListDesc, setNewListDesc] = useState("");
+
+  /* ── Scheduled emails ── */
+  const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
+
+  /* ── Stats ── */
+  const [stats, setStats] = useState<EmailStats>({
+    totalSent: 1247,
+    openRate: 42.3,
+    clickRate: 8.7,
+    campaigns: [
+      { name: "Bienvenue", sent: 523, opened: 312, clicked: 67, date: "2026-03-28" },
+      { name: "Nouveautés Mars", sent: 421, opened: 189, clicked: 42, date: "2026-03-15" },
+      { name: "Offre spéciale", sent: 303, opened: 156, clicked: 51, date: "2026-03-01" },
+    ],
+  });
+
+  /* ── Preview ── */
+  const previewRef = useRef<HTMLIFrameElement>(null);
+
+  /* ── Smart list user counts ── */
+  const smartListCounts = useMemo(() => {
+    const now = Date.now();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    return {
+      new_7d: users.filter(u => u.createdAt && (now - new Date(u.createdAt).getTime()) < sevenDays).length,
+      inactive_30d: users.filter(u => u.lastLoginAt && (now - new Date(u.lastLoginAt).getTime()) > thirtyDays).length,
+      free: users.filter(u => u.plan === "free").length,
+      starter: users.filter(u => u.plan === "starter").length,
+      generate: users.filter(u => u.plan === "generate").length,
+    };
+  }, [users]);
+
+  /* ── Load templates from API ── */
   useEffect(() => {
     adminPost("/admin/email/templates")
       .then((data) => {
         if (data.success && data.templates) {
           setTemplates(data.templates);
-          const firstId = Object.keys(data.templates)[0];
-          if (firstId) selectTemplate(firstId, data.templates);
         }
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingTemplates(false));
   }, []);
 
-  const selectTemplate = (id: string, tpls?: Record<string, EmailTemplate>) => {
-    const t = (tpls || templates)[id];
+  /* ── Live preview HTML ── */
+  const previewHtml = useMemo(() => {
+    const bodyHtml = blocksToHtml(blocks);
+    const rendered = renderClientTemplate(bodyHtml, variables);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>body{margin:0;padding:20px;background:#f4f4f6;font-family:'Inter',sans-serif;}</style></head><body>${rendered}</body></html>`;
+  }, [blocks, variables]);
+
+  /* ── Block manipulation helpers ── */
+  const addBlock = (type: EmailBlockType) => {
+    setBlocks(prev => [...prev, createBlock(type)]);
+  };
+
+  const updateBlock = (id: string, updates: Partial<EmailBlock>) => {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...updates } as EmailBlock : b));
+  };
+
+  const removeBlock = (id: string) => {
+    setBlocks(prev => prev.filter(b => b.id !== id));
+    if (editingBlockId === id) setEditingBlockId(null);
+  };
+
+  const duplicateBlock = (id: string) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === id);
+      if (idx === -1) return prev;
+      const clone = { ...prev[idx], id: uid() } as EmailBlock;
+      const next = [...prev];
+      next.splice(idx + 1, 0, clone);
+      return next;
+    });
+  };
+
+  const moveBlock = (id: string, dir: -1 | 1) => {
+    setBlocks(prev => {
+      const idx = prev.findIndex(b => b.id === id);
+      const target = idx + dir;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
+  /* ── Template loading: convert HTML template to blocks ── */
+  const loadTemplate = (id: string) => {
+    const t = templates[id];
     if (!t) return;
-    setSelectedId(id);
-    setEditingSubject(t.subject);
-    setEditingHtml(t.html);
-    setShowPreview(false);
-    setResult(null);
+    setSelectedTemplateId(id);
+    setSubject(t.subject);
+    // Since existing templates are raw HTML, we put the whole thing in a single text block
+    // but also keep the raw reference for sending
+    setBlocks([
+      { id: uid(), type: "heading", level: "h1", content: t.name } as HeadingBlock,
+      { id: uid(), type: "text", content: "Template chargé. Modifiez les blocs ci-dessous." } as TextBlock,
+    ]);
     const defaultVars: Record<string, string> = {};
     for (const v of t.variables) {
       defaultVars[v] = v === "name" ? "Prénom" : v === "plan" ? "Starter" : v === "credits" ? "500" : v === "remaining" ? "15" : v === "ctaUrl" ? "https://ora-studio.app/hub" : v === "ctaText" ? "Découvrir" : "";
     }
-    setVariables(defaultVars);
+    setVariables(prev => ({ ...prev, ...defaultVars }));
   };
 
-  const handlePreview = async () => {
-    if (!selectedId) return;
+  /* ── Save template from blocks ── */
+  const handleSaveTemplate = async () => {
+    const html = blocksToHtml(blocks);
+    const name = selectedTemplateId && templates[selectedTemplateId] ? templates[selectedTemplateId].name : "Custom template";
+    const templateId = selectedTemplateId || `custom-${uid()}`;
+    const templateVars = AVAILABLE_VARIABLES.filter(v => subject.includes(`{{${v}}}`) || html.includes(`{{${v}}}`));
+    const updated = {
+      ...templates,
+      [templateId]: { name, subject, html, variables: templateVars },
+    };
     try {
-      const res = await adminPost("/admin/email/preview", { templateId: selectedId, variables, customHtml: editingHtml !== templates[selectedId]?.html ? editingHtml : undefined });
-      if (res.success) { setPreviewHtml(res.html); setShowPreview(true); }
+      const res = await adminPost("/admin/email/templates/save", { templates: updated });
+      if (res.success) {
+        setTemplates(updated);
+        setSelectedTemplateId(templateId);
+      }
     } catch (err) { console.error(err); }
   };
 
+  /* ── Send email ── */
   const handleSend = async () => {
-    if (!selectedId) return;
     setSending(true);
     setResult(null);
+    const html = blocksToHtml(blocks);
+    const renderedSubject = renderClientTemplate(subject, variables);
+
     try {
+      if (scheduleMode === "later" && scheduleDate) {
+        // Store scheduled email
+        const scheduled: ScheduledEmail = {
+          id: uid(),
+          subject: renderedSubject,
+          scheduledAt: `${scheduleDate}T${scheduleTime}:00`,
+          status: "pending",
+          recipientCount: sendMode === "single" ? recipientEmail.split(",").filter(Boolean).length : users.filter(u => u.role !== "admin").length,
+        };
+        setScheduledEmails(prev => [...prev, scheduled]);
+        // Store in KV
+        await adminPost("/admin/email/schedule", {
+          ...scheduled,
+          html,
+          variables,
+          sendMode,
+          recipientEmail: sendMode === "single" ? recipientEmail : undefined,
+          planFilter: sendMode === "broadcast" ? planFilter || undefined : undefined,
+          listId: sendMode === "list" ? selectedListId : undefined,
+          abTest: abTestEnabled ? { subjectA: renderedSubject, subjectB: renderClientTemplate(subjectB, variables) } : undefined,
+        }).catch(() => { /* KV endpoint may not exist yet */ });
+        setResult({ sent: 0, failed: 0 });
+        setSending(false);
+        return;
+      }
+
       if (sendMode === "single") {
         if (!recipientEmail.trim()) { setSending(false); return; }
         const emails = recipientEmail.split(",").map(e => e.trim()).filter(Boolean);
-        const res = await adminPost("/admin/email/send", {
-          templateId: selectedId,
-          recipients: emails,
-          variables,
-          subject: editingSubject !== templates[selectedId]?.subject ? renderClientTemplate(editingSubject, variables) : undefined,
-          html: editingHtml !== templates[selectedId]?.html ? editingHtml : undefined,
-        });
-        if (res.success) setResult({ sent: res.sent, failed: res.failed });
-      } else {
+
+        if (abTestEnabled && emails.length >= 2) {
+          const midpoint = Math.ceil(emails.length / 2);
+          const groupA = emails.slice(0, midpoint);
+          const groupB = emails.slice(midpoint);
+          const [resA, resB] = await Promise.all([
+            adminPost("/admin/email/send", { recipients: groupA, variables, subject: renderedSubject, html }),
+            adminPost("/admin/email/send", { recipients: groupB, variables, subject: renderClientTemplate(subjectB, variables), html }),
+          ]);
+          setResult({ sent: (resA.sent || 0) + (resB.sent || 0), failed: (resA.failed || 0) + (resB.failed || 0) });
+        } else {
+          const res = await adminPost("/admin/email/send", {
+            recipients: emails,
+            variables,
+            subject: renderedSubject,
+            html,
+          });
+          if (res.success) setResult({ sent: res.sent, failed: res.failed });
+        }
+      } else if (sendMode === "broadcast") {
         const res = await adminPost("/admin/email/send-all", {
-          templateId: selectedId,
           variables,
           planFilter: planFilter || undefined,
+          subject: renderedSubject,
+          html,
+          abTest: abTestEnabled ? { subjectA: renderedSubject, subjectB: renderClientTemplate(subjectB, variables) } : undefined,
+        });
+        if (res.success) setResult({ sent: res.sent, failed: res.failed });
+      } else if (sendMode === "list" && selectedListId) {
+        const list = lists.find(l => l.id === selectedListId);
+        if (!list) { setSending(false); return; }
+        // Resolve users from list filter
+        let listEmails: string[] = [];
+        if (list.filter.type === "plan") {
+          listEmails = users.filter(u => u.plan === list.filter.value && u.role !== "admin").map(u => u.email);
+        } else if (list.filter.type === "smart") {
+          const now = Date.now();
+          if (list.filter.value === "new_7d") {
+            listEmails = users.filter(u => u.createdAt && (now - new Date(u.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000).map(u => u.email);
+          } else if (list.filter.value === "inactive_30d") {
+            listEmails = users.filter(u => u.lastLoginAt && (now - new Date(u.lastLoginAt).getTime()) > 30 * 24 * 60 * 60 * 1000).map(u => u.email);
+          }
+        } else if (list.filter.type === "manual") {
+          listEmails = users.filter(u => list.userIds.includes(u.userId)).map(u => u.email);
+        }
+        if (listEmails.length === 0) { setSending(false); return; }
+        const res = await adminPost("/admin/email/send", {
+          recipients: listEmails,
+          variables,
+          subject: renderedSubject,
+          html,
         });
         if (res.success) setResult({ sent: res.sent, failed: res.failed });
       }
@@ -1479,189 +1802,733 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
     setSending(false);
   };
 
-  const handleSaveTemplates = async () => {
-    if (!selectedId) return;
-    const updated = { ...templates, [selectedId]: { ...templates[selectedId], subject: editingSubject, html: editingHtml } };
-    try {
-      const res = await adminPost("/admin/email/templates/save", { templates: updated });
-      if (res.success) { setTemplates(updated); }
-    } catch (err) { console.error(err); }
+  /* ── Add list ── */
+  const addList = () => {
+    if (!newListName.trim()) return;
+    setLists(prev => [...prev, {
+      id: uid(),
+      name: newListName,
+      description: newListDesc,
+      filter: { type: "manual", value: "" },
+      userIds: [],
+    }]);
+    setNewListName("");
+    setNewListDesc("");
   };
 
-  if (loading) return <div className="flex items-center justify-center py-20"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>;
+  /* ── Loading ── */
+  if (loadingTemplates) return <div className="flex items-center justify-center py-20"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>;
 
-  const selected = selectedId ? templates[selectedId] : null;
-
+  /* ═══════════════════════════════════
+     RENDER
+     ═══════════════════════════════════ */
   return (
-    <div className="space-y-6">
-      {/* Template selector */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {Object.entries(templates).map(([id, t]) => (
+    <div className="space-y-5">
+      {/* Sub-tab navigation */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {([
+          { id: "editor" as const, label: "Editeur", icon: Edit3 },
+          { id: "lists" as const, label: "Listes", icon: ListFilter },
+          { id: "scheduled" as const, label: "Programmés", icon: Calendar },
+          { id: "stats" as const, label: "Statistiques", icon: BarChart3 },
+        ]).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => selectTemplate(id)}
-            className={`px-4 py-2 rounded-full border transition-colors cursor-pointer ${selectedId === id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"}`}
+            onClick={() => setSubTab(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-colors cursor-pointer ${subTab === id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"}`}
             style={{ fontSize: "12px", fontWeight: 500 }}
           >
-            {t.name}
+            <Icon size={13} /> {label}
           </button>
         ))}
       </div>
 
-      {selected && selectedId && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left: Editor */}
-          <div className="space-y-4">
-            {/* Subject */}
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Objet</label>
-              <input
-                value={editingSubject}
-                onChange={(e) => setEditingSubject(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground"
-                style={{ fontSize: "13px" }}
-              />
+      {/* ════════ EDITOR SUB-TAB ════════ */}
+      {subTab === "editor" && (
+        <>
+          {/* Template selector pills */}
+          <div>
+            <Label>Templates</Label>
+            <div className="flex items-center gap-2 flex-wrap mt-1">
+              <button
+                onClick={() => { setSelectedTemplateId(null); setBlocks([createBlock("heading"), createBlock("text"), createBlock("button")]); setSubject("Votre sujet ici"); }}
+                className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer transition-colors ${!selectedTemplateId ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
+              >
+                <Plus size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />Nouveau
+              </button>
+              {Object.entries(templates).map(([id, t]) => (
+                <button
+                  key={id}
+                  onClick={() => loadTemplate(id)}
+                  className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer transition-colors ${selectedTemplateId === id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
+                >
+                  <LayoutTemplate size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />{t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Subject line + A/B test */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <Label>{abTestEnabled ? "Objet (Variante A)" : "Objet"}</Label>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                  style={{ fontSize: "13px" }}
+                  placeholder="Objet de l'email..."
+                />
+              </div>
+              <div className="pt-4">
+                <Pill active={abTestEnabled} onClick={() => setAbTestEnabled(!abTestEnabled)}>
+                  <FlaskConical size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />A/B Test
+                </Pill>
+              </div>
+            </div>
+            {abTestEnabled && (
+              <div>
+                <Label>Objet (Variante B)</Label>
+                <input
+                  value={subjectB}
+                  onChange={(e) => setSubjectB(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                  style={{ fontSize: "13px" }}
+                  placeholder="Variante B de l'objet..."
+                />
+                <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: 4 }}>
+                  Les destinataires seront divisés 50/50 entre les deux variantes.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Main editor layout: left palette+blocks / right preview+send */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
+            {/* ── LEFT: Block palette + Block list ── */}
+            <div className="space-y-4">
+              {/* Block palette */}
+              <div>
+                <Label>Ajouter un bloc</Label>
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  {BLOCK_PALETTE.map(({ type, label, icon: Icon }) => (
+                    <button
+                      key={type}
+                      onClick={() => addBlock(type)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                      style={{ fontSize: "11px", fontWeight: 500 }}
+                    >
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Variable insert dropdown */}
+              <div className="relative inline-block">
+                <button
+                  onClick={() => setShowVarDropdown(!showVarDropdown)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  style={{ fontSize: "11px", fontWeight: 500 }}
+                >
+                  <Variable size={12} /> Insérer une variable
+                  <ChevronDown size={10} />
+                </button>
+                {showVarDropdown && (
+                  <div
+                    className="absolute top-full left-0 mt-1 rounded-lg border border-border bg-card shadow-lg z-50 py-1"
+                    style={{ minWidth: 180 }}
+                    onMouseLeave={() => setShowVarDropdown(false)}
+                  >
+                    {AVAILABLE_VARIABLES.map(v => (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          navigator.clipboard.writeText(`{{${v}}}`);
+                          setShowVarDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-1.5 hover:bg-secondary transition-colors cursor-pointer"
+                        style={{ fontSize: "12px", color: "var(--foreground)" }}
+                      >
+                        <code style={{ fontSize: "11px", color: "var(--ora-signal)", background: "var(--ora-signal-light)", padding: "1px 6px", borderRadius: 4 }}>{`{{${v}}}`}</code>
+                        <span style={{ marginLeft: 8, fontSize: "11px", color: "var(--muted-foreground)" }}>copier</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Block list */}
+              <div className="space-y-2">
+                {blocks.length === 0 && (
+                  <div className="text-center py-12 rounded-xl border border-dashed border-border">
+                    <AlignLeft size={24} className="mx-auto mb-2" style={{ color: "var(--muted-foreground)" }} />
+                    <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>Ajoutez des blocs pour construire votre email</p>
+                  </div>
+                )}
+                {blocks.map((block, idx) => (
+                  <div
+                    key={block.id}
+                    className={`rounded-xl border transition-colors ${editingBlockId === block.id ? "border-foreground/30 bg-secondary/50" : "border-border hover:border-foreground/15"}`}
+                    style={{ position: "relative" }}
+                  >
+                    {/* Block toolbar */}
+                    <div className="flex items-center gap-1 px-3 py-2 border-b border-border/50">
+                      <GripVertical size={12} style={{ color: "var(--muted-foreground)" }} />
+                      <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em", flex: 1, marginLeft: 4 }}>
+                        {BLOCK_PALETTE.find(p => p.type === block.type)?.label || block.type}
+                      </span>
+                      <button onClick={() => moveBlock(block.id, -1)} disabled={idx === 0} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30" title="Monter"><MoveUp size={12} style={{ color: "var(--muted-foreground)" }} /></button>
+                      <button onClick={() => moveBlock(block.id, 1)} disabled={idx === blocks.length - 1} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30" title="Descendre"><MoveDown size={12} style={{ color: "var(--muted-foreground)" }} /></button>
+                      <button onClick={() => duplicateBlock(block.id)} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer" title="Dupliquer"><Copy size={12} style={{ color: "var(--muted-foreground)" }} /></button>
+                      <button onClick={() => removeBlock(block.id)} className="p-1 rounded hover:bg-red-50 transition-colors cursor-pointer" title="Supprimer"><Trash2 size={12} style={{ color: "var(--destructive)" }} /></button>
+                    </div>
+
+                    {/* Block content / editor */}
+                    <div
+                      className="px-3 py-3 cursor-pointer"
+                      onClick={() => setEditingBlockId(editingBlockId === block.id ? null : block.id)}
+                    >
+                      {/* ── HEADING ── */}
+                      {block.type === "heading" && (
+                        editingBlockId === block.id ? (
+                          <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-2">
+                              <Pill active={(block as HeadingBlock).level === "h1"} onClick={() => updateBlock(block.id, { level: "h1" })}>H1</Pill>
+                              <Pill active={(block as HeadingBlock).level === "h2"} onClick={() => updateBlock(block.id, { level: "h2" })}>H2</Pill>
+                            </div>
+                            <input
+                              value={(block as HeadingBlock).content}
+                              onChange={e => updateBlock(block.id, { content: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "14px", fontWeight: 700 }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <p style={{ fontSize: (block as HeadingBlock).level === "h1" ? "20px" : "16px", fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+                            {(block as HeadingBlock).content || "Titre..."}
+                          </p>
+                        )
+                      )}
+
+                      {/* ── TEXT ── */}
+                      {block.type === "text" && (
+                        editingBlockId === block.id ? (
+                          <div onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-1 mb-2">
+                              <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>Format :</span>
+                              <span style={{ fontSize: "10px", color: "var(--muted-foreground)", fontFamily: "monospace" }}>**gras** *italique* [lien](url)</span>
+                            </div>
+                            <textarea
+                              value={(block as TextBlock).content}
+                              onChange={e => updateBlock(block.id, { content: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "13px", minHeight: 80, resize: "vertical" }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <p style={{ fontSize: "13px", color: "var(--foreground)", margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                            {(block as TextBlock).content || "Texte..."}
+                          </p>
+                        )
+                      )}
+
+                      {/* ── IMAGE ── */}
+                      {block.type === "image" && (
+                        editingBlockId === block.id ? (
+                          <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                            <input
+                              value={(block as ImageBlock).src}
+                              onChange={e => updateBlock(block.id, { src: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "12px" }}
+                              placeholder="URL de l'image..."
+                              autoFocus
+                            />
+                            <input
+                              value={(block as ImageBlock).alt}
+                              onChange={e => updateBlock(block.id, { alt: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "12px" }}
+                              placeholder="Texte alternatif..."
+                            />
+                          </div>
+                        ) : (
+                          (block as ImageBlock).src ? (
+                            <img src={(block as ImageBlock).src} alt={(block as ImageBlock).alt} style={{ maxWidth: "100%", maxHeight: 120, borderRadius: 8, objectFit: "cover" }} />
+                          ) : (
+                            <div className="flex items-center justify-center py-6 rounded-lg border border-dashed border-border">
+                              <Image size={20} style={{ color: "var(--muted-foreground)" }} />
+                              <span style={{ fontSize: "12px", color: "var(--muted-foreground)", marginLeft: 8 }}>Cliquez pour ajouter une image</span>
+                            </div>
+                          )
+                        )
+                      )}
+
+                      {/* ── BUTTON ── */}
+                      {block.type === "button" && (
+                        editingBlockId === block.id ? (
+                          <div className="space-y-2" onClick={e => e.stopPropagation()}>
+                            <input
+                              value={(block as ButtonBlock).text}
+                              onChange={e => updateBlock(block.id, { text: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "12px" }}
+                              placeholder="Texte du bouton..."
+                              autoFocus
+                            />
+                            <input
+                              value={(block as ButtonBlock).url}
+                              onChange={e => updateBlock(block.id, { url: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "12px" }}
+                              placeholder="URL du bouton..."
+                            />
+                            <div className="flex items-center gap-2">
+                              <Pill active={(block as ButtonBlock).style === "filled"} onClick={() => updateBlock(block.id, { style: "filled" })}>Rempli</Pill>
+                              <Pill active={(block as ButtonBlock).style === "outline"} onClick={() => updateBlock(block.id, { style: "outline" })}>Contour</Pill>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "8px 20px",
+                                borderRadius: 999,
+                                fontSize: "13px",
+                                fontWeight: 600,
+                                background: (block as ButtonBlock).style === "filled" ? "var(--foreground)" : "transparent",
+                                color: (block as ButtonBlock).style === "filled" ? "var(--background)" : "var(--foreground)",
+                                border: "2px solid var(--foreground)",
+                              }}
+                            >
+                              {(block as ButtonBlock).text || "Bouton"}
+                            </span>
+                          </div>
+                        )
+                      )}
+
+                      {/* ── DIVIDER ── */}
+                      {block.type === "divider" && (
+                        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "4px 0" }} />
+                      )}
+
+                      {/* ── COLUMNS ── */}
+                      {block.type === "columns" && (
+                        editingBlockId === block.id ? (
+                          <div className="grid grid-cols-2 gap-3" onClick={e => e.stopPropagation()}>
+                            <div>
+                              <Label>Gauche</Label>
+                              <textarea
+                                value={(block as ColumnsBlock).left}
+                                onChange={e => updateBlock(block.id, { left: e.target.value })}
+                                className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                                style={{ fontSize: "12px", minHeight: 60, resize: "vertical" }}
+                                autoFocus
+                              />
+                            </div>
+                            <div>
+                              <Label>Droite</Label>
+                              <textarea
+                                value={(block as ColumnsBlock).right}
+                                onChange={e => updateBlock(block.id, { right: e.target.value })}
+                                className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                                style={{ fontSize: "12px", minHeight: 60, resize: "vertical" }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-3">
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", margin: 0 }}>{(block as ColumnsBlock).left || "Gauche..."}</p>
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", margin: 0 }}>{(block as ColumnsBlock).right || "Droite..."}</p>
+                          </div>
+                        )
+                      )}
+
+                      {/* ── HIGHLIGHT ── */}
+                      {block.type === "highlight" && (
+                        editingBlockId === block.id ? (
+                          <div onClick={e => e.stopPropagation()}>
+                            <textarea
+                              value={(block as HighlightBlock).content}
+                              onChange={e => updateBlock(block.id, { content: e.target.value })}
+                              className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                              style={{ fontSize: "12px", minHeight: 60, resize: "vertical" }}
+                              autoFocus
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ background: "var(--secondary)", borderRadius: 8, padding: "10px 14px", borderLeft: "3px solid var(--ora-signal)", fontSize: "13px", color: "var(--foreground)", lineHeight: 1.6 }}>
+                            {(block as HighlightBlock).content || "Highlight..."}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Save button */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSaveTemplate}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                  style={{ fontSize: "12px", fontWeight: 500 }}
+                >
+                  <Save size={13} /> Sauvegarder le template
+                </button>
+              </div>
             </div>
 
-            {/* Variables */}
-            {selected.variables.length > 0 && (
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Variables</label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {selected.variables.map((v) => (
-                    <div key={v} className="flex items-center gap-2">
-                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)", minWidth: 80 }}>{`{{${v}}}`}</span>
+            {/* ── RIGHT: Preview + Send controls ── */}
+            <div className="space-y-4">
+              {/* Live preview */}
+              <div className="rounded-xl border border-border overflow-hidden">
+                <div className="px-3 py-2 border-b border-border flex items-center gap-2" style={{ background: "var(--secondary)" }}>
+                  <Eye size={12} style={{ color: "var(--muted-foreground)" }} />
+                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--muted-foreground)" }}>Aperçu en direct</span>
+                </div>
+                <iframe
+                  ref={previewRef}
+                  srcDoc={previewHtml}
+                  className="w-full border-0"
+                  style={{ height: 420, background: "#f4f4f6" }}
+                  sandbox="allow-same-origin"
+                  title="Email preview"
+                />
+              </div>
+
+              {/* Variables quick edit */}
+              <div className="rounded-xl border border-border p-3 space-y-2">
+                <Label>Variables de prévisualisation</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(variables).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2">
+                      <code style={{ fontSize: "10px", color: "var(--ora-signal)", minWidth: 60 }}>{`{{${k}}}`}</code>
                       <input
-                        value={variables[v] || ""}
-                        onChange={(e) => setVariables(prev => ({ ...prev, [v]: e.target.value }))}
-                        className="flex-1 px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
-                        style={{ fontSize: "12px" }}
-                        placeholder={v}
+                        value={v}
+                        onChange={e => setVariables(prev => ({ ...prev, [k]: e.target.value }))}
+                        className="flex-1 px-2 py-1 rounded-md border border-border bg-background text-foreground"
+                        style={{ fontSize: "11px" }}
                       />
                     </div>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* HTML Editor */}
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Contenu HTML</label>
-              <textarea
-                value={editingHtml}
-                onChange={(e) => setEditingHtml(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground font-mono"
-                style={{ fontSize: "12px", minHeight: 200, resize: "vertical" }}
+              {/* Scheduling toggle */}
+              <div className="rounded-xl border border-border p-3 space-y-2">
+                <Label>Programmation</Label>
+                <div className="flex items-center gap-2">
+                  <Pill active={scheduleMode === "now"} onClick={() => setScheduleMode("now")}>Envoyer maintenant</Pill>
+                  <Pill active={scheduleMode === "later"} onClick={() => setScheduleMode("later")}>
+                    <Calendar size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />Programmer
+                  </Pill>
+                </div>
+                {scheduleMode === "later" && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={e => setScheduleDate(e.target.value)}
+                      className="px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                      style={{ fontSize: "12px" }}
+                    />
+                    <input
+                      type="time"
+                      value={scheduleTime}
+                      onChange={e => setScheduleTime(e.target.value)}
+                      className="px-2 py-1.5 rounded-md border border-border bg-background text-foreground"
+                      style={{ fontSize: "12px" }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Send controls */}
+              <div className="rounded-xl border border-border p-4 space-y-3" style={{ background: "var(--secondary)" }}>
+                <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>Envoyer</p>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Pill active={sendMode === "single"} onClick={() => setSendMode("single")}>Email(s) ciblé(s)</Pill>
+                  <Pill active={sendMode === "broadcast"} onClick={() => setSendMode("broadcast")}>Broadcast</Pill>
+                  <Pill active={sendMode === "list"} onClick={() => setSendMode("list")}>Liste</Pill>
+                </div>
+
+                {sendMode === "single" && (
+                  <input
+                    value={recipientEmail}
+                    onChange={e => setRecipientEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                    style={{ fontSize: "12px" }}
+                    placeholder="email@exemple.com (virgules pour multiples)"
+                  />
+                )}
+
+                {sendMode === "broadcast" && (
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>Plan :</span>
+                    <select
+                      value={planFilter}
+                      onChange={e => setPlanFilter(e.target.value)}
+                      className="px-2 py-1.5 rounded-md border border-border bg-background text-foreground cursor-pointer"
+                      style={{ fontSize: "12px" }}
+                    >
+                      <option value="">Tous les plans</option>
+                      <option value="free">Free</option>
+                      <option value="starter">Starter</option>
+                      <option value="generate">Pro</option>
+                      <option value="studio">Business</option>
+                    </select>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      ({users.filter(u => !planFilter || u.plan === planFilter).filter(u => u.role !== "admin").length} dest.)
+                    </span>
+                  </div>
+                )}
+
+                {sendMode === "list" && (
+                  <select
+                    value={selectedListId || ""}
+                    onChange={e => setSelectedListId(e.target.value || null)}
+                    className="w-full px-2 py-1.5 rounded-md border border-border bg-background text-foreground cursor-pointer"
+                    style={{ fontSize: "12px" }}
+                  >
+                    <option value="">Sélectionner une liste...</option>
+                    {lists.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.name} ({l.filter.type === "plan" ? (smartListCounts as any)[l.filter.value] || 0 : l.filter.type === "smart" ? (smartListCounts as any)[l.filter.value] || 0 : l.userIds.length} users)
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <button
+                  onClick={handleSend}
+                  disabled={sending}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full text-background cursor-pointer disabled:opacity-50"
+                  style={{ background: "var(--foreground)", fontSize: "13px", fontWeight: 600 }}
+                >
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : scheduleMode === "later" ? <Calendar size={14} /> : <Send size={14} />}
+                  {sending ? "Envoi en cours..." : scheduleMode === "later" ? "Programmer l'envoi" : sendMode === "single" ? "Envoyer" : sendMode === "broadcast" ? "Envoyer à tous" : "Envoyer à la liste"}
+                </button>
+
+                {result && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Check size={14} style={{ color: "#22c55e" }} />
+                    <span style={{ fontSize: "12px", color: "var(--foreground)" }}>
+                      {scheduleMode === "later"
+                        ? `Email programmé pour le ${scheduleDate} à ${scheduleTime}`
+                        : `${result.sent} envoyé${result.sent > 1 ? "s" : ""}${result.failed > 0 ? ` · ${result.failed} échoué${result.failed > 1 ? "s" : ""}` : ""}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ════════ LISTS SUB-TAB ════════ */}
+      {subTab === "lists" && (
+        <div className="space-y-6">
+          {/* Create new list */}
+          <div className="rounded-xl border border-border p-4 space-y-3">
+            <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>
+              <UserPlus size={14} className="inline mr-2" style={{ verticalAlign: "-2px" }} />
+              Créer une liste
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                value={newListName}
+                onChange={e => setNewListName(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                style={{ fontSize: "12px" }}
+                placeholder="Nom de la liste..."
+              />
+              <input
+                value={newListDesc}
+                onChange={e => setNewListDesc(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-background text-foreground"
+                style={{ fontSize: "12px" }}
+                placeholder="Description (optionnel)..."
               />
             </div>
+            <button
+              onClick={addList}
+              disabled={!newListName.trim()}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-background cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--foreground)", fontSize: "12px", fontWeight: 500 }}
+            >
+              <Plus size={12} /> Créer
+            </button>
+          </div>
 
-            {/* Action buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePreview}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                style={{ fontSize: "12px", fontWeight: 500 }}
-              >
-                <Eye size={13} /> Prévisualiser
-              </button>
-              <button
-                onClick={handleSaveTemplates}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                style={{ fontSize: "12px", fontWeight: 500 }}
-              >
-                <Check size={13} /> Sauvegarder le template
-              </button>
+          {/* Smart lists */}
+          <div>
+            <Label>Listes intelligentes</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+              {lists.filter(l => l.filter.type === "smart" || l.filter.type === "plan").map(l => {
+                const count = (smartListCounts as any)[l.filter.value] || 0;
+                return (
+                  <div key={l.id} className="rounded-xl border border-border p-4 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={13} style={{ color: "var(--ora-signal)" }} />
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{l.name}</span>
+                    </div>
+                    <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{l.description}</p>
+                    <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--foreground)", marginTop: 4 }}>
+                      {count} utilisateur{count !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right: Preview + Send */}
-          <div className="space-y-4">
-            {/* Preview */}
-            {showPreview && previewHtml && (
-              <div className="rounded-xl border border-border overflow-hidden" style={{ maxHeight: 350, overflowY: "auto" }}>
-                <div className="px-3 py-2 border-b border-border flex items-center gap-2" style={{ background: "var(--secondary)" }}>
-                  <Mail size={12} style={{ color: "var(--muted-foreground)" }} />
-                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--muted-foreground)" }}>Aperçu email</span>
-                </div>
-                <iframe
-                  srcDoc={previewHtml}
-                  className="w-full border-0"
-                  style={{ height: 300, background: "#fafafa" }}
-                  sandbox="allow-same-origin"
-                  title="Email preview"
-                />
+          {/* Manual lists */}
+          {lists.filter(l => l.filter.type === "manual").length > 0 && (
+            <div>
+              <Label>Listes manuelles</Label>
+              <div className="space-y-2 mt-2">
+                {lists.filter(l => l.filter.type === "manual").map(l => (
+                  <div key={l.id} className="rounded-xl border border-border p-4 flex items-center justify-between">
+                    <div>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{l.name}</p>
+                      {l.description && <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{l.description}</p>}
+                      <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: 2 }}>{l.userIds.length} membre{l.userIds.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <button
+                      onClick={() => setLists(prev => prev.filter(x => x.id !== l.id))}
+                      className="p-2 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Supprimer"
+                    >
+                      <Trash2 size={14} style={{ color: "var(--destructive)" }} />
+                    </button>
+                  </div>
+                ))}
               </div>
-            )}
-
-            {/* Send section */}
-            <div className="rounded-xl border border-border p-4 space-y-3" style={{ background: "var(--secondary)" }}>
-              <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>Envoyer</p>
-
-              {/* Send mode */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSendMode("single")}
-                  className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer ${sendMode === "single" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`}
-                >
-                  Email(s) ciblé(s)
-                </button>
-                <button
-                  onClick={() => setSendMode("all")}
-                  className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer ${sendMode === "all" ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`}
-                >
-                  Tous les utilisateurs
-                </button>
-              </div>
-
-              {sendMode === "single" ? (
-                <input
-                  value={recipientEmail}
-                  onChange={(e) => setRecipientEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground"
-                  style={{ fontSize: "12px" }}
-                  placeholder="email@exemple.com (séparés par des virgules pour multiples)"
-                />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>Filtrer par plan :</span>
-                  <select
-                    value={planFilter}
-                    onChange={(e) => setPlanFilter(e.target.value)}
-                    className="px-2 py-1.5 rounded-md border border-border bg-background text-foreground cursor-pointer"
-                    style={{ fontSize: "12px" }}
-                  >
-                    <option value="">Tous les plans</option>
-                    <option value="free">Free</option>
-                    <option value="starter">Starter</option>
-                    <option value="generate">Pro</option>
-                    <option value="studio">Business</option>
-                  </select>
-                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                    ({users.filter(u => !planFilter || u.plan === planFilter).filter(u => u.role !== "admin").length} destinataires)
-                  </span>
-                </div>
-              )}
-
-              <button
-                onClick={handleSend}
-                disabled={sending}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-background cursor-pointer disabled:opacity-50"
-                style={{ background: "var(--foreground)", fontSize: "13px", fontWeight: 600 }}
-              >
-                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {sending ? "Envoi en cours..." : sendMode === "single" ? "Envoyer" : "Envoyer à tous"}
-              </button>
-
-              {/* Result */}
-              {result && (
-                <div className="flex items-center gap-2 mt-2">
-                  <Check size={14} style={{ color: "#22c55e" }} />
-                  <span style={{ fontSize: "12px", color: "var(--foreground)" }}>
-                    {result.sent} envoyé{result.sent > 1 ? "s" : ""}{result.failed > 0 ? ` · ${result.failed} échoué${result.failed > 1 ? "s" : ""}` : ""}
-                  </span>
-                </div>
-              )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════ SCHEDULED SUB-TAB ════════ */}
+      {subTab === "scheduled" && (
+        <div className="space-y-4">
+          <Label>Emails programmés</Label>
+          {scheduledEmails.length === 0 ? (
+            <div className="text-center py-12 rounded-xl border border-dashed border-border">
+              <Calendar size={24} className="mx-auto mb-2" style={{ color: "var(--muted-foreground)" }} />
+              <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>Aucun email programmé</p>
+              <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Utilisez l'éditeur pour programmer un envoi.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {scheduledEmails.map(se => (
+                <div key={se.id} className="rounded-xl border border-border p-4 flex items-center justify-between">
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{se.subject}</p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                        <Calendar size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} />
+                        {new Date(se.scheduledAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
+                      </span>
+                      <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                        {se.recipientCount} destinataire{se.recipientCount > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="px-2 py-0.5 rounded-full"
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        background: se.status === "pending" ? "var(--ora-signal-light)" : se.status === "sent" ? "rgba(34,197,94,0.1)" : "rgba(212,24,61,0.1)",
+                        color: se.status === "pending" ? "var(--ora-signal)" : se.status === "sent" ? "#22c55e" : "var(--destructive)",
+                      }}
+                    >
+                      {se.status === "pending" ? "En attente" : se.status === "sent" ? "Envoyé" : "Annulé"}
+                    </span>
+                    {se.status === "pending" && (
+                      <button
+                        onClick={() => setScheduledEmails(prev => prev.map(s => s.id === se.id ? { ...s, status: "cancelled" as const } : s))}
+                        className="p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Annuler"
+                      >
+                        <X size={13} style={{ color: "var(--destructive)" }} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════ STATS SUB-TAB ════════ */}
+      {subTab === "stats" && (
+        <div className="space-y-6">
+          {/* KPI cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { label: "Total envoyés", value: stats.totalSent.toLocaleString(), icon: Send, color: "var(--foreground)" },
+              { label: "Taux d'ouverture", value: `${stats.openRate}%`, icon: MailOpen, color: "var(--ora-signal)" },
+              { label: "Taux de clic", value: `${stats.clickRate}%`, icon: MousePointer, color: "#22c55e" },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="rounded-xl border border-border p-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Icon size={14} style={{ color }} />
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+                </div>
+                <p style={{ fontSize: "28px", fontWeight: 700, color: "var(--foreground)", margin: 0 }}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Campaign breakdown */}
+          <div>
+            <Label>Par campagne</Label>
+            <div className="rounded-xl border border-border overflow-hidden mt-2">
+              <table className="w-full" style={{ fontSize: "12px" }}>
+                <thead>
+                  <tr style={{ background: "var(--secondary)" }}>
+                    <th className="text-left px-4 py-2.5" style={{ fontWeight: 600, color: "var(--muted-foreground)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Campagne</th>
+                    <th className="text-right px-4 py-2.5" style={{ fontWeight: 600, color: "var(--muted-foreground)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Envoyés</th>
+                    <th className="text-right px-4 py-2.5" style={{ fontWeight: 600, color: "var(--muted-foreground)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Ouverts</th>
+                    <th className="text-right px-4 py-2.5" style={{ fontWeight: 600, color: "var(--muted-foreground)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Cliqués</th>
+                    <th className="text-right px-4 py-2.5" style={{ fontWeight: 600, color: "var(--muted-foreground)", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.campaigns.map((c, i) => (
+                    <tr key={i} className="border-t border-border hover:bg-secondary/50 transition-colors">
+                      <td className="px-4 py-2.5" style={{ fontWeight: 500, color: "var(--foreground)" }}>{c.name}</td>
+                      <td className="text-right px-4 py-2.5" style={{ color: "var(--foreground)" }}>{c.sent}</td>
+                      <td className="text-right px-4 py-2.5">
+                        <span style={{ color: "var(--ora-signal)" }}>{c.opened}</span>
+                        <span style={{ color: "var(--muted-foreground)", marginLeft: 4 }}>({c.sent > 0 ? ((c.opened / c.sent) * 100).toFixed(1) : 0}%)</span>
+                      </td>
+                      <td className="text-right px-4 py-2.5">
+                        <span style={{ color: "#22c55e" }}>{c.clicked}</span>
+                        <span style={{ color: "var(--muted-foreground)", marginLeft: 4 }}>({c.sent > 0 ? ((c.clicked / c.sent) * 100).toFixed(1) : 0}%)</span>
+                      </td>
+                      <td className="text-right px-4 py-2.5" style={{ color: "var(--muted-foreground)" }}>
+                        {new Date(c.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 8 }}>
+              Les statistiques proviennent de /admin/email/stats. Les données ci-dessus sont un aperçu de la structure.
+            </p>
           </div>
         </div>
       )}

@@ -456,6 +456,101 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return false; }
 }
 
+// sendEmailWithId — like sendEmail but returns { ok, emailId } for tracking
+async function sendEmailWithId(to: string, subject: string, html: string): Promise<{ ok: boolean; emailId?: string }> {
+  if (!RESEND_API_KEY) { console.log("[email] RESEND_API_KEY not set — skipping"); return { ok: false }; }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const data = await res.json();
+    if (res.ok) { console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`); return { ok: true, emailId: data.id }; }
+    console.log(`[email] Failed "${subject}" to ${to}: ${JSON.stringify(data)}`);
+    return { ok: false };
+  } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return { ok: false }; }
+}
+
+// resolveEmailList — resolve a list to actual user emails
+async function resolveEmailList(list: any): Promise<Array<{ email: string; name: string }>> {
+  if (list.type === "manual" && list.userIds?.length) {
+    const results: Array<{ email: string; name: string }> = [];
+    for (const uid of list.userIds) {
+      const profile = await kv.get(`user:${uid}`);
+      if (profile?.email) results.push({ email: profile.email, name: profile.name || profile.email.split("@")[0] });
+    }
+    return results;
+  }
+  if (list.type === "smart" && list.filter) {
+    const allProfiles = await kv.getByPrefix("user:");
+    return allProfiles
+      .filter((p: any) => {
+        if (!p.email) return false;
+        const f = list.filter;
+        if (f.plan && p.plan !== f.plan) return false;
+        if (f.signedUpAfter && (!p.createdAt || p.createdAt < f.signedUpAfter)) return false;
+        if (f.signedUpBefore && (!p.createdAt || p.createdAt > f.signedUpBefore)) return false;
+        if (f.lastLoginAfter && (!p.lastLogin || p.lastLogin < f.lastLoginAfter)) return false;
+        if (f.lastLoginBefore && (!p.lastLogin || p.lastLogin > f.lastLoginBefore)) return false;
+        return true;
+      })
+      .map((p: any) => ({ email: p.email, name: p.name || p.email.split("@")[0] }));
+  }
+  return [];
+}
+
+// sendCampaign — send emails to recipients with optional A/B testing, returns campaign stats
+async function sendCampaign(opts: {
+  recipients: Array<{ email: string; name: string }>;
+  subject: string;
+  html: string;
+  variables: Record<string, string>;
+  templateId?: string;
+  abTest?: { subjectA: string; subjectB: string };
+}): Promise<{ campaignId: string; sent: number; failed: number; emailIds: string[] }> {
+  const campaignId = crypto.randomUUID();
+  const emailIds: string[] = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < opts.recipients.length; i++) {
+    const r = opts.recipients[i];
+    const vars = { ...opts.variables, name: r.name };
+    let subject = opts.subject;
+    if (opts.abTest) {
+      subject = i % 2 === 0 ? opts.abTest.subjectA : opts.abTest.subjectB;
+    }
+    const finalSubject = renderTemplate(subject, vars);
+    const innerHtml = renderTemplate(opts.html, vars);
+    const finalHtml = wrapEmailTemplate(innerHtml);
+    const result = await sendEmailWithId(r.email, finalSubject, finalHtml);
+    if (result.ok) {
+      sent++;
+      if (result.emailId) emailIds.push(result.emailId);
+    } else {
+      failed++;
+    }
+  }
+
+  // Store campaign metadata
+  await kv.set(`admin:email-campaign:${campaignId}`, {
+    id: campaignId,
+    templateId: opts.templateId,
+    subject: opts.subject,
+    sentAt: new Date().toISOString(),
+    recipientCount: opts.recipients.length,
+    sent,
+    failed,
+    emailIds,
+    abTest: opts.abTest || null,
+  });
+
+  console.log(`[email] Campaign ${campaignId}: sent=${sent}, failed=${failed}, total=${opts.recipients.length}`);
+  return { campaignId, sent, failed, emailIds };
+}
+
 // ── Email templates — ORA Brand System ──
 const emailStyle = `
   body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111111; margin: 0; padding: 0; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
@@ -11509,13 +11604,23 @@ app.post("/admin/email/templates/save", async (c) => {
   }
 });
 
-// POST /admin/email/send — send email to one or multiple recipients
+// POST /admin/email/send — send email to one or multiple recipients (supports listId and abTest)
 app.post("/admin/email/send", async (c) => {
   try {
     await requireAdmin(c);
     const body = c.get?.("parsedBody") || await c.req.json();
-    const { templateId, recipients, variables, subject: customSubject, html: customHtml } = body;
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    const { templateId, recipients: rawRecipients, variables, subject: customSubject, html: customHtml, listId, abTest } = body;
+
+    // Resolve recipients from list if provided
+    let recipientEmails: string[] = rawRecipients || [];
+    if (listId) {
+      const list = await kv.get(`admin:email-list:${listId}`);
+      if (!list) return c.json({ success: false, error: "List not found" }, 400);
+      const resolved = await resolveEmailList(list);
+      recipientEmails = [...recipientEmails, ...resolved.map((r: any) => r.email)];
+    }
+
+    if (!recipientEmails || !Array.isArray(recipientEmails) || recipientEmails.length === 0) {
       return c.json({ success: false, error: "No recipients" }, 400);
     }
 
@@ -11525,60 +11630,70 @@ app.post("/admin/email/send", async (c) => {
     if (!template && !customHtml) return c.json({ success: false, error: "Template not found" }, 400);
 
     const vars = variables || {};
-    const finalSubject = customSubject || renderTemplate(template?.subject || "", vars);
+    const subject = customSubject || renderTemplate(template?.subject || "", vars);
     const innerHtml = customHtml || renderTemplate(template?.html || "", vars);
-    const finalHtml = wrapEmailTemplate(innerHtml);
 
-    const results: Array<{ email: string; success: boolean; error?: string }> = [];
-    for (const email of recipients) {
-      const ok = await sendEmail(email, finalSubject, finalHtml);
-      results.push({ email, success: ok, error: ok ? undefined : "Send failed" });
-    }
+    // Use campaign sender for tracking
+    const campaignRecipients = recipientEmails.map((email: string) => ({ email, name: email.split("@")[0] }));
+    const campaign = await sendCampaign({
+      recipients: campaignRecipients,
+      subject,
+      html: innerHtml,
+      variables: vars,
+      templateId,
+      abTest,
+    });
 
-    const successCount = results.filter(r => r.success).length;
-    await logEvent("admin_email_sent", { templateId, recipientCount: recipients.length, successCount, subject: finalSubject });
-    return c.json({ success: true, sent: successCount, failed: recipients.length - successCount, results });
+    await logEvent("admin_email_sent", { templateId, recipientCount: recipientEmails.length, successCount: campaign.sent, subject, campaignId: campaign.campaignId });
+    return c.json({ success: true, sent: campaign.sent, failed: campaign.failed, campaignId: campaign.campaignId });
   } catch (err) {
     if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// POST /admin/email/send-all — broadcast to all users (with optional plan filter)
+// POST /admin/email/send-all — broadcast to all users (with optional plan filter, listId, abTest)
 app.post("/admin/email/send-all", async (c) => {
   try {
     await requireAdmin(c);
     const body = c.get?.("parsedBody") || await c.req.json();
-    const { templateId, variables, planFilter } = body;
+    const { templateId, variables, planFilter, listId, abTest } = body;
 
     const savedTemplates = await kv.get("admin:email-templates") || DEFAULT_EMAIL_TEMPLATES;
     const template = savedTemplates[templateId];
     if (!template) return c.json({ success: false, error: "Template not found" }, 400);
 
-    // Get all user profiles
-    const allProfiles = await kv.getByPrefix("user:");
-    const filteredProfiles = planFilter
-      ? allProfiles.filter((p: any) => p.plan === planFilter)
-      : allProfiles;
+    let recipients: Array<{ email: string; name: string }>;
 
-    const recipients = filteredProfiles
-      .filter((p: any) => p.email && p.role !== "admin")
-      .map((p: any) => ({ email: p.email, name: p.name || p.email.split("@")[0] }));
+    if (listId) {
+      // Resolve recipients from email list
+      const list = await kv.get(`admin:email-list:${listId}`);
+      if (!list) return c.json({ success: false, error: "List not found" }, 400);
+      recipients = await resolveEmailList(list);
+    } else {
+      // Get all user profiles (legacy behavior)
+      const allProfiles = await kv.getByPrefix("user:");
+      const filteredProfiles = planFilter
+        ? allProfiles.filter((p: any) => p.plan === planFilter)
+        : allProfiles;
+      recipients = filteredProfiles
+        .filter((p: any) => p.email && p.role !== "admin")
+        .map((p: any) => ({ email: p.email, name: p.name || p.email.split("@")[0] }));
+    }
 
     if (recipients.length === 0) return c.json({ success: false, error: "No matching users" }, 400);
 
-    let successCount = 0;
-    for (const r of recipients) {
-      const vars = { ...variables, name: r.name };
-      const subject = renderTemplate(template.subject, vars);
-      const innerHtml = renderTemplate(template.html, vars);
-      const finalHtml = wrapEmailTemplate(innerHtml);
-      const ok = await sendEmail(r.email, subject, finalHtml);
-      if (ok) successCount++;
-    }
+    const campaign = await sendCampaign({
+      recipients,
+      subject: template.subject,
+      html: template.html,
+      variables: variables || {},
+      templateId,
+      abTest,
+    });
 
-    await logEvent("admin_email_broadcast", { templateId, planFilter, totalRecipients: recipients.length, successCount });
-    return c.json({ success: true, total: recipients.length, sent: successCount, failed: recipients.length - successCount });
+    await logEvent("admin_email_broadcast", { templateId, planFilter, listId, totalRecipients: recipients.length, successCount: campaign.sent, campaignId: campaign.campaignId });
+    return c.json({ success: true, total: recipients.length, sent: campaign.sent, failed: campaign.failed, campaignId: campaign.campaignId });
   } catch (err) {
     if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
     return c.json({ success: false, error: String(err) }, 500);
@@ -11600,6 +11715,331 @@ app.post("/admin/email/preview", async (c) => {
     const finalHtml = wrapEmailTemplate(innerHtml);
 
     return c.json({ success: true, subject, html: finalHtml });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Enhanced Email System: Lists, Scheduling, Stats, Webhooks ──
+
+// POST /admin/email/lists — manage recipient lists
+app.post("/admin/email/lists", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { action } = body;
+
+    if (action === "list") {
+      console.log("[email-lists] Listing all email lists");
+      const allLists = await kv.getByPrefix("admin:email-list:");
+      return c.json({ success: true, lists: allLists });
+    }
+
+    if (action === "create") {
+      const { name, description, type, filter, userIds } = body;
+      if (!name) return c.json({ success: false, error: "Missing name" }, 400);
+      const listId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const list = {
+        id: listId,
+        name,
+        description: description || "",
+        type: type || (filter ? "smart" : "manual"),
+        filter: filter || null,
+        userIds: userIds || [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await kv.set(`admin:email-list:${listId}`, list);
+      console.log(`[email-lists] Created list "${name}" (${listId}), type=${list.type}`);
+      return c.json({ success: true, list });
+    }
+
+    if (action === "update") {
+      const { listId, name, description, filter, userIds } = body;
+      if (!listId) return c.json({ success: false, error: "Missing listId" }, 400);
+      const existing = await kv.get(`admin:email-list:${listId}`);
+      if (!existing) return c.json({ success: false, error: "List not found" }, 404);
+      const updated = {
+        ...existing,
+        ...(name !== undefined && { name }),
+        ...(description !== undefined && { description }),
+        ...(filter !== undefined && { filter }),
+        ...(userIds !== undefined && { userIds }),
+        updatedAt: new Date().toISOString(),
+      };
+      await kv.set(`admin:email-list:${listId}`, updated);
+      console.log(`[email-lists] Updated list ${listId}`);
+      return c.json({ success: true, list: updated });
+    }
+
+    if (action === "delete") {
+      const { listId } = body;
+      if (!listId) return c.json({ success: false, error: "Missing listId" }, 400);
+      await kv.del(`admin:email-list:${listId}`);
+      console.log(`[email-lists] Deleted list ${listId}`);
+      return c.json({ success: true });
+    }
+
+    if (action === "add-users") {
+      const { listId, userIds } = body;
+      if (!listId || !userIds?.length) return c.json({ success: false, error: "Missing listId or userIds" }, 400);
+      const existing = await kv.get(`admin:email-list:${listId}`);
+      if (!existing) return c.json({ success: false, error: "List not found" }, 404);
+      const currentIds = new Set(existing.userIds || []);
+      for (const uid of userIds) currentIds.add(uid);
+      existing.userIds = [...currentIds];
+      existing.updatedAt = new Date().toISOString();
+      await kv.set(`admin:email-list:${listId}`, existing);
+      console.log(`[email-lists] Added ${userIds.length} users to list ${listId}`);
+      return c.json({ success: true, list: existing });
+    }
+
+    if (action === "remove-users") {
+      const { listId, userIds } = body;
+      if (!listId || !userIds?.length) return c.json({ success: false, error: "Missing listId or userIds" }, 400);
+      const existing = await kv.get(`admin:email-list:${listId}`);
+      if (!existing) return c.json({ success: false, error: "List not found" }, 404);
+      const removeSet = new Set(userIds);
+      existing.userIds = (existing.userIds || []).filter((id: string) => !removeSet.has(id));
+      existing.updatedAt = new Date().toISOString();
+      await kv.set(`admin:email-list:${listId}`, existing);
+      console.log(`[email-lists] Removed ${userIds.length} users from list ${listId}`);
+      return c.json({ success: true, list: existing });
+    }
+
+    if (action === "resolve") {
+      const { listId } = body;
+      if (!listId) return c.json({ success: false, error: "Missing listId" }, 400);
+      const list = await kv.get(`admin:email-list:${listId}`);
+      if (!list) return c.json({ success: false, error: "List not found" }, 404);
+      const users = await resolveEmailList(list);
+      console.log(`[email-lists] Resolved list ${listId}: ${users.length} users`);
+      return c.json({ success: true, users, count: users.length });
+    }
+
+    return c.json({ success: false, error: `Unknown action: ${action}` }, 400);
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/schedule — schedule emails for later
+app.post("/admin/email/schedule", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { action } = body;
+
+    if (action === "list") {
+      console.log("[email-schedule] Listing all scheduled emails");
+      const allScheduled = await kv.getByPrefix("admin:email-schedule:");
+      return c.json({ success: true, scheduled: allScheduled });
+    }
+
+    if (action === "create") {
+      const { templateId, subject, html, listId, recipients, variables, sendAt, abTest } = body;
+      if (!subject || !html || !sendAt) return c.json({ success: false, error: "Missing subject, html, or sendAt" }, 400);
+      if (!listId && (!recipients || recipients.length === 0)) return c.json({ success: false, error: "Missing listId or recipients" }, 400);
+
+      const scheduleId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const scheduled = {
+        id: scheduleId,
+        templateId: templateId || null,
+        subject,
+        html,
+        listId: listId || null,
+        recipients: recipients || null,
+        variables: variables || {},
+        sendAt,
+        status: "pending",
+        abTest: abTest || null,
+        createdAt: now,
+        sentAt: null,
+        result: null,
+      };
+      await kv.set(`admin:email-schedule:${scheduleId}`, scheduled);
+      console.log(`[email-schedule] Created schedule ${scheduleId}, sendAt=${sendAt}`);
+      return c.json({ success: true, scheduled });
+    }
+
+    if (action === "cancel") {
+      const { scheduleId } = body;
+      if (!scheduleId) return c.json({ success: false, error: "Missing scheduleId" }, 400);
+      const existing = await kv.get(`admin:email-schedule:${scheduleId}`);
+      if (!existing) return c.json({ success: false, error: "Schedule not found" }, 404);
+      if (existing.status !== "pending") return c.json({ success: false, error: `Cannot cancel schedule with status: ${existing.status}` }, 400);
+      existing.status = "cancelled";
+      await kv.set(`admin:email-schedule:${scheduleId}`, existing);
+      console.log(`[email-schedule] Cancelled schedule ${scheduleId}`);
+      return c.json({ success: true, scheduled: existing });
+    }
+
+    return c.json({ success: false, error: `Unknown action: ${action}` }, 400);
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/stats — email statistics
+app.post("/admin/email/stats", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { action, campaignId } = body;
+
+    if (action === "summary") {
+      console.log("[email-stats] Fetching aggregate stats");
+      const aggregate = await kv.get("admin:email-stats-aggregate") || {
+        totalSent: 0, totalOpened: 0, totalClicked: 0, openRate: 0, clickRate: 0, campaigns: [],
+      };
+      // Recalculate rates
+      if (aggregate.totalSent > 0) {
+        aggregate.openRate = Math.round((aggregate.totalOpened / aggregate.totalSent) * 10000) / 100;
+        aggregate.clickRate = Math.round((aggregate.totalClicked / aggregate.totalSent) * 10000) / 100;
+      }
+      return c.json({ success: true, stats: aggregate });
+    }
+
+    if (action === "campaign") {
+      if (!campaignId) return c.json({ success: false, error: "Missing campaignId" }, 400);
+      console.log(`[email-stats] Fetching stats for campaign ${campaignId}`);
+      const campaign = await kv.get(`admin:email-campaign:${campaignId}`);
+      if (!campaign) return c.json({ success: false, error: "Campaign not found" }, 404);
+
+      // Gather per-email event data for this campaign
+      const events: any[] = [];
+      if (campaign.emailIds?.length) {
+        for (const emailId of campaign.emailIds) {
+          const evt = await kv.get(`admin:email-event:${emailId}`);
+          if (evt) events.push(evt);
+        }
+      }
+
+      const opened = events.filter((e: any) => e.opened).length;
+      const clicked = events.filter((e: any) => e.clicked).length;
+
+      return c.json({
+        success: true,
+        campaign: {
+          ...campaign,
+          opened,
+          clicked,
+          openRate: campaign.sent > 0 ? Math.round((opened / campaign.sent) * 10000) / 100 : 0,
+          clickRate: campaign.sent > 0 ? Math.round((clicked / campaign.sent) * 10000) / 100 : 0,
+        },
+        events,
+      });
+    }
+
+    return c.json({ success: false, error: `Unknown action: ${action}` }, 400);
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/webhook — Resend webhook receiver (NO auth required)
+app.post("/admin/email/webhook", async (c) => {
+  try {
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { type, data } = body;
+
+    // Basic validation — ensure expected Resend webhook fields are present
+    if (!type || !data || !data.email_id) {
+      console.log("[email-webhook] Invalid webhook payload, missing type or data.email_id");
+      return c.json({ success: false, error: "Invalid payload" }, 400);
+    }
+
+    const emailId = data.email_id;
+    console.log(`[email-webhook] Received event: ${type} for email ${emailId}`);
+
+    // Read or create per-email event record
+    const eventKey = `admin:email-event:${emailId}`;
+    const existing = await kv.get(eventKey) || {
+      emailId,
+      to: data.to || [],
+      subject: data.subject || "",
+      delivered: false,
+      opened: false,
+      clicked: false,
+      bounced: false,
+      openCount: 0,
+      clickCount: 0,
+      events: [],
+    };
+
+    // Update based on event type
+    const eventRecord = { type, timestamp: data.created_at || new Date().toISOString() };
+    existing.events.push(eventRecord);
+
+    if (type === "email.delivered") existing.delivered = true;
+    if (type === "email.opened") { existing.opened = true; existing.openCount = (existing.openCount || 0) + 1; }
+    if (type === "email.clicked") { existing.clicked = true; existing.clickCount = (existing.clickCount || 0) + 1; }
+    if (type === "email.bounced") existing.bounced = true;
+
+    await kv.set(eventKey, existing);
+
+    // Update aggregate stats
+    const aggKey = "admin:email-stats-aggregate";
+    const agg = await kv.get(aggKey) || {
+      totalSent: 0, totalOpened: 0, totalClicked: 0, totalBounced: 0, openRate: 0, clickRate: 0, campaigns: [],
+    };
+
+    if (type === "email.delivered") agg.totalSent = (agg.totalSent || 0) + 1;
+    if (type === "email.opened") agg.totalOpened = (agg.totalOpened || 0) + 1;
+    if (type === "email.clicked") agg.totalClicked = (agg.totalClicked || 0) + 1;
+    if (type === "email.bounced") agg.totalBounced = (agg.totalBounced || 0) + 1;
+
+    // Recalculate rates
+    if (agg.totalSent > 0) {
+      agg.openRate = Math.round((agg.totalOpened / agg.totalSent) * 10000) / 100;
+      agg.clickRate = Math.round((agg.totalClicked / agg.totalSent) * 10000) / 100;
+    }
+
+    await kv.set(aggKey, agg);
+
+    console.log(`[email-webhook] Processed ${type} for ${emailId}. Aggregate: sent=${agg.totalSent}, opened=${agg.totalOpened}, clicked=${agg.totalClicked}`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[email-webhook] Error processing webhook: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/send-to-list — send to a specific email list
+app.post("/admin/email/send-to-list", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { templateId, listId, subject, html, variables, abTest } = body;
+
+    if (!listId) return c.json({ success: false, error: "Missing listId" }, 400);
+    if (!subject || !html) return c.json({ success: false, error: "Missing subject or html" }, 400);
+
+    const list = await kv.get(`admin:email-list:${listId}`);
+    if (!list) return c.json({ success: false, error: "List not found" }, 404);
+
+    const recipients = await resolveEmailList(list);
+    if (recipients.length === 0) return c.json({ success: false, error: "No recipients resolved from list" }, 400);
+
+    console.log(`[email-send-to-list] Sending to list "${list.name}" (${listId}): ${recipients.length} recipients`);
+
+    const campaign = await sendCampaign({
+      recipients,
+      subject,
+      html,
+      variables: variables || {},
+      templateId,
+      abTest,
+    });
+
+    await logEvent("admin_email_send_to_list", { templateId, listId, listName: list.name, recipientCount: recipients.length, sent: campaign.sent, campaignId: campaign.campaignId });
+    return c.json({ success: true, total: recipients.length, sent: campaign.sent, failed: campaign.failed, campaignId: campaign.campaignId });
   } catch (err) {
     if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
     return c.json({ success: false, error: String(err) }, 500);
