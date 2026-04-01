@@ -18176,6 +18176,103 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
   }
 });
 
+// POST /products/find-images — find product images by name via web search (Jina Search)
+// Used as last-resort fallback when products have no images and no URL
+app.post("/products/find-images", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const { _token, productName, brandName, productId } = body;
+    if (!productName) return c.json({ success: false, error: "productName required" }, 400);
+
+    const query = brandName ? `${brandName} ${productName} product photo` : `${productName} product photo official`;
+    console.log(`[products/find-images] Searching images for: "${query}"`);
+
+    const imageUrls: string[] = [];
+    const seenUrls = new Set<string>();
+
+    // Strategy 1: Jina Search (returns structured search results with images)
+    const jinaKey = Deno.env.get("JINA_API_KEY");
+    if (jinaKey) {
+      try {
+        const searchRes = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
+          headers: {
+            Authorization: `Bearer ${jinaKey}`,
+            Accept: "application/json",
+            "X-No-Cache": "true",
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const results = searchData.data || [];
+          for (const r of results) {
+            // Extract images from search results
+            if (r.image && r.image.startsWith("http") && !seenUrls.has(r.image)) {
+              if (!/logo|icon|favicon|banner|header/i.test(r.image)) {
+                seenUrls.add(r.image); imageUrls.push(r.image);
+              }
+            }
+            // Also check thumbnail/og_image
+            if (r.thumbnail && r.thumbnail.startsWith("http") && !seenUrls.has(r.thumbnail)) {
+              seenUrls.add(r.thumbnail); imageUrls.push(r.thumbnail);
+            }
+          }
+          console.log(`[products/find-images] Jina Search: ${imageUrls.length} images from ${results.length} results`);
+        }
+      } catch (e) {
+        console.log(`[products/find-images] Jina Search failed: ${e}`);
+      }
+    }
+
+    // Strategy 2: Jina Reader on first search result page
+    if (imageUrls.length === 0 && jinaKey) {
+      try {
+        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch`;
+        const readerRes = await fetch(`https://r.jina.ai/${googleUrl}`, {
+          headers: { Authorization: `Bearer ${jinaKey}`, Accept: "application/json" },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (readerRes.ok) {
+          const readerData = await readerRes.json();
+          const content = readerData.data?.content || "";
+          // Extract markdown image URLs
+          const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+          let m;
+          while ((m = mdRegex.exec(content)) !== null) {
+            const u = m[1];
+            if (u.startsWith("http") && !seenUrls.has(u) && !/logo|icon|favicon|banner|1x1|pixel/i.test(u)) {
+              seenUrls.add(u); imageUrls.push(u);
+            }
+          }
+          console.log(`[products/find-images] Google Images reader: ${imageUrls.length} images`);
+        }
+      } catch {}
+    }
+
+    // If we found images and have a productId, save them to the product
+    if (imageUrls.length > 0 && productId) {
+      try {
+        const existing = await kv.get(`product:${user.id}:${productId}`);
+        if (existing && (!existing.imageUrls || existing.imageUrls.length === 0)) {
+          existing.imageUrls = imageUrls.slice(0, 10);
+          existing.imageUrl = imageUrls[0];
+          await kv.set(`product:${user.id}:${productId}`, existing);
+          console.log(`[products/find-images] SAVED ${imageUrls.length} images to product ${productId}`);
+        }
+      } catch {}
+    }
+
+    console.log(`[products/find-images] Done in ${Date.now() - t0}ms: ${imageUrls.length} images`);
+    return c.json({ success: true, imageUrls: imageUrls.slice(0, 10) });
+  } catch (err) {
+    console.log(`[products/find-images] Error: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
 // POST /products/:id/images — upload images to a product
 app.post("/products/:id/images", async (c) => {
   try {

@@ -519,8 +519,9 @@ export function StudioPage() {
             if (productRefUrls.length > 0) {
               console.log(`[studio] Using ${productRefUrls.length} ref(s) from catalog for Photoroom`);
             } else {
-              console.log(`[studio] ⚠️ No product images found — attempting to scrape from product URLs...`);
-              // LAST RESORT: scrape product URLs from catalog to get images
+              console.log(`[studio] ⚠️ No product images found — attempting fallbacks...`);
+
+              // FALLBACK A: scrape product URLs from catalog to get images
               for (const prod of products) {
                 if (prod.url && productRefUrls.length < 3) {
                   try {
@@ -534,8 +535,31 @@ export function StudioPage() {
                   } catch { /* non-blocking */ }
                 }
               }
+
+              // FALLBACK B: search web for product images by name (last resort)
+              if (productRefUrls.length === 0) {
+                const brandName = vault?.brandName || vault?.brand_name || vault?.brand_platform?.brand_name || "";
+                // Try finding images for the first 3 products
+                for (const prod of products.slice(0, 3)) {
+                  if (productRefUrls.length >= 3) break;
+                  try {
+                    console.log(`[studio] 🔍 Searching web images for "${prod.name}"...`);
+                    const findRes = await serverPost("/products/find-images", {
+                      productName: prod.name,
+                      brandName,
+                      productId: prod.id,
+                    }, 15_000);
+                    if (findRes.success && findRes.imageUrls?.length) {
+                      const found = findRes.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 3);
+                      productRefUrls.push(...found);
+                      console.log(`[studio] Found ${found.length} web images for "${prod.name}"`);
+                    }
+                  } catch { /* non-blocking */ }
+                }
+              }
+
               if (productRefUrls.length > 0) {
-                console.log(`[studio] Scraped total: ${productRefUrls.length} product images for Photoroom`);
+                console.log(`[studio] ✅ Total: ${productRefUrls.length} product images for Photoroom`);
               } else {
                 console.log(`[studio] ❌ No product images at all — Photoroom will be skipped, using generative AI only`);
               }

@@ -1081,16 +1081,57 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
 
     try {
-      // ═══ PHASE 0: Upload ref photos (if any) ═══
+      // ═══ PHASE 0: Collect ref images — uploaded photos + product catalog images ═══
       let refSignedUrls: string[] = [];
       if (hasRefs) {
         setGenerationProgress(5);
         refSignedUrls = await uploadRefPhotos();
-        console.log(`[CampaignLab] ${refSignedUrls.length} ref URLs obtained`);
+        console.log(`[CampaignLab] ${refSignedUrls.length} uploaded ref URLs obtained`);
+      }
+
+      // AUTO: If no uploaded refs but a product is selected, use its catalog images
+      if (refSignedUrls.length === 0 && selectedProduct) {
+        // Try images[] (Supabase Storage with signedUrl)
+        if (selectedProduct.images?.length > 0) {
+          for (const img of selectedProduct.images) {
+            if (img.signedUrl) refSignedUrls.push(img.signedUrl);
+          }
+        }
+        // Fallback: imageUrls[] (scraped external URLs)
+        if (refSignedUrls.length === 0 && selectedProduct.imageUrls?.length > 0) {
+          for (const u of selectedProduct.imageUrls) {
+            if (u && typeof u === "string" && u.startsWith("http")) refSignedUrls.push(u);
+          }
+        }
+        // Fallback: single imageUrl
+        if (refSignedUrls.length === 0 && selectedProduct.imageUrl) {
+          refSignedUrls.push(selectedProduct.imageUrl);
+        }
+        if (refSignedUrls.length > 0) {
+          console.log(`[CampaignLab] AUTO: ${refSignedUrls.length} product catalog image(s) for Photoroom`);
+        }
+      }
+
+      // LAST RESORT: search web for product images by name
+      if (refSignedUrls.length === 0 && selectedProduct?.name) {
+        try {
+          console.log(`[CampaignLab] 🔍 Searching web images for "${selectedProduct.name}"...`);
+          const findRes = await serverPost("/products/find-images", {
+            productName: selectedProduct.name,
+            brandName: selectedProduct.brand || "",
+            productId: selectedProduct.id,
+          }, 15_000);
+          if (findRes.success && findRes.imageUrls?.length) {
+            refSignedUrls = findRes.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5);
+            console.log(`[CampaignLab] Found ${refSignedUrls.length} web images for Photoroom`);
+          }
+        } catch (e: any) {
+          console.warn(`[CampaignLab] Web image search failed:`, e?.message);
+        }
       }
 
       const useV2Pipeline = refSignedUrls.length > 0;
-      console.log(`[CampaignLab] Pipeline: ${useV2Pipeline ? "V2 (high-fidelity)" : "CLASSIC (text-only)"}, ${refSignedUrls.length} refs`);
+      console.log(`[CampaignLab] Pipeline: ${useV2Pipeline ? "V2 (high-fidelity with Photoroom)" : "CLASSIC (generative AI only)"}, ${refSignedUrls.length} refs`);
 
       // ═══ PHASE 1: Vision Analysis + Text Copy in PARALLEL ═══
       setGenerationProgress(10);
