@@ -452,11 +452,30 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], productId } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], productId, productUrl } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
           let productRefUrls: string[] = [];
+
+          // ── SCRAPE PRODUCT URL: if the AI collected a product page URL, scrape it for images ──
+          if (productUrl && typeof productUrl === "string" && productUrl.startsWith("http")) {
+            try {
+              console.log(`[studio] Scraping product URL for images: ${productUrl.slice(0, 80)}`);
+              const scrapeRes = await serverPost("/products/scrape-url", { url: productUrl });
+              if (scrapeRes.success && scrapeRes.product?.imageUrls?.length) {
+                productRefUrls = scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5);
+                console.log(`[studio] Scraped ${productRefUrls.length} product images from URL`);
+                // Also enrich the brief with scraped product info
+                const sp = scrapeRes.product;
+                if (sp.name) productBrief += `\n\nPRODUCT: ${sp.name}`;
+                if (sp.description) productBrief += `\n${sp.description}`;
+                if (sp.price) productBrief += ` (${sp.price} ${sp.currency || "EUR"})`;
+              }
+            } catch (e: any) {
+              console.warn(`[studio] Product URL scrape failed:`, e?.message);
+            }
+          }
 
           // Helper: extract image URLs from a product object
           const extractProductImages = (prod: any): string[] => {
@@ -477,8 +496,8 @@ export function StudioPage() {
             return urls;
           };
 
-          // 1. Try specific product if productId provided
-          if (productId && products.length) {
+          // 1. Try specific product if productId provided (only if URL scrape didn't already get images)
+          if (productRefUrls.length === 0 && productId && products.length) {
             const prod = products.find((p: any) => p.id === productId);
             if (prod) {
               productBrief = `${productBrief}\n\nPRODUCT FOCUS: ${prod.name}${prod.price ? ` (${prod.price})` : ""}${prod.category ? ` — ${prod.category}` : ""}${prod.description ? `\n${prod.description}` : ""}`;

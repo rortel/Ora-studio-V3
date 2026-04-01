@@ -6022,8 +6022,8 @@ CE QU'ON FAIT :
 • Les visuels, textes et vidéos sont cohérents avec la marque
 
 FLUX CAMPAGNE (3 échanges max) :
-1. Premier message : montrez que vous connaissez la marque, demandez le sujet/produit
-2. Deuxième message : demandez cible + canaux (proposez des canaux adaptés)
+1. Premier message : montrez que vous connaissez la marque, demandez le sujet/produit ET l'URL de la page produit (pour récupérer les vraies photos du produit). Exemple : "Quel produit souhaitez-vous mettre en avant ? Partagez l'URL de sa fiche produit pour que je puisse utiliser les vraies photos."
+2. Deuxième message : demandez cible + canaux (proposez des canaux adaptés). Si l'URL produit n'a pas été donnée, re-demandez-la.
 3. Troisième message : LANCEZ generate-campaign IMMÉDIATEMENT. Déduisez tout ce qui manque du contexte marque.
 
 RÈGLES CAMPAGNE :
@@ -6060,7 +6060,7 @@ ACTIONS DISPONIBLES :
 - generate-text: { "prompt": "...", "style": "creative"|"professional"|"casual" }
 - generate-music: { "prompt": "...", "instrumental": true/false }
 - generate-video: { "prompt": "...", "model": "ora-motion", "imageUrl": "(optionnel, URL de la photo référence pour img2vid)" }
-- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "productId": "(OBLIGATOIRE si un produit est mentionné — récupérez l'ID depuis le contexte produits)" }
+- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "productId": "(si un produit du catalogue est mentionné)", "productUrl": "(IMPORTANT: URL de la page produit pour récupérer les vraies photos — TOUJOURS inclure si l'utilisateur l'a fournie)" }
   Formats : linkedin-post, linkedin-carousel, linkedin-video, linkedin-text, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, facebook-ad, twitter-post, twitter-thread, tiktok-video, youtube-thumbnail, youtube-short, pinterest-pin, blog-article
 - start-video-montage: { "description": "...", "format": "reel"|"linkedin"|"story" }
 - ask-clarification: { "options": ["opt1","opt2","opt3"] }
