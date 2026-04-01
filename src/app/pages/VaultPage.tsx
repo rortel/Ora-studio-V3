@@ -8,6 +8,7 @@ import {
   Instagram, Linkedin, Twitter, Facebook, Youtube,
   Building2, ShoppingBag, Eye, Paintbrush, Image as ImageIcon,
   Layers, ChevronDown, Shield, Save, BookOpen, Compass, MessageSquare, Send,
+  Trophy, Trash2,
 } from "lucide-react";
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -95,6 +96,38 @@ interface VaultData {
     language?: string;
     summary?: string;
   } | null;
+  // New Brand Book fields
+  competitors_list?: {
+    name: string;
+    url?: string;
+    positioning?: string;
+    tone?: string;
+    colors?: string[];
+    strengths?: string[];
+    weaknesses?: string[];
+    differentiation_tips?: string[];
+  }[];
+  universes?: {
+    id: string;
+    name: string;
+    description: string;
+    colors?: string[];
+    tone_override?: string;
+    keywords?: string[];
+  }[];
+  text_calibration?: {
+    rules?: { vouvoiement?: boolean; emoji?: boolean; hashtags?: boolean; structure?: string };
+    do_examples?: string[];
+    dont_examples?: string[];
+    summary?: string;
+  } | null;
+  image_calibration?: {
+    rules?: { lighting?: string; framing?: string; background?: string; colors?: string; style?: string };
+    do_styles?: string[];
+    dont_styles?: string[];
+    mood?: string;
+    summary?: string;
+  } | null;
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -106,6 +139,10 @@ const EMPTY_VAULT: VaultData = {
   font_usage_rules: null, competitors: null, brand_guidelines_text: null,
   brand_platform: null,
   voice_profile: null,
+  competitors_list: [],
+  universes: [],
+  text_calibration: null,
+  image_calibration: null,
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -251,6 +288,16 @@ function mergeVaultData(existing: VaultData, incoming: Partial<VaultData>): Vaul
     competitors: incoming.competitors || existing.competitors || null,
     brand_guidelines_text: incoming.brand_guidelines_text || existing.brand_guidelines_text || null,
 
+    // Brand platform & voice profile: keep existing unless incoming provides
+    brand_platform: incoming.brand_platform || existing.brand_platform || null,
+    voice_profile: incoming.voice_profile || existing.voice_profile || null,
+
+    // New Brand Book fields: keep existing, merge if incoming
+    competitors_list: incoming.competitors_list || existing.competitors_list || [],
+    universes: incoming.universes || existing.universes || [],
+    text_calibration: incoming.text_calibration || existing.text_calibration || null,
+    image_calibration: incoming.image_calibration || existing.image_calibration || null,
+
     // Timestamp: always update
     updatedAt: existing.updatedAt,
   };
@@ -283,6 +330,19 @@ function VaultPageContent() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [voiceLearning, setVoiceLearning] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  // Brand Book tabs
+  const [vaultTab, setVaultTab] = useState<"identity" | "audience" | "voice" | "visuals" | "competitors">("identity");
+
+  // Competitor scanning
+  const [competitorUrl, setCompetitorUrl] = useState("");
+  const [competitorLoading, setCompetitorLoading] = useState(false);
+  const [competitorError, setCompetitorError] = useState<string | null>(null);
+
+  // Universe management
+  const [universeEditing, setUniverseEditing] = useState<string | null>(null);
+  const [newUniverse, setNewUniverse] = useState<{ name: string; description: string; colors: string; tone_override: string; keywords: string }>({ name: "", description: "", colors: "", tone_override: "", keywords: "" });
+  const [showAddUniverse, setShowAddUniverse] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -381,6 +441,73 @@ function VaultPageContent() {
       setVoiceError(err?.message || "Network error");
     }
     setVoiceLearning(false);
+  };
+
+  // ── Scan Competitor ──
+  const handleScanCompetitor = async () => {
+    let url = competitorUrl.trim();
+    if (!url) return;
+    if (!/^https?:\/\//.test(url)) url = `https://${url}`;
+    setCompetitorLoading(true);
+    setCompetitorError(null);
+    try {
+      const res = await fetch(apiUrl("/vault/scan-competitor"), {
+        method: "POST", headers: { "Content-Type": "text/plain" }, body: corsBody(accessToken, { url }),
+      });
+      const data = await res.json();
+      if (data.success && data.competitor) {
+        const updated = { ...vault, competitors_list: [...(vault.competitors_list || []), data.competitor] };
+        setVault(updated);
+        await saveVault(updated);
+        setCompetitorUrl("");
+      } else {
+        setCompetitorError(data.error || "Scan failed");
+      }
+    } catch (err: any) {
+      setCompetitorError(err?.message || "Network error");
+    }
+    setCompetitorLoading(false);
+  };
+
+  const handleRemoveCompetitor = async (index: number) => {
+    const list = [...(vault.competitors_list || [])];
+    list.splice(index, 1);
+    const updated = { ...vault, competitors_list: list };
+    setVault(updated);
+    await saveVault(updated);
+  };
+
+  // ── Universe Management ──
+  const handleAddUniverse = async () => {
+    if (!newUniverse.name.trim()) return;
+    const universe = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name: newUniverse.name.trim(),
+      description: newUniverse.description.trim(),
+      colors: newUniverse.colors.split(",").map(s => s.trim()).filter(Boolean),
+      tone_override: newUniverse.tone_override.trim(),
+      keywords: newUniverse.keywords.split(",").map(s => s.trim()).filter(Boolean),
+    };
+    const updated = { ...vault, universes: [...(vault.universes || []), universe] };
+    setVault(updated);
+    await saveVault(updated);
+    setNewUniverse({ name: "", description: "", colors: "", tone_override: "", keywords: "" });
+    setShowAddUniverse(false);
+  };
+
+  const handleUpdateUniverse = async (id: string, fields: Partial<VaultData["universes"]>[0]) => {
+    const list = (vault.universes || []).map(u => u.id === id ? { ...u, ...fields } : u);
+    const updated = { ...vault, universes: list };
+    setVault(updated);
+    await saveVault(updated);
+    setUniverseEditing(null);
+  };
+
+  const handleDeleteUniverse = async (id: string) => {
+    const list = (vault.universes || []).filter(u => u.id !== id);
+    const updated = { ...vault, universes: list };
+    setVault(updated);
+    await saveVault(updated);
   };
 
   // ── Extract text from PDF client-side using pdf.js (fallback) ──
@@ -1019,199 +1146,390 @@ function VaultPageContent() {
               </div>
             </motion.div>
 
-            {/* ═══ DATA SECTIONS ═══ */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ═══ TAB NAVIGATION ═══ */}
+            <div className="flex items-center gap-1.5 mb-6 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+              {([
+                { key: "identity" as const, label: "Identit\u00e9" },
+                { key: "audience" as const, label: "Audience" },
+                { key: "voice" as const, label: "Voix" },
+                { key: "visuals" as const, label: "Visuels" },
+                { key: "competitors" as const, label: "Concurrents" },
+              ]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setVaultTab(key)}
+                  className="px-4 py-2 rounded-lg cursor-pointer transition-all whitespace-nowrap"
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 500,
+                    background: vaultTab === key ? "var(--foreground)" : "transparent",
+                    color: vaultTab === key ? "var(--background)" : "var(--text-tertiary)",
+                    border: vaultTab === key ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-              {/* Colors */}
-              <SectionCard icon={Palette} title={t("vault.colors")} count={vault.colors.length}
-                open={isOpen("colors")} onToggle={() => toggleSection("colors")}>
-                {vault.colors.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex gap-0.5 h-10 rounded-lg overflow-hidden"
-                      style={{ border: "1px solid var(--border)" }}>
-                      {vault.colors.map((c, i) => (
-                        <div key={i} className="flex-1 transition-all hover:flex-[2] cursor-pointer"
-                          style={{ background: c.hex }} title={`${c.name || c.hex} -- ${c.role}`} />
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {vault.colors.map((c, i) => (
-                        <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg"
-                          style={{ background: "rgba(26,23,20,0.03)", border: "1px solid var(--border)" }}>
-                          <div className="w-3 h-3 rounded-full" style={{ background: c.hex }} />
-                          <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", fontFamily: "monospace" }}>{c.hex}</span>
-                          {c.name && <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{c.name}</span>}
+            {/* ═══ TAB CONTENT ═══ */}
+
+            {/* ── Tab 1: Identité ── */}
+            {vaultTab === "identity" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Brand Guidelines (Charter) -- full width */}
+                {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
+                  <div ref={charterRef} className="md:col-span-2">
+                    <SectionCard icon={BookOpen} title={t("vault.brandGuidelines")}
+                      count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
+                      open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
+                      <div className="space-y-3">
+                        <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                          These fields directly feed into AI generation. The more precise, the better the output.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {[
+                            { label: t("vault.mission"), value: vault.mission, key: "mission" },
+                            { label: t("vault.vision"), value: vault.vision, key: "vision" },
+                            { label: t("vault.personality"), value: vault.personality, key: "personality" },
+                            { label: t("vault.usp"), value: vault.usp, key: "usp" },
+                            { label: t("vault.values"), value: vault.values, key: "values" },
+                          ].filter(x => x.value).map((field) => (
+                            <div key={field.key} className="p-3 rounded-lg"
+                              style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                {field.label}
+                              </span>
+                              <p style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)", marginTop: 4 }}>{field.value}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Tone of Voice */}
-              <SectionCard icon={Megaphone} title={t("vault.tone")} count={vault.tone?.adjectives?.length || 0}
-                open={isOpen("tone")} onToggle={() => toggleSection("tone")}>
-                {vault.tone ? (
-                  <div className="space-y-3">
-                    {vault.tone.primary_tone && (
-                      <span className="inline-block px-3 py-1.5 rounded-lg"
-                        style={{ background: "rgba(17,17,17,0.12)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 500 }}>
-                        {vault.tone.primary_tone}
-                      </span>
-                    )}
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <ToneGauge label={t("vault.formality")} value={vault.tone.formality} />
-                      <ToneGauge label={t("vault.confidence")} value={vault.tone.confidence} />
-                      <ToneGauge label={t("vault.warmth")} value={vault.tone.warmth} />
-                      <ToneGauge label={t("vault.humor")} value={vault.tone.humor} />
-                    </div>
-                    {vault.tone.adjectives?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {vault.tone.adjectives.map((a, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded"
-                            style={{ fontSize: "11px", fontWeight: 500, background: "rgba(17,17,17,0.08)", color: "var(--accent)" }}>
-                            {a}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Audiences */}
-              <SectionCard icon={Users} title={t("vault.targetAudiences")} count={vault.target_audiences.length}
-                open={isOpen("audiences")} onToggle={() => toggleSection("audiences")}>
-                {vault.target_audiences.length > 0 ? (
-                  <div className="space-y-2">
-                    {vault.target_audiences.map((a, i) => (
-                      <div key={i} className="p-3 rounded-lg"
-                        style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                        <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{a.name}</span>
-                        {a.description && (
-                          <p style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--text-tertiary)", marginTop: 3 }}>{a.description}</p>
+                        {vault.brand_guidelines_text && (
+                          <div className="p-3 rounded-lg"
+                            style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              {t("vault.brandGuidelines")}
+                            </span>
+                            <p style={{ fontSize: "12px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 4, whiteSpace: "pre-line" }}>
+                              {vault.brand_guidelines_text}
+                            </p>
+                          </div>
                         )}
                       </div>
-                    ))}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Products */}
-              <SectionCard icon={ShoppingBag} title={t("vault.products")} count={vault.products_services.length}
-                open={isOpen("products")} onToggle={() => toggleSection("products")}>
-                {vault.products_services.length > 0 ? (
-                  <div>
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                      {vault.products_services.map((p, i) => (
-                        <span key={i} className="px-2.5 py-1 rounded-lg"
-                          style={{ fontSize: "12px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                    <Link to="/hub/vault/products"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all hover:opacity-90"
-                      style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                      <ShoppingBag size={14} /> {t("vault.manageProducts")}
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <EmptyState />
-                    <Link to="/hub/vault/products"
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl mt-3 transition-all hover:opacity-90"
-                      style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                      <Plus size={14} /> {t("vault.manageProducts")}
-                    </Link>
+                    </SectionCard>
                   </div>
                 )}
-              </SectionCard>
 
-              {/* Visual Style */}
-              <SectionCard icon={Camera} title={t("vault.photoStyle")} count={vault.photo_style ? 4 : 0}
-                open={isOpen("photo")} onToggle={() => toggleSection("photo")}>
-                {vault.photo_style ? (
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {[
-                      { label: t("vault.framing"), value: vault.photo_style.framing },
-                      { label: t("vault.mood"), value: vault.photo_style.mood },
-                      { label: t("vault.lighting"), value: vault.photo_style.lighting },
-                      { label: t("vault.subjects"), value: vault.photo_style.subjects },
-                    ].filter(x => x.value).map((x, i) => (
-                      <div key={i} className="p-2.5 rounded-lg"
-                        style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                        <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          {x.label}
+                {/* Brand Platform (Strategy) -- full width */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Compass} title={t("vault.brandPlatform")}
+                    count={vault.brand_platform ? 1 : 0}
+                    open={isOpen("strategy")} onToggle={() => toggleSection("strategy")}>
+                    {vault.brand_platform ? (
+                      <BrandStrategyDisplay platform={vault.brand_platform} onEdit={() => {
+                        setVault(prev => ({ ...prev, brand_platform: null }));
+                      }} />
+                    ) : (
+                      <BrandStrategyOnboarding
+                        vault={vault}
+                        onComplete={(platform) => {
+                          const updated = { ...vault, brand_platform: platform };
+                          setVault(updated);
+                          saveVault(updated);
+                        }}
+                      />
+                    )}
+                  </SectionCard>
+                </div>
+
+                {/* Products & Services */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={ShoppingBag} title={t("vault.products")} count={vault.products_services.length}
+                    open={isOpen("products")} onToggle={() => toggleSection("products")}>
+                    {vault.products_services.length > 0 ? (
+                      <div>
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {vault.products_services.map((p, i) => (
+                            <span key={i} className="px-2.5 py-1 rounded-lg"
+                              style={{ fontSize: "12px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                        <Link to="/hub/vault/products"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all hover:opacity-90"
+                          style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
+                          <ShoppingBag size={14} /> {t("vault.manageProducts")}
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <EmptyState />
+                        <Link to="/hub/vault/products"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl mt-3 transition-all hover:opacity-90"
+                          style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
+                          <Plus size={14} /> {t("vault.manageProducts")}
+                        </Link>
+                      </div>
+                    )}
+                  </SectionCard>
+                </div>
+
+                {/* Product Universes */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Layers} title="Univers produit" count={(vault.universes || []).length}
+                    open={isOpen("universes")} onToggle={() => toggleSection("universes")}>
+                    <div className="space-y-3">
+                      {(vault.universes || []).length > 0 ? (
+                        <div className="space-y-3">
+                          {(vault.universes || []).map((u) => (
+                            <div key={u.id} className="p-4 rounded-xl"
+                              style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <div className="flex items-center justify-between mb-2">
+                                <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{u.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => setUniverseEditing(universeEditing === u.id ? null : u.id)}
+                                    className="px-2.5 py-1 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+                                    style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
+                                    {universeEditing === u.id ? "Fermer" : "Modifier"}
+                                  </button>
+                                  <button onClick={() => handleDeleteUniverse(u.id)}
+                                    className="p-1.5 rounded-lg cursor-pointer transition-colors hover:bg-red-50"
+                                    style={{ color: "#DC2626" }}>
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                              {u.description && (
+                                <p style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--text-tertiary)", marginBottom: 8 }}>{u.description}</p>
+                              )}
+                              <div className="flex flex-wrap gap-2">
+                                {(u.colors || []).map((c, ci) => (
+                                  <div key={ci} className="w-5 h-5 rounded-full border border-white/20" style={{ background: c }} title={c} />
+                                ))}
+                                {u.tone_override && (
+                                  <span className="px-2 py-0.5 rounded" style={{ fontSize: "10px", fontWeight: 500, background: "rgba(17,17,17,0.06)", color: "var(--accent)" }}>
+                                    {u.tone_override}
+                                  </span>
+                                )}
+                                {(u.keywords || []).map((k, ki) => (
+                                  <span key={ki} className="px-2 py-0.5 rounded" style={{ fontSize: "10px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                                    {k}
+                                  </span>
+                                ))}
+                              </div>
+                              {/* Edit form */}
+                              {universeEditing === u.id && (
+                                <div className="mt-4 pt-4 space-y-3" style={{ borderTop: "1px solid var(--border)" }}>
+                                  <div>
+                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Nom</label>
+                                    <input defaultValue={u.name} id={`uni-name-${u.id}`}
+                                      className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                      style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                                    <textarea defaultValue={u.description} id={`uni-desc-${u.id}`}
+                                      className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none resize-none"
+                                      style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)", minHeight: 60 }} />
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs (hex, virgules)</label>
+                                      <input defaultValue={(u.colors || []).join(", ")} id={`uni-colors-${u.id}`}
+                                        className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                        style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Ton</label>
+                                      <input defaultValue={u.tone_override || ""} id={`uni-tone-${u.id}`}
+                                        className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                        style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-cl\u00e9s (virgules)</label>
+                                      <input defaultValue={(u.keywords || []).join(", ")} id={`uni-kw-${u.id}`}
+                                        className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                        style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const name = (document.getElementById(`uni-name-${u.id}`) as HTMLInputElement)?.value || u.name;
+                                      const description = (document.getElementById(`uni-desc-${u.id}`) as HTMLTextAreaElement)?.value || u.description;
+                                      const colors = (document.getElementById(`uni-colors-${u.id}`) as HTMLInputElement)?.value.split(",").map(s => s.trim()).filter(Boolean) || u.colors;
+                                      const tone_override = (document.getElementById(`uni-tone-${u.id}`) as HTMLInputElement)?.value || u.tone_override;
+                                      const keywords = (document.getElementById(`uni-kw-${u.id}`) as HTMLInputElement)?.value.split(",").map(s => s.trim()).filter(Boolean) || u.keywords;
+                                      handleUpdateUniverse(u.id, { name, description, colors, tone_override, keywords });
+                                    }}
+                                    className="px-4 py-2 rounded-lg cursor-pointer transition-all"
+                                    style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
+                                    Enregistrer
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Aucun univers produit d\u00e9fini.</p>
+                      )}
+
+                      {/* Add universe */}
+                      {showAddUniverse ? (
+                        <div className="p-4 rounded-xl space-y-3" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                          <div>
+                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Nom *</label>
+                            <input value={newUniverse.name} onChange={(e) => setNewUniverse({ ...newUniverse, name: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                              style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
+                              placeholder="Ex: Gamme Premium" />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                            <textarea value={newUniverse.description} onChange={(e) => setNewUniverse({ ...newUniverse, description: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none resize-none"
+                              style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)", minHeight: 60 }}
+                              placeholder="Description de l'univers..." />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs (hex, virgules)</label>
+                              <input value={newUniverse.colors} onChange={(e) => setNewUniverse({ ...newUniverse, colors: e.target.value })}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
+                                placeholder="#FF0000, #00FF00" />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Ton</label>
+                              <input value={newUniverse.tone_override} onChange={(e) => setNewUniverse({ ...newUniverse, tone_override: e.target.value })}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
+                                placeholder="Luxe, formel" />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-cl\u00e9s (virgules)</label>
+                              <input value={newUniverse.keywords} onChange={(e) => setNewUniverse({ ...newUniverse, keywords: e.target.value })}
+                                className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
+                                style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
+                                placeholder="premium, haut de gamme" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={handleAddUniverse} disabled={!newUniverse.name.trim()}
+                              className="px-4 py-2 rounded-lg cursor-pointer transition-all disabled:opacity-30"
+                              style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
+                              Cr\u00e9er
+                            </button>
+                            <button onClick={() => setShowAddUniverse(false)}
+                              className="px-4 py-2 rounded-lg cursor-pointer transition-all"
+                              style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setShowAddUniverse(true)}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90"
+                          style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
+                          <Plus size={14} /> Ajouter un univers
+                        </button>
+                      )}
+                    </div>
+                  </SectionCard>
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab 2: Audience ── */}
+            {vaultTab === "audience" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Target Audiences */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Users} title={t("vault.targetAudiences")} count={vault.target_audiences.length}
+                    open={isOpen("audiences")} onToggle={() => toggleSection("audiences")}>
+                    {vault.target_audiences.length > 0 ? (
+                      <div className="space-y-2">
+                        {vault.target_audiences.map((a, i) => (
+                          <div key={i} className="p-3 rounded-lg"
+                            style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{a.name}</span>
+                            {a.description && (
+                              <p style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--text-tertiary)", marginTop: 3 }}>{a.description}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : <EmptyState />}
+                  </SectionCard>
+                </div>
+
+                {/* Social Presence */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Target} title={t("vault.socialPresence")}
+                    count={vault.social_presence.filter(s => s.detected).length}
+                    open={isOpen("social")} onToggle={() => toggleSection("social")}>
+                    {vault.social_presence.filter(s => s.detected).length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {vault.social_presence.filter(s => s.detected).map((s, i) => {
+                          const Icon = socialIcons[s.platform.toLowerCase()] || Globe;
+                          return (
+                            <a key={i} href={s.url || "#"} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-white/[0.06]"
+                              style={{ border: "1px solid rgba(26,23,20,0.04)" }}>
+                              <Icon size={14} style={{ color: "var(--text-tertiary)" }} />
+                              <span className="capitalize" style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)" }}>
+                                {s.platform}
+                              </span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    ) : <EmptyState />}
+                  </SectionCard>
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab 3: Voix ── */}
+            {vaultTab === "voice" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Tone of Voice */}
+                <SectionCard icon={Megaphone} title={t("vault.tone")} count={vault.tone?.adjectives?.length || 0}
+                  open={isOpen("tone")} onToggle={() => toggleSection("tone")}>
+                  {vault.tone ? (
+                    <div className="space-y-3">
+                      {vault.tone.primary_tone && (
+                        <span className="inline-block px-3 py-1.5 rounded-lg"
+                          style={{ background: "rgba(17,17,17,0.12)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 500 }}>
+                          {vault.tone.primary_tone}
                         </span>
-                        <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)", marginTop: 3 }}>{x.value}</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <ToneGauge label={t("vault.formality")} value={vault.tone.formality} />
+                        <ToneGauge label={t("vault.confidence")} value={vault.tone.confidence} />
+                        <ToneGauge label={t("vault.warmth")} value={vault.tone.warmth} />
+                        <ToneGauge label={t("vault.humor")} value={vault.tone.humor} />
                       </div>
-                    ))}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
+                      {vault.tone.adjectives?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {vault.tone.adjectives.map((a, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded"
+                              style={{ fontSize: "11px", fontWeight: 500, background: "rgba(17,17,17,0.08)", color: "var(--accent)" }}>
+                              {a}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : <EmptyState />}
+                </SectionCard>
 
-              {/* Social Presence */}
-              <SectionCard icon={Target} title={t("vault.socialPresence")}
-                count={vault.social_presence.filter(s => s.detected).length}
-                open={isOpen("social")} onToggle={() => toggleSection("social")}>
-                {vault.social_presence.filter(s => s.detected).length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {vault.social_presence.filter(s => s.detected).map((s, i) => {
-                      const Icon = socialIcons[s.platform.toLowerCase()] || Globe;
-                      return (
-                        <a key={i} href={s.url || "#"} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-white/[0.06]"
-                          style={{ border: "1px solid rgba(26,23,20,0.04)" }}>
-                          <Icon size={14} style={{ color: "var(--text-tertiary)" }} />
-                          <span className="capitalize" style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)" }}>
-                            {s.platform}
-                          </span>
-                        </a>
-                      );
-                    })}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Typography */}
-              <SectionCard icon={Type} title={t("vault.fonts")} count={vault.fonts.length}
-                open={isOpen("fonts")} onToggle={() => toggleSection("fonts")}>
-                {vault.fonts.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {vault.fonts.map((f, i) => (
-                      <div key={i} className="px-3 py-2.5 rounded-lg flex items-center justify-between"
-                        style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                        <span style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)", fontFamily: f }}>{f}</span>
-                        <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Font</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Key Messages */}
-              <SectionCard icon={FileText} title={t("vault.keyMessages")} count={vault.key_messages.length}
-                open={isOpen("messages")} onToggle={() => toggleSection("messages")}>
-                {vault.key_messages.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {vault.key_messages.map((m, i) => (
-                      <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg"
-                        style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
-                        <ArrowRight size={11} style={{ color: "var(--accent)", marginTop: 3, flexShrink: 0, opacity: 0.6 }} />
-                        <span style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)" }}>{m}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : <EmptyState />}
-              </SectionCard>
-
-              {/* Vocabulary -- full width */}
-              <div className="md:col-span-2">
+                {/* Vocabulary / Approved & Forbidden Terms */}
                 <SectionCard icon={Paintbrush} title={t("vault.approvedTerms") + " / " + t("vault.forbiddenTerms")}
                   count={vault.approved_terms.length + vault.forbidden_terms.length}
                   open={isOpen("vocab")} onToggle={() => toggleSection("vocab")}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-4">
                     <div>
                       <div className="flex items-center gap-2 mb-2.5">
                         <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
@@ -1221,10 +1539,10 @@ function VaultPageContent() {
                       </div>
                       {vault.approved_terms.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {vault.approved_terms.map((t, i) => (
+                          {vault.approved_terms.map((term, i) => (
                             <span key={i} className="px-2 py-0.5 rounded"
                               style={{ fontSize: "11px", fontWeight: 500, background: "rgba(17,17,17,0.08)", color: "#666666", border: "1px solid rgba(17,17,17,0.15)" }}>
-                              {t}
+                              {term}
                             </span>
                           ))}
                         </div>
@@ -1239,10 +1557,10 @@ function VaultPageContent() {
                       </div>
                       {vault.forbidden_terms.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {vault.forbidden_terms.map((t, i) => (
+                          {vault.forbidden_terms.map((term, i) => (
                             <span key={i} className="px-2 py-0.5 rounded"
                               style={{ fontSize: "11px", fontWeight: 500, background: "rgba(17,17,17,0.08)", color: "#DC2626", border: "1px solid rgba(17,17,17,0.15)" }}>
-                              {t}
+                              {term}
                             </span>
                           ))}
                         </div>
@@ -1250,248 +1568,634 @@ function VaultPageContent() {
                     </div>
                   </div>
                 </SectionCard>
-              </div>
 
-              {/* Brand Charter -- full width */}
-              {(vault.mission || vault.vision || vault.personality || vault.usp || vault.values || vault.font_usage_rules || vault.competitors || vault.brand_guidelines_text) && (
-                <div ref={charterRef} className="md:col-span-2">
-                  <SectionCard icon={BookOpen} title={t("vault.brandGuidelines")}
-                    count={[vault.mission, vault.vision, vault.personality, vault.usp, vault.values, vault.font_usage_rules, vault.competitors, vault.brand_guidelines_text].filter(Boolean).length}
-                    open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
-                    <div className="space-y-3">
-                      <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                        These fields directly feed into AI generation. The more precise, the better the output.
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {[
-                          { label: t("vault.mission"), value: vault.mission, key: "mission" },
-                          { label: t("vault.vision"), value: vault.vision, key: "vision" },
-                          { label: t("vault.personality"), value: vault.personality, key: "personality" },
-                          { label: t("vault.usp"), value: vault.usp, key: "usp" },
-                          { label: t("vault.values"), value: vault.values, key: "values" },
-                          { label: t("vault.fontUsageRules"), value: vault.font_usage_rules, key: "font_usage_rules" },
-                          { label: t("vault.competitors"), value: vault.competitors, key: "competitors" },
-                        ].filter(x => x.value).map((field) => (
-                          <div key={field.key} className="p-3 rounded-lg"
-                            style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              {field.label}
-                            </span>
-                            <p style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)", marginTop: 4 }}>{field.value}</p>
+                {/* Key Messages */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={FileText} title={t("vault.keyMessages")} count={vault.key_messages.length}
+                    open={isOpen("messages")} onToggle={() => toggleSection("messages")}>
+                    {vault.key_messages.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {vault.key_messages.map((m, i) => (
+                          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                            style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
+                            <ArrowRight size={11} style={{ color: "var(--accent)", marginTop: 3, flexShrink: 0, opacity: 0.6 }} />
+                            <span style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)" }}>{m}</span>
                           </div>
                         ))}
                       </div>
-                      {vault.brand_guidelines_text && (
-                        <div className="p-3 rounded-lg"
-                          style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
-                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            {t("vault.brandGuidelines")}
-                          </span>
-                          <p style={{ fontSize: "12px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 4, whiteSpace: "pre-line" }}>
-                            {vault.brand_guidelines_text}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                    ) : <EmptyState />}
                   </SectionCard>
                 </div>
-              )}
 
-              {/* Brand Strategy — full width */}
-              <div className="md:col-span-2">
-                <SectionCard icon={Compass} title={t("vault.brandPlatform")}
-                  count={vault.brand_platform ? 1 : 0}
-                  open={isOpen("strategy")} onToggle={() => toggleSection("strategy")}>
-                  {vault.brand_platform ? (
-                    <BrandStrategyDisplay platform={vault.brand_platform} onEdit={() => {
-                      setVault(prev => ({ ...prev, brand_platform: null }));
-                    }} />
-                  ) : (
-                    <BrandStrategyOnboarding
-                      vault={vault}
-                      onComplete={(platform) => {
-                        const updated = { ...vault, brand_platform: platform };
-                        setVault(updated);
-                        saveVault(updated);
-                      }}
-                    />
-                  )}
-                </SectionCard>
-              </div>
+                {/* Learned Brand Voice -- full width */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={MessageSquare} title="Voix de marque apprise"
+                    count={vault.voice_profile ? 1 : 0}
+                    open={isOpen("voice")} onToggle={() => toggleSection("voice")}>
+                    {vault.voice_profile ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                            Profil vocal appris depuis vos contenus Library. Automatiquement inject\u00e9 dans chaque g\u00e9n\u00e9ration de texte.
+                          </p>
+                          <button onClick={handleLearnVoice} disabled={voiceLearning}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+                            style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
+                            {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} R\u00e9analyser
+                          </button>
+                        </div>
 
-              {/* Learned Brand Voice — full width */}
-              <div className="md:col-span-2">
-                <SectionCard icon={MessageSquare} title="Voix de marque apprise"
-                  count={vault.voice_profile ? 1 : 0}
-                  open={isOpen("voice")} onToggle={() => toggleSection("voice")}>
-                  {vault.voice_profile ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                          Profil vocal appris depuis vos contenus Library. Automatiquement injecté dans chaque génération de texte.
+                        {/* Summary */}
+                        {vault.voice_profile.summary && (
+                          <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Synth\u00e8se
+                            </span>
+                            <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
+                              {vault.voice_profile.summary}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Tone markers */}
+                        {vault.voice_profile.tone_markers && (
+                          <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Marqueurs de ton
+                            </span>
+                            {vault.voice_profile.tone_markers.primary_tone && (
+                              <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 6, fontWeight: 500 }}>
+                                {vault.voice_profile.tone_markers.primary_tone}
+                              </p>
+                            )}
+                            <div className="grid grid-cols-5 gap-3 mt-3">
+                              {([
+                                { key: "formality", label: "Formalit\u00e9" },
+                                { key: "confidence", label: "Confiance" },
+                                { key: "warmth", label: "Chaleur" },
+                                { key: "humor", label: "Humour" },
+                                { key: "urgency", label: "Urgence" },
+                              ] as const).map(({ key, label }) => {
+                                const val = (vault.voice_profile?.tone_markers as any)?.[key] ?? 0;
+                                return (
+                                  <div key={key} className="text-center">
+                                    <div className="mx-auto mb-1" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent)" }}>{val}</span>
+                                    </div>
+                                    <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 500 }}>{label}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Key phrases */}
+                        {vault.voice_profile.key_phrases && vault.voice_profile.key_phrases.length > 0 && (
+                          <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Phrases cl\u00e9s
+                            </span>
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {vault.voice_profile.key_phrases.map((phrase, i) => (
+                                <span key={i} className="px-2.5 py-1 rounded-full"
+                                  style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", background: "rgba(17,17,17,0.06)", border: "1px solid var(--border)" }}>
+                                  {phrase}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Do / Don't patterns */}
+                        {((vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0) || (vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0)) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  \u00c0 faire
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.voice_profile.do_patterns.map((p, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <Check size={11} className="inline mr-1.5" style={{ color: "#22c55e" }} />{p}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  \u00c0 \u00e9viter
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.voice_profile.dont_patterns.map((p, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <X size={11} className="inline mr-1.5" style={{ color: "#ef4444" }} />{p}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Vocabulary & Style details */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {vault.voice_profile.vocabulary?.register && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Registre</span>
+                              <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.voice_profile.vocabulary.register}</p>
+                            </div>
+                          )}
+                          {vault.voice_profile.sentence_style?.structure && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Style de phrase</span>
+                              <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
+                                {vault.voice_profile.sentence_style.structure}, longueur {vault.voice_profile.sentence_style.avg_length || "moyenne"}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Rhetorical devices */}
+                        {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
+                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Proc\u00e9d\u00e9s rh\u00e9toriques
+                            </span>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {vault.voice_profile.rhetorical_devices.map((d, i) => (
+                                <span key={i} className="px-2 py-0.5 rounded"
+                                  style={{ fontSize: "11px", color: "var(--text-secondary)", background: "rgba(17,17,17,0.05)" }}>
+                                  {d}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 16px" }}>
+                          Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'\u00e9criture et l'appliquer \u00e0 toutes les g\u00e9n\u00e9rations.
                         </p>
                         <button onClick={handleLearnVoice} disabled={voiceLearning}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
-                          style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
-                          {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Réanalyser
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
+                          style={{
+                            fontSize: "13px", fontWeight: 500, color: "#fff",
+                            background: "var(--accent)", border: "none",
+                            opacity: voiceLearning ? 0.6 : 1,
+                          }}>
+                          {voiceLearning ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                          {voiceLearning ? "Analyse en cours..." : "Analyser mes contenus"}
                         </button>
+                        {voiceError && (
+                          <p style={{ fontSize: "12px", color: "#ef4444", marginTop: 12 }}>{voiceError}</p>
+                        )}
                       </div>
+                    )}
+                  </SectionCard>
+                </div>
 
-                      {/* Summary */}
-                      {vault.voice_profile.summary && (
-                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
-                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            Synthèse
-                          </span>
-                          <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
-                            {vault.voice_profile.summary}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Tone markers */}
-                      {vault.voice_profile.tone_markers && (
-                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
-                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            Marqueurs de ton
-                          </span>
-                          {vault.voice_profile.tone_markers.primary_tone && (
-                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 6, fontWeight: 500 }}>
-                              {vault.voice_profile.tone_markers.primary_tone}
+                {/* Text Calibration Results */}
+                {vault.text_calibration && (
+                  <div className="md:col-span-2">
+                    <SectionCard icon={FileText} title="Calibration texte" count={1}
+                      open={isOpen("text-cal")} onToggle={() => toggleSection("text-cal")}>
+                      <div className="space-y-4">
+                        {vault.text_calibration.rules && (
+                          <div className="flex flex-wrap gap-3">
+                            {vault.text_calibration.rules.vouvoiement !== undefined && (
+                              <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.vouvoiement ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.vouvoiement ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.vouvoiement ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
+                                Vouvoiement: {vault.text_calibration.rules.vouvoiement ? "Oui" : "Non"}
+                              </span>
+                            )}
+                            {vault.text_calibration.rules.emoji !== undefined && (
+                              <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.emoji ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.emoji ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.emoji ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
+                                Emojis: {vault.text_calibration.rules.emoji ? "Oui" : "Non"}
+                              </span>
+                            )}
+                            {vault.text_calibration.rules.hashtags !== undefined && (
+                              <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.hashtags ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.hashtags ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.hashtags ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
+                                Hashtags: {vault.text_calibration.rules.hashtags ? "Oui" : "Non"}
+                              </span>
+                            )}
+                            {vault.text_calibration.rules.structure && (
+                              <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: "rgba(17,17,17,0.06)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                                Structure: {vault.text_calibration.rules.structure}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {/* Do / Don't examples */}
+                        {((vault.text_calibration.do_examples && vault.text_calibration.do_examples.length > 0) || (vault.text_calibration.dont_examples && vault.text_calibration.dont_examples.length > 0)) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {vault.text_calibration.do_examples && vault.text_calibration.do_examples.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  Exemples \u00e0 suivre
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.text_calibration.do_examples.map((ex, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <Check size={11} className="inline mr-1.5" style={{ color: "#22c55e" }} />{ex}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {vault.text_calibration.dont_examples && vault.text_calibration.dont_examples.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  Exemples \u00e0 \u00e9viter
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.text_calibration.dont_examples.map((ex, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <X size={11} className="inline mr-1.5" style={{ color: "#ef4444" }} />{ex}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {vault.text_calibration.summary && (
+                          <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Synth\u00e8se
+                            </span>
+                            <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
+                              {vault.text_calibration.summary}
                             </p>
-                          )}
-                          <div className="grid grid-cols-5 gap-3 mt-3">
-                            {([
-                              { key: "formality", label: "Formalit\u00e9" },
-                              { key: "confidence", label: "Confiance" },
-                              { key: "warmth", label: "Chaleur" },
-                              { key: "humor", label: "Humour" },
-                              { key: "urgency", label: "Urgence" },
-                            ] as const).map(({ key, label }) => {
-                              const val = (vault.voice_profile?.tone_markers as any)?.[key] ?? 0;
-                              return (
-                                <div key={key} className="text-center">
-                                  <div className="mx-auto mb-1" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent)" }}>{val}</span>
-                                  </div>
-                                  <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 500 }}>{label}</span>
+                          </div>
+                        )}
+                      </div>
+                    </SectionCard>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab 4: Visuels ── */}
+            {vaultTab === "visuals" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Brand Colors with hierarchy */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Palette} title={t("vault.colors")} count={vault.colors.length}
+                    open={isOpen("colors")} onToggle={() => toggleSection("colors")}>
+                    {vault.colors.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="flex gap-0.5 h-10 rounded-lg overflow-hidden"
+                          style={{ border: "1px solid var(--border)" }}>
+                          {vault.colors.map((c, i) => (
+                            <div key={i} className="flex-1 transition-all hover:flex-[2] cursor-pointer"
+                              style={{ background: c.hex }} title={`${c.name || c.hex} -- ${c.role}`} />
+                          ))}
+                        </div>
+                        {/* Principales */}
+                        {vault.colors.slice(0, 3).length > 0 && (
+                          <div>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
+                              Principales
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {vault.colors.slice(0, 3).map((c, i) => (
+                                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg"
+                                  style={{ background: "rgba(26,23,20,0.03)", border: "1px solid var(--border)" }}>
+                                  <div className="w-3 h-3 rounded-full" style={{ background: c.hex }} />
+                                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", fontFamily: "monospace" }}>{c.hex}</span>
+                                  {c.name && <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{c.name}</span>}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Key phrases */}
-                      {vault.voice_profile.key_phrases && vault.voice_profile.key_phrases.length > 0 && (
-                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
-                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            Phrases clés
-                          </span>
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {vault.voice_profile.key_phrases.map((phrase, i) => (
-                              <span key={i} className="px-2.5 py-1 rounded-full"
-                                style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", background: "rgba(17,17,17,0.06)", border: "1px solid var(--border)" }}>
-                                {phrase}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Do / Don't patterns */}
-                      {((vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0) || (vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0)) && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0 && (
-                            <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                À faire
-                              </span>
-                              <ul className="mt-2 space-y-1.5">
-                                {vault.voice_profile.do_patterns.map((p, i) => (
-                                  <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
-                                    <Check size={11} className="inline mr-1.5" style={{ color: "#22c55e" }} />{p}
-                                  </li>
-                                ))}
-                              </ul>
+                              ))}
                             </div>
-                          )}
-                          {vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0 && (
-                            <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                À éviter
-                              </span>
-                              <ul className="mt-2 space-y-1.5">
-                                {vault.voice_profile.dont_patterns.map((p, i) => (
-                                  <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
-                                    <X size={11} className="inline mr-1.5" style={{ color: "#ef4444" }} />{p}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Vocabulary & Style details */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {vault.voice_profile.vocabulary?.register && (
-                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Registre</span>
-                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.voice_profile.vocabulary.register}</p>
                           </div>
                         )}
-                        {vault.voice_profile.sentence_style?.structure && (
-                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Style de phrase</span>
-                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
-                              {vault.voice_profile.sentence_style.structure}, longueur {vault.voice_profile.sentence_style.avg_length || "moyenne"}
-                            </p>
+                        {/* Secondaires */}
+                        {vault.colors.slice(3, 6).length > 0 && (
+                          <div>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
+                              Secondaires
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {vault.colors.slice(3, 6).map((c, i) => (
+                                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg"
+                                  style={{ background: "rgba(26,23,20,0.03)", border: "1px solid var(--border)" }}>
+                                  <div className="w-3 h-3 rounded-full" style={{ background: c.hex }} />
+                                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", fontFamily: "monospace" }}>{c.hex}</span>
+                                  {c.name && <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{c.name}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {/* Accents */}
+                        {vault.colors.slice(6).length > 0 && (
+                          <div>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
+                              Accents
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {vault.colors.slice(6).map((c, i) => (
+                                <div key={i} className="flex items-center gap-2 px-2.5 py-1 rounded-lg"
+                                  style={{ background: "rgba(26,23,20,0.03)", border: "1px solid var(--border)" }}>
+                                  <div className="w-3 h-3 rounded-full" style={{ background: c.hex }} />
+                                  <span style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", fontFamily: "monospace" }}>{c.hex}</span>
+                                  {c.name && <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>{c.name}</span>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
+                    ) : <EmptyState />}
+                  </SectionCard>
+                </div>
 
-                      {/* Rhetorical devices */}
-                      {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
-                        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                            Procédés rhétoriques
-                          </span>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {vault.voice_profile.rhetorical_devices.map((d, i) => (
-                              <span key={i} className="px-2 py-0.5 rounded"
-                                style={{ fontSize: "11px", color: "var(--text-secondary)", background: "rgba(17,17,17,0.05)" }}>
-                                {d}
-                              </span>
+                {/* Typography */}
+                <SectionCard icon={Type} title={t("vault.fonts")} count={vault.fonts.length}
+                  open={isOpen("fonts")} onToggle={() => toggleSection("fonts")}>
+                  {vault.fonts.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {vault.fonts.map((f, i) => (
+                        <div key={i} className="px-3 py-2.5 rounded-lg flex items-center justify-between"
+                          style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)", fontFamily: f }}>{f}</span>
+                          <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Font</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <EmptyState />}
+                </SectionCard>
+
+                {/* Font Usage Rules */}
+                {vault.font_usage_rules && (
+                  <div className="p-4 rounded-xl self-start"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {t("vault.fontUsageRules")}
+                    </span>
+                    <p style={{ fontSize: "12px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6, whiteSpace: "pre-line" }}>
+                      {vault.font_usage_rules}
+                    </p>
+                  </div>
+                )}
+
+                {/* Photo Style */}
+                <div className="md:col-span-2">
+                  <SectionCard icon={Camera} title={t("vault.photoStyle")} count={vault.photo_style ? 4 : 0}
+                    open={isOpen("photo")} onToggle={() => toggleSection("photo")}>
+                    {vault.photo_style ? (
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {[
+                          { label: t("vault.framing"), value: vault.photo_style.framing },
+                          { label: t("vault.mood"), value: vault.photo_style.mood },
+                          { label: t("vault.lighting"), value: vault.photo_style.lighting },
+                          { label: t("vault.subjects"), value: vault.photo_style.subjects },
+                        ].filter(x => x.value).map((x, i) => (
+                          <div key={i} className="p-2.5 rounded-lg"
+                            style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              {x.label}
+                            </span>
+                            <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)", marginTop: 3 }}>{x.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <EmptyState />}
+                  </SectionCard>
+                </div>
+
+                {/* Image Calibration Results */}
+                {vault.image_calibration && (
+                  <div className="md:col-span-2">
+                    <SectionCard icon={Camera} title="Calibration visuelle" count={1}
+                      open={isOpen("img-cal")} onToggle={() => toggleSection("img-cal")}>
+                      <div className="space-y-4">
+                        {vault.image_calibration.rules && (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {Object.entries(vault.image_calibration.rules).filter(([, v]) => v).map(([key, value]) => (
+                              <div key={key} className="p-2.5 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  {key}
+                                </span>
+                                <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)", marginTop: 3 }}>{value}</p>
+                              </div>
                             ))}
                           </div>
-                        </div>
-                      )}
+                        )}
+                        {((vault.image_calibration.do_styles && vault.image_calibration.do_styles.length > 0) || (vault.image_calibration.dont_styles && vault.image_calibration.dont_styles.length > 0)) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {vault.image_calibration.do_styles && vault.image_calibration.do_styles.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  Styles \u00e0 adopter
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.image_calibration.do_styles.map((s, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <Check size={11} className="inline mr-1.5" style={{ color: "#22c55e" }} />{s}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {vault.image_calibration.dont_styles && vault.image_calibration.dont_styles.length > 0 && (
+                              <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                                <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                  Styles \u00e0 \u00e9viter
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {vault.image_calibration.dont_styles.map((s, i) => (
+                                    <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                      <X size={11} className="inline mr-1.5" style={{ color: "#ef4444" }} />{s}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {vault.image_calibration.mood && (
+                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Mood</span>
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.image_calibration.mood}</p>
+                          </div>
+                        )}
+                        {vault.image_calibration.summary && (
+                          <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Synth\u00e8se</span>
+                            <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>{vault.image_calibration.summary}</p>
+                          </div>
+                        )}
+                      </div>
+                    </SectionCard>
+                  </div>
+                )}
+
+                {/* Image Bank */}
+                <div className="md:col-span-2">
+                  <ImageBank accessToken={accessToken} />
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab 5: Concurrents ── */}
+            {vaultTab === "competitors" && (
+              <div className="space-y-6">
+                {/* Competitor scanner */}
+                <div className="rounded-xl p-5"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <Trophy size={16} style={{ color: "var(--accent)" }} />
+                    <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Scanner un concurrent</span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
+                      style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)" }}>
+                      <Globe size={15} style={{ color: "var(--accent)", opacity: 0.7 }} />
+                      <input type="text" value={competitorUrl} onChange={(e) => setCompetitorUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !competitorLoading && handleScanCompetitor()}
+                        placeholder="concurrent.com" disabled={competitorLoading}
+                        className="flex-1 bg-transparent outline-none placeholder:text-white/15"
+                        style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 400 }} />
                     </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 16px" }}>
-                        Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'écriture et l'appliquer &agrave; toutes les générations.
-                      </p>
-                      <button onClick={handleLearnVoice} disabled={voiceLearning}
-                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
-                        style={{
-                          fontSize: "13px", fontWeight: 500, color: "#fff",
-                          background: "var(--accent)", border: "none",
-                          opacity: voiceLearning ? 0.6 : 1,
-                        }}>
-                        {voiceLearning ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                        {voiceLearning ? "Analyse en cours..." : "Analyser mes contenus"}
+                    <button onClick={handleScanCompetitor} disabled={competitorLoading || !competitorUrl.trim()}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
+                      style={{ background: "var(--accent)", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
+                      {competitorLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      Scanner
+                    </button>
+                  </div>
+                  {competitorError && (
+                    <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                      <X size={13} style={{ color: "#DC2626" }} />
+                      <span style={{ fontSize: "12px", color: "#DC2626" }}>{competitorError}</span>
+                      <button onClick={() => setCompetitorError(null)} className="ml-auto cursor-pointer">
+                        <X size={11} style={{ color: "rgba(255,255,255,0.3)" }} />
                       </button>
-                      {voiceError && (
-                        <p style={{ fontSize: "12px", color: "#ef4444", marginTop: 12 }}>{voiceError}</p>
-                      )}
                     </div>
                   )}
-                </SectionCard>
-              </div>
+                </div>
 
-            </div>
+                {/* Existing competitors from vault.competitors text field */}
+                {vault.competitors && (
+                  <div className="p-4 rounded-xl"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                    <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {t("vault.competitors")}
+                    </span>
+                    <p style={{ fontSize: "12px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6, whiteSpace: "pre-line" }}>
+                      {vault.competitors}
+                    </p>
+                  </div>
+                )}
+
+                {/* Scanned competitors list */}
+                {(vault.competitors_list || []).length > 0 ? (
+                  <div className="space-y-4">
+                    {(vault.competitors_list || []).map((comp, idx) => (
+                      <div key={idx} className="rounded-xl p-5"
+                        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 style={{ fontSize: "16px", fontWeight: 500, color: "var(--foreground)" }}>{comp.name}</h3>
+                            {comp.url && (
+                              <a href={comp.url} target="_blank" rel="noopener noreferrer"
+                                style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{comp.url}</a>
+                            )}
+                          </div>
+                          <button onClick={() => handleRemoveCompetitor(idx)}
+                            className="p-2 rounded-lg cursor-pointer transition-colors hover:bg-red-50"
+                            style={{ color: "#DC2626", border: "1px solid rgba(220,38,38,0.2)" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {comp.positioning && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Positionnement</span>
+                              <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.positioning}</p>
+                            </div>
+                          )}
+                          {comp.tone && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Ton</span>
+                              <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.tone}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Color swatches */}
+                        {comp.colors && comp.colors.length > 0 && (
+                          <div className="flex gap-1.5 mt-3">
+                            {comp.colors.map((c, ci) => (
+                              <div key={ci} className="w-6 h-6 rounded-full border border-white/20" style={{ background: c }} title={c} />
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                          {comp.strengths && comp.strengths.length > 0 && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>Forces</span>
+                              <ul className="mt-2 space-y-1">
+                                {comp.strengths.map((s, si) => (
+                                  <li key={si} style={{ fontSize: "11px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                    <Check size={10} className="inline mr-1" style={{ color: "#22c55e" }} />{s}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {comp.weaknesses && comp.weaknesses.length > 0 && (
+                            <div className="p-3 rounded-lg" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>Faiblesses</span>
+                              <ul className="mt-2 space-y-1">
+                                {comp.weaknesses.map((w, wi) => (
+                                  <li key={wi} style={{ fontSize: "11px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                    <X size={10} className="inline mr-1" style={{ color: "#ef4444" }} />{w}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Differentiation tips */}
+                        {comp.differentiation_tips && comp.differentiation_tips.length > 0 && (
+                          <div className="mt-3 p-4 rounded-xl" style={{ background: "rgba(217,119,6,0.06)", border: "1px solid rgba(217,119,6,0.2)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                              Pistes de diff\u00e9renciation
+                            </span>
+                            <ul className="mt-2 space-y-1.5">
+                              {comp.differentiation_tips.map((tip, ti) => (
+                                <li key={ti} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                  <Sparkles size={10} className="inline mr-1.5" style={{ color: "#d97706" }} />{tip}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-14 h-14 rounded-xl flex items-center justify-center mx-auto mb-4"
+                      style={{ background: "rgba(17,17,17,0.08)" }}>
+                      <Trophy size={20} style={{ color: "var(--text-tertiary)" }} />
+                    </div>
+                    <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
+                      Scannez un site concurrent pour comparer positionnement, ton et identit\u00e9 visuelle.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Footer meta */}
             {vault.updatedAt && (
@@ -1500,11 +2204,6 @@ function VaultPageContent() {
                 {vault.source_url && <> from <span style={{ color: "var(--foreground)" }}>{vault.source_url}</span></>}
               </p>
             )}
-
-            {/* Image Bank */}
-            <div className="mt-8">
-              <ImageBank accessToken={accessToken} />
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

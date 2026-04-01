@@ -3075,6 +3075,25 @@ DO write like: ${vp.do_patterns?.join(' | ') || "N/A"}
 DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     }
 
+    // Competitors context
+    if (brandVault?.competitors_list?.length > 0) {
+      const compCtx = brandVault.competitors_list.map((cc: any) =>
+        `- ${cc.name}: ${cc.positioning || ''} (ton: ${cc.tone || ''})`
+      ).join('\n');
+      brandBlock += `\n\nCOMPETITORS (differentiate from these):\n${compCtx}`;
+    }
+
+    // Text calibration rules
+    if (brandVault?.text_calibration) {
+      const tc = brandVault.text_calibration;
+      brandBlock += `\n\nCALIBRATED WRITING RULES (from client swipe):`;
+      if (tc.tone_rules?.length) brandBlock += `\nTone rules: ${tc.tone_rules.join('. ')}`;
+      if (tc.structure_rules?.length) brandBlock += `\nStructure rules: ${tc.structure_rules.join('. ')}`;
+      if (tc.formatting_rules?.length) brandBlock += `\nFormatting: ${tc.formatting_rules.join('. ')}`;
+      if (tc.signature_patterns?.length) brandBlock += `\nSignature patterns: ${tc.signature_patterns.join(' | ')}`;
+      if (tc.anti_patterns?.length) brandBlock += `\nAnti-patterns to AVOID: ${tc.anti_patterns.join(' | ')}`;
+    }
+
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
       // LinkedIn
       "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
@@ -3459,6 +3478,38 @@ async function handleCampaignPlan(c: any, brief: string, imageContext: string, l
     } catch (err) {
       console.log(`[campaign-plan] buildBrandContext failed (continuing without): ${err}`);
     }
+  }
+
+  // ── BRAND VAULT V2: Inject competitors, text calibration, visual calibration ──
+  let rawVault: any = null;
+  if (user) { try { rawVault = await kv.get(`vault:${user.id}`); } catch {} }
+
+  if (rawVault?.competitors_list?.length > 0) {
+    const compCtx = rawVault.competitors_list.map((cc: any) =>
+      `- ${cc.name}: ${cc.positioning || ''} (ton: ${cc.tone || ''})`
+    ).join('\n');
+    brandBlock += `\n\nCOMPETITORS (differentiate from these):\n${compCtx}`;
+  }
+
+  if (rawVault?.text_calibration) {
+    const tc = rawVault.text_calibration;
+    brandBlock += `\n\nCALIBRATED WRITING RULES (from client swipe):`;
+    if (tc.tone_rules?.length) brandBlock += `\nTone rules: ${tc.tone_rules.join('. ')}`;
+    if (tc.structure_rules?.length) brandBlock += `\nStructure rules: ${tc.structure_rules.join('. ')}`;
+    if (tc.formatting_rules?.length) brandBlock += `\nFormatting: ${tc.formatting_rules.join('. ')}`;
+    if (tc.signature_patterns?.length) brandBlock += `\nSignature patterns: ${tc.signature_patterns.join(' | ')}`;
+    if (tc.anti_patterns?.length) brandBlock += `\nAnti-patterns to AVOID: ${tc.anti_patterns.join(' | ')}`;
+  }
+
+  // Visual calibration — injected into visualDirective for image prompt context
+  if (rawVault?.visual_calibration) {
+    const vc = rawVault.visual_calibration;
+    let vcBlock = `\nVISUAL CALIBRATION: `;
+    if (vc.lighting_preference) vcBlock += `Lighting: ${vc.lighting_preference}. `;
+    if (vc.color_mood) vcBlock += `Color mood: ${vc.color_mood}. `;
+    if (vc.do_visual?.length) vcBlock += `DO: ${vc.do_visual.join(', ')}. `;
+    if (vc.dont_visual?.length) vcBlock += `DON'T: ${vc.dont_visual.join(', ')}. `;
+    visualDirective += vcBlock;
   }
 
   // ── PRODUCT URL SCRAPING: extract real content + images from client's product/service pages ──
@@ -7535,7 +7586,7 @@ app.post("/vault/scan-url", async (c) => {
     const canDeduct = await deductCredit(user.id, 1);
     if (!canDeduct) return c.json({ error: "Insufficient credits" }, 403);
 
-    // ── 1. SCRAPE WITH JINA READER ─────────────────────────���────
+    // ── 1. SCRAPE WITH JINA READER ──────────────────────────────
     console.log(`[scan-url] Scraping ${normalizedUrl} with Jina...`);
     let markdown = "";
 
@@ -7549,9 +7600,10 @@ app.post("/vault/scan-url", async (c) => {
           "X-Token-Budget": "80000",
           "X-With-Generated-Alt": "true",
           "X-With-Images-Summary": "all",
-          "X-Remove-Selector": "nav, footer, script, style, #cookie-banner, .cookie, #gdpr",
+          "X-With-Links-Summary": "true",
+          "X-Remove-Selector": "nav, footer, script, #cookie-banner, .cookie, #gdpr",
         },
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(15000),
       });
 
       if (res.ok) {
@@ -7564,7 +7616,116 @@ app.post("/vault/scan-url", async (c) => {
       console.log("[scan-url] Jina failed:", e);
     }
 
-    // ── 2. FALLBACK: direct fetch ────────────────────────────────
+    // ── 2. HTML DEEP PARSE: extract colors, logo, meta from raw HTML ──
+    let htmlMeta = { colors: [] as string[], logoUrls: [] as string[], ogImage: "", themeColor: "", favicon: "", title: "", description: "" };
+    try {
+      console.log(`[scan-url] Deep HTML parse for colors & logos...`);
+      const htmlRes = await fetch(normalizedUrl, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" },
+        signal: AbortSignal.timeout(10000),
+        redirect: "follow",
+      });
+      const rawHtml = await htmlRes.text();
+
+      // Extract og:image
+      const ogMatch = rawHtml.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+        || rawHtml.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+      if (ogMatch) htmlMeta.ogImage = ogMatch[1];
+
+      // Extract theme-color
+      const themeMatch = rawHtml.match(/<meta[^>]*name=["']theme-color["'][^>]*content=["']([^"']+)["']/i);
+      if (themeMatch) htmlMeta.themeColor = themeMatch[1];
+
+      // Extract favicon / apple-touch-icon (best logo candidates)
+      const iconMatches = rawHtml.matchAll(/<link[^>]*rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]*href=["']([^"']+)["']/gi);
+      for (const m of iconMatches) {
+        let href = m[1];
+        if (href.startsWith("/")) href = new URL(href, normalizedUrl).href;
+        else if (!href.startsWith("http")) href = new URL(href, normalizedUrl).href;
+        htmlMeta.logoUrls.push(href);
+      }
+      // Also check reverse attribute order
+      const iconMatches2 = rawHtml.matchAll(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["'](?:icon|shortcut icon|apple-touch-icon)["']/gi);
+      for (const m of iconMatches2) {
+        let href = m[1];
+        if (href.startsWith("/")) href = new URL(href, normalizedUrl).href;
+        else if (!href.startsWith("http")) href = new URL(href, normalizedUrl).href;
+        if (!htmlMeta.logoUrls.includes(href)) htmlMeta.logoUrls.push(href);
+      }
+
+      // Extract title
+      const titleMatch = rawHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+      if (titleMatch) htmlMeta.title = titleMatch[1].trim();
+
+      // Extract meta description
+      const descMatch = rawHtml.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+      if (descMatch) htmlMeta.description = descMatch[1];
+
+      // Extract ALL hex colors from inline styles + style blocks
+      const styleBlocks = rawHtml.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [];
+      const inlineStyles = rawHtml.match(/style=["'][^"']*["']/gi) || [];
+      const allStyleText = [...styleBlocks, ...inlineStyles].join(" ");
+      const hexColors = allStyleText.match(/#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g) || [];
+      // Also extract rgb/rgba colors
+      const rgbColors = allStyleText.match(/rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+/g) || [];
+
+      // Convert rgb to hex and deduplicate
+      const colorSet = new Set<string>();
+      for (const hex of hexColors) {
+        const normalized = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+        // Skip common non-brand colors (pure black, white, greys)
+        const lower = normalized.toLowerCase();
+        if (lower !== "#000000" && lower !== "#ffffff" && lower !== "#fff" && lower !== "#000"
+            && lower !== "#333333" && lower !== "#666666" && lower !== "#999999" && lower !== "#cccccc"
+            && lower !== "#f5f5f5" && lower !== "#e5e5e5" && lower !== "#f0f0f0" && lower !== "#fafafa") {
+          colorSet.add(lower);
+        }
+      }
+      for (const rgb of rgbColors) {
+        const nums = rgb.match(/\d+/g);
+        if (nums && nums.length >= 3) {
+          const hex = `#${parseInt(nums[0]).toString(16).padStart(2, "0")}${parseInt(nums[1]).toString(16).padStart(2, "0")}${parseInt(nums[2]).toString(16).padStart(2, "0")}`;
+          const lower = hex.toLowerCase();
+          if (lower !== "#000000" && lower !== "#ffffff") colorSet.add(lower);
+        }
+      }
+      htmlMeta.colors = [...colorSet].slice(0, 20);
+
+      // Look for logo in common patterns: img with "logo" in src, alt, class, or id
+      const logoImgMatches = rawHtml.matchAll(/<img[^>]*(?:class|id|alt|src)=["'][^"']*logo[^"']*["'][^>]*(?:src)=["']([^"']+)["']/gi);
+      for (const m of logoImgMatches) {
+        let href = m[1];
+        if (href.startsWith("/")) href = new URL(href, normalizedUrl).href;
+        else if (!href.startsWith("http")) href = new URL(href, normalizedUrl).href;
+        if (!htmlMeta.logoUrls.includes(href)) htmlMeta.logoUrls.unshift(href); // prioritize
+      }
+      // Also check img where src comes before the logo attribute
+      const logoImgMatches2 = rawHtml.matchAll(/<img[^>]*src=["']([^"']+)["'][^>]*(?:class|id|alt)=["'][^"']*logo[^"']*["']/gi);
+      for (const m of logoImgMatches2) {
+        let href = m[1];
+        if (href.startsWith("/")) href = new URL(href, normalizedUrl).href;
+        else if (!href.startsWith("http")) href = new URL(href, normalizedUrl).href;
+        if (!htmlMeta.logoUrls.includes(href)) htmlMeta.logoUrls.unshift(href);
+      }
+
+      console.log(`[scan-url] HTML meta: ${htmlMeta.colors.length} colors, ${htmlMeta.logoUrls.length} logo candidates, og:${!!htmlMeta.ogImage}`);
+
+      // If no markdown from Jina, use cleaned HTML
+      if (!markdown) {
+        markdown = rawHtml
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<[^>]*>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 8000);
+        console.log(`[scan-url] Using cleaned HTML as fallback — ${markdown.length} chars`);
+      }
+    } catch (e) {
+      console.log("[scan-url] HTML deep parse failed (non-blocking):", e);
+    }
+
+    // ── 2b. FALLBACK: direct fetch if still no markdown ──────────
     if (!markdown) {
       console.log("[scan-url] Fallback: direct fetch...");
       try {
@@ -7677,13 +7838,26 @@ Rules:
 - tone values (formality, confidence, warmth, humor) are integers 1-10
 - confidence_score is 0-100 based on how much brand signal you found
 - If you cannot determine a value, use null — never invent data
-- For colors: extract from image descriptions, CSS mentions, or brand language
-- For logo: look in the Images section of the content
+- CRITICAL FOR COLORS: Use the "CSS COLORS EXTRACTED FROM HTML" section — these are REAL hex colors from the site's stylesheets. Classify them into primary (dominant brand color), secondary, and accent. Always return hex codes.
+- If a THEME-COLOR meta tag is provided, it is very likely the primary brand color.
+- CRITICAL FOR LOGO: Use the "LOGO CANDIDATES" section — these are real URLs found in the HTML (favicon, apple-touch-icon, img with "logo" in class/alt). Pick the best one (prefer apple-touch-icon or img[logo] over favicon.ico). The logo.url MUST be a valid URL from this list if available.
+- If OG:IMAGE is provided, use it as og_image value.
 - Return ONLY the JSON object`;
+
+    // Build supplementary HTML metadata section for better extraction
+    const htmlMetaSection = [
+      htmlMeta.colors.length > 0 ? `\nCSS COLORS EXTRACTED FROM HTML:\n${htmlMeta.colors.join(", ")}` : "",
+      htmlMeta.logoUrls.length > 0 ? `\nLOGO CANDIDATES (from favicon, apple-touch-icon, img[logo]):\n${htmlMeta.logoUrls.slice(0, 5).join("\n")}` : "",
+      htmlMeta.ogImage ? `\nOG:IMAGE: ${htmlMeta.ogImage}` : "",
+      htmlMeta.themeColor ? `\nTHEME-COLOR: ${htmlMeta.themeColor}` : "",
+      htmlMeta.title ? `\nPAGE TITLE: ${htmlMeta.title}` : "",
+      htmlMeta.description ? `\nMETA DESCRIPTION: ${htmlMeta.description}` : "",
+    ].filter(Boolean).join("\n");
 
     const userPrompt = `Analyze this website content and extract the complete brand profile.
 
 URL: ${normalizedUrl}
+${htmlMetaSection}
 
 CONTENT:
 ${markdown.slice(0, 12000)}`;
@@ -7750,7 +7924,48 @@ ${markdown.slice(0, 12000)}`;
       scan.scanned_at = new Date().toISOString();
       scan.word_count = markdown.split(/\s+/).filter(Boolean).length;
 
-      console.log(`[scan-url] Done in ${Date.now() - t0}ms — confidence: ${scan.confidence_score}`);
+      // ── 5. ENRICH: merge HTML-extracted data if Mistral missed it ──
+      // Ensure colors are present
+      const scanColors = scan.visual_identity?.colors;
+      const hasScanColors = scanColors && (
+        (scanColors.primary?.length > 0 && scanColors.primary.some((c: string) => c?.startsWith("#"))) ||
+        (scanColors.secondary?.length > 0 && scanColors.secondary.some((c: string) => c?.startsWith("#"))) ||
+        (scanColors.accent?.length > 0 && scanColors.accent.some((c: string) => c?.startsWith("#")))
+      );
+      if (!hasScanColors && htmlMeta.colors.length > 0) {
+        console.log(`[scan-url] Enriching: Mistral missed colors, injecting ${htmlMeta.colors.length} HTML colors`);
+        if (!scan.visual_identity) scan.visual_identity = {};
+        if (!scan.visual_identity.colors) scan.visual_identity.colors = {};
+        // First color = primary, next 2 = secondary, rest = accent
+        scan.visual_identity.colors.primary = htmlMeta.colors.slice(0, 1);
+        scan.visual_identity.colors.secondary = htmlMeta.colors.slice(1, 3);
+        scan.visual_identity.colors.accent = htmlMeta.colors.slice(3, 6);
+        if (htmlMeta.themeColor && htmlMeta.themeColor.startsWith("#")) {
+          scan.visual_identity.colors.primary = [htmlMeta.themeColor.toLowerCase()];
+        }
+      }
+
+      // Ensure logo is present
+      if ((!scan.logo?.url || scan.logo.url === "") && htmlMeta.logoUrls.length > 0) {
+        console.log(`[scan-url] Enriching: Mistral missed logo, injecting best candidate`);
+        if (!scan.logo) scan.logo = {};
+        // Prefer apple-touch-icon or *logo* URL over favicon.ico
+        const bestLogo = htmlMeta.logoUrls.find((u: string) => /logo/i.test(u) || /apple-touch/i.test(u)) || htmlMeta.logoUrls[0];
+        scan.logo.url = bestLogo;
+      }
+
+      // Ensure og_image is present
+      if ((!scan.og_image || scan.og_image === "") && htmlMeta.ogImage) {
+        scan.og_image = htmlMeta.ogImage;
+      }
+
+      console.log(`[scan-url] Done in ${Date.now() - t0}ms — confidence: ${scan.confidence_score}, colors: ${
+        [
+          ...(scan.visual_identity?.colors?.primary || []),
+          ...(scan.visual_identity?.colors?.secondary || []),
+          ...(scan.visual_identity?.colors?.accent || []),
+        ].filter((c: string) => c?.startsWith("#")).length
+      }, logo: ${!!scan.logo?.url}`);
       return c.json({ success: true, scan });
 
     } catch (err: any) {
@@ -10384,6 +10599,258 @@ app.post("/vault/images/analyze-batch", async (c) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === "Unauthorized") return c.json({ success: false, error: msg }, 401);
     return c.json({ success: false, error: `Batch analysis failed: ${msg}` }, 500);
+  }
+});
+
+// ── ROUTE: POST /vault/scan-competitor — Scan a competitor's website ──
+app.post("/vault/scan-competitor", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { url } = body;
+    if (!url) return c.json({ error: "URL required" }, 400);
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
+
+    // Fetch the competitor's webpage
+    let pageContent = "";
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 ORA-Studio-Bot" } });
+      pageContent = await res.text();
+      // Strip HTML tags, keep text
+      pageContent = pageContent.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 8000);
+    } catch (e) { console.warn("[scan-competitor] fetch failed:", e); }
+
+    const systemPrompt = `Tu es un expert en analyse de marques concurrentes. Analyse le site web suivant et extrais un profil concurrentiel.
+Retourne UNIQUEMENT un JSON valide:
+{
+  "name": "nom de la marque",
+  "sector": "secteur d'activité",
+  "positioning": "positionnement en 1-2 phrases",
+  "tone": "ton de communication (ex: corporate, chaleureux, premium)",
+  "colors": ["#hex1", "#hex2", "#hex3"],
+  "strengths": ["force 1", "force 2", "force 3"],
+  "weaknesses": ["faiblesse 1", "faiblesse 2"],
+  "key_messages": ["message clé 1", "message clé 2"],
+  "differentiation_tips": ["Pour vous différencier: conseil 1", "conseil 2", "conseil 3"]
+}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `URL: ${url}\n\nContenu extrait du site:\n${pageContent}` },
+        ],
+        max_tokens: 1500,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return c.json({ error: "AI analysis failed" }, 500);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    let jsonStr = raw;
+    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jm) jsonStr = jm[1].trim();
+
+    let competitor;
+    try { competitor = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse competitor data" }, 500); }
+
+    // Save to vault
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (!vault.competitors_list) vault.competitors_list = [];
+    // Remove existing entry for same URL
+    vault.competitors_list = vault.competitors_list.filter((c: any) => c.url !== url);
+    vault.competitors_list.push({ ...competitor, url, scannedAt: new Date().toISOString() });
+    await kv.set(`vault:${user.id}`, vault);
+
+    deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, competitor });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── ROUTE: POST /vault/universes — CRUD for product universes ──
+app.post("/vault/universes", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { action, universe } = body;
+    // action: "list" | "create" | "update" | "delete"
+
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (!vault.universes) vault.universes = [];
+
+    if (action === "list") {
+      return c.json({ success: true, universes: vault.universes });
+    }
+
+    if (action === "create") {
+      const newUniverse = {
+        id: crypto.randomUUID(),
+        name: universe.name || "Nouvel univers",
+        description: universe.description || "",
+        tone: universe.tone || null,
+        colors: universe.colors || [],
+        photo_style: universe.photo_style || null,
+        keywords: universe.keywords || [],
+        approved_terms: universe.approved_terms || [],
+        forbidden_terms: universe.forbidden_terms || [],
+        createdAt: new Date().toISOString(),
+      };
+      vault.universes.push(newUniverse);
+      await kv.set(`vault:${user.id}`, vault);
+      return c.json({ success: true, universe: newUniverse });
+    }
+
+    if (action === "update" && universe?.id) {
+      const idx = vault.universes.findIndex((u: any) => u.id === universe.id);
+      if (idx === -1) return c.json({ error: "Universe not found" }, 404);
+      vault.universes[idx] = { ...vault.universes[idx], ...universe, updatedAt: new Date().toISOString() };
+      await kv.set(`vault:${user.id}`, vault);
+      return c.json({ success: true, universe: vault.universes[idx] });
+    }
+
+    if (action === "delete" && universe?.id) {
+      vault.universes = vault.universes.filter((u: any) => u.id !== universe.id);
+      await kv.set(`vault:${user.id}`, vault);
+      return c.json({ success: true });
+    }
+
+    return c.json({ error: "Invalid action" }, 400);
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── ROUTE: POST /vault/swipe-calibrate — Analyze approved/rejected examples to deduce rules ──
+app.post("/vault/swipe-calibrate", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { approved, rejected, type } = body;
+    // type: "text" | "image"
+    // approved: string[] (content that the user liked)
+    // rejected: string[] (content that the user didn't like)
+
+    if (!approved?.length && !rejected?.length) return c.json({ error: "Need at least some examples" }, 400);
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
+
+    const systemPrompt = type === "text"
+      ? `Tu es un expert en analyse de style rédactionnel. On te donne des textes APPROUVÉS et des textes REJETÉS par une marque.
+Déduis les règles de rédaction de cette marque en comparant les deux groupes.
+Retourne UNIQUEMENT un JSON valide:
+{
+  "rules": {
+    "vouvoiement": true/false,
+    "emoji_in_titles": true/false,
+    "max_hashtags": number or null,
+    "sentence_length": "short|medium|long",
+    "structure_pattern": "description du pattern détecté",
+    "signature_phrase": "phrase de fin récurrente ou null"
+  },
+  "vocabulary": {
+    "preferred": ["termes utilisés dans les approuvés"],
+    "forbidden": ["termes utilisés dans les rejetés mais pas les approuvés"]
+  },
+  "tone_adjustments": {
+    "formality": number 1-10,
+    "warmth": number 1-10,
+    "confidence": number 1-10,
+    "humor": number 1-10
+  },
+  "do_examples": ["2-3 phrases type extraites des approuvés"],
+  "dont_examples": ["2-3 phrases type extraites des rejetés"],
+  "summary": "2 phrases résumant le style préféré"
+}`
+      : `Tu es un expert en direction artistique. On te donne des descriptions d'images APPROUVÉES et REJETÉES par une marque.
+Déduis les règles visuelles de cette marque.
+Retourne UNIQUEMENT un JSON valide:
+{
+  "rules": {
+    "lighting": "type de lumière préféré",
+    "framing": "type de cadrage préféré",
+    "background": "type de fond préféré",
+    "text_on_image": true/false,
+    "human_presence": "description",
+    "color_temperature": "warm|cool|neutral"
+  },
+  "do_styles": ["2-3 descriptions de styles approuvés"],
+  "dont_styles": ["2-3 descriptions de styles rejetés"],
+  "mood": "ambiance générale préférée",
+  "summary": "2 phrases résumant le style visuel préféré"
+}`;
+
+    const userContent = `APPROUVÉS:\n${(approved || []).map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}\n\nREJETÉS:\n${(rejected || []).map((t: string, i: number) => `${i + 1}. ${t}`).join("\n")}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        max_tokens: 2000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return c.json({ error: "AI calibration failed" }, 500);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    let jsonStr = raw;
+    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jm) jsonStr = jm[1].trim();
+
+    let calibration;
+    try { calibration = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse calibration" }, 500); }
+
+    // Save to vault
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (type === "text") {
+      vault.text_calibration = calibration;
+      // Also merge preferred/forbidden terms into vault
+      if (calibration.vocabulary?.preferred?.length) {
+        vault.approved_terms = [...new Set([...(vault.approved_terms || []), ...calibration.vocabulary.preferred])];
+      }
+      if (calibration.vocabulary?.forbidden?.length) {
+        vault.forbidden_terms = [...new Set([...(vault.forbidden_terms || []), ...calibration.vocabulary.forbidden])];
+      }
+      // Update tone
+      if (calibration.tone_adjustments && vault.tone) {
+        vault.tone = { ...vault.tone, ...calibration.tone_adjustments };
+      }
+    } else {
+      vault.image_calibration = calibration;
+      // Update photo style
+      if (calibration.rules) {
+        vault.photo_style = {
+          ...(vault.photo_style || {}),
+          lighting: calibration.rules.lighting || vault.photo_style?.lighting,
+          framing: calibration.rules.framing || vault.photo_style?.framing,
+          mood: calibration.mood || vault.photo_style?.mood,
+          subjects: vault.photo_style?.subjects || "",
+        };
+      }
+    }
+    await kv.set(`vault:${user.id}`, vault);
+
+    deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, calibration, type });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
   }
 });
 
@@ -15443,6 +15910,216 @@ app.post("/calendar/deploy-all", async (c) => {
   } catch (err) {
     console.log(`[calendar/deploy-all] error: ${err}`);
     return c.json({ success: false, error: `Calendar batch deploy failed: ${err}` }, 500);
+  }
+});
+
+// ── BRAND VAULT V2: Competitor Scan, Product Universes, Swipe Calibration ──
+
+// POST /vault/scan-competitor — Scan a competitor URL
+app.post("/vault/scan-competitor", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { url } = body;
+    if (!url) return c.json({ error: "URL required" }, 400);
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
+
+    // Fetch the competitor's website
+    let pageText = "";
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 ORA-Studio-Bot" } });
+      const html = await res.text();
+      // Strip HTML tags, keep text
+      pageText = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 10000);
+    } catch (e) {
+      console.warn("[scan-competitor] Fetch failed:", e);
+    }
+
+    const systemPrompt = `Tu es un analyste de marque. Analyse ce site web concurrent et extrais un profil concurrentiel.
+Retourne UNIQUEMENT un JSON valide:
+{
+  "name": "Nom de la marque",
+  "sector": "Secteur d'activité",
+  "positioning": "Positionnement en une phrase",
+  "tone": "Description du ton (2-3 adjectifs)",
+  "strengths": ["force 1", "force 2", "force 3"],
+  "weaknesses": ["faiblesse 1", "faiblesse 2"],
+  "colors": ["#hex1", "#hex2", "#hex3"],
+  "differentiation_tips": ["Comment se différencier 1", "Comment se différencier 2", "Comment se différencier 3"]
+}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `URL: ${url}\n\nContenu extrait:\n${pageText.slice(0, 8000)}` },
+        ],
+        max_tokens: 1000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return c.json({ error: "AI analysis failed" }, 500);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    let jsonStr = raw;
+    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jm) jsonStr = jm[1].trim();
+    let competitor;
+    try { competitor = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse competitor data" }, 500); }
+    competitor.url = url;
+    competitor.scannedAt = new Date().toISOString();
+
+    // Save to vault
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (!vault.competitors_list) vault.competitors_list = [];
+    // Replace if same URL exists
+    vault.competitors_list = vault.competitors_list.filter((cc: any) => cc.url !== url);
+    vault.competitors_list.push(competitor);
+    await kv.set(`vault:${user.id}`, vault);
+
+    deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, competitor });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// POST /vault/product-universes — CRUD for product universes
+app.post("/vault/product-universes", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { action, universe } = body;
+    // action: "list" | "save" | "delete"
+
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (!vault.product_universes) vault.product_universes = [];
+
+    if (action === "list") {
+      return c.json({ success: true, universes: vault.product_universes });
+    }
+
+    if (action === "save") {
+      if (!universe?.id || !universe?.name) return c.json({ error: "Universe must have id and name" }, 400);
+      // universe: { id, name, description?, palette?: string[], tone?: string, photo_style?: string, keywords?: string[], approved_terms?: string[], forbidden_terms?: string[] }
+      const idx = vault.product_universes.findIndex((u: any) => u.id === universe.id);
+      universe.updatedAt = new Date().toISOString();
+      if (idx >= 0) {
+        vault.product_universes[idx] = universe;
+      } else {
+        vault.product_universes.push(universe);
+      }
+      await kv.set(`vault:${user.id}`, vault);
+      return c.json({ success: true, universes: vault.product_universes });
+    }
+
+    if (action === "delete") {
+      const { universeId } = body;
+      vault.product_universes = vault.product_universes.filter((u: any) => u.id !== universeId);
+      await kv.set(`vault:${user.id}`, vault);
+      return c.json({ success: true, universes: vault.product_universes });
+    }
+
+    return c.json({ error: "Invalid action" }, 400);
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// POST /vault/swipe-calibrate — Analyze approved/rejected examples to deduce rules
+app.post("/vault/swipe-calibrate", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { approved, rejected, type } = body;
+    // type: "text" | "image"
+    // approved: string[] (approved content/prompts)
+    // rejected: string[] (rejected content/prompts)
+
+    if (!approved?.length && !rejected?.length) return c.json({ error: "Need at least some examples" }, 400);
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
+
+    const isText = type === "text";
+    const systemPrompt = isText
+      ? `Tu es un expert en analyse de style d'écriture. On te donne des textes approuvés (✅) et rejetés (❌) par un client.
+Déduis les règles de rédaction précises. Retourne UNIQUEMENT un JSON:
+{
+  "vocabulary_rules": { "approved_terms": ["mots/expressions à utiliser"], "forbidden_terms": ["mots/expressions à éviter"] },
+  "structure_rules": ["règle de structure 1", "règle 2"],
+  "tone_rules": ["règle de ton 1", "règle 2"],
+  "formatting_rules": ["règle de format 1", "règle 2"],
+  "signature_patterns": ["pattern récurrent dans les approuvés"],
+  "anti_patterns": ["pattern récurrent dans les rejetés"],
+  "summary": "Résumé en 2 phrases des préférences détectées"
+}`
+      : `Tu es un expert en direction artistique. On te donne des descriptions d'images approuvées (✅) et rejetées (❌) par un client.
+Déduis les règles visuelles précises. Retourne UNIQUEMENT un JSON:
+{
+  "style_rules": ["règle de style 1", "règle 2"],
+  "lighting_preference": "description de l'éclairage préféré",
+  "composition_rules": ["règle de composition 1", "règle 2"],
+  "color_mood": "description de l'ambiance couleur préférée",
+  "subjects_preferred": ["sujet préféré 1", "sujet 2"],
+  "subjects_avoided": ["sujet à éviter 1"],
+  "do_visual": ["faire 1", "faire 2"],
+  "dont_visual": ["ne pas faire 1", "ne pas faire 2"],
+  "summary": "Résumé en 2 phrases des préférences visuelles"
+}`;
+
+    const userContent = `APPROUVÉS (✅):\n${(approved || []).map((a: string, i: number) => `${i + 1}. ${a}`).join("\n")}\n\nREJETÉS (❌):\n${(rejected || []).map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
+        max_tokens: 1500,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) return c.json({ error: "AI analysis failed" }, 500);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    let jsonStr = raw;
+    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jm) jsonStr = jm[1].trim();
+    let rules;
+    try { rules = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse rules" }, 500); }
+
+    // Save calibration to vault
+    const vault = await kv.get(`vault:${user.id}`) || {};
+    if (isText) {
+      vault.text_calibration = rules;
+      // Also merge approved/forbidden terms into main vault fields
+      if (rules.vocabulary_rules?.approved_terms) {
+        vault.approved_terms = [...new Set([...(vault.approved_terms || []), ...rules.vocabulary_rules.approved_terms])];
+      }
+      if (rules.vocabulary_rules?.forbidden_terms) {
+        vault.forbidden_terms = [...new Set([...(vault.forbidden_terms || []), ...rules.vocabulary_rules.forbidden_terms])];
+      }
+    } else {
+      vault.visual_calibration = rules;
+    }
+    vault.calibrated_at = new Date().toISOString();
+    await kv.set(`vault:${user.id}`, vault);
+
+    deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, rules, type });
+  } catch (err) {
+    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
+    return c.json({ error: String(err) }, 500);
   }
 });
 
