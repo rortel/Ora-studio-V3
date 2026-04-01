@@ -288,6 +288,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [keyMessages, setKeyMessages] = useState("");
   const [ctaText, setCtaText] = useState("");
   const [contentAngle, setContentAngle] = useState("");
+  const [visualStyle, setVisualStyle] = useState("");
   const [language, setLanguage] = useState("auto");
   const [campaignStartDate, setCampaignStartDate] = useState("");
   const [campaignDuration, setCampaignDuration] = useState("");
@@ -445,13 +446,28 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     if (product.category) parts.push(`Category: ${product.category}`);
     setBrief(parts.join("\n"));
     if (product.url) setProductUrls(product.url);
-    // Add product images as ref photos
+    // Add product images as ref photos (prioritize Storage signed URLs, fallback to scraped URLs)
+    const refCandidates: { file: null; preview: string }[] = [];
     if (product.images?.length > 0) {
-      const imagePhotos = product.images
-        .filter((img: any) => img.signedUrl)
-        .slice(0, 10)
-        .map((img: any) => ({ file: null as any, preview: img.signedUrl }));
-      setRefPhotos(imagePhotos);
+      for (const img of product.images) {
+        if (img.signedUrl) refCandidates.push({ file: null as any, preview: img.signedUrl });
+      }
+    }
+    // Fallback: use scraped external URLs if no Storage images available
+    if (refCandidates.length === 0 && product.imageUrls?.length > 0) {
+      for (const url of product.imageUrls.slice(0, 5)) {
+        if (url && typeof url === "string" && url.startsWith("http")) {
+          refCandidates.push({ file: null as any, preview: url });
+        }
+      }
+    }
+    // Fallback: main product image
+    if (refCandidates.length === 0 && product.imageUrl) {
+      refCandidates.push({ file: null as any, preview: product.imageUrl });
+    }
+    if (refCandidates.length > 0) {
+      setRefPhotos(refCandidates.slice(0, 10));
+      console.log(`[CampaignLab] Product ref photos: ${refCandidates.length} (${refCandidates[0].preview.slice(0, 60)}...)`);
     }
     toast.success(`Product "${product.name}" loaded`);
   }, []);
@@ -854,6 +870,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         language: language || "auto",
         campaignStartDate: campaignStartDate || "",
         campaignDuration: campaignDuration || "",
+        visualStyle: visualStyle || "",
         model,
       };
       const url = `${API_BASE}/campaign/generate-texts`;
@@ -1004,6 +1021,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
     if (campaignObjective) enrichedParts.push(`CAMPAIGN OBJECTIVE: ${campaignObjective}`);
     if (toneOverride) enrichedParts.push(`TONE OF VOICE: ${toneOverride}`);
+    if (visualStyle) enrichedParts.push(`VISUAL STYLE: ${visualStyle} — all image and video prompts MUST follow this visual direction`);
     if (contentAngle.trim()) enrichedParts.push(`CONTENT ANGLE / HOOK: ${contentAngle.trim()}`);
     if (keyMessages.trim()) enrichedParts.push(`KEY MESSAGES:\n${keyMessages.trim()}`);
     if (ctaText.trim()) enrichedParts.push(`CALL TO ACTION: ${ctaText.trim()}`);
@@ -1250,7 +1268,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               ? fc.imagePrompt.trim().slice(0, 300)
               : `Product in a scene that illustrates: ${briefShort.slice(0, 200)}. ${fmt.platform} format.`;
             const briefContext = contentAngle.trim() ? `Campaign context: ${contentAngle.trim().slice(0, 100)}. ` : (brief.trim() ? `Campaign: ${brief.trim().slice(0, 100)}. ` : "");
-            const finalPrompt = `${briefContext}${sceneContext}. ${diversitySuffix} Photorealistic commercial photography, new environment, professional lighting.`;
+            const visualStyleSuffix = visualStyle ? ` Visual style: ${visualStyle}.` : "";
+            const finalPrompt = `${briefContext}${sceneContext}.${visualStyleSuffix} ${diversitySuffix} Photorealistic commercial photography, new environment, professional lighting.`;
 
             const modelsToUse = multiModelEnabled && imageModelsSelected.length > 1
               ? imageModelsSelected : [imageModel];
@@ -2741,6 +2760,48 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   }}
                                 >
                                   {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Visual Style */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Camera size={12} style={{ color: "var(--text-secondary)" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Visual style</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              { id: "", label: "Auto (from vault)" },
+                              { id: "Studio Photoshoot", label: "Studio Photoshoot" },
+                              { id: "Packshot", label: "Packshot" },
+                              { id: "Lifestyle", label: "Lifestyle" },
+                              { id: "Flat Lay", label: "Flat Lay" },
+                              { id: "UGC / Authentic", label: "UGC / Authentic" },
+                              { id: "Editorial / Fashion", label: "Editorial" },
+                              { id: "Cinematic", label: "Cinematic" },
+                              { id: "Moodboard / Ambiance", label: "Moodboard" },
+                              { id: "3D Render", label: "3D Render" },
+                              { id: "Before / After", label: "Before / After" },
+                              { id: "Close-up / Macro", label: "Close-up" },
+                              { id: "Aerial / Drone", label: "Aerial" },
+                            ].map(style => {
+                              const isSelected = visualStyle === style.id;
+                              return (
+                                <button
+                                  key={style.id}
+                                  onClick={() => setVisualStyle(style.id)}
+                                  className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                                  style={{
+                                    background: isSelected ? "rgba(17,17,17,0.15)" : "rgba(255,255,255,0.02)",
+                                    border: `1px solid ${isSelected ? "rgba(17,17,17,0.4)" : "var(--border)"}`,
+                                    color: isSelected ? "var(--ora-signal)" : "var(--text-secondary)",
+                                    fontSize: "11px", fontWeight: isSelected ? 600 : 400,
+                                  }}
+                                >
+                                  {style.label}
                                 </button>
                               );
                             })}

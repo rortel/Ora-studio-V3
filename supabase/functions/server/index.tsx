@@ -3077,7 +3077,8 @@ app.post("/campaign/generate-texts", async (c) => {
     const explicitLanguage = ((body.language || "") as string).slice(0, 20);
     const campaignStartDate = ((body.campaignStartDate || "") as string).slice(0, 30);
     const campaignDuration = ((body.campaignDuration || "") as string).slice(0, 50);
-    console.log(`[campaign-texts-POST] brief="${brief.slice(0,120)}", fmts=[${formatIds.join(",")}], objective=${campaignObjective}, lang=${explicitLanguage}, angle="${contentAngle.slice(0,60)}", cta="${callToAction.slice(0,60)}"`);
+    const visualStyle = ((body.visualStyle || "") as string).slice(0, 100);
+    console.log(`[campaign-texts-POST] brief="${brief.slice(0,120)}", fmts=[${formatIds.join(",")}], objective=${campaignObjective}, lang=${explicitLanguage}, angle="${contentAngle.slice(0,60)}", cta="${callToAction.slice(0,60)}", visual="${visualStyle}"`);
     if (!brief && !productUrls) return c.json({ success: false, error: "brief or productUrls required" }, 400);
     if (!formatIds.length) return c.json({ success: false, error: "formats required" }, 400);
 
@@ -3210,6 +3211,7 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     if (keyMessages) directives.push(`KEY MESSAGES TO INTEGRATE:\n${keyMessages}`);
     if (callToAction) directives.push(`EXACT CTA TO USE: ${callToAction}`);
     if (toneOfVoice) directives.push(`TONE OF VOICE: ${toneOfVoice}`);
+    if (visualStyle) directives.push(`VISUAL STYLE DIRECTION: ${visualStyle} — ALL imagePrompt and videoPrompt MUST follow this visual style. Adapt scene, lighting, composition, and mood accordingly. Examples: "Studio Photoshoot" = clean white/grey background, professional studio lighting, product hero shot. "Packshot" = product isolated on clean background, commercial e-commerce style. "Lifestyle" = product in real-life context, people using it naturally. "Flat Lay" = top-down arrangement on styled surface. "UGC / Authentic" = raw, phone-quality aesthetic, real moments. "Editorial" = high-fashion, magazine-quality, dramatic poses. "Cinematic" = movie-still quality, dramatic lighting, anamorphic feel. "Moodboard" = atmospheric, textural, color-palette focused. "3D Render" = CGI product visualization, floating/impossible angles. "Close-up / Macro" = extreme detail, texture, surface quality. "Aerial / Drone" = bird's-eye view, scale, landscape context.`);
     if (targetAudience) directives.push(`TARGET AUDIENCE: ${targetAudience}`);
     if (campaignStartDate) directives.push(`CAMPAIGN START DATE: ${campaignStartDate}`);
     if (campaignDuration) directives.push(`CAMPAIGN DURATION: ${campaignDuration}`);
