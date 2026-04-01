@@ -6374,49 +6374,106 @@ app.post("/vault/analyze", async (c) => {
       if (!textToAnalyze && rawHtml) textToAnalyze = htmlToText(rawHtml);
       source = url;
 
-      // Deep scan: crawl sub-pages
+      // Deep scan: crawl sub-pages (up to 20 pages, prioritized by brand relevance)
       if (deep && textToAnalyze.length > 50) {
         console.log(`[vault/analyze] Deep scan: crawling sub-pages...`);
         const baseUrl = new URL(url);
-        const subPaths = ["/about", "/about-us", "/a-propos", "/contact", "/services", "/offres", "/our-story", "/concept"];
+
+        // Priority paths — most likely to contain brand-relevant info
+        const priorityPaths = [
+          "/about", "/about-us", "/a-propos", "/qui-sommes-nous", "/notre-histoire", "/our-story",
+          "/values", "/nos-valeurs", "/mission", "/vision",
+          "/services", "/offres", "/solutions", "/products", "/produits", "/nos-marques", "/brands",
+          "/concept", "/philosophy", "/philosophie", "/engagements", "/commitments",
+          "/team", "/equipe", "/notre-equipe",
+          "/contact", "/careers", "/recrutement",
+        ];
+
+        // Extract ALL internal links from homepage HTML
         const linkMatches = rawHtml.match(/href=["']([^"'#]+)["']/gi) || [];
         const internalPaths = new Set<string>();
+        const seenPaths = new Set<string>(["/", baseUrl.pathname]);
         for (const lm of linkMatches) {
           const href = lm.match(/href=["']([^"']+)["']/)?.[1] || "";
           try {
             const u = new URL(href, url);
-            if (u.hostname === baseUrl.hostname && u.pathname !== "/" && u.pathname !== baseUrl.pathname) internalPaths.add(u.pathname);
+            if (u.hostname === baseUrl.hostname && !seenPaths.has(u.pathname)) {
+              // Skip non-content paths (assets, files, anchors, pagination, auth)
+              if (/\.(css|js|png|jpg|jpeg|gif|svg|pdf|zip|xml|ico|woff|ttf)$/i.test(u.pathname)) continue;
+              if (/\/(wp-admin|wp-includes|wp-json|feed|login|cart|checkout|account|search|tag|category|page\/\d)/i.test(u.pathname)) continue;
+              seenPaths.add(u.pathname);
+              internalPaths.add(u.pathname);
+            }
           } catch {}
         }
-        const pathsToTry = [...new Set([...subPaths, ...Array.from(internalPaths).slice(0, 10)])].slice(0, 8);
-        console.log(`[vault/analyze] Deep: trying ${pathsToTry.length} sub-pages`);
-        const subResults = await Promise.allSettled(
-          pathsToTry.map(async (path) => {
-            const subUrl = `${baseUrl.origin}${path}`;
-            const subText = await fetchJinaText(subUrl);
-            if (subText.length > 100) {
-              const subHtml = await fetchHtml(subUrl);
-              if (subHtml.length > 200) {
-                const sub = extractFromHtml(subHtml, subUrl); // no external CSS for sub-pages (perf)
-                // Merge colors with frequency data
+
+        // Score internal paths by brand relevance
+        const brandKeywords = /about|propos|histoire|story|valeur|value|mission|vision|concept|philos|engage|commit|marque|brand|service|offre|solution|product|produit|equipe|team|savoir|expert|metier|craft/i;
+        const scoredPaths = Array.from(internalPaths).map(p => ({
+          path: p,
+          score: brandKeywords.test(p) ? 10 : p.split("/").filter(Boolean).length <= 2 ? 5 : 2,
+        })).sort((a, b) => b.score - a.score);
+
+        // Merge priority + scored internal, deduplicate, cap at 20
+        const allPaths = new Set<string>();
+        for (const p of priorityPaths) allPaths.add(p);
+        for (const sp of scoredPaths) allPaths.add(sp.path);
+        const pathsToTry = [...allPaths].slice(0, 20);
+        console.log(`[vault/analyze] Deep: trying ${pathsToTry.length} sub-pages (${internalPaths.size} found on homepage)`);
+
+        // Crawl in parallel batches of 5 to avoid rate limits
+        const batchSize = 5;
+        for (let i = 0; i < pathsToTry.length; i += batchSize) {
+          const batch = pathsToTry.slice(i, i + batchSize);
+          const subResults = await Promise.allSettled(
+            batch.map(async (path) => {
+              const subUrl = `${baseUrl.origin}${path}`;
+              try {
+                // Fetch HTML directly (faster than Jina for sub-pages)
+                const subHtmlRes = await fetch(subUrl, {
+                  headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" },
+                  signal: AbortSignal.timeout(6000),
+                  redirect: "follow",
+                });
+                if (!subHtmlRes.ok) return "";
+                const subHtml = await subHtmlRes.text();
+                if (subHtml.length < 200) return "";
+
+                // Extract visual data (colors, fonts, social, logo, images)
+                const sub = extractFromHtml(subHtml, subUrl);
                 for (const [hex, freq] of Object.entries(sub.colorFrequency || {})) {
                   preExtracted.colorFrequency[hex] = (preExtracted.colorFrequency[hex] || 0) + (freq as number);
                 }
-                // Merge CSS custom properties
                 Object.assign(preExtracted.cssCustomProperties || {}, sub.cssCustomProperties || {});
-                preExtracted.colors = [...new Set([...preExtracted.colors, ...sub.colors])].slice(0, 30);
-                preExtracted.fonts = [...new Set([...preExtracted.fonts, ...sub.fonts])].slice(0, 10);
+                preExtracted.colors = [...new Set([...preExtracted.colors, ...sub.colors])].slice(0, 40);
+                preExtracted.fonts = [...new Set([...preExtracted.fonts, ...sub.fonts])].slice(0, 12);
                 for (const s of sub.socialUrls) {
                   if (!preExtracted.socialUrls.some((e: any) => e.platform === s.platform)) preExtracted.socialUrls.push(s);
                 }
-              }
-              return `\n--- ${path} ---\n${subText.slice(0, 3000)}`;
-            }
-            return "";
-          })
-        );
-        for (const r of subResults) { if (r.status === "fulfilled" && r.value) textToAnalyze += r.value; }
-        console.log(`[vault/analyze] Deep: total ${textToAnalyze.length} chars`);
+                // Merge brand images
+                if (sub.brandImages?.length > 0) {
+                  preExtracted.brandImages = [...(preExtracted.brandImages || []), ...sub.brandImages]
+                    .sort((a: any, b: any) => b.score - a.score).slice(0, 20);
+                }
+
+                // Extract text content (strip HTML)
+                const textContent = subHtml
+                  .replace(/<script[\s\S]*?<\/script>/gi, "")
+                  .replace(/<style[\s\S]*?<\/style>/gi, "")
+                  .replace(/<[^>]*>/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+
+                if (textContent.length > 100) {
+                  return `\n--- ${path} ---\n${textContent.slice(0, 2000)}`;
+                }
+              } catch {}
+              return "";
+            })
+          );
+          for (const r of subResults) { if (r.status === "fulfilled" && r.value) textToAnalyze += r.value; }
+        }
+        console.log(`[vault/analyze] Deep: total ${textToAnalyze.length} chars from up to ${pathsToTry.length} pages`);
       }
 
       if (!textToAnalyze || textToAnalyze.length < 50) {
@@ -6466,7 +6523,7 @@ OTHER EXTRACTED DATA:
 ` : "";
 
     const isCharter = sourceType === "pdf-charter";
-    const maxChars = isCharter ? 25000 : deep ? 20000 : 14000;
+    const maxChars = isCharter ? 25000 : deep ? 35000 : 14000;
     const truncated = textToAnalyze.slice(0, maxChars);
     console.log(`[vault/analyze] AI input: ${truncated.length} text + ${structuredContext.length} structured, isCharter=${isCharter}`);
 
