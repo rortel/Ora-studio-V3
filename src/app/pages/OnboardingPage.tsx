@@ -200,7 +200,7 @@ export function OnboardingPage() {
           Authorization: `Bearer ${publicAnonKey}`,
           "Content-Type": "text/plain",
         },
-        body: JSON.stringify({ vault: vaultPayload, _token: token() }),
+        body: JSON.stringify({ ...vaultPayload, _token: token() }),
       });
       setSaved(true);
     } catch (err) {

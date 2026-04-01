@@ -17385,22 +17385,94 @@ app.post("/products/scrape-url", async (c) => {
 
     console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
 
-    // Fetch the page HTML
+    // Fetch page via Jina Reader (same as brand vault) — works from Deno Edge Functions
+    const jinaKey = Deno.env.get("JINA_API_KEY");
     let html = "";
-    try {
-      const pageRes = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      html = await pageRes.text();
-      // Strip scripts/styles, keep text content
-      html = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 8000);
-    } catch (fetchErr) {
-      console.log(`[products/scrape-url] Fetch failed: ${fetchErr}`);
+    let jinaImages: string[] = [];
+
+    if (jinaKey) {
+      try {
+        console.log(`[products/scrape-url] Fetching via Jina Reader...`);
+        const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${jinaKey}`,
+            Accept: "application/json",
+            "X-No-Cache": "true",
+            "X-Proxy": "auto",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (jinaRes.ok) {
+          const jinaData = await jinaRes.json();
+          html = jinaData.data?.content || jinaData.data?.text || jinaData.content || "";
+          // Jina returns images in structured data
+          const jinaImgs = jinaData.data?.images || [];
+          if (Array.isArray(jinaImgs)) {
+            for (const img of jinaImgs) {
+              const imgUrl = typeof img === "string" ? img : img?.url || img?.src;
+              if (imgUrl && imgUrl.startsWith("http")) jinaImages.push(imgUrl);
+            }
+          }
+          console.log(`[products/scrape-url] Jina: ${html.length} chars, ${jinaImages.length} structured images`);
+        }
+      } catch (jinaErr) {
+        console.log(`[products/scrape-url] Jina fetch failed: ${jinaErr}`);
+      }
     }
 
+    // Fallback: direct fetch if Jina failed
+    if (!html) {
+      try {
+        const pageRes = await fetch(url, {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(10_000),
+        });
+        const rawHtml = await pageRes.text();
+        html = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+        html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      } catch (fetchErr) {
+        console.log(`[products/scrape-url] Direct fetch failed: ${fetchErr}`);
+      }
+    }
+    html = html.slice(0, 8000);
+
     if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
+
+    // Extract image URLs from content (Jina structured + markdown syntax + HTML img tags)
+    const imageUrls: string[] = [...jinaImages];
+    const seenUrls = new Set<string>(jinaImages);
+    const baseUrl = new URL(url);
+
+    const resolveUrl = (src: string): string | null => {
+      if (!src || src.startsWith("data:")) return null;
+      if (/\.(svg|gif)(\?|$)/i.test(src)) return null;
+      if (/1x1|pixel|track|spacer|blank|favicon/i.test(src)) return null;
+      if (src.startsWith("//")) return baseUrl.protocol + src;
+      if (src.startsWith("/")) return baseUrl.origin + src;
+      if (!src.startsWith("http")) return baseUrl.origin + "/" + src;
+      return src;
+    };
+
+    // Parse markdown images ![alt](url) from Jina content
+    const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+    let mdMatch;
+    while ((mdMatch = mdRegex.exec(html)) !== null) {
+      const resolved = resolveUrl(mdMatch[1]);
+      if (resolved && !seenUrls.has(resolved)) { seenUrls.add(resolved); imageUrls.push(resolved); }
+    }
+    console.log(`[products/scrape-url] Markdown images found: ${imageUrls.length - jinaImages.length}, html has ![: ${html.includes("![")}`);
+    // Parse HTML <img> tags if content contains them
+    const imgTagMatches = html.matchAll(/<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi);
+    for (const m of imgTagMatches) {
+      const resolved = resolveUrl(m[1]);
+      if (resolved && !seenUrls.has(resolved)) { seenUrls.add(resolved); imageUrls.push(resolved); }
+    }
+    // Filter out logo/header/footer images
+    const productImages = imageUrls.filter(u => !/logo|header|footer|menu|nav|icon/i.test(u));
+    const finalImageUrls = (productImages.length >= 2 ? productImages : imageUrls).slice(0, 12);
+    console.log(`[products/scrape-url] Found ${finalImageUrls.length} images total`);
 
     // Use AI to extract product info
     const key = Deno.env.get("APIPOD_API_KEY");
@@ -17445,7 +17517,8 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
       extracted = {};
     }
 
-    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}`);
+    extracted.imageUrls = finalImageUrls;
+    console.log(`[products/scrape-url] Extracted: name="${extracted.name}", price=${extracted.price}, features=${extracted.features?.length}, images=${finalImageUrls.length}`);
     return c.json({ success: true, product: extracted });
   } catch (err) {
     console.log(`[products/scrape-url] Error:`, err);
@@ -17503,6 +17576,74 @@ app.post("/products/:id/images", async (c) => {
     return c.json({ success: true, images: newImages, product: updated });
   } catch (err) {
     console.log(`[products/images] Error:`, err);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// POST /products/:id/images-from-urls — import images from external URLs
+app.post("/products/:id/images-from-urls", async (c) => {
+  try {
+    const user = await getUser(c);
+    if (!user) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const productId = c.req.param("id");
+    const existing = await kv.get(`product:${user.id}:${productId}`);
+    if (!existing) return c.json({ success: false, error: "Product not found" }, 404);
+
+    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
+    const urls: string[] = body.imageUrls || [];
+    if (!urls.length) return c.json({ success: false, error: "No imageUrls provided" }, 400);
+
+    const sb = supabaseAdmin();
+    const newImages: any[] = [];
+
+    for (const imgUrl of urls.slice(0, 12)) {
+      try {
+        const imgRes = await fetch(imgUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)" },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!imgRes.ok) continue;
+        const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+        if (!contentType.startsWith("image/")) continue;
+        const arrayBuffer = await imgRes.arrayBuffer();
+        if (arrayBuffer.byteLength < 500 || arrayBuffer.byteLength > 20_000_000) continue; // skip tiny/huge
+
+        const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+        const imageId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const storagePath = `products/${user.id}/${productId}/${imageId}.${ext}`;
+
+        const { error: uploadErr } = await sb.storage.from(MEDIA_BUCKET).upload(storagePath, new Uint8Array(arrayBuffer), {
+          contentType,
+          upsert: true,
+        });
+        if (uploadErr) { console.log(`[products/images-from-urls] Upload error:`, uploadErr); continue; }
+
+        const { data: urlData } = await sb.storage.from(MEDIA_BUCKET).createSignedUrl(storagePath, 86400 * 30);
+        newImages.push({
+          id: imageId,
+          fileName: imgUrl.split("/").pop()?.split("?")[0] || `image.${ext}`,
+          storagePath,
+          signedUrl: urlData?.signedUrl || null,
+          sourceUrl: imgUrl,
+          fileSize: arrayBuffer.byteLength,
+          mimeType: contentType,
+          uploadedAt: new Date().toISOString(),
+        });
+      } catch (imgErr) {
+        console.log(`[products/images-from-urls] Failed to fetch ${imgUrl.slice(0, 80)}: ${imgErr}`);
+      }
+    }
+
+    const updated = {
+      ...existing,
+      images: [...(existing.images || []), ...newImages],
+      updatedAt: new Date().toISOString(),
+    };
+    await kv.set(`product:${user.id}:${productId}`, updated);
+    console.log(`[products/images-from-urls] Imported ${newImages.length}/${urls.length} images for product ${productId}`);
+    return c.json({ success: true, images: newImages, product: updated });
+  } catch (err) {
+    console.log(`[products/images-from-urls] Error:`, err);
     return c.json({ success: false, error: `${err}` }, 500);
   }
 });
