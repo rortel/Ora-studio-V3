@@ -5038,7 +5038,11 @@ app.post("/vault/load", async (c) => {
 app.post("/vault", async (c) => {
   try {
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
-    const { _token, ...data } = body;
+    const { _token, ...rawData } = body;
+    // Flatten if caller sent { vault: {...} } wrapper (legacy onboarding format)
+    const data = (rawData.vault && typeof rawData.vault === "object" && !Array.isArray(rawData.vault) && Object.keys(rawData).length === 1)
+      ? rawData.vault
+      : rawData;
     console.log(`[vault/save] incoming keys: [${Object.keys(data).join(",")}] company_name="${data.company_name || "NONE"}" brandName="${data.brandName || "NONE"}"`);
 
     // ── RESET: if body has _reset=true, wipe vault entirely ──
@@ -5054,6 +5058,14 @@ app.post("/vault", async (c) => {
     if (Object.keys(data).length === 0) {
       const user = await requireAuth(c);
       const vault = await kv.get(`vault:${user.id}`);
+      // Auto-fix: if vault has a nested "vault" key from old onboarding bug, flatten it
+      if (vault && vault.vault && typeof vault.vault === "object" && !Array.isArray(vault.vault)) {
+        const { vault: nested, ...rest } = vault;
+        const fixed = { ...rest, ...nested };
+        await saveVaultToKV(user.id, fixed);
+        console.log(`[vault/read] Auto-fixed nested vault.vault for user=${user.id.slice(0,8)}`);
+        return c.json({ success: true, vault: fixed });
+      }
       return c.json({ success: true, vault: vault || null });
     }
     // Otherwise it's a write
