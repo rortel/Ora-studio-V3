@@ -5079,25 +5079,129 @@ app.post("/vault", async (c) => {
 // BRAND ENGINE — Strategy synthesis & prompt enrichment
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// POST /brand-engine/chat — Conversational brand discovery (1 exchange at a time)
+app.post("/brand-engine/chat", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { conversation, vaultContext, exchangeNumber, maxExchanges } = body;
+
+    if (!conversation || !Array.isArray(conversation)) {
+      return c.json({ success: false, error: "conversation array required" }, 400);
+    }
+
+    const ctx = vaultContext || {};
+    const brandInfo = [
+      ctx.company_name ? `Marque: ${ctx.company_name}` : "",
+      ctx.industry ? `Secteur: ${ctx.industry}` : "",
+      ctx.mission ? `Mission: ${ctx.mission}` : "",
+      ctx.vision ? `Vision: ${ctx.vision}` : "",
+      ctx.personality ? `Personnalité: ${ctx.personality}` : "",
+      ctx.usp ? `USP: ${ctx.usp}` : "",
+      ctx.tone?.primary_tone ? `Ton: ${ctx.tone.primary_tone}` : "",
+    ].filter(Boolean).join("\n");
+
+    const isNearEnd = (exchangeNumber || 1) >= (maxExchanges || 3) - 1;
+
+    const messages = [
+      {
+        role: "system",
+        content: `Tu es un directeur de stratégie de marque senior. Tu mènes une conversation naturelle et courte (2-3 échanges max) pour comprendre l'essence de la marque du client.
+
+Contexte de marque déjà connu:
+${brandInfo || "Aucune donnée préalable."}
+
+Règles:
+- Réponds TOUJOURS en français, avec vouvoiement
+- Ton: professionnel mais chaleureux, comme un consultant de confiance
+- Pose UNE SEULE question par message, pas plus
+- Chaque question doit creuser un angle différent: promesse, univers visuel, ce qu'il faut éviter, tension créative
+- Ne répète jamais ce que tu sais déjà du scan
+- Sois bref: 2-3 phrases max par message
+${isNearEnd ? "- C'est le dernier échange. Résume ce que tu as compris et dis que tu vas synthétiser la plateforme de marque. Ajoute readyToSynthesize: true dans ta réponse." : ""}
+
+Retourne UNIQUEMENT du JSON: { "message": "ton message", "readyToSynthesize": false }`
+      },
+      ...conversation.map((msg: any) => ({
+        role: msg.role === "ai" ? "assistant" : "user",
+        content: msg.text,
+      })),
+    ];
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.6,
+        max_tokens: 300,
+        response_format: { type: "json_object" },
+        messages,
+      }),
+    });
+
+    if (!aiRes.ok) {
+      return c.json({ success: false, error: "AI chat failed" }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content || "";
+    const parsed = JSON.parse(raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim());
+
+    console.log(`[brand-engine/chat] user=${user.id.slice(0, 8)} exchange=${exchangeNumber} ready=${parsed.readyToSynthesize}`);
+    return c.json({ success: true, message: parsed.message, readyToSynthesize: !!parsed.readyToSynthesize });
+  } catch (err) {
+    console.error("[brand-engine/chat] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /brand-engine/synthesize
-// Takes 5 onboarding answers + vault context → returns structured brand_platform
+// Accepts EITHER: { answers: [...], vault } (legacy 5-question format)
+// OR: { conversation: [...], vaultContext: {...} } (new chat format)
 app.post("/brand-engine/synthesize", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
-    const { answers, vault } = body;
+    const { answers, vault, conversation, vaultContext } = body;
 
-    if (!answers || !Array.isArray(answers) || answers.length < 5) {
-      return c.json({ success: false, error: "5 onboarding answers required." }, 400);
+    // Determine format
+    const isConversation = Array.isArray(conversation) && conversation.length > 0;
+    const isLegacy = answers && (Array.isArray(answers) ? answers.length >= 5 : Object.keys(answers).length >= 3);
+
+    if (!isConversation && !isLegacy) {
+      return c.json({ success: false, error: "conversation or answers required." }, 400);
     }
 
-    const brandContext = vault
-      ? `Brand: ${vault.brandName || vault.company_name || "Unknown"}
-Industry: ${vault.industry || "N/A"}
-Tagline: ${vault.tagline || "N/A"}
-Products: ${(vault.products_services || []).join(", ") || "N/A"}
-Tone: ${vault.tone_of_voice || "N/A"}`
-      : "No existing brand data.";
+    // Build brand context
+    const ctx = vaultContext || vault || {};
+    const brandContext = [
+      ctx.company_name || ctx.brandName ? `Marque: ${ctx.company_name || ctx.brandName}` : "",
+      ctx.industry ? `Secteur: ${ctx.industry}` : "",
+      ctx.tagline ? `Tagline: ${ctx.tagline}` : "",
+      ctx.mission ? `Mission: ${ctx.mission}` : "",
+      ctx.vision ? `Vision: ${ctx.vision}` : "",
+      ctx.personality ? `Personnalité: ${ctx.personality}` : "",
+      ctx.usp ? `USP: ${ctx.usp}` : "",
+      ctx.tone?.primary_tone ? `Ton: ${ctx.tone.primary_tone} (${(ctx.tone.adjectives || []).join(", ")})` : "",
+      (ctx.products_services || []).length > 0 ? `Produits: ${ctx.products_services.join(", ")}` : "",
+      (ctx.key_messages || []).length > 0 ? `Messages clés: ${ctx.key_messages.join("; ")}` : "",
+      (ctx.approved_terms || []).length > 0 ? `Termes approuvés: ${ctx.approved_terms.join(", ")}` : "",
+      (ctx.forbidden_terms || []).length > 0 ? `Termes interdits: ${ctx.forbidden_terms.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+
+    // Build user content
+    let userContent: string;
+    if (isConversation) {
+      const convoText = conversation.map((m: any) => `${m.role === "ai" ? "Consultant" : "Client"}: ${m.text}`).join("\n\n");
+      userContent = `Contexte de marque:\n${brandContext}\n\nConversation de découverte:\n${convoText}\n\nSynthétise cette conversation en une plateforme de marque complète.`;
+    } else {
+      // Legacy format — answers as array or object
+      const answerText = Array.isArray(answers)
+        ? answers.map((a: string, i: number) => `${i + 1}. ${a}`).join("\n")
+        : Object.entries(answers).map(([k, v]) => `${k}: ${v}`).join("\n");
+      userContent = `Contexte de marque:\n${brandContext}\n\nRéponses du client:\n${answerText}\n\nSynthétise en une plateforme de marque complète.`;
+    }
 
     const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
       method: "POST",
@@ -5105,61 +5209,37 @@ Tone: ${vault.tone_of_voice || "N/A"}`
       body: JSON.stringify({
         model: "gpt-4o",
         temperature: 0.4,
+        response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
-            content: `You are an elite brand strategist specializing in brand platforms (plateforme de marque), semiotic analysis, and creative direction. You synthesize raw brand insights into a structured brand platform.
+            content: `Tu es un directeur de stratégie de marque senior. Tu synthétises les insights en une plateforme de marque structurée.
 
-Return ONLY valid JSON — no markdown, no backticks, no explanation.
-
-JSON schema:
+Retourne UNIQUEMENT du JSON valide:
 {
-  "promise": "string — the core brand promise (what the brand commits to delivering)",
+  "promise": "string — la promesse de marque (ce que la marque s'engage à délivrer)",
   "narrative_register": "transformation | connivence | tension | proof | culture",
-  "creative_tension": "string — the productive tension that drives the brand narrative",
+  "creative_tension": "string — la tension productive qui anime le récit de marque",
   "semiotic_codes": {
-    "adopt": ["string — visual/verbal signs the brand should embrace"],
-    "avoid": ["string — signs that contradict the brand identity"],
-    "subvert": ["string — codes to reappropriate in an unexpected way"]
+    "adopt": ["5-8 signes visuels/verbaux à adopter"],
+    "avoid": ["5-8 choses à ne jamais montrer/dire"],
+    "subvert": ["2-3 codes à réapproprier de manière inattendue"]
   },
   "photo_direction": {
-    "framing": "string — preferred shot types and distances",
-    "lighting": "string — lighting style and mood",
-    "human_presence": "string — how people appear (or don't) in visuals",
-    "composition": "string — layout rules, negative space, geometry"
+    "framing": "string — types de cadrage préférés",
+    "lighting": "string — style d'éclairage et ambiance",
+    "human_presence": "string — comment les personnes apparaissent (ou pas)",
+    "composition": "string — règles de mise en page, espace négatif, géométrie"
   },
   "reference_prompts": {
-    "positive": ["string — 3-5 example prompts aligned with the brand"],
-    "negative": ["string — 3-5 anti-prompts to avoid"]
+    "positive": ["3-5 prompts de génération d'image alignés avec la marque"],
+    "negative": ["3-5 anti-prompts à éviter"]
   }
 }
 
-RESPOND IN THE SAME LANGUAGE as the user's answers.`
+RÉPONDS DANS LA MÊME LANGUE que le client.`
           },
-          {
-            role: "user",
-            content: `Here is the brand context:
-${brandContext}
-
-Here are the 5 onboarding answers:
-
-1. What transformation does the brand promise?
-${answers[0]}
-
-2. What visual/verbal universe does the brand claim?
-${answers[1]}
-
-3. What should the brand NEVER do or say?
-${answers[2]}
-
-4. What creative tension drives the brand?
-${answers[3]}
-
-5. Describe the ideal photographic direction:
-${answers[4]}
-
-Synthesize this into a complete brand platform JSON.`
-          }
+          { role: "user", content: userContent }
         ]
       })
     });
@@ -5180,7 +5260,7 @@ Synthesize this into a complete brand platform JSON.`
     const updated = { ...existing, brand_platform: platform, updatedAt: new Date().toISOString() };
     await saveVaultToKV(user.id, updated);
 
-    console.log(`[brand-engine/synthesize] user=${user.id.slice(0,8)} register=${platform.narrative_register}`);
+    console.log(`[brand-engine/synthesize] user=${user.id.slice(0, 8)} register=${platform.narrative_register} mode=${isConversation ? "chat" : "legacy"}`);
     return c.json({ success: true, platform });
   } catch (err) {
     console.error("[brand-engine/synthesize] error:", err);
@@ -6751,6 +6831,103 @@ Category definitions:
           console.log(`[vault/analyze-bg] Background job error: ${bgErr}`);
         }
       })();
+    }
+
+    // ── AUTO brand_platform generation from scan DNA ──
+    // If no brand_platform exists yet, deduce one from the extracted DNA
+    const hasPlatform = merged.brand_platform && merged.brand_platform.promise;
+    if (!hasPlatform) {
+      const bpT0 = Date.now();
+      try {
+        const bpContext = [
+          `Company: ${merged.company_name || merged.brandName || "Unknown"}`,
+          `Industry: ${merged.industry || "N/A"}`,
+          `Tagline: ${merged.tagline || "N/A"}`,
+          `Mission: ${merged.mission || "N/A"}`,
+          `Vision: ${merged.vision || "N/A"}`,
+          `Personality: ${JSON.stringify(merged.personality || merged.tone?.adjectives || [])}`,
+          `USP: ${merged.usp || "N/A"}`,
+          `Tone: ${merged.tone_of_voice || JSON.stringify(merged.tone || {})}`,
+          `Key messages: ${JSON.stringify(merged.key_messages || [])}`,
+          `Approved terms: ${JSON.stringify(merged.approved_terms || [])}`,
+          `Forbidden terms: ${JSON.stringify(merged.forbidden_terms || [])}`,
+          `Colors: ${JSON.stringify((merged.colors || []).map((cl: any) => `${cl.name || ""} ${cl.hex} (${cl.role || ""})`).join(", "))}`,
+          `Photo style: ${JSON.stringify(merged.photo_style || {})}`,
+          `Products/services: ${JSON.stringify(merged.products_services || [])}`,
+          `Target audiences: ${JSON.stringify(merged.target_audiences || [])}`,
+        ].join("\n");
+
+        const bpRes = await fetchWithTimeout(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: apipodHeaders(),
+          body: JSON.stringify({
+            model: "gpt-4o",
+            temperature: 0.4,
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "system",
+                content: `You are an elite brand strategist. From the brand DNA data below, deduce a complete brand platform (plateforme de marque).
+
+Return ONLY valid JSON — no markdown, no backticks, no explanation.
+
+JSON schema:
+{
+  "promise": "string — one sentence: what the brand promises its customers",
+  "narrative_register": "transformation | expertise | rebellion | aspiration | tradition",
+  "creative_tension": "string — the interesting paradox or contrast that makes the brand unique",
+  "semiotic_codes": {
+    "adopt": ["5-8 visual/verbal codes the brand should embrace"],
+    "avoid": ["5-8 things to never show or say"],
+    "subvert": ["2-3 codes to use in an unexpected way"]
+  },
+  "photo_direction": {
+    "framing": "string — preferred shot types, distances, angles",
+    "lighting": "string — lighting style, quality, mood",
+    "human_presence": "string — how people appear (or don't) in visuals",
+    "composition": "string — layout rules, negative space, geometry"
+  },
+  "reference_prompts": {
+    "positive": ["3-4 image generation prompts perfectly aligned with the brand"],
+    "negative": ["3-4 negative prompts describing what to avoid"]
+  }
+}
+
+IMPORTANT:
+- Deduce everything from the brand data provided — be specific to THIS brand, not generic.
+- The narrative_register must be exactly one of: transformation, expertise, rebellion, aspiration, tradition.
+- reference_prompts should be concrete image prompts a designer could use with Midjourney/DALL-E.
+- RESPOND IN THE SAME LANGUAGE as the brand data (if French brand data, respond in French).`
+              },
+              {
+                role: "user",
+                content: `Here is the brand DNA extracted from a website scan:\n\n${bpContext}\n\nDeduce the complete brand platform from this data.`
+              }
+            ]
+          }),
+        }, 30_000);
+
+        if (bpRes.ok) {
+          const bpData = await bpRes.json();
+          const bpRaw = bpData.choices?.[0]?.message?.content || "";
+          const bpCleaned = bpRaw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+          const platform = JSON.parse(bpCleaned);
+
+          if (platform && platform.promise) {
+            merged.brand_platform = platform;
+            dna.brand_platform = platform;
+            await saveVaultToKV(user.id, merged);
+            console.log(`[vault/analyze] Auto brand_platform generated in ${Date.now() - bpT0}ms — register: ${platform.narrative_register}`);
+          } else {
+            console.log(`[vault/analyze] Auto brand_platform: AI returned invalid structure (${Date.now() - bpT0}ms)`);
+          }
+        } else {
+          const errText = await bpRes.text().catch(() => "");
+          console.log(`[vault/analyze] Auto brand_platform AI error (${bpRes.status}): ${errText.slice(0, 200)} — ${Date.now() - bpT0}ms`);
+        }
+      } catch (bpErr: any) {
+        console.log(`[vault/analyze] Auto brand_platform failed (${Date.now() - bpT0}ms): ${bpErr?.message || bpErr}`);
+      }
     }
 
     console.log(`[vault/analyze] DONE ${Date.now() - t0}ms — ${merged.brandName || merged.company_name} (${isCharter ? "charter" : deep ? "deep" : "std"})`);
