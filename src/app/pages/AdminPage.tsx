@@ -1630,7 +1630,36 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
   const previewHtml = useMemo(() => {
     const bodyHtml = blocksToHtml(blocks);
     const rendered = renderClientTemplate(bodyHtml, variables);
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>body{margin:0;padding:20px;background:#f4f4f6;font-family:'Inter',sans-serif;}</style></head><body>${rendered}</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #1a1a2e; margin: 0; padding: 0; background: #f4f4f6; -webkit-font-smoothing: antialiased; }
+  .wrapper { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
+  .header { text-align: center; padding: 32px 0 24px 0; }
+  .header img { height: 32px; width: auto; }
+  .card { background: #ffffff; border-radius: 16px; padding: 40px 36px; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 48px rgba(0,0,0,0.03); }
+  .footer { text-align: center; padding: 28px 0 0 0; }
+  .footer-brand { margin-bottom: 8px; }
+  .footer-brand img { height: 20px; width: auto; opacity: 0.5; }
+  .footer-tagline { font-size: 11px; color: #ededf0; font-style: italic; margin-bottom: 12px; }
+  .footer-links { font-size: 11px; color: #6b6b7b; }
+  .footer-links a { color: #3b4fc4; text-decoration: underline; }
+  .note { color: #6b6b7b; font-size: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
+</style></head><body>
+  <div class="wrapper">
+    <div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div>
+    <div class="card">
+      ${rendered}
+      <p class="note">Des questions ? Répondez directement à cet email.</p>
+    </div>
+    <div class="footer">
+      <div class="footer-brand"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="20" style="height:20px;width:auto;opacity:0.5;"></div>
+      <div class="footer-tagline">Your Brand. Amplified.</div>
+      <div class="footer-links">
+        <a href="https://ora-studio.app">ora-studio.app</a> &nbsp;·&nbsp; <a href="https://ora-studio.app/privacy">Confidentialité</a> &nbsp;·&nbsp; <a href="mailto:hello@ora-studio.app">Contact</a>
+      </div>
+    </div>
+  </div>
+</body></html>`;
   }, [blocks, variables]);
 
   /* ── Block manipulation helpers ── */
