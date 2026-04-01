@@ -17892,6 +17892,44 @@ async function listProducts(c: any) {
           }
         }
       }
+      // PATCH: if product has a URL but no imageUrls, re-scrape images on the fly
+      if ((!product.imageUrls || product.imageUrls.length === 0) && (!product.images || product.images.length === 0) && product.url) {
+        try {
+          const jinaRes = await fetch(`https://r.jina.ai/${product.url}`, {
+            headers: { Accept: "text/html", "X-Return-Format": "html" },
+            signal: AbortSignal.timeout(8_000),
+          });
+          if (jinaRes.ok) {
+            const html = await jinaRes.text();
+            const imgUrls: string[] = [];
+            const seenUrls = new Set<string>();
+            // Parse markdown images
+            const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
+            let m;
+            while ((m = mdRegex.exec(html)) !== null) {
+              const u = m[1];
+              if (u.startsWith("http") && !seenUrls.has(u) && !/logo|header|footer|menu|nav|icon/i.test(u)) {
+                seenUrls.add(u); imgUrls.push(u);
+              }
+            }
+            // Parse img tags
+            const imgTags = html.matchAll(/<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi);
+            for (const im of imgTags) {
+              const u = im[1];
+              if (u.startsWith("http") && !seenUrls.has(u) && !/logo|header|footer|menu|nav|icon/i.test(u)) {
+                seenUrls.add(u); imgUrls.push(u);
+              }
+            }
+            if (imgUrls.length > 0) {
+              product.imageUrls = imgUrls.slice(0, 10);
+              product.imageUrl = imgUrls[0];
+              // Persist the fix so we don't re-scrape next time
+              await kv.set(`product:${user.id}:${product.id}`, product);
+              console.log(`[products/list] PATCHED "${product.name}": scraped ${imgUrls.length} images from ${product.url}`);
+            }
+          }
+        } catch { /* non-blocking: images will be missing but don't break the response */ }
+      }
     }
 
     return c.json({ success: true, products });
@@ -17910,6 +17948,10 @@ app.post("/products", async (c) => {
     const body = c.get?.("parsedBody") || await c.req.json().catch(async () => JSON.parse(await c.req.text()));
     const { _token, ...data } = body;
     const id = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Preserve scraped imageUrls from product scraping
+    const scrapedImageUrls = Array.isArray(data.imageUrls)
+      ? data.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 10)
+      : [];
     const product = {
       id,
       name: data.name || "",
@@ -17920,9 +17962,12 @@ app.post("/products", async (c) => {
       currency: data.currency || "EUR",
       category: data.category || "",
       images: [],
+      imageUrls: scrapedImageUrls,
+      imageUrl: scrapedImageUrls[0] || data.imageUrl || "",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    console.log(`[products] Creating with ${scrapedImageUrls.length} scraped image URLs`);
     await kv.set(`product:${user.id}:${id}`, product);
     console.log(`[products] Created product ${id} for ${user.id}`);
     return c.json({ success: true, product });
