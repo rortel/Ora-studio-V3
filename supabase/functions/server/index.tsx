@@ -5012,6 +5012,17 @@ app.get("/vault", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// ─── VAULT RESET: Wipe all vault data and start fresh ──────────────────
+app.post("/vault/reset", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const freshVault = { userId: user.id, updatedAt: new Date().toISOString() };
+    await saveVaultToKV(user.id, freshVault);
+    console.log(`[vault/reset] user=${user.id.slice(0, 8)} — vault wiped`);
+    return c.json({ success: true, vault: freshVault });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
 // POST /vault/load — CORS-safe vault read (token in body)
 app.post("/vault/load", async (c) => {
   try {
@@ -5029,6 +5040,16 @@ app.post("/vault", async (c) => {
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const { _token, ...data } = body;
     console.log(`[vault/save] incoming keys: [${Object.keys(data).join(",")}] company_name="${data.company_name || "NONE"}" brandName="${data.brandName || "NONE"}"`);
+
+    // ── RESET: if body has _reset=true, wipe vault entirely ──
+    if (data._reset === true) {
+      const user = await requireAuth(c);
+      const freshVault = { userId: user.id, updatedAt: new Date().toISOString() };
+      await saveVaultToKV(user.id, freshVault);
+      console.log(`[vault/reset] user=${user.id.slice(0, 8)} — vault wiped via _reset flag`);
+      return c.json({ success: true, vault: freshVault });
+    }
+
     // If body only has _token → it's a read
     if (Object.keys(data).length === 0) {
       const user = await requireAuth(c);
@@ -5051,17 +5072,6 @@ app.post("/vault", async (c) => {
     await saveVaultToKV(user.id, merged);
     console.log(`[vault/save] user=${user.id.slice(0,8)} brandName="${merged.brandName}" company_name="${merged.company_name}"`);
     return c.json({ success: true, vault: merged });
-  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
-});
-
-// ─── VAULT RESET: Wipe all vault data and start fresh ──────────────────
-app.post("/vault/reset", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    const freshVault = { userId: user.id, updatedAt: new Date().toISOString() };
-    await saveVaultToKV(user.id, freshVault);
-    console.log(`[vault/reset] user=${user.id.slice(0, 8)} — vault wiped`);
-    return c.json({ success: true, vault: freshVault });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 

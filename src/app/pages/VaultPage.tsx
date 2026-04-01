@@ -397,8 +397,8 @@ function VaultPageContent() {
     if (!confirm("Réinitialiser le Brand Vault ? Toutes les données seront effacées.")) return;
     setResetting(true);
     try {
-      const res = await fetch(apiUrl("/vault/reset"), {
-        method: "POST", headers: vaultHeaders(), body: corsBody(token()),
+      const res = await fetch(apiUrl("/vault"), {
+        method: "POST", headers: vaultHeaders(), body: corsBody(token(), { _reset: true }),
       });
       const data = await res.json();
       if (data.success) {
