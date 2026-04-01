@@ -4221,23 +4221,46 @@ app.post("/generate/image-start", async (c) => {
       const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
 
       if (photoroomKey) {
-        // ── Scene config per pill type ──
+        // ── Scene config: keyword → preset, or use full prompt as bgPrompt for custom scenes ──
         const promptLower = rawPrompt.toLowerCase();
         type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: boolean; beautify?: string; outputSize: string; padding: string };
         const sceneMap: Record<string, PhotoroomScene> = {
-          "photoshoot": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
-          "packshot":   { bgColor: "F0F0F0", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.08" },
-          "lifestyle":  { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "flat lay":   { bgColor: "FFFFFF", shadow: "ai.floating", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
-          "cinématique": { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "default":    { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "photoshoot":   { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "packshot":     { bgColor: "F0F0F0", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.08" },
+          "lifestyle":    { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "flat lay":     { bgColor: "FFFFFF", shadow: "ai.floating", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "cinématique":  { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "editorial":    { bgPrompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting, magazine quality", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "moodboard":    { bgPrompt: "Atmospheric textural background, soft dreamy palette, artistic mood, creative studio setting", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.08" },
+          "3d":           { bgPrompt: "Clean 3D product visualization environment, infinite background, studio HDRI lighting, floating product perspective", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.08" },
+          "closeup":      { bgPrompt: "Extreme macro close-up environment, soft bokeh, shallow depth of field, product detail focus", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.02" },
+          "aerial":       { bgPrompt: "Bird's-eye view setting, aerial perspective landscape, natural terrain, geographic context", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "ugc":          { bgPrompt: "Authentic casual home environment, natural window light, phone camera aesthetic, real-life setting", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
+          "before-after": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.05" },
+          "default":      { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
         };
-        let scene = sceneMap["default"];
-        if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot")) scene = sceneMap["photoshoot"];
-        else if (promptLower.includes("packshot")) scene = sceneMap["packshot"];
+
+        // Detect scene type from prompt keywords
+        let scene: PhotoroomScene | null = null;
+        if (promptLower.includes("packshot")) scene = sceneMap["packshot"];
+        else if (promptLower.includes("blanc") || promptLower.includes("white") || promptLower.includes("photoshoot") || promptLower.includes("studio photoshoot")) scene = sceneMap["photoshoot"];
+        else if (promptLower.includes("flat lay")) scene = sceneMap["flat lay"];
+        else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("cinematic")) scene = sceneMap["cinématique"];
+        else if (promptLower.includes("editorial") || promptLower.includes("fashion")) scene = sceneMap["editorial"];
+        else if (promptLower.includes("moodboard") || promptLower.includes("ambiance")) scene = sceneMap["moodboard"];
+        else if (promptLower.includes("3d render") || promptLower.includes("3d")) scene = sceneMap["3d"];
+        else if (promptLower.includes("close-up") || promptLower.includes("macro") || promptLower.includes("closeup")) scene = sceneMap["closeup"];
+        else if (promptLower.includes("aerial") || promptLower.includes("drone")) scene = sceneMap["aerial"];
+        else if (promptLower.includes("ugc") || promptLower.includes("authentic")) scene = sceneMap["ugc"];
+        else if (promptLower.includes("before") && promptLower.includes("after")) scene = sceneMap["before-after"];
         else if (promptLower.includes("lifestyle") || promptLower.includes("nature")) scene = sceneMap["lifestyle"];
-        else if (promptLower.includes("flat lay") || promptLower.includes("flat")) scene = sceneMap["flat lay"];
-        else if (promptLower.includes("cinéma") || promptLower.includes("cinemat") || promptLower.includes("moody") || promptLower.includes("dramatic")) scene = sceneMap["cinématique"];
+
+        // If no keyword match but prompt is long (campaign prompt), use it as dynamic bgPrompt
+        if (!scene && rawPrompt.length > 50) {
+          scene = { bgPrompt: rawPrompt.slice(0, 300), shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" };
+          console.log(`[image-start-POST] PHOTOROOM: dynamic bgPrompt from campaign prompt`);
+        }
+        if (!scene) scene = sceneMap["default"];
 
         // ── Build Photoroom GET URL ──
         // GET https://image-api.photoroom.com/v2/edit?imageUrl=...&removeBackground=true&...

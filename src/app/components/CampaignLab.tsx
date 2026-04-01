@@ -219,6 +219,7 @@ const TEXT_MODELS = [
   { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#666666" },
 ];
 const IMAGE_MODELS = [
+  { id: "photoroom",        label: "Photoroom",         badge: "Product AI", color: "#FF6B35" },
   { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#666666" },
   { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#666666" },
   { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#999999" },
@@ -941,6 +942,31 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     throw new Error(data.results?.[0]?.error || data.error || "Image generation failed");
   };
 
+  // ── Helper: Photoroom image generation (real product + AI scene) ──
+  const generateImageViaPhotoroom = async (scenePrompt: string, refImageUrl: string, aspectRatio: string): Promise<string> => {
+    const tok = getAuthToken();
+    const res = await fetch(`${API_BASE}/generate/image-start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+      body: JSON.stringify({
+        prompt: scenePrompt.slice(0, 500),
+        imageRefUrl: refImageUrl,
+        refSource: "upload",
+        aspectRatio,
+        model: "photon-1",
+        _token: tok,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const data = await res.json();
+    if (data.success && (data.imageUrl || data.results?.[0]?.result?.imageUrl)) {
+      const url = data.imageUrl || data.results[0].result.imageUrl;
+      console.log(`[CampaignLab] Photoroom OK: ${url.slice(0, 80)}`);
+      return url;
+    }
+    throw new Error(data.error || "Photoroom generation failed");
+  };
+
   // ── Helper: Video generation with optional first-frame image ──
   const generateVideoWithKeyframe = async (fmt: FormatOption, vidPrompt: string, keyframeImageUrl?: string, modelOverride?: string) => {
     const params = new URLSearchParams({ prompt: vidPrompt.slice(0, 400), model: modelOverride || videoModel });
@@ -1285,6 +1311,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               // Generate with all selected models in parallel
               const modelResults = await Promise.all(modelsToUse.map(async (mdl) => {
                 try {
+                  // Photoroom: real product + AI-generated scene
+                  if (mdl === "photoroom" && refUrl) {
+                    const prUrl = await generateImageViaPhotoroom(finalPrompt, refUrl, ar);
+                    return { model: mdl, imageUrl: prUrl, status: "ready" as const };
+                  }
                   const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, [mdl]);
                   if (candidates.length > 0) {
                     return { model: mdl, imageUrl: candidates[0].imageUrl, status: "ready" as const };
