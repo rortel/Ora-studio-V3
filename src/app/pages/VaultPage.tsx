@@ -1201,7 +1201,7 @@ function VaultPageContent() {
             {/* ═══ TAB NAVIGATION ═══ */}
             <div className="flex items-center gap-1.5 mb-6 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
               {([
-                { key: "identity" as const, label: "Identit\u00e9" },
+                { key: "identity" as const, label: "Identité" },
                 { key: "audience" as const, label: "Audience" },
                 { key: "voice" as const, label: "Voix" },
                 { key: "visuals" as const, label: "Visuels" },
@@ -1399,7 +1399,7 @@ function VaultPageContent() {
                                         style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
                                     </div>
                                     <div>
-                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-cl\u00e9s (virgules)</label>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-clés (virgules)</label>
                                       <input defaultValue={(u.keywords || []).join(", ")} id={`uni-kw-${u.id}`}
                                         className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                         style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
@@ -1424,7 +1424,7 @@ function VaultPageContent() {
                           ))}
                         </div>
                       ) : (
-                        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Aucun univers produit d\u00e9fini.</p>
+                        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Aucun univers produit défini.</p>
                       )}
 
                       {/* Add universe */}
@@ -1460,7 +1460,7 @@ function VaultPageContent() {
                                 placeholder="Luxe, formel" />
                             </div>
                             <div>
-                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-cl\u00e9s (virgules)</label>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-clés (virgules)</label>
                               <input value={newUniverse.keywords} onChange={(e) => setNewUniverse({ ...newUniverse, keywords: e.target.value })}
                                 className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                 style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
@@ -1471,7 +1471,7 @@ function VaultPageContent() {
                             <button onClick={handleAddUniverse} disabled={!newUniverse.name.trim()}
                               className="px-4 py-2 rounded-lg cursor-pointer transition-all disabled:opacity-30"
                               style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
-                              Cr\u00e9er
+                              Créer
                             </button>
                             <button onClick={() => setShowAddUniverse(false)}
                               className="px-4 py-2 rounded-lg cursor-pointer transition-all"
@@ -1648,12 +1648,12 @@ function VaultPageContent() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                            Profil vocal appris depuis vos contenus Library. Automatiquement inject\u00e9 dans chaque g\u00e9n\u00e9ration de texte.
+                            Profil vocal appris depuis vos contenus Library. Automatiquement injecté dans chaque génération de texte.
                           </p>
                           <button onClick={handleLearnVoice} disabled={voiceLearning}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
                             style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
-                            {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} R\u00e9analyser
+                            {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Réanalyser
                           </button>
                         </div>
 
@@ -1661,7 +1661,7 @@ function VaultPageContent() {
                         {vault.voice_profile.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Synth\u00e8se
+                              Synthèse
                             </span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
                               {vault.voice_profile.summary}
@@ -1682,7 +1682,7 @@ function VaultPageContent() {
                             )}
                             <div className="grid grid-cols-5 gap-3 mt-3">
                               {([
-                                { key: "formality", label: "Formalit\u00e9" },
+                                { key: "formality", label: "Formalité" },
                                 { key: "confidence", label: "Confiance" },
                                 { key: "warmth", label: "Chaleur" },
                                 { key: "humor", label: "Humour" },
@@ -1706,7 +1706,7 @@ function VaultPageContent() {
                         {vault.voice_profile.key_phrases && vault.voice_profile.key_phrases.length > 0 && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Phrases cl\u00e9s
+                              Phrases clés
                             </span>
                             <div className="flex flex-wrap gap-2 mt-3">
                               {vault.voice_profile.key_phrases.map((phrase, i) => (
@@ -1725,7 +1725,7 @@ function VaultPageContent() {
                             {vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  \u00c0 faire
+                                  À faire
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.voice_profile.do_patterns.map((p, i) => (
@@ -1739,7 +1739,7 @@ function VaultPageContent() {
                             {vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  \u00c0 \u00e9viter
+                                  À éviter
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.voice_profile.dont_patterns.map((p, i) => (
@@ -1775,7 +1775,7 @@ function VaultPageContent() {
                         {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
                           <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Proc\u00e9d\u00e9s rh\u00e9toriques
+                              Procédés rhétoriques
                             </span>
                             <div className="flex flex-wrap gap-2 mt-2">
                               {vault.voice_profile.rhetorical_devices.map((d, i) => (
@@ -1791,7 +1791,7 @@ function VaultPageContent() {
                     ) : (
                       <div className="text-center py-8">
                         <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 16px" }}>
-                          Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'\u00e9criture et l'appliquer \u00e0 toutes les g\u00e9n\u00e9rations.
+                          Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'écriture et l'appliquer à toutes les générations.
                         </p>
                         <button onClick={handleLearnVoice} disabled={voiceLearning}
                           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
@@ -1847,7 +1847,7 @@ function VaultPageContent() {
                             {vault.text_calibration.do_examples && vault.text_calibration.do_examples.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Exemples \u00e0 suivre
+                                  Exemples à suivre
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.text_calibration.do_examples.map((ex, i) => (
@@ -1861,7 +1861,7 @@ function VaultPageContent() {
                             {vault.text_calibration.dont_examples && vault.text_calibration.dont_examples.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Exemples \u00e0 \u00e9viter
+                                  Exemples à éviter
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.text_calibration.dont_examples.map((ex, i) => (
@@ -1877,7 +1877,7 @@ function VaultPageContent() {
                         {vault.text_calibration.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Synth\u00e8se
+                              Synthèse
                             </span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
                               {vault.text_calibration.summary}
@@ -2043,7 +2043,7 @@ function VaultPageContent() {
                             {vault.image_calibration.do_styles && vault.image_calibration.do_styles.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Styles \u00e0 adopter
+                                  Styles à adopter
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.image_calibration.do_styles.map((s, i) => (
@@ -2057,7 +2057,7 @@ function VaultPageContent() {
                             {vault.image_calibration.dont_styles && vault.image_calibration.dont_styles.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Styles \u00e0 \u00e9viter
+                                  Styles à éviter
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.image_calibration.dont_styles.map((s, i) => (
@@ -2078,7 +2078,7 @@ function VaultPageContent() {
                         )}
                         {vault.image_calibration.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Synth\u00e8se</span>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Synthèse</span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>{vault.image_calibration.summary}</p>
                           </div>
                         )}
@@ -2221,7 +2221,7 @@ function VaultPageContent() {
                         {comp.differentiation_tips && comp.differentiation_tips.length > 0 && (
                           <div className="mt-3 p-4 rounded-xl" style={{ background: "rgba(217,119,6,0.06)", border: "1px solid rgba(217,119,6,0.2)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "#d97706", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Pistes de diff\u00e9renciation
+                              Pistes de différenciation
                             </span>
                             <ul className="mt-2 space-y-1.5">
                               {comp.differentiation_tips.map((tip, ti) => (
@@ -2242,7 +2242,7 @@ function VaultPageContent() {
                       <Trophy size={20} style={{ color: "var(--text-tertiary)" }} />
                     </div>
                     <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                      Scannez un site concurrent pour comparer positionnement, ton et identit\u00e9 visuelle.
+                      Scannez un site concurrent pour comparer positionnement, ton et identité visuelle.
                     </p>
                   </div>
                 )}
@@ -2521,9 +2521,9 @@ function buildWelcomeMessage(vault: VaultData): string {
   if (vault.industry) parts.push(`dans le secteur **${vault.industry}**`);
   if (vault.mission) parts.push(`avec pour mission : "${vault.mission}"`);
   const intro = parts.length > 0
-    ? `${parts.join(", ")}. C'est un bon point de d\u00e9part.\n\n`
+    ? `${parts.join(", ")}. C'est un bon point de départ.\n\n`
     : "";
-  return `${intro}Je vais vous aider \u00e0 d\u00e9finir votre plateforme de marque. Racontez-moi votre marque en quelques mots \u2014 ce que vous faites, pour qui, et ce qui vous rend unique.`;
+  return `${intro}Je vais vous aider à définir votre plateforme de marque. Racontez-moi votre marque en quelques mots — ce que vous faites, pour qui, et ce qui vous rend unique.`;
 }
 
 function BrandStrategyOnboarding({ vault, onComplete }: {
@@ -2564,7 +2564,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
       // Final AI message before synthesis
       const synthMsg: ChatMessage = {
         role: "ai",
-        text: "J\u2019ai assez d\u2019\u00e9l\u00e9ments. Je synth\u00e9tise votre plateforme de marque\u2026",
+        text: "J'ai assez d'éléments. Je synthétise votre plateforme de marque…",
       };
       setMessages([...newMessages, synthMsg]);
       setAiThinking(false);
@@ -2601,8 +2601,8 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
       } else {
         // Fallback follow-up questions
         const fallbacks = [
-          "Merci. Et c\u00f4t\u00e9 communication visuelle, quel univers souhaitez-vous projeter\u00a0? Qu\u2019est-ce que les gens doivent ressentir en voyant votre marque\u00a0?",
-          "Tr\u00e8s bien. Derni\u00e8re chose\u00a0: y a-t-il une marque dont vous admirez la communication\u00a0? Et qu\u2019est-ce qui ne doit jamais appara\u00eetre dans la v\u00f4tre\u00a0?",
+          "Merci. Et côté communication visuelle, quel univers souhaitez-vous projeter ? Qu'est-ce que les gens doivent ressentir en voyant votre marque ?",
+          "Très bien. Dernière chose : y a-t-il une marque dont vous admirez la communication ? Et qu'est-ce qui ne doit jamais apparaître dans la vôtre ?",
         ];
         const fallbackIdx = Math.min(nextUserCount - 1, fallbacks.length - 1);
         setMessages([...newMessages, { role: "ai", text: fallbacks[fallbackIdx] }]);
@@ -2610,8 +2610,8 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
     } catch {
       // Fallback on network error
       const fallbacks = [
-        "Merci. Et c\u00f4t\u00e9 communication visuelle, quel univers souhaitez-vous projeter\u00a0? Qu\u2019est-ce que les gens doivent ressentir en voyant votre marque\u00a0?",
-        "Tr\u00e8s bien. Derni\u00e8re chose\u00a0: y a-t-il une marque dont vous admirez la communication\u00a0? Et qu\u2019est-ce qui ne doit jamais appara\u00eetre dans la v\u00f4tre\u00a0?",
+        "Merci. Et côté communication visuelle, quel univers souhaitez-vous projeter ? Qu'est-ce que les gens doivent ressentir en voyant votre marque ?",
+        "Très bien. Dernière chose : y a-t-il une marque dont vous admirez la communication ? Et qu'est-ce qui ne doit jamais apparaître dans la vôtre ?",
       ];
       const fallbackIdx = Math.min(nextUserCount - 1, fallbacks.length - 1);
       setMessages([...newMessages, { role: "ai", text: fallbacks[fallbackIdx] }]);
@@ -2662,8 +2662,8 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
     return (
       <div className="flex flex-col items-center py-8 gap-3">
         <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Synth\u00e8se de votre plateforme de marque en cours\u2026</p>
-        <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>Extraction des codes s\u00e9miotiques, du registre narratif et de la direction photographique</p>
+        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Synthèse de votre plateforme de marque en cours…</p>
+        <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>Extraction des codes sémiotiques, du registre narratif et de la direction photographique</p>
       </div>
     );
   }
@@ -2671,7 +2671,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
   return (
     <div className="space-y-3">
       <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-        Discutez avec votre strat\u00e9giste de marque. En 2-3 \u00e9changes, il d\u00e9finira votre plateforme de marque pour guider chaque g\u00e9n\u00e9ration.
+        Discutez avec votre stratégiste de marque. En 2-3 échanges, il définira votre plateforme de marque pour guider chaque génération.
       </p>
 
       {/* Chat messages area */}
@@ -2735,7 +2735,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
         <textarea
           value={currentInput}
           onChange={(e) => setCurrentInput(e.target.value)}
-          placeholder="Votre r\u00e9ponse\u2026"
+          placeholder="Votre réponse…"
           disabled={aiThinking || synthesizing}
           className="flex-1 rounded-xl px-4 py-3 resize-none transition-all disabled:opacity-50"
           style={{
