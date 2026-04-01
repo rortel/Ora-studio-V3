@@ -495,7 +495,7 @@ function VaultPageContent() {
     setShowAddUniverse(false);
   };
 
-  const handleUpdateUniverse = async (id: string, fields: Partial<VaultData["universes"]>[0]) => {
+  const handleUpdateUniverse = async (id: string, fields: Partial<{ name: string; description: string; colors: string[]; tone_override: string; keywords: string[] }>) => {
     const list = (vault.universes || []).map(u => u.id === id ? { ...u, ...fields } : u);
     const updated = { ...vault, universes: list };
     setVault(updated);
