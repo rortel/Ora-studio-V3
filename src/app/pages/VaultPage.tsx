@@ -326,6 +326,7 @@ function VaultPageContent() {
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [voiceLearning, setVoiceLearning] = useState(false);
@@ -390,6 +391,23 @@ function VaultPageContent() {
     } catch (err) { console.error("[Vault] Save error:", err); }
     setSaving(false);
   }, [vault]);
+
+  // ── Reset vault ──
+  const handleResetVault = useCallback(async () => {
+    if (!confirm("Réinitialiser le Brand Vault ? Toutes les données seront effacées.")) return;
+    setResetting(true);
+    try {
+      const res = await fetch(apiUrl("/vault/reset"), {
+        method: "POST", headers: vaultHeaders(), body: corsBody(token()),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setVault(EMPTY_VAULT);
+        setUrlInput("");
+      }
+    } catch (err) { console.error("[Vault] Reset error:", err); }
+    setResetting(false);
+  }, []);
 
   // ── Analyze URL ──
   const handleAnalyzeUrl = async (deepScan = false) => {
@@ -997,6 +1015,25 @@ function VaultPageContent() {
               {saving ? t("vault.saving") : saveOk ? t("vault.saved") : t("vault.save")}
             </motion.button>
           )}
+          {/* Reset button */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleResetVault}
+            disabled={resetting}
+            className="flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 transition-all shrink-0"
+            style={{
+              background: "rgba(239,68,68,0.06)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "#ef4444",
+            }}
+            title="Réinitialiser le vault"
+          >
+            {resetting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            Reset
+          </motion.button>
         </div>
       </motion.div>
 

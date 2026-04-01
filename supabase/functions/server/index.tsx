@@ -5054,6 +5054,17 @@ app.post("/vault", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// ─── VAULT RESET: Wipe all vault data and start fresh ──────────────────
+app.post("/vault/reset", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const freshVault = { userId: user.id, updatedAt: new Date().toISOString() };
+    await saveVaultToKV(user.id, freshVault);
+    console.log(`[vault/reset] user=${user.id.slice(0, 8)} — vault wiped`);
+    return c.json({ success: true, vault: freshVault });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // BRAND ENGINE — Strategy synthesis & prompt enrichment
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -6781,7 +6792,7 @@ Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
   "tagline": "string — main tagline/brand signature or null",
   "products_services": ["string — products or services mentioned"],
   "target_audiences": [{ "name": "string — market segment or sector", "description": "string — 1-2 sentences about the audience" }],
-  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter (e.g. 'Violet Adaltra')", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
+  "colors": [{ "hex": "#XXXXXX", "name": "string — color name from the charter (e.g. 'Bleu Royal')", "role": "primary|secondary|accent|neutral|gradient|background|text" }],
   "logo_description": "string — logo shape, style, ALL variants (color, B&W, monochrome, avatar), protection zone rules, forbidden usages, angle/rotation rules if any",
   "tone": {
     "formality": 1-10,
