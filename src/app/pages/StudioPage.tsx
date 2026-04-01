@@ -507,17 +507,38 @@ export function StudioPage() {
           }
 
           // 2. FALLBACK: if no specific product refs, collect images from ALL products in catalog
-          // This ensures Photoroom is called even for generic brand campaigns
           if (productRefUrls.length === 0 && products.length > 0) {
+            // Debug: log what products actually contain
+            console.log(`[studio] DEBUG: ${products.length} products in catalog:`);
             for (const prod of products) {
+              console.log(`[studio]   "${prod.name}" — images:${prod.images?.length || 0}, imageUrls:${prod.imageUrls?.length || 0}, imageUrl:${prod.imageUrl ? "YES" : "NO"}, url:${prod.url ? "YES" : "NO"}`);
               const imgs = extractProductImages(prod);
               productRefUrls.push(...imgs);
-              if (productRefUrls.length >= 5) break; // cap at 5 refs
+              if (productRefUrls.length >= 5) break;
             }
             if (productRefUrls.length > 0) {
-              console.log(`[studio] No specific product — using ${productRefUrls.length} ref(s) from catalog for Photoroom`);
+              console.log(`[studio] Using ${productRefUrls.length} ref(s) from catalog for Photoroom`);
             } else {
-              console.log(`[studio] No product images found in catalog — Photoroom will be skipped`);
+              console.log(`[studio] ⚠️ No product images found — attempting to scrape from product URLs...`);
+              // LAST RESORT: scrape product URLs from catalog to get images
+              for (const prod of products) {
+                if (prod.url && productRefUrls.length < 3) {
+                  try {
+                    console.log(`[studio] Scraping "${prod.name}" from ${prod.url.slice(0, 60)}...`);
+                    const scrapeRes = await serverPost("/products/scrape-url", { url: prod.url });
+                    if (scrapeRes.success && scrapeRes.product?.imageUrls?.length) {
+                      const scraped = scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 3);
+                      productRefUrls.push(...scraped);
+                      console.log(`[studio] Scraped ${scraped.length} images from "${prod.name}"`);
+                    }
+                  } catch { /* non-blocking */ }
+                }
+              }
+              if (productRefUrls.length > 0) {
+                console.log(`[studio] Scraped total: ${productRefUrls.length} product images for Photoroom`);
+              } else {
+                console.log(`[studio] ❌ No product images at all — Photoroom will be skipped, using generative AI only`);
+              }
             }
           }
 
