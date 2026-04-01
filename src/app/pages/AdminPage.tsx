@@ -1495,28 +1495,28 @@ function blocksToHtml(blocks: EmailBlock[]): string {
   const rows = blocks.map((b) => {
     switch (b.type) {
       case "heading":
-        return `<tr><td style="padding:16px 24px 8px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:${b.level === "h1" ? "24" : "18"}px;font-weight:700;color:#111113;line-height:1.3">${inlineFormat(b.content)}</td></tr>`;
+        return `<tr><td style="padding:16px 24px 8px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:${b.level === "h1" ? "24" : "18"}px;font-weight:600;color:#1a1a2e;line-height:1.3;letter-spacing:-0.02em">${inlineFormat(b.content)}</td></tr>`;
       case "text":
-        return `<tr><td style="padding:8px 24px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#333;line-height:1.7">${inlineFormat(b.content)}</td></tr>`;
+        return `<tr><td style="padding:8px 24px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#4a5568;line-height:1.7">${inlineFormat(b.content)}</td></tr>`;
       case "image":
         return b.src
-          ? `<tr><td style="padding:12px 24px"><img src="${b.src}" alt="${b.alt}" style="max-width:100%;height:auto;border-radius:8px;display:block" /></td></tr>`
+          ? `<tr><td style="padding:12px 24px"><img src="${b.src}" alt="${b.alt}" style="max-width:100%;height:auto;border-radius:12px;display:block" /></td></tr>`
           : "";
       case "button": {
         const isFilled = b.style === "filled";
-        return `<tr><td style="padding:16px 24px"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${isFilled ? "#111113" : "transparent"};border:2px solid #111113;border-radius:999px;padding:12px 28px"><a href="${b.url}" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:${isFilled ? "#ffffff" : "#111113"};text-decoration:none;display:inline-block">${b.text}</a></td></tr></table></td></tr>`;
+        return `<tr><td style="padding:16px 24px"><table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:${isFilled ? "#1a1a2e" : "transparent"};border:${isFilled ? "none" : "1.5px solid rgba(0,0,0,0.14)"};border-radius:999px;padding:12px 28px"><a href="${b.url}" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;color:${isFilled ? "#ffffff" : "#1a1a2e"};text-decoration:none;display:inline-block">${b.text}</a></td></tr></table></td></tr>`;
       }
       case "divider":
-        return `<tr><td style="padding:16px 24px"><hr style="border:none;border-top:1px solid #e5e5e5;margin:0" /></td></tr>`;
+        return `<tr><td style="padding:16px 24px"><hr style="border:none;border-top:1px solid rgba(0,0,0,0.08);margin:0" /></td></tr>`;
       case "columns":
-        return `<tr><td style="padding:8px 24px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;padding-right:12px">${inlineFormat(b.left)}</td><td width="4%"></td><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;padding-left:12px">${inlineFormat(b.right)}</td></tr></table></td></tr>`;
+        return `<tr><td style="padding:8px 24px"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#4a5568;line-height:1.6;padding-right:12px">${inlineFormat(b.left)}</td><td width="4%"></td><td width="48%" valign="top" style="font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#4a5568;line-height:1.6;padding-left:12px">${inlineFormat(b.right)}</td></tr></table></td></tr>`;
       case "highlight":
-        return `<tr><td style="padding:8px 24px"><div style="background:#f4f4f6;border-radius:8px;padding:16px 20px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;border-left:3px solid #3b4fc4">${inlineFormat(b.content)}</div></td></tr>`;
+        return `<tr><td style="padding:8px 24px"><div style="background:#f4f4f6;border-radius:8px;padding:16px 20px;font-family:'Inter',Helvetica,Arial,sans-serif;font-size:15px;color:#1a1a2e;line-height:1.6;border-left:3px solid #3b4fc4">${inlineFormat(b.content)}</div></td></tr>`;
       default: return "";
     }
   }).filter(Boolean).join("\n");
 
-  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;background:#ffffff">\n${rows}\n</table>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px">\n${rows}\n</table>`;
 }
 
 /** Label helper */

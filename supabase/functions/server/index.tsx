@@ -553,33 +553,37 @@ async function sendCampaign(opts: {
 
 // ── Email templates — ORA Brand System ──
 const emailStyle = `
-  body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111111; margin: 0; padding: 0; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1a1a2e; margin: 0; padding: 0; background: #f4f4f6; -webkit-font-smoothing: antialiased; }
   .wrapper { max-width: 560px; margin: 0 auto; padding: 48px 16px; }
   .header { text-align: center; padding: 32px 0 24px 0; }
   .header img { height: 32px; width: auto; }
-  .logo { font-size: 18px; font-weight: 700; color: #111111; letter-spacing: 0.12em; text-decoration: none; }
-  .divider { width: 40px; height: 1px; background: #d4d4d4; margin: 0 auto 24px auto; }
-  .card { background: #ffffff; border-radius: 16px; padding: 40px 36px; border: 1px solid #ebebeb; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-  h1 { font-size: 24px; font-weight: 700; color: #111111; margin: 0 0 8px 0; letter-spacing: -0.02em; line-height: 1.3; }
-  .subtitle { font-size: 13px; color: #999999; margin: 0 0 28px 0; font-weight: 400; }
-  p { font-size: 14px; line-height: 1.75; color: #666666; margin: 0 0 16px 0; }
-  strong { color: #111111; font-weight: 600; }
+  .logo { font-size: 18px; font-weight: 700; color: #1a1a2e; letter-spacing: 0.12em; text-decoration: none; }
+  .divider { width: 40px; height: 1px; background: #ededf0; margin: 0 auto 24px auto; }
+  .card { background: #ffffff; border-radius: 16px; padding: 40px 36px; border: 1px solid rgba(0,0,0,0.08); box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 12px 48px rgba(0,0,0,0.03); }
+  h1 { font-size: 24px; font-weight: 600; color: #1a1a2e; margin: 0 0 8px 0; letter-spacing: -0.02em; line-height: 1.3; }
+  h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; margin: 0 0 8px 0; letter-spacing: -0.01em; line-height: 1.3; }
+  .subtitle { font-size: 13px; color: #6b6b7b; margin: 0 0 28px 0; font-weight: 400; }
+  p { font-size: 15px; line-height: 1.7; color: #4a5568; margin: 0 0 16px 0; }
+  strong { color: #1a1a2e; font-weight: 600; }
+  a { color: #3b4fc4; }
   .feature-list { margin: 20px 0; padding: 0; }
-  .feature { display: flex; align-items: flex-start; margin-bottom: 12px; font-size: 13px; line-height: 1.6; color: #666666; }
-  .feature-dot { width: 6px; height: 6px; background: #111111; border-radius: 50%; margin: 7px 12px 0 0; flex-shrink: 0; }
-  .btn { display: inline-block; padding: 14px 32px; background: #111111; color: #ffffff !important; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; margin: 24px 0 8px 0; }
-  .btn-outline { display: inline-block; padding: 12px 28px; background: transparent; color: #111111 !important; border: 1.5px solid #111111; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; margin: 8px 8px 8px 0; }
-  .highlight-box { background: #fafafa; border: 1px solid #ebebeb; border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
-  .highlight-box p { margin: 0; }
+  .feature { display: flex; align-items: flex-start; margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: #4a5568; }
+  .feature-dot { width: 6px; height: 6px; background: #3b4fc4; border-radius: 50%; margin: 7px 12px 0 0; flex-shrink: 0; }
+  .btn { display: inline-block; padding: 14px 32px; background: #1a1a2e; color: #ffffff !important; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; margin: 24px 0 8px 0; }
+  .btn:hover { background: #2a2a42; }
+  .btn-signal { display: inline-block; padding: 14px 32px; background: #3b4fc4; color: #ffffff !important; border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; letter-spacing: 0.01em; margin: 24px 0 8px 0; }
+  .btn-outline { display: inline-block; padding: 12px 28px; background: transparent; color: #1a1a2e !important; border: 1.5px solid rgba(0,0,0,0.14); border-radius: 9999px; text-decoration: none; font-size: 13px; font-weight: 600; margin: 8px 8px 8px 0; }
+  .highlight-box { background: #f4f4f6; border-left: 3px solid #3b4fc4; border-radius: 8px; padding: 20px 24px; margin: 24px 0; }
+  .highlight-box p { margin: 0; color: #1a1a2e; }
   .stat { text-align: center; }
-  .stat-value { font-size: 36px; font-weight: 700; color: #111111; letter-spacing: -0.02em; }
-  .stat-label { font-size: 12px; color: #999999; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
-  .note { font-size: 12px; color: #999999; margin-top: 24px; padding-top: 20px; border-top: 1px solid #ebebeb; }
+  .stat-value { font-size: 36px; font-weight: 700; color: #3b4fc4; letter-spacing: -0.02em; }
+  .stat-label { font-size: 12px; color: #6b6b7b; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+  .note { font-size: 12px; color: #6b6b7b; margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
   .footer { text-align: center; padding: 28px 0 0 0; }
-  .footer-brand { font-size: 12px; font-weight: 600; color: #999999; letter-spacing: 0.08em; margin-bottom: 8px; }
-  .footer-tagline { font-size: 11px; color: #d4d4d4; font-style: italic; margin-bottom: 12px; }
-  .footer-links { font-size: 11px; color: #999999; }
-  .footer-links a { color: #999999; text-decoration: underline; }
+  .footer-brand { font-size: 12px; font-weight: 600; color: #6b6b7b; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .footer-tagline { font-size: 11px; color: #ededf0; font-style: italic; margin-bottom: 12px; }
+  .footer-links { font-size: 11px; color: #6b6b7b; }
+  .footer-links a { color: #3b4fc4; text-decoration: underline; }
 `;
 const emailFooter = `
   <div class="footer">
@@ -645,7 +649,7 @@ function emailPlanConfirmation(name: string, plan: string, credits: number): { s
             <a href="https://ora-studio.app/hub" class="btn">Accéder au Studio</a>
           </div>
 
-          <p class="note">Votre plan se renouvelle chaque mois. Gérez votre abonnement depuis votre <a href="https://ora-studio.app/profile" style="color:#666;">profil</a>.</p>
+          <p class="note">Votre plan se renouvelle chaque mois. Gérez votre abonnement depuis votre <a href="https://ora-studio.app/profile" style="color:#3b4fc4;">profil</a>.</p>
         </div>
         ${emailFooter}
       </div></body></html>`,
@@ -11550,7 +11554,7 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, { name: string; subject: string; h
 <div style="text-align:center;margin:24px 0;">
   <a href="https://ora-studio.app/hub" class="btn-outline">Accéder au Studio</a>
 </div>
-<p class="note">Vous recevez cet email car vous êtes inscrit sur ORA Studio. <a href="https://ora-studio.app/profile" style="color:#999;">Se désinscrire</a></p>`,
+<p class="note">Vous recevez cet email car vous êtes inscrit sur ORA Studio. <a href="https://ora-studio.app/profile" style="color:#3b4fc4;">Se désinscrire</a></p>`,
     variables: ["subject", "headline", "subtitle", "body"],
   },
   custom: {
@@ -11563,7 +11567,7 @@ const DEFAULT_EMAIL_TEMPLATES: Record<string, { name: string; subject: string; h
 
 // Wrap template content in ORA email layout
 function wrapEmailTemplate(innerHtml: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body><div class="wrapper"><div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div><div class="card">${innerHtml}<p style="color:#999; font-size:12px; margin-top:20px;">Des questions ? Répondez directement à cet email.</p></div>${emailFooter}</div></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${emailStyle}</style></head><body><div class="wrapper"><div class="header"><a href="https://ora-studio.app"><img src="https://ora-studio.app/brand/ora-logo-dark.svg" alt="ORA STUDIO" height="32" style="height:32px;width:auto;"></a></div><div class="card">${innerHtml}<p style="color:#6b6b7b; font-size:12px; margin-top:24px; padding-top:20px; border-top:1px solid rgba(0,0,0,0.08);">Des questions ? Répondez directement à cet email.</p></div>${emailFooter}</div></body></html>`;
 }
 
 // Replace {{variable}} in template
