@@ -3083,6 +3083,22 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
       brandBlock += `\n\nCOMPETITORS (differentiate from these):\n${compCtx}`;
     }
 
+    // Brand universes
+    if (brandVault?.universes?.length > 0) {
+      const uniCtx = brandVault.universes.map((u: any) =>
+        `- ${u.name}: ${u.description || ''}${u.tone ? ` (ton: ${u.tone})` : ''}${u.photo_style ? ` (photo: ${u.photo_style})` : ''}${u.colors?.length ? ` (couleurs: ${u.colors.join(', ')})` : ''}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(', ')})` : ''}`
+      ).join('\n');
+      brandBlock += `\n\nBRAND UNIVERSES (creative territories to draw from):\n${uniCtx}`;
+    }
+
+    // Product universes
+    if (brandVault?.product_universes?.length > 0) {
+      const puCtx = brandVault.product_universes.map((u: any) =>
+        `- ${u.name}: ${u.description || ''}${u.tone ? ` (ton: ${u.tone})` : ''}${u.photo_style ? ` (photo: ${u.photo_style})` : ''}${u.palette?.length ? ` (palette: ${u.palette.join(', ')})` : ''}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(', ')})` : ''}`
+      ).join('\n');
+      brandBlock += `\n\nPRODUCT UNIVERSES (product-specific creative direction):\n${puCtx}`;
+    }
+
     // Text calibration rules
     if (brandVault?.text_calibration) {
       const tc = brandVault.text_calibration;

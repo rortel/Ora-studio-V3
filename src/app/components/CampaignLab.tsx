@@ -991,6 +991,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     // Compose enriched brief from all fields
     const enrichedParts: string[] = [];
     if (brief.trim()) enrichedParts.push(brief.trim());
+    // Inject selected product context
+    if (selectedProduct) {
+      const pParts: string[] = [`PRODUCT: ${selectedProduct.name}`];
+      if (selectedProduct.description) pParts.push(`Description: ${selectedProduct.description}`);
+      if (selectedProduct.price) pParts.push(`Price: ${selectedProduct.price} ${selectedProduct.currency || "EUR"}`);
+      if (selectedProduct.category) pParts.push(`Category: ${selectedProduct.category}`);
+      if (selectedProduct.features?.length) pParts.push(`Features: ${selectedProduct.features.join(", ")}`);
+      if (selectedProduct.url) pParts.push(`URL: ${selectedProduct.url}`);
+      enrichedParts.push(pParts.join("\n"));
+    }
     if (campaignObjective) enrichedParts.push(`CAMPAIGN OBJECTIVE: ${campaignObjective}`);
     if (toneOverride) enrichedParts.push(`TONE OF VOICE: ${toneOverride}`);
     if (contentAngle.trim()) enrichedParts.push(`CONTENT ANGLE / HOOK: ${contentAngle.trim()}`);
