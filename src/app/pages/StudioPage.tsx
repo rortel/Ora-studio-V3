@@ -849,7 +849,7 @@ export function StudioPage() {
       toast.error(t("studio.generationError"));
     }
     setIsGenerating(false);
-  }, [serverGet, serverPost, navigate, attachedImage, removeAttachedImage]);
+  }, [serverGet, serverPost, navigate, attachedImage, removeAttachedImage, products, vault]);
 
   // Polling helpers
   async function pollVideo(genId: string): Promise<string | null> {
