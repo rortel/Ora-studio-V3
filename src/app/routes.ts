@@ -20,6 +20,7 @@ import { VideoAssemblerPage } from "./pages/VideoAssemblerPage";
 import { TermsPage } from "./pages/TermsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { AboutPage } from "./pages/AboutPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 
 /*
   ROUTE ACCESS MATRIX
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
       { path: "about", Component: AboutPage },
 
       // Authenticated routes (guard inside component)
+      { path: "onboarding", Component: OnboardingPage },
       { path: "hub", Component: StudioPage },
       { path: "hub/classic", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },

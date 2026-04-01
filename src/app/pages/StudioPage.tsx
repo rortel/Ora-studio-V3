@@ -317,6 +317,15 @@ export function StudioPage() {
     return { vault: null, products: [] };
   }, [vault, vaultLoading, serverPost, serverGet]);
 
+  // Redirect first-time users to onboarding wizard
+  useEffect(() => {
+    if (!authLoading && accessToken && !vaultLoading && vault !== undefined) {
+      if (vault === null || (!vault?.company_name && !vault?.onboarding_completed)) {
+        navigate("/onboarding");
+      }
+    }
+  }, [authLoading, accessToken, vault, vaultLoading, navigate]);
+
   // ── Execute generation action ──
   const executeAction = useCallback(async (action: StudioAction, msgId: string) => {
     setIsGenerating(true);

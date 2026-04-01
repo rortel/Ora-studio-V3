@@ -3059,7 +3059,21 @@ app.post("/campaign/generate-texts", async (c) => {
       if (brandVault.guidelines) brandCtx.push(`GUIDELINES: ${String(brandVault.guidelines).slice(0, 500)}`);
       if (Array.isArray(brandVault.sections)) { for (const s of brandVault.sections) { const items = (Array.isArray(s.items) ? s.items : []).slice(0, 8).map((it: any) => `  - ${it.label}: ${(it.value || "").slice(0, 200)}`).join("\n"); if (items) brandCtx.push(`[${s.title || "Section"}]:\n${items}`); } }
     }
-    const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
+    let brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
+
+    // ── LEARNED VOICE PROFILE ──
+    if (brandVault?.voice_profile) {
+      const vp = brandVault.voice_profile;
+      brandBlock += `\n\nLEARNED VOICE PROFILE (from client's actual content):
+Sentence style: ${vp.sentence_style?.structure || "mixed"}, avg ${vp.sentence_style?.avg_length || "medium"}
+Vocabulary register: ${vp.vocabulary?.register || "professional"}
+Recurring terms: ${vp.vocabulary?.recurring_terms?.join(', ') || "N/A"}
+Tone: ${vp.tone_markers?.primary_tone || "professional"} (formality: ${vp.tone_markers?.formality}/10, warmth: ${vp.tone_markers?.warmth}/10)
+Rhetorical devices: ${vp.rhetorical_devices?.join(', ') || "N/A"}
+Signature phrases to reuse: ${vp.key_phrases?.join(' | ') || "N/A"}
+DO write like: ${vp.do_patterns?.join(' | ') || "N/A"}
+DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
+    }
 
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
       // LinkedIn
@@ -3235,7 +3249,21 @@ app.get("/campaign/generate-texts-get", async (c) => {
         }
       }
     }
-    const brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
+    let brandBlock = brandCtx.length > 0 ? brandCtx.join("\n") : "No Brand Vault. Use professional neutral tone.";
+
+    // ── LEARNED VOICE PROFILE ──
+    if (brandVault?.voice_profile) {
+      const vp = brandVault.voice_profile;
+      brandBlock += `\n\nLEARNED VOICE PROFILE (from client's actual content):
+Sentence style: ${vp.sentence_style?.structure || "mixed"}, avg ${vp.sentence_style?.avg_length || "medium"}
+Vocabulary register: ${vp.vocabulary?.register || "professional"}
+Recurring terms: ${vp.vocabulary?.recurring_terms?.join(', ') || "N/A"}
+Tone: ${vp.tone_markers?.primary_tone || "professional"} (formality: ${vp.tone_markers?.formality}/10, warmth: ${vp.tone_markers?.warmth}/10)
+Rhetorical devices: ${vp.rhetorical_devices?.join(', ') || "N/A"}
+Signature phrases to reuse: ${vp.key_phrases?.join(' | ') || "N/A"}
+DO write like: ${vp.do_patterns?.join(' | ') || "N/A"}
+DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
+    }
 
     const FORMAT_META_GET: Record<string, { label: string; platform: string; type: string }> = {
       "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
@@ -7735,6 +7763,127 @@ ${markdown.slice(0, 12000)}`;
   } catch (err) {
     console.error("[scan-url] Error:", err);
     return c.json({ success: false, error: `Scan error: ${err}` }, 500);
+  }
+});
+
+// ─── VAULT: Learn Brand Voice from Library texts ──────────────────────
+app.post("/vault/learn-voice", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    console.log(`[learn-voice] user=${user.id}`);
+
+    // 1. Fetch all library items
+    const libItems = await kv.getByPrefix(`lib:${user.id}:`);
+    console.log(`[learn-voice] ${libItems.length} library items found`);
+
+    // 2. Filter for text items and collect text content
+    const textParts: string[] = [];
+    let textCount = 0;
+    for (const item of libItems) {
+      const val = item?.value || item;
+      const isText = val?.preview?.kind === "text" || val?.type === "text";
+      if (!isText) continue;
+      const excerpt = val?.preview?.excerpt || val?.prompt || "";
+      if (excerpt && excerpt.length > 10) {
+        textParts.push(excerpt);
+        textCount++;
+      }
+    }
+
+    // 3. Concatenate up to ~15,000 chars
+    let concatenated = "";
+    for (const part of textParts) {
+      if (concatenated.length + part.length > 15000) {
+        concatenated += part.slice(0, 15000 - concatenated.length);
+        break;
+      }
+      concatenated += part + "\n\n---\n\n";
+    }
+
+    // 4. Check minimum content
+    if (concatenated.length < 300) {
+      return c.json({ error: "Pas assez de contenu texte dans votre Library. Générez plus de textes pour entraîner votre voix." }, 400);
+    }
+
+    console.log(`[learn-voice] ${textCount} texts, ${concatenated.length} chars total`);
+
+    // 5. Call GPT-4o via APIPod for voice analysis
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) {
+      return c.json({ success: false, error: "APIPOD_API_KEY not configured" }, 500);
+    }
+
+    const voiceSysPrompt = `Tu es un expert en analyse de style d'écriture. Analyse les textes suivants et extrais un profil de voix détaillé.
+Retourne UNIQUEMENT un JSON valide avec cette structure exacte:
+{
+  "sentence_style": { "avg_length": "short|medium|long", "structure": "simple|complex|mixed", "preferred_openers": ["...max 5"] },
+  "vocabulary": { "register": "casual|professional|academic|technical|luxe", "recurring_terms": ["...max 10"], "jargon": ["...max 5"], "avoids": ["...max 5"] },
+  "tone_markers": { "formality": 7, "confidence": 8, "warmth": 6, "humor": 3, "urgency": 4, "primary_tone": "ex: inspirant et raffiné", "adjectives": ["...max 8"] },
+  "rhetorical_devices": ["...max 5 devices used"],
+  "key_phrases": ["...max 8 signature phrases"],
+  "do_patterns": ["...max 5 example patterns to imitate"],
+  "dont_patterns": ["...max 5 anti-patterns to avoid"],
+  "language": "fr|en",
+  "summary": "2-3 sentences describing this brand voice"
+}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: voiceSysPrompt },
+          { role: "user", content: concatenated },
+        ],
+        max_tokens: 2000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.log(`[learn-voice] APIPod error ${res.status}: ${errBody.slice(0, 300)}`);
+      return c.json({ success: false, error: `AI analysis failed (${res.status})` }, 500);
+    }
+
+    const aiData = await res.json();
+    const rawContent = aiData.choices?.[0]?.message?.content || "";
+    console.log(`[learn-voice] AI response: ${rawContent.length} chars`);
+
+    // 6. Parse JSON (handle markdown code blocks)
+    let voiceProfile: any = null;
+    const parseStrategies = [
+      () => JSON.parse(rawContent.trim()),
+      () => { const m = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/); if (!m) throw 0; return JSON.parse(m[1]); },
+      () => { const m = rawContent.match(/(\{[\s\S]*\})/); if (!m) throw 0; return JSON.parse(m[1]); },
+    ];
+    for (const strategy of parseStrategies) {
+      try {
+        voiceProfile = strategy();
+        if (voiceProfile && typeof voiceProfile === "object") break;
+      } catch {}
+    }
+
+    if (!voiceProfile) {
+      console.log(`[learn-voice] Failed to parse voice profile from: ${rawContent.slice(0, 500)}`);
+      return c.json({ success: false, error: "Failed to parse voice analysis" }, 500);
+    }
+
+    // 7. Merge into vault
+    const existingVault = await kv.get(`vault:${user.id}`) || {};
+    existingVault.voice_profile = voiceProfile;
+    await kv.set(`vault:${user.id}`, existingVault);
+
+    // 8. Deduct credit
+    deductCredit(user.id, 1).catch(() => {});
+
+    console.log(`[learn-voice] Done in ${Date.now() - t0}ms — ${textCount} texts analyzed`);
+    return c.json({ success: true, voice_profile: voiceProfile, textsAnalyzed: textCount });
+  } catch (err) {
+    console.error(`[learn-voice] Error: ${err}`);
+    return c.json({ success: false, error: `Voice learning error: ${err}` }, 500);
   }
 });
 
@@ -13741,6 +13890,129 @@ app.post("/library/items-delete", async (c) => {
     return c.json({ success: true });
   } catch (err) {
     console.log(`[library/items-delete] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// POST /library/repurpose — content repurposing (transform a library item into multiple formats)
+app.post("/library/repurpose", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { itemId, targetFormats } = body;
+
+    if (!itemId || !targetFormats || !Array.isArray(targetFormats) || targetFormats.length === 0) {
+      return c.json({ success: false, error: "Missing itemId or targetFormats" }, 400);
+    }
+
+    // Load source item
+    const sourceItem: any = await kv.get(`lib:${user.id}:${itemId}`);
+    if (!sourceItem) return c.json({ success: false, error: "Source item not found" }, 404);
+
+    // Extract source content
+    let sourceContent = "";
+    if (sourceItem.type === "text" || sourceItem.preview?.kind === "text") {
+      sourceContent = sourceItem.preview?.excerpt || sourceItem.prompt || "";
+    } else if (sourceItem.type === "image" || sourceItem.preview?.kind === "image") {
+      sourceContent = sourceItem.prompt || "";
+    } else if (sourceItem.preview?.kind === "code") {
+      sourceContent = sourceItem.preview?.snippet || sourceItem.prompt || "";
+    } else {
+      sourceContent = sourceItem.prompt || sourceItem.preview?.excerpt || "";
+    }
+
+    if (!sourceContent || sourceContent.length < 10) {
+      return c.json({ success: false, error: "Source content too short to repurpose" }, 400);
+    }
+
+    // Load vault for brand context
+    let vault: any = null;
+    try { vault = await kv.get(`vault:${user.id}`); } catch {}
+
+    // Build system prompt
+    const systemPrompt = `Tu es un expert en content repurposing pour ORA Studio.
+Tu transformes un contenu source en plusieurs formats différents tout en gardant le message clé et le ton de la marque.
+
+${vault?.voice_profile ? `VOICE PROFILE: ${vault.voice_profile.summary || ''}\nTone: ${vault.voice_profile.tone_markers?.primary_tone || 'professionnel'}\nKey phrases: ${vault.voice_profile.key_phrases?.join(', ') || ''}` : ''}
+${vault?.company_name ? `Marque: ${vault.company_name}` : ''}
+${vault?.tone_of_voice ? `Ton: ${vault.tone_of_voice}` : ''}
+
+Pour chaque format demandé, adapte le contenu au format:
+- linkedin-post: professionnel, 1300 chars max, emojis modérés, 3-5 hashtags
+- instagram-caption: visuel, engageant, emojis, 5-10 hashtags, max 2200 chars
+- newsletter-intro: warm, informatif, avec CTA, 2-3 paragraphes
+- twitter-thread: concis, percutant, 3-5 tweets de max 280 chars chacun
+- blog-intro: SEO-friendly, accrocheur, 150-200 mots
+- facebook-post: conversationnel, engageant, question pour engagement
+- story-text: très court, 1-2 lignes percutantes pour overlay sur image
+
+Retourne UNIQUEMENT un JSON valide:
+{
+  "formats": {
+    "format-id": {
+      "title": "titre court",
+      "content": "le contenu adapté au format",
+      "hashtags": ["..."]
+    }
+  }
+}`;
+
+    const userPrompt = `Contenu source à décliner:\n\n${sourceContent}\n\nFormats demandés: ${targetFormats.join(", ")}`;
+
+    console.log(`[library/repurpose] user=${user.id.slice(0, 8)}, item=${itemId.slice(0, 8)}, formats=${targetFormats.join(",")}`);
+
+    // Call APIPod GPT-4o
+    const aiResult = await generateText({
+      prompt: userPrompt,
+      model: "gpt-4o",
+      systemPrompt,
+      maxTokens: 4096,
+    });
+
+    // Parse response JSON
+    let result: any;
+    try {
+      // Try to extract JSON from the response (may be wrapped in markdown code blocks)
+      let jsonText = aiResult.text.trim();
+      const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) jsonText = jsonMatch[1].trim();
+      result = JSON.parse(jsonText);
+    } catch (parseErr) {
+      console.log(`[library/repurpose] JSON parse error: ${parseErr}, raw: ${aiResult.text.slice(0, 200)}`);
+      return c.json({ success: false, error: "Failed to parse AI response" }, 500);
+    }
+
+    if (!result?.formats || typeof result.formats !== "object") {
+      return c.json({ success: false, error: "Invalid AI response structure" }, 500);
+    }
+
+    // Save each format as a new library item
+    const savedCount = Object.keys(result.formats).length;
+    for (const [formatId, data] of Object.entries(result.formats) as [string, any][]) {
+      const newId = crypto.randomUUID();
+      await kv.set(`lib:${user.id}:${newId}`, {
+        id: newId,
+        type: "text",
+        model: { id: "gpt-4o", name: "GPT-4o (Repurpose)", provider: "apipod" },
+        prompt: `Repurposé depuis "${sourceItem.preview?.excerpt?.slice(0, 50) || sourceItem.prompt?.slice(0, 50) || sourceItem.id}" → ${formatId}`,
+        timestamp: new Date().toISOString(),
+        preview: { kind: "text", excerpt: data.content, format: formatId, title: data.title, hashtags: data.hashtags },
+        folderId: sourceItem.folderId || null,
+        savedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceItemId: itemId,
+        repurposedFormat: formatId,
+      });
+    }
+
+    // Deduct credits: 1 credit per target format (using gpt-4o standard cost = 2 credits for the AI call + formats)
+    const creditCost = targetFormats.length;
+    deductCredit(user.id, creditCost).catch(() => {});
+
+    console.log(`[library/repurpose] OK: ${savedCount} formats generated, ${creditCost} credits deducted`);
+    return c.json({ success: true, repurposed: result.formats, count: savedCount });
+  } catch (err: any) {
+    console.log(`[library/repurpose] error: ${err}`);
     return c.json({ success: false, error: String(err) }, err?.message === "Unauthorized" ? 401 : 500);
   }
 });

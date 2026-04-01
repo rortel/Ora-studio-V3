@@ -7,7 +7,7 @@ import {
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
   Instagram, Linkedin, Facebook, Camera, Clapperboard,
   Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
-  Upload,
+  Upload, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useSearchParams } from "react-router";
@@ -174,6 +174,10 @@ function LibraryPageContent() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [repurposeItem, setRepurposeItem] = useState<LibraryItem | null>(null);
+  const [repurposeFormats, setRepurposeFormats] = useState<string[]>(["linkedin-post", "instagram-caption", "newsletter-intro"]);
+  const [repurposing, setRepurposing] = useState(false);
+  const [repurposeResult, setRepurposeResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
 
@@ -433,6 +437,46 @@ function LibraryPageContent() {
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text).then(() => toast.success(t("library.copied"))).catch(() => {});
   }, []);
+
+  // Repurpose formats
+  const REPURPOSE_FORMATS = [
+    { id: "linkedin-post", label: "LinkedIn Post", icon: "\u{1F4BC}" },
+    { id: "instagram-caption", label: "Instagram Caption", icon: "\u{1F4F8}" },
+    { id: "newsletter-intro", label: "Newsletter", icon: "\u{1F4E7}" },
+    { id: "twitter-thread", label: "Thread X/Twitter", icon: "\u{1F426}" },
+    { id: "blog-intro", label: "Article Blog", icon: "\u{1F4DD}" },
+    { id: "facebook-post", label: "Facebook Post", icon: "\u{1F465}" },
+    { id: "story-text", label: "Story Text", icon: "\u{1F4F1}" },
+  ];
+
+  const toggleRepurposeFormat = (formatId: string) => {
+    setRepurposeFormats(prev =>
+      prev.includes(formatId) ? prev.filter(f => f !== formatId) : [...prev, formatId]
+    );
+  };
+
+  const handleRepurpose = useCallback(async () => {
+    if (!repurposeItem || repurposeFormats.length === 0) return;
+    setRepurposing(true);
+    setRepurposeResult(null);
+    try {
+      const data = await serverPost("/library/repurpose", {
+        itemId: repurposeItem.id,
+        targetFormats: repurposeFormats,
+      });
+      if (data.success && data.repurposed) {
+        setRepurposeResult(data.repurposed);
+        toast.success(`${data.count} format${data.count > 1 ? "s" : ""} generated`);
+      } else {
+        toast.error(data.error || "Repurpose failed");
+      }
+    } catch (err: any) {
+      console.error("[Repurpose] Error:", err);
+      toast.error("Repurpose error");
+    } finally {
+      setRepurposing(false);
+    }
+  }, [repurposeItem, repurposeFormats, serverPost]);
 
   // Split items by type
   const contentItems = items.filter((item) => item.type !== "campaign");
@@ -1207,6 +1251,10 @@ function LibraryPageContent() {
                                 <Copy size={12} style={{ color: "var(--text-tertiary)" }} />
                               </button>
                             )}
+                            <button onClick={(e) => { e.stopPropagation(); setRepurposeItem(item); setRepurposeResult(null); }}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Décliner en multi-format">
+                              <RefreshCw size={12} style={{ color: "var(--text-tertiary)" }} />
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); setMoveTargetItem(item.id); }}
                               className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Move to folder">
                               <FolderInput size={12} style={{ color: "var(--text-tertiary)" }} />
@@ -1271,6 +1319,9 @@ function LibraryPageContent() {
                             <Copy size={13} />
                           </button>
                         )}
+                        <button onClick={(e) => { e.stopPropagation(); setRepurposeItem(item); setRepurposeResult(null); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Décliner">
+                          <RefreshCw size={13} />
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); setMoveTargetItem(item.id); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Move">
                           <FolderInput size={13} />
                         </button>
@@ -1414,6 +1465,13 @@ function LibraryPageContent() {
                       </button>
                     )}
                     <button
+                      onClick={() => { setPreviewItem(null); setRepurposeItem(previewItem); setRepurposeResult(null); }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+                      style={{ background: "rgba(17,17,17,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
+                    >
+                      <RefreshCw size={14} /> Décliner
+                    </button>
+                    <button
                       onClick={() => handleDownload(previewItem)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer"
                       style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}
@@ -1428,6 +1486,166 @@ function LibraryPageContent() {
                   </div>
                 </>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ REPURPOSE MODAL ═══ */}
+      <AnimatePresence>
+        {repurposeItem && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/20 backdrop-blur-sm"
+            onClick={() => { if (!repurposing) { setRepurposeItem(null); setRepurposeResult(null); } }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-card rounded-2xl w-[520px] max-w-[90vw] mx-6 overflow-hidden max-h-[85vh] flex flex-col"
+              style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 24px 80px rgba(0,0,0,0.12)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-border flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--ora-signal)", opacity: 0.9 }}>
+                  <RefreshCw size={14} style={{ color: "#fff" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 style={{ fontSize: "16px", fontWeight: 600, letterSpacing: "-0.02em", color: "var(--foreground)" }}>
+                    Décliner en multi-format
+                  </h3>
+                  <p className="truncate" style={{ fontSize: "12px", color: "var(--text-tertiary)", marginTop: 2 }}>
+                    {getItemName(repurposeItem).slice(0, 80)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+                {/* Source preview */}
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 6 }}>
+                    Contenu source
+                  </p>
+                  <div className="rounded-xl px-4 py-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                    <p className="line-clamp-4" style={{ fontSize: "13px", color: "var(--foreground)", lineHeight: 1.6 }}>
+                      {(repurposeItem.preview?.excerpt || repurposeItem.preview?.snippet || repurposeItem.prompt || "").slice(0, 300)}
+                      {(repurposeItem.preview?.excerpt || repurposeItem.preview?.snippet || repurposeItem.prompt || "").length > 300 ? "..." : ""}
+                    </p>
+                  </div>
+                </div>
+
+                {!repurposeResult ? (
+                  <>
+                    {/* Format selection */}
+                    <div>
+                      <p style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 8 }}>
+                        Formats cibles ({repurposeFormats.length} sélectionné{repurposeFormats.length > 1 ? "s" : ""})
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {REPURPOSE_FORMATS.map(fmt => {
+                          const selected = repurposeFormats.includes(fmt.id);
+                          return (
+                            <button
+                              key={fmt.id}
+                              onClick={() => toggleRepurposeFormat(fmt.id)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all"
+                              style={{
+                                background: selected ? "var(--ora-signal)" : "var(--secondary)",
+                                color: selected ? "#fff" : "var(--text-secondary)",
+                                border: `1px solid ${selected ? "var(--ora-signal)" : "var(--border)"}`,
+                              }}
+                            >
+                              {selected && <Check size={10} />}
+                              <span>{fmt.icon}</span>
+                              <span>{fmt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Cost info */}
+                    <div className="rounded-lg px-3 py-2" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}>
+                      <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
+                        Coût : <span style={{ fontWeight: 600, color: "var(--foreground)" }}>{repurposeFormats.length} crédit{repurposeFormats.length > 1 ? "s" : ""}</span> ({repurposeFormats.length} format{repurposeFormats.length > 1 ? "s" : ""})
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  /* Results */
+                  <div className="space-y-3">
+                    <p style={{ fontSize: "10px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 4 }}>
+                      Résultats ({Object.keys(repurposeResult).length} formats)
+                    </p>
+                    {Object.entries(repurposeResult).map(([formatId, data]: [string, any]) => {
+                      const fmt = REPURPOSE_FORMATS.find(f => f.id === formatId);
+                      return (
+                        <div key={formatId} className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--secondary)" }}>
+                          <div className="px-4 py-2.5 flex items-center gap-2 border-b" style={{ borderColor: "var(--border)" }}>
+                            <span style={{ fontSize: "14px" }}>{fmt?.icon || ""}</span>
+                            <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{data.title || fmt?.label || formatId}</span>
+                            <div className="ml-auto flex items-center gap-1">
+                              <button
+                                onClick={() => copyToClipboard(data.content + (data.hashtags?.length ? "\n\n" + data.hashtags.join(" ") : ""))}
+                                className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--border)] cursor-pointer"
+                                title="Copier"
+                              >
+                                <Copy size={12} style={{ color: "var(--text-tertiary)" }} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                              {data.content}
+                            </p>
+                            {data.hashtags && data.hashtags.length > 0 && (
+                              <p className="mt-2" style={{ fontSize: "11px", color: "var(--accent)", lineHeight: 1.4 }}>
+                                {data.hashtags.join(" ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-border flex items-center gap-3">
+                {!repurposeResult ? (
+                  <>
+                    <button
+                      onClick={() => { setRepurposeItem(null); setRepurposeResult(null); }}
+                      disabled={repurposing}
+                      className="px-4 py-2.5 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                      style={{ fontSize: "13px" }}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={handleRepurpose}
+                      disabled={repurposing || repurposeFormats.length === 0}
+                      className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
+                      style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 600 }}
+                    >
+                      {repurposing ? (
+                        <><Loader2 size={14} className="animate-spin" /> Génération...</>
+                      ) : (
+                        <><RefreshCw size={14} /> Décliner en {repurposeFormats.length} format{repurposeFormats.length > 1 ? "s" : ""}</>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => { setRepurposeItem(null); setRepurposeResult(null); fetchData(); }}
+                    className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-all cursor-pointer"
+                    style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 600 }}
+                  >
+                    <Check size={14} /> Fermer
+                  </button>
+                )}
+              </div>
             </motion.div>
           </motion.div>
         )}

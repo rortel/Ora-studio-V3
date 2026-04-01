@@ -84,6 +84,17 @@ interface VaultData {
       negative: string[];
     };
   } | null;
+  voice_profile: {
+    sentence_style?: { avg_length?: string; structure?: string; preferred_openers?: string[] };
+    vocabulary?: { register?: string; recurring_terms?: string[]; jargon?: string[]; avoids?: string[] };
+    tone_markers?: { formality?: number; confidence?: number; warmth?: number; humor?: number; urgency?: number; primary_tone?: string; adjectives?: string[] };
+    rhetorical_devices?: string[];
+    key_phrases?: string[];
+    do_patterns?: string[];
+    dont_patterns?: string[];
+    language?: string;
+    summary?: string;
+  } | null;
 }
 
 const EMPTY_VAULT: VaultData = {
@@ -94,6 +105,7 @@ const EMPTY_VAULT: VaultData = {
   mission: null, vision: null, personality: null, usp: null, values: null,
   font_usage_rules: null, competitors: null, brand_guidelines_text: null,
   brand_platform: null,
+  voice_profile: null,
 };
 
 // ── Merge logic: enrich existing vault with incoming file DNA ──
@@ -269,6 +281,8 @@ function VaultPageContent() {
   const [saveOk, setSaveOk] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [voiceLearning, setVoiceLearning] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -346,6 +360,27 @@ function VaultPageContent() {
       setAnalyzeError(err?.message || "Network error");
     }
     setAnalyzing(false);
+  };
+
+  // ── Learn Voice ──
+  const handleLearnVoice = async () => {
+    setVoiceLearning(true);
+    setVoiceError(null);
+    try {
+      const res = await fetch(apiUrl("/vault/learn-voice"), {
+        method: "POST", headers: vaultHeaders(), body: corsBody(token()),
+      });
+      const data = await res.json();
+      if (data.success && data.voice_profile) {
+        setVault(prev => ({ ...prev, voice_profile: data.voice_profile }));
+      } else {
+        setVoiceError(data.error || "Voice learning failed");
+      }
+    } catch (err: any) {
+      console.error("[Vault] Voice learn error:", err);
+      setVoiceError(err?.message || "Network error");
+    }
+    setVoiceLearning(false);
   };
 
   // ── Extract text from PDF client-side using pdf.js (fallback) ──
@@ -1280,6 +1315,178 @@ function VaultPageContent() {
                         saveVault(updated);
                       }}
                     />
+                  )}
+                </SectionCard>
+              </div>
+
+              {/* Learned Brand Voice — full width */}
+              <div className="md:col-span-2">
+                <SectionCard icon={MessageSquare} title="Voix de marque apprise"
+                  count={vault.voice_profile ? 1 : 0}
+                  open={isOpen("voice")} onToggle={() => toggleSection("voice")}>
+                  {vault.voice_profile ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                          Profil vocal appris depuis vos contenus Library. Automatiquement injecté dans chaque génération de texte.
+                        </p>
+                        <button onClick={handleLearnVoice} disabled={voiceLearning}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+                          style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
+                          {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Réanalyser
+                        </button>
+                      </div>
+
+                      {/* Summary */}
+                      {vault.voice_profile.summary && (
+                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Synthèse
+                          </span>
+                          <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
+                            {vault.voice_profile.summary}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Tone markers */}
+                      {vault.voice_profile.tone_markers && (
+                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Marqueurs de ton
+                          </span>
+                          {vault.voice_profile.tone_markers.primary_tone && (
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 6, fontWeight: 500 }}>
+                              {vault.voice_profile.tone_markers.primary_tone}
+                            </p>
+                          )}
+                          <div className="grid grid-cols-5 gap-3 mt-3">
+                            {([
+                              { key: "formality", label: "Formalit\u00e9" },
+                              { key: "confidence", label: "Confiance" },
+                              { key: "warmth", label: "Chaleur" },
+                              { key: "humor", label: "Humour" },
+                              { key: "urgency", label: "Urgence" },
+                            ] as const).map(({ key, label }) => {
+                              const val = (vault.voice_profile?.tone_markers as any)?.[key] ?? 0;
+                              return (
+                                <div key={key} className="text-center">
+                                  <div className="mx-auto mb-1" style={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent)" }}>{val}</span>
+                                  </div>
+                                  <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 500 }}>{label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Key phrases */}
+                      {vault.voice_profile.key_phrases && vault.voice_profile.key_phrases.length > 0 && (
+                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Phrases clés
+                          </span>
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {vault.voice_profile.key_phrases.map((phrase, i) => (
+                              <span key={i} className="px-2.5 py-1 rounded-full"
+                                style={{ fontSize: "11px", fontWeight: 500, color: "var(--foreground)", background: "rgba(17,17,17,0.06)", border: "1px solid var(--border)" }}>
+                                {phrase}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Do / Don't patterns */}
+                      {((vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0) || (vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0)) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0 && (
+                            <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                À faire
+                              </span>
+                              <ul className="mt-2 space-y-1.5">
+                                {vault.voice_profile.do_patterns.map((p, i) => (
+                                  <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                    <Check size={11} className="inline mr-1.5" style={{ color: "#22c55e" }} />{p}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0 && (
+                            <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                À éviter
+                              </span>
+                              <ul className="mt-2 space-y-1.5">
+                                {vault.voice_profile.dont_patterns.map((p, i) => (
+                                  <li key={i} style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--foreground)" }}>
+                                    <X size={11} className="inline mr-1.5" style={{ color: "#ef4444" }} />{p}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Vocabulary & Style details */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {vault.voice_profile.vocabulary?.register && (
+                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Registre</span>
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.voice_profile.vocabulary.register}</p>
+                          </div>
+                        )}
+                        {vault.voice_profile.sentence_style?.structure && (
+                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Style de phrase</span>
+                            <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
+                              {vault.voice_profile.sentence_style.structure}, longueur {vault.voice_profile.sentence_style.avg_length || "moyenne"}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Rhetorical devices */}
+                      {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
+                        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                          <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            Procédés rhétoriques
+                          </span>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {vault.voice_profile.rhetorical_devices.map((d, i) => (
+                              <span key={i} className="px-2 py-0.5 rounded"
+                                style={{ fontSize: "11px", color: "var(--text-secondary)", background: "rgba(17,17,17,0.05)" }}>
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 16px" }}>
+                        Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'écriture et l'appliquer &agrave; toutes les générations.
+                      </p>
+                      <button onClick={handleLearnVoice} disabled={voiceLearning}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
+                        style={{
+                          fontSize: "13px", fontWeight: 500, color: "#fff",
+                          background: "var(--accent)", border: "none",
+                          opacity: voiceLearning ? 0.6 : 1,
+                        }}>
+                        {voiceLearning ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                        {voiceLearning ? "Analyse en cours..." : "Analyser mes contenus"}
+                      </button>
+                      {voiceError && (
+                        <p style={{ fontSize: "12px", color: "#ef4444", marginTop: 12 }}>{voiceError}</p>
+                      )}
+                    </div>
                   )}
                 </SectionCard>
               </div>
