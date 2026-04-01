@@ -212,7 +212,7 @@ export function ImageBank({ accessToken }: ImageBankProps) {
       const res = await fetch(apiUrl("/vault/images/analyze"), {
         method: "POST",
         headers: { ...apiHeaders(false), "Content-Type": "text/plain" },
-        body: JSON.stringify(corsBody(token(), { imageId })),
+        body: corsBody(token(), { imageId }),
       });
       const data = await res.json();
       if (data.success) {
