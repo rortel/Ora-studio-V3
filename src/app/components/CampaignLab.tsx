@@ -219,7 +219,6 @@ const TEXT_MODELS = [
   { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#666666" },
 ];
 const IMAGE_MODELS = [
-  { id: "photoroom",        label: "Photoroom",         badge: "Product AI", color: "#FF6B35" },
   { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#666666" },
   { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#666666" },
   { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#999999" },
@@ -943,13 +942,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   };
 
   // ── Helper: Photoroom image generation (real product + AI scene) ──
-  const generateImageViaPhotoroom = async (scenePrompt: string, refImageUrl: string, aspectRatio: string): Promise<string> => {
+  const generateImageViaPhotoroom = async (scenePrompt: string, refImageUrl: string, aspectRatio: string, styleOverride?: string): Promise<string> => {
+    // Build a scene-focused prompt for Photoroom background generation
+    const sceneForBg = styleOverride
+      ? `${styleOverride} scene. ${scenePrompt.slice(0, 400)}`
+      : scenePrompt.slice(0, 500);
     const tok = getAuthToken();
     const res = await fetch(`${API_BASE}/generate/image-start`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
       body: JSON.stringify({
-        prompt: scenePrompt.slice(0, 500),
+        prompt: sceneForBg,
         imageRefUrl: refImageUrl,
         refSource: "upload",
         aspectRatio,
@@ -1251,12 +1254,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   try {
                     if (useV2Pipeline && refSignedUrls.length > 0) {
                       const refUrl = refSignedUrls[slideIdx % refSignedUrls.length];
-                      const candidates = await generateImageViaHub(slidePrompt, ar, refUrl, ["photon-1"]);
-                      if (candidates.length > 0) {
-                        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: candidates[0].imageUrl, status: "ready" };
-                      } else {
-                        const url = await generateImageClassic(fmt, slidePrompt);
-                        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: url, status: "ready" };
+                      // Photoroom AUTO for carousel: preserve real product in each slide
+                      try {
+                        const prUrl = await generateImageViaPhotoroom(slidePrompt, refUrl, ar, visualStyle || undefined);
+                        updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: prUrl, status: "ready" };
+                      } catch {
+                        // Fallback to generative if Photoroom fails
+                        const candidates = await generateImageViaHub(slidePrompt, ar, refUrl, ["photon-1"]);
+                        if (candidates.length > 0) {
+                          updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: candidates[0].imageUrl, status: "ready" };
+                        } else {
+                          const url = await generateImageClassic(fmt, slidePrompt);
+                          updatedSlides[slideIdx] = { ...updatedSlides[slideIdx], imageUrl: url, status: "ready" };
+                        }
                       }
                     } else {
                       const url = await generateImageClassic(fmt, slidePrompt);
@@ -1308,19 +1318,27 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
               console.log(`[CampaignLab] V2 Image [${fmt.id}]: ${modelsToUse.length} models, ref=${refUrl ? `#${(fmtIdx % refSignedUrls.length) + 1}/${refSignedUrls.length}` : "NONE"}`);
 
-              // Generate with all selected models in parallel
+              // ── AUTOMATIC PHOTOROOM: when ref images exist, always generate real-product scene first ──
+              const allResults: { model: string; imageUrl: string; status: "ready" | "error"; error?: string }[] = [];
+
+              if (refUrl) {
+                try {
+                  console.log(`[CampaignLab] Photoroom AUTO [${fmt.id}]: preserving real product pixels, style=${visualStyle || "auto"}`);
+                  const prUrl = await generateImageViaPhotoroom(finalPrompt, refUrl, ar, visualStyle || undefined);
+                  allResults.push({ model: "photoroom", imageUrl: prUrl, status: "ready" });
+                } catch (e: any) {
+                  console.warn(`[CampaignLab] Photoroom AUTO [${fmt.id}] failed:`, e?.message);
+                  allResults.push({ model: "photoroom", imageUrl: "", status: "error", error: e?.message });
+                }
+              }
+
+              // ── Then run selected generative models as additional variants ──
               const modelResults = await Promise.all(modelsToUse.map(async (mdl) => {
                 try {
-                  // Photoroom: real product + AI-generated scene
-                  if (mdl === "photoroom" && refUrl) {
-                    const prUrl = await generateImageViaPhotoroom(finalPrompt, refUrl, ar);
-                    return { model: mdl, imageUrl: prUrl, status: "ready" as const };
-                  }
                   const candidates = await generateImageViaHub(finalPrompt, ar, refUrl, [mdl]);
                   if (candidates.length > 0) {
                     return { model: mdl, imageUrl: candidates[0].imageUrl, status: "ready" as const };
                   }
-                  // Fallback to classic for this model
                   const classicUrl = await generateImageClassic(fmt, finalPrompt + REALISM_SUFFIX);
                   return { model: mdl, imageUrl: classicUrl, status: "ready" as const };
                 } catch (e: any) {
@@ -1328,12 +1346,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   return { model: mdl, imageUrl: "", status: "error" as const, error: e?.message };
                 }
               }));
+              allResults.push(...modelResults);
 
-              const imageVariants: AssetVariant[] = modelResults.map(r => {
-                const modelInfo = IMAGE_MODELS.find(m => m.id === r.model);
+              const imageVariants: AssetVariant[] = allResults.map(r => {
+                const modelInfo = r.model === "photoroom"
+                  ? { label: "Photoroom (Real Product)" }
+                  : IMAGE_MODELS.find(m => m.id === r.model);
                 return { model: r.model, modelLabel: modelInfo?.label || r.model, imageUrl: r.imageUrl, status: r.status };
               });
-              const bestResult = modelResults.find(r => r.imageUrl) || modelResults[0];
+              // Photoroom result is primary (first variant) when available
+              const bestResult = allResults.find(r => r.imageUrl && r.model === "photoroom")
+                || allResults.find(r => r.imageUrl) || allResults[0];
 
               setAssets(prev => prev.map(a => a.formatId === fmt.id ? {
                 ...a, status: "ready", imageUrl: bestResult.imageUrl, model: bestResult.model,
@@ -1344,7 +1367,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 selectedVariant: 0,
               } : a));
               if (bestResult.imageUrl) generatedImageUrls[fmt.id] = bestResult.imageUrl;
-              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK: ${modelResults.filter(r => r.imageUrl).length}/${modelsToUse.length} models`);
+              console.log(`[CampaignLab] V2 Image [${fmt.id}] OK: ${allResults.filter(r => r.imageUrl).length}/${allResults.length} (Photoroom=${refUrl ? "AUTO" : "skip"})`);
 
             } else {
               const imgPrompt = (fc.imagePrompt || `Professional ${fmt.platform} post. ${briefShort.slice(0, 120)}. Cinematic brand photography, no text.`) + (diversitySuffix ? ` ${diversitySuffix}` : "") + REALISM_SUFFIX;
@@ -2611,6 +2634,54 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 </div>
               </div>
 
+              {/* ═══ VISUAL STYLE — Always visible ═══ */}
+              <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Camera size={14} style={{ color: "var(--ora-signal)" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>Visual style</span>
+                  {visualStyle && (
+                    <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--ora-signal)", background: "rgba(17,17,17,0.08)" }}>
+                      {visualStyle}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: "", label: "Auto (from vault)", icon: "✨" },
+                    { id: "Studio Photoshoot", label: "Studio", icon: "📸" },
+                    { id: "Packshot", label: "Packshot", icon: "📦" },
+                    { id: "Lifestyle", label: "Lifestyle", icon: "🌿" },
+                    { id: "Flat Lay", label: "Flat Lay", icon: "🎨" },
+                    { id: "UGC / Authentic", label: "UGC", icon: "🤳" },
+                    { id: "Editorial / Fashion", label: "Editorial", icon: "✂️" },
+                    { id: "Cinematic", label: "Cinematic", icon: "🎬" },
+                    { id: "Moodboard / Ambiance", label: "Moodboard", icon: "🎭" },
+                    { id: "3D Render", label: "3D Render", icon: "💎" },
+                    { id: "Before / After", label: "Before / After", icon: "↔️" },
+                    { id: "Close-up / Macro", label: "Close-up", icon: "🔍" },
+                    { id: "Aerial / Drone", label: "Aerial", icon: "🚁" },
+                  ].map(style => {
+                    const isSelected = visualStyle === style.id;
+                    return (
+                      <button
+                        key={style.id}
+                        onClick={() => setVisualStyle(style.id)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                        style={{
+                          background: isSelected ? "rgba(17,17,17,0.12)" : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${isSelected ? "rgba(17,17,17,0.4)" : "var(--border)"}`,
+                          color: isSelected ? "var(--ora-signal)" : "var(--text-secondary)",
+                          fontSize: "12px", fontWeight: isSelected ? 600 : 400,
+                        }}
+                      >
+                        <span style={{ fontSize: "13px" }}>{style.icon}</span>
+                        {style.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Generate Button — RIGHT AFTER formats */}
               <button
                 onClick={handleGenerate}
@@ -2791,48 +2862,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   }}
                                 >
                                   {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Visual Style */}
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Camera size={12} style={{ color: "var(--text-secondary)" }} />
-                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-tertiary)" }}>Visual style</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {[
-                              { id: "", label: "Auto (from vault)" },
-                              { id: "Studio Photoshoot", label: "Studio Photoshoot" },
-                              { id: "Packshot", label: "Packshot" },
-                              { id: "Lifestyle", label: "Lifestyle" },
-                              { id: "Flat Lay", label: "Flat Lay" },
-                              { id: "UGC / Authentic", label: "UGC / Authentic" },
-                              { id: "Editorial / Fashion", label: "Editorial" },
-                              { id: "Cinematic", label: "Cinematic" },
-                              { id: "Moodboard / Ambiance", label: "Moodboard" },
-                              { id: "3D Render", label: "3D Render" },
-                              { id: "Before / After", label: "Before / After" },
-                              { id: "Close-up / Macro", label: "Close-up" },
-                              { id: "Aerial / Drone", label: "Aerial" },
-                            ].map(style => {
-                              const isSelected = visualStyle === style.id;
-                              return (
-                                <button
-                                  key={style.id}
-                                  onClick={() => setVisualStyle(style.id)}
-                                  className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                                  style={{
-                                    background: isSelected ? "rgba(17,17,17,0.15)" : "rgba(255,255,255,0.02)",
-                                    border: `1px solid ${isSelected ? "rgba(17,17,17,0.4)" : "var(--border)"}`,
-                                    color: isSelected ? "var(--ora-signal)" : "var(--text-secondary)",
-                                    fontSize: "11px", fontWeight: isSelected ? 600 : 400,
-                                  }}
-                                >
-                                  {style.label}
                                 </button>
                               );
                             })}
