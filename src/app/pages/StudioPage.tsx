@@ -127,7 +127,7 @@ export function StudioPage() {
   const [isThinking, setIsThinking] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [context, setContext] = useState<Record<string, any>>({});
-  const [vault, setVault] = useState<any>(null);
+  const [vault, setVault] = useState<any>(undefined);
   const [products, setProducts] = useState<any[]>([]);
   const [vaultLoading, setVaultLoading] = useState(false);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
@@ -308,7 +308,7 @@ export function StudioPage() {
       console.log("[studio] loadVault results:", JSON.stringify({ vaultSuccess: vaultRes.success, productsSuccess: productsRes.success, hasVault: !!vaultRes.vault, brandName: vaultRes.vault?.brandName || vaultRes.vault?.company_name, productsCount: productsRes.products?.length }));
       const v = vaultRes.success && vaultRes.vault ? vaultRes.vault : null;
       const p = productsRes.success && Array.isArray(productsRes.products) ? productsRes.products : [];
-      if (v) setVault(v);
+      setVault(v); // always set — null means "loaded but empty", undefined means "not loaded yet"
       if (p.length) setProducts(p);
       setVaultLoading(false);
       return { vault: v, products: p };

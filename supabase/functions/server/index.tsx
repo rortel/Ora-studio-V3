@@ -5027,9 +5027,16 @@ app.post("/vault/reset", async (c) => {
 app.post("/vault/load", async (c) => {
   try {
     const user = await requireAuth(c);
-    const rawVault = await kv.get(`vault:${user.id}`);
+    let rawVault = await kv.get(`vault:${user.id}`);
+    // Auto-fix: if vault has a nested "vault" key from old onboarding bug, flatten it
+    if (rawVault && rawVault.vault && typeof rawVault.vault === "object" && !Array.isArray(rawVault.vault)) {
+      const { vault: nested, ...rest } = rawVault;
+      rawVault = { ...rest, ...nested };
+      await saveVaultToKV(user.id, rawVault);
+      console.log(`[vault/load] Auto-fixed nested vault.vault for user=${user.id.slice(0,8)}`);
+    }
     const vault = syncVaultNames(rawVault);
-    console.log(`[vault/load] user ${user.id}: vault ${vault ? "found" : "not found"} brand="${vault?.brandName || ""}"`);
+    console.log(`[vault/load] user ${user.id}: vault ${vault ? "found" : "not found"} brand="${vault?.brandName || ""}" company="${vault?.company_name || ""}" onboarding=${vault?.onboarding_completed}`);
     return c.json({ success: true, vault: vault || null });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
