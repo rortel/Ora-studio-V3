@@ -731,7 +731,7 @@ export function StudioPage() {
             if (productRefUrls.length > 0) {
               const refUrl = productRefUrls[i % productRefUrls.length];
               try {
-                console.log(`[studio] Photoroom AUTO [${visualFormats[i].format}]: preserving real product pixels`);
+                console.log(`[studio] Photoroom AUTO [${visualFormats[i].format}]: preserving real product pixels, ref=${refUrl.slice(0, 100)}`);
                 const prRes = await fetch(`${API_BASE}/generate/image-start`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
@@ -746,9 +746,12 @@ export function StudioPage() {
                   signal: AbortSignal.timeout(60_000),
                 });
                 const prData = await prRes.json();
+                console.log(`[studio] Photoroom RESPONSE [${visualFormats[i].format}]:`, JSON.stringify({ success: prData.success, hasImageUrl: !!prData.imageUrl, hasResults: !!prData.results, error: prData.error, provider: prData.provider }).slice(0, 300));
                 if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
                   photoroomUrl = prData.imageUrl || prData.results[0].result.imageUrl;
                   console.log(`[studio] Photoroom OK [${visualFormats[i].format}]: ${(photoroomUrl || "").slice(0, 80)}`);
+                } else {
+                  console.warn(`[studio] Photoroom SKIP [${visualFormats[i].format}]: no image in response`, prData.error || "");
                 }
               } catch (e: any) {
                 console.warn(`[studio] Photoroom failed [${visualFormats[i].format}]:`, e?.message);

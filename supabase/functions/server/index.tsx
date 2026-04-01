@@ -4311,14 +4311,15 @@ app.post("/generate/image-start", async (c) => {
             const fileName = `photoroom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
             const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
 
-            const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            const sb = supabaseAdmin();
+            const { data: uploadData, error: uploadError } = await sb.storage
               .from("make-cad57f79-media")
               .upload(storagePath, imageBuffer, { contentType: "image/webp", upsert: true });
 
             if (uploadError) {
               console.log(`[image-start-POST] Photoroom upload error: ${uploadError.message}`);
             } else {
-              const { data: signedData } = await supabaseAdmin.storage
+              const { data: signedData } = await sb.storage
                 .from("make-cad57f79-media")
                 .createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
 
