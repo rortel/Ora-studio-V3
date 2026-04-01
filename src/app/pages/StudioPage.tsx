@@ -497,12 +497,43 @@ export function StudioPage() {
           };
 
           // 1. Try specific product if productId provided (only if URL scrape didn't already get images)
+          let targetProduct: any = null;
           if (productRefUrls.length === 0 && productId && products.length) {
             const prod = products.find((p: any) => p.id === productId);
             if (prod) {
+              targetProduct = prod;
               productBrief = `${productBrief}\n\nPRODUCT FOCUS: ${prod.name}${prod.price ? ` (${prod.price})` : ""}${prod.category ? ` — ${prod.category}` : ""}${prod.description ? `\n${prod.description}` : ""}`;
               productRefUrls = extractProductImages(prod);
               console.log(`[studio] Product "${prod.name}": ${productRefUrls.length} ref image(s) for Photoroom`);
+
+              // If specific product has no images, try scraping its URL
+              if (productRefUrls.length === 0 && prod.url) {
+                try {
+                  console.log(`[studio] Scraping selected product "${prod.name}" from ${prod.url.slice(0, 60)}...`);
+                  const scrapeRes = await serverPost("/products/scrape-url", { url: prod.url });
+                  if (scrapeRes.success && scrapeRes.product?.imageUrls?.length) {
+                    productRefUrls = scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5);
+                    console.log(`[studio] Scraped ${productRefUrls.length} images from "${prod.name}"`);
+                  }
+                } catch { /* non-blocking */ }
+              }
+
+              // If still no images, search web by product name
+              if (productRefUrls.length === 0) {
+                const brandName = vault?.brandName || vault?.brand_name || vault?.brand_platform?.brand_name || "";
+                try {
+                  console.log(`[studio] 🔍 Searching web images for selected product "${prod.name}"...`);
+                  const findRes = await serverPost("/products/find-images", {
+                    productName: prod.name,
+                    brandName,
+                    productId: prod.id,
+                  }, 15_000);
+                  if (findRes.success && findRes.imageUrls?.length) {
+                    productRefUrls = findRes.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5);
+                    console.log(`[studio] Found ${productRefUrls.length} web images for "${prod.name}"`);
+                  }
+                } catch { /* non-blocking */ }
+              }
             }
           }
 
