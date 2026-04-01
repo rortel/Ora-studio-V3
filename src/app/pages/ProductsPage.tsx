@@ -98,6 +98,8 @@ export function ProductsPage() {
   const [currency, setCurrency] = useState("EUR");
   const [category, setCategory] = useState("");
   const [scrapedImageUrls, setScrapedImageUrls] = useState<string[]>([]);
+  const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
+  const newProductFileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load all products ──
   const loadProducts = useCallback(async () => {
@@ -119,7 +121,7 @@ export function ProductsPage() {
   const resetForm = () => {
     setName(""); setDescription(""); setUrl("");
     setFeatures([""]); setPrice(""); setCurrency("EUR"); setCategory("");
-    setScrapedImageUrls([]);
+    setScrapedImageUrls([]); setNewProductFiles([]);
   };
 
   const openCreate = () => { setEditingProduct(null); resetForm(); setDialogOpen(true); };
@@ -148,28 +150,55 @@ export function ProductsPage() {
     finally { setScraping(false); }
   };
 
+  const hasAnyImage = scrapedImageUrls.length > 0 || newProductFiles.length > 0;
+
   const handleSave = async () => {
     if (!accessToken) { toast.error(t("products.notConnected")); return; }
     if (!name.trim()) { toast.error(t("products.nameRequired")); return; }
+    // Require at least one image for new products
+    const isEdit = !!editingProduct;
+    if (!isEdit && !hasAnyImage) {
+      toast.error("Ajoutez au moins une photo du produit (upload ou URL)");
+      return;
+    }
     setSaving(true);
     try {
       const payload = { name: name.trim(), description: description.trim(), url: url.trim(),
         features: features.filter(f => f.trim()), price: price.trim(), currency, category: category.trim() };
-      const isEdit = !!editingProduct;
       const path = isEdit ? `/products/${editingProduct!.id}` : "/products";
       const res = await postJson(path, accessToken, payload, isEdit ? "PUT" : "POST");
       const data = await res.json();
       if (data.success) {
         toast.success(isEdit ? t("products.productUpdated") : t("products.productCreated"));
         const productId = data.product?.id || data.id;
+
+        // Upload scraped image URLs
         if (!isEdit && scrapedImageUrls.length > 0 && productId) {
-          toast.info(`Import de ${scrapedImageUrls.length} photo(s)...`);
+          toast.info(`Import de ${scrapedImageUrls.length} photo(s) web...`);
           try {
             const imgRes = await postJson(`/products/${productId}/images-from-urls`, accessToken, { imageUrls: scrapedImageUrls });
             const imgData = await imgRes.json();
             if (imgData.success && imgData.images?.length) toast.success(`${imgData.images.length} photo(s) importée(s)`);
           } catch {}
         }
+
+        // Upload local files
+        if (!isEdit && newProductFiles.length > 0 && productId) {
+          toast.info(`Upload de ${newProductFiles.length} photo(s)...`);
+          try {
+            const fd = new FormData();
+            fd.append("_token", accessToken);
+            for (const f of newProductFiles) fd.append("files", f);
+            const uploadRes = await fetch(`${API_BASE}/products/${productId}/images`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${publicAnonKey}` },
+              body: fd,
+            });
+            const uploadData = await uploadRes.json();
+            if (uploadData.success && uploadData.images?.length) toast.success(`${uploadData.images.length} photo(s) uploadée(s)`);
+          } catch {}
+        }
+
         setDialogOpen(false); resetForm(); await loadProducts();
       } else toast.error(data.error || "Error");
     } catch { toast.error(t("products.networkError")); }
@@ -614,6 +643,78 @@ export function ProductsPage() {
                         <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
                           {t("products.photosImportNote")}
                         </p>
+                      </div>
+                    )}
+
+                    {/* ═══ IMAGE UPLOAD — création (obligatoire) ═══ */}
+                    {!editingProduct && (
+                      <div>
+                        <label className="flex items-center gap-1.5 mb-2 text-[12px] font-semibold uppercase tracking-wider"
+                          style={{ color: hasAnyImage ? "var(--text-tertiary)" : "var(--destructive)" }}>
+                          <ImageIcon size={12} /> Photos produit *
+                          {hasAnyImage && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold"
+                              style={{ background: "var(--accent)", color: "#fff" }}>
+                              {scrapedImageUrls.length + newProductFiles.length}
+                            </span>
+                          )}
+                        </label>
+
+                        {/* Preview uploaded files */}
+                        {newProductFiles.length > 0 && (
+                          <div className="grid grid-cols-4 gap-2 mb-2">
+                            {newProductFiles.map((file, idx) => (
+                              <div key={idx} className="relative group rounded-xl overflow-hidden aspect-square"
+                                style={{ background: "var(--secondary)" }}>
+                                <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                                <button onClick={() => setNewProductFiles(prev => prev.filter((_, i) => i !== idx))}
+                                  className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  style={{ background: "var(--destructive)", color: "#fff" }}>
+                                  <X size={10} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Drop zone / click to upload */}
+                        <input ref={newProductFileInputRef} type="file" multiple accept="image/*" className="hidden"
+                          onChange={e => {
+                            const files = Array.from(e.target.files || []).filter(f => f.type.startsWith("image/"));
+                            setNewProductFiles(prev => [...prev, ...files].slice(0, 10));
+                            if (newProductFileInputRef.current) newProductFileInputRef.current.value = "";
+                          }} />
+                        <div
+                          onClick={() => newProductFileInputRef.current?.click()}
+                          onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent)"; }}
+                          onDragLeave={e => { e.currentTarget.style.borderColor = hasAnyImage ? "var(--border-accent)" : "var(--destructive)"; }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            e.currentTarget.style.borderColor = "var(--border-accent)";
+                            const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+                            setNewProductFiles(prev => [...prev, ...files].slice(0, 10));
+                          }}
+                          className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl cursor-pointer transition-all"
+                          style={{
+                            border: `2px dashed ${hasAnyImage ? "var(--border-accent)" : "var(--destructive)"}`,
+                            background: hasAnyImage ? "transparent" : "rgba(239,68,68,0.03)",
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = "var(--secondary)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = hasAnyImage ? "transparent" : "rgba(239,68,68,0.03)"; }}
+                        >
+                          <Upload size={20} style={{ color: hasAnyImage ? "var(--text-tertiary)" : "var(--destructive)" }} />
+                          <span style={{ fontSize: "12px", fontWeight: 500, color: hasAnyImage ? "var(--text-tertiary)" : "var(--destructive)" }}>
+                            {hasAnyImage ? "Ajouter d'autres photos" : "Glissez vos photos produit ici ou cliquez"}
+                          </span>
+                          <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>
+                            PNG, JPG, WebP — max 10 photos
+                          </span>
+                        </div>
+                        {!hasAnyImage && (
+                          <p style={{ fontSize: "11px", color: "var(--destructive)", marginTop: 6 }}>
+                            Au moins une photo est requise pour utiliser Photoroom (fond studio, lifestyle, packshot...)
+                          </p>
+                        )}
                       </div>
                     )}
 
