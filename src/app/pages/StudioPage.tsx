@@ -854,17 +854,18 @@ export function StudioPage() {
       const loaded = await loadVault(true);
       console.log("[studio] Campaign vault loaded:", JSON.stringify(loaded.vault ? Object.keys(loaded.vault) : null), "products:", loaded.products?.length);
       const brandName = loaded.vault?.brandName || loaded.vault?.company_name || loaded.vault?.brand_platform?.brand_name;
-      const productNames = loaded.products?.slice(0, 5).map((p: any) => p.name).filter(Boolean);
+      const allProducts = loaded.products?.map((p: any) => p.name).filter(Boolean) || [];
       const hasBrand = !!brandName;
-      const hasProducts = productNames && productNames.length > 0;
+      const hasProducts = allProducts.length > 0;
 
       let welcomeContent = "";
       let suggestions: string[] = [];
 
       if (hasBrand && hasProducts) {
-        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}** et vos produits.\n\nQuel produit ou sujet souhaitez-vous mettre en avant ?\n\n📦 Vos produits : ${productNames.join(", ")}`;
-        suggestions = productNames.slice(0, 3).map((n: string) => `Campagne ${n}`);
-        if (suggestions.length < 3) suggestions.push("Campagne de notoriété");
+        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}** et vos produits.\n\nQuel produit ou sujet souhaitez-vous mettre en avant ?\n\n📦 Vos produits : ${allProducts.join(", ")}`;
+        // Show ALL products as suggestion chips (max 8 for UI readability)
+        suggestions = allProducts.slice(0, 8).map((n: string) => `Campagne ${n}`);
+        suggestions.push("Campagne de notoriété");
       } else if (hasBrand) {
         welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}**.\n\nQuel est l'objectif de votre campagne ? Nouveau produit, promotion, notoriété, événement ?`;
         suggestions = ["Lancement produit", "Promotion saisonnière", "Campagne de notoriété"];
