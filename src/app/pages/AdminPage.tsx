@@ -11,7 +11,7 @@ import {
   Minus, Columns2, MessageSquareQuote, MoveUp, MoveDown,
   Bold, Italic, LinkIcon, Variable, Calendar, FlaskConical,
   ListFilter, UserPlus, Sparkles, MailOpen, MousePointer,
-  Save, Play, Pause, LayoutTemplate,
+  Save, Play, Pause, LayoutTemplate, Languages, Wand2,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { API_BASE, publicAnonKey, supabase } from "../lib/supabase";
@@ -1481,6 +1481,91 @@ function createBlock(type: EmailBlockType): EmailBlock {
   }
 }
 
+/** Pre-written template blocks with real content + images — keyed by API template ID */
+const TEMPLATE_BLOCKS: Record<string, { subject: string; blocks: EmailBlock[] }> = {
+  welcome: {
+    subject: "Bienvenue sur ORA Studio, {{name}} 🎨",
+    blocks: [
+      { id: "w1", type: "heading", level: "h1", content: "Bienvenue dans votre studio créatif" } as HeadingBlock,
+      { id: "w2", type: "image", src: "https://ora-studio.app/brand/email-hero-welcome.jpg", alt: "ORA Studio — Votre studio créatif IA" } as ImageBlock,
+      { id: "w3", type: "text", content: "Bonjour **{{name}}**,\n\nNous sommes ravis de vous accueillir sur ORA Studio. Votre espace créatif est prêt : générez des visuels, des textes et des vidéos pour sublimer votre marque.\n\nVous disposez de **50 crédits offerts** pour explorer la plateforme." } as TextBlock,
+      { id: "w4", type: "highlight", content: "💡 **Astuce** : Commencez par remplir votre Brand Vault pour des créations parfaitement alignées avec votre identité visuelle." } as HighlightBlock,
+      { id: "w5", type: "columns", left: "**Générer**\nTextes, images, vidéos et sons avec 38+ modèles IA", right: "**Protéger**\nVotre identité de marque avec le Brand Vault" } as ColumnsBlock,
+      { id: "w6", type: "button", text: "Commencer à créer", url: "https://ora-studio.app/hub", style: "filled" } as ButtonBlock,
+      { id: "w7", type: "divider" } as DividerBlock,
+      { id: "w8", type: "text", content: "Des questions ? Répondez directement à cet email, nous vous répondons sous 24h." } as TextBlock,
+    ],
+  },
+  plan_confirmed: {
+    subject: "Plan {{plan}} activé — {{credits}} crédits disponibles",
+    blocks: [
+      { id: "pc1", type: "heading", level: "h1", content: "Plan {{plan}} activé." } as HeadingBlock,
+      { id: "pc2", type: "text", content: "Merci pour votre confiance, **{{name}}**.\n\nVotre plan a été activé avec succès. Vous disposez désormais de **{{credits}} crédits** pour créer du contenu professionnel." } as TextBlock,
+      { id: "pc3", type: "highlight", content: "🎯 **{{credits}} crédits disponibles** — Utilisez-les pour générer du contenu texte, image, vidéo et audio avec les meilleurs modèles IA." } as HighlightBlock,
+      { id: "pc4", type: "columns", left: "**Texte & Image**\nGPT-4o, Claude, Flux, DALL·E\nIdéal pour vos réseaux sociaux", right: "**Vidéo & Audio**\nLuma, Kling, Replicate\nPour des campagnes immersives" } as ColumnsBlock,
+      { id: "pc5", type: "button", text: "Accéder au Studio", url: "https://ora-studio.app/hub", style: "filled" } as ButtonBlock,
+    ],
+  },
+  low_credits: {
+    subject: "Il vous reste {{remaining}} crédits sur ORA Studio",
+    blocks: [
+      { id: "lc1", type: "heading", level: "h1", content: "Crédits bientôt épuisés." } as HeadingBlock,
+      { id: "lc2", type: "text", content: "Un petit rappel, **{{name}}**.\n\nIl ne vous reste plus que **{{remaining}} crédits** sur votre compte ORA Studio." } as TextBlock,
+      { id: "lc3", type: "highlight", content: "⚠️ **{{remaining}} crédits restants** — Pour continuer à créer sans interruption, passez au plan supérieur ou rechargez vos crédits." } as HighlightBlock,
+      { id: "lc4", type: "button", text: "Voir les plans", url: "https://ora-studio.app/subscribe", style: "filled" } as ButtonBlock,
+      { id: "lc5", type: "divider" } as DividerBlock,
+      { id: "lc6", type: "text", content: "*Vous recevez cet email car vos crédits sont inférieurs à 10% de votre quota.*" } as TextBlock,
+    ],
+  },
+  launch: {
+    subject: "Nouveau sur ORA Studio : {{headline}}",
+    blocks: [
+      { id: "la1", type: "heading", level: "h1", content: "Découvrez notre dernière nouveauté" } as HeadingBlock,
+      { id: "la2", type: "image", src: "https://ora-studio.app/brand/email-hero-launch.jpg", alt: "Nouveauté ORA Studio" } as ImageBlock,
+      { id: "la3", type: "text", content: "Bonjour **{{name}}**,\n\nNous sommes fiers de vous présenter notre toute dernière fonctionnalité. Elle a été conçue pour vous faire gagner du temps et améliorer la qualité de vos créations." } as TextBlock,
+      { id: "la4", type: "highlight", content: "🚀 **Ce qui change pour vous** : des créations plus rapides, plus précises, et toujours parfaitement alignées avec votre identité de marque." } as HighlightBlock,
+      { id: "la5", type: "columns", left: "**Avant**\nProcessus manuel, résultats génériques, plusieurs outils nécessaires", right: "**Maintenant**\nUn clic, résultats sur-mesure, tout dans ORA Studio" } as ColumnsBlock,
+      { id: "la6", type: "button", text: "Essayer maintenant", url: "https://ora-studio.app/hub", style: "filled" } as ButtonBlock,
+    ],
+  },
+  promo: {
+    subject: "Offre exclusive : boostez vos crédits 🎁",
+    blocks: [
+      { id: "pr1", type: "heading", level: "h1", content: "Offre limitée pour vous" } as HeadingBlock,
+      { id: "pr2", type: "image", src: "https://ora-studio.app/brand/email-hero-promo.jpg", alt: "Offre spéciale ORA Studio" } as ImageBlock,
+      { id: "pr3", type: "text", content: "Bonjour **{{name}}**,\n\nPour vous remercier de votre fidélité, nous vous offrons une opportunité exclusive." } as TextBlock,
+      { id: "pr4", type: "highlight", content: "🎁 **Offre spéciale** : Passez au plan supérieur et recevez **le double de crédits** pendant votre premier mois." } as HighlightBlock,
+      { id: "pr5", type: "columns", left: "**Plan actuel**\n{{plan}}\n{{credits}} crédits/mois", right: "**Plan recommandé**\nStudio\n2000 crédits/mois\n+ accès vidéo & audio" } as ColumnsBlock,
+      { id: "pr6", type: "button", text: "Upgrader maintenant", url: "https://ora-studio.app/pricing", style: "filled" } as ButtonBlock,
+      { id: "pr7", type: "text", content: "*Offre valable jusqu'au dernier jour du mois. Conditions sur [ora-studio.app/terms](https://ora-studio.app/terms).*" } as TextBlock,
+    ],
+  },
+  newsletter: {
+    subject: "Les nouveautés ORA Studio — Avril 2026",
+    blocks: [
+      { id: "nl1", type: "heading", level: "h1", content: "Quoi de neuf ce mois-ci ?" } as HeadingBlock,
+      { id: "nl2", type: "text", content: "Bonjour **{{name}}**,\n\nDécouvrez les dernières fonctionnalités et inspirations pour vos créations." } as TextBlock,
+      { id: "nl3", type: "image", src: "https://ora-studio.app/brand/email-hero-news.jpg", alt: "Nouveautés ORA Studio" } as ImageBlock,
+      { id: "nl4", type: "heading", level: "h2", content: "🚀 Nouvelles fonctionnalités" } as HeadingBlock,
+      { id: "nl5", type: "columns", left: "**Génération vidéo**\nCréez des vidéos courtes à partir d'un simple brief. Parfait pour vos réseaux sociaux.", right: "**Templates campagne**\nDes modèles prêts à l'emploi pour LinkedIn, Instagram, newsletters et plus encore." } as ColumnsBlock,
+      { id: "nl6", type: "divider" } as DividerBlock,
+      { id: "nl7", type: "heading", level: "h2", content: "🎨 Inspiration du mois" } as HeadingBlock,
+      { id: "nl8", type: "text", content: "Nos artisans décorateurs ont créé des campagnes exceptionnelles ce mois-ci. Voici notre sélection des plus belles réalisations." } as TextBlock,
+      { id: "nl9", type: "button", text: "Voir les inspirations", url: "https://ora-studio.app/hub", style: "filled" } as ButtonBlock,
+      { id: "nl10", type: "divider" } as DividerBlock,
+      { id: "nl11", type: "text", content: "Vous recevez cet email car vous êtes inscrit sur ORA Studio. [Se désinscrire](https://ora-studio.app/profile)" } as TextBlock,
+    ],
+  },
+  custom: {
+    subject: "Votre sujet ici",
+    blocks: [
+      { id: "cu1", type: "heading", level: "h1", content: "Titre de votre email" } as HeadingBlock,
+      { id: "cu2", type: "text", content: "Rédigez votre contenu ici. Utilisez **gras**, *italique* ou [un lien](https://ora-studio.app).\n\nVous pouvez ajouter des blocs supplémentaires avec la palette ci-dessus." } as TextBlock,
+      { id: "cu3", type: "button", text: "Découvrir", url: "https://ora-studio.app", style: "filled" } as ButtonBlock,
+    ],
+  },
+};
+
 /** Convert markdown-like inline formatting to HTML */
 function inlineFormat(text: string): string {
   return text
@@ -1662,6 +1747,11 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
 </body></html>`;
   }, [blocks, variables]);
 
+  /* ── AI regenerate / translate state ── */
+  const [regeneratingBlockId, setRegeneratingBlockId] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [emailLang, setEmailLang] = useState<"fr" | "en">("fr");
+
   /* ── Block manipulation helpers ── */
   const addBlock = (type: EmailBlockType) => {
     setBlocks(prev => [...prev, createBlock(type)]);
@@ -1698,21 +1788,79 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
     });
   };
 
-  /* ── Template loading: convert HTML template to blocks ── */
+  /* ── AI: Regenerate a single block ── */
+  const handleRegenerateBlock = async (blockId: string) => {
+    const block = blocks.find(b => b.id === blockId);
+    if (!block) return;
+    const content = (block as any).content || (block as any).text || "";
+    if (!content.trim()) return;
+    setRegeneratingBlockId(blockId);
+    try {
+      const res = await adminPost("/admin/email/regenerate-block", {
+        content,
+        blockType: block.type,
+        context: subject,
+      });
+      if (res.content) {
+        if (block.type === "button") {
+          updateBlock(blockId, { text: res.content });
+        } else {
+          updateBlock(blockId, { content: res.content });
+        }
+      }
+    } catch (err) { console.error("[regen]", err); }
+    setRegeneratingBlockId(null);
+  };
+
+  /* ── AI: Translate all blocks ── */
+  const handleTranslate = async (targetLang: "fr" | "en") => {
+    setTranslating(true);
+    try {
+      const res = await adminPost("/admin/email/translate", {
+        blocks: blocks.map(b => ({ id: b.id, type: b.type, ...b })),
+        targetLang,
+      });
+      if (res.translations && Array.isArray(res.translations)) {
+        setBlocks(prev => {
+          const next = [...prev];
+          for (const t of res.translations) {
+            const idx = next.findIndex(b => b.id === t.blockId);
+            if (idx !== -1) {
+              next[idx] = { ...next[idx], [t.field]: t.text } as EmailBlock;
+            }
+          }
+          return next;
+        });
+        setEmailLang(targetLang);
+      }
+    } catch (err) { console.error("[translate]", err); }
+    setTranslating(false);
+  };
+
+  /* ── Template loading: use pre-written blocks if available ── */
   const loadTemplate = (id: string) => {
     const t = templates[id];
-    if (!t) return;
+    const prewritten = TEMPLATE_BLOCKS[id];
+    if (!t && !prewritten) return;
     setSelectedTemplateId(id);
-    setSubject(t.subject);
-    // Since existing templates are raw HTML, we put the whole thing in a single text block
-    // but also keep the raw reference for sending
-    setBlocks([
-      { id: uid(), type: "heading", level: "h1", content: t.name } as HeadingBlock,
-      { id: uid(), type: "text", content: "Template chargé. Modifiez les blocs ci-dessous." } as TextBlock,
-    ]);
+
+    // Always prefer pre-written blocks over generic fallback
+    if (prewritten) {
+      setSubject(prewritten.subject);
+      setBlocks(prewritten.blocks.map(b => ({ ...b, id: uid() } as EmailBlock)));
+    } else if (t) {
+      setSubject(t.subject);
+      setBlocks([
+        { id: uid(), type: "heading", level: "h1", content: t.name } as HeadingBlock,
+        { id: uid(), type: "text", content: "Template chargé. Modifiez les blocs ci-dessous." } as TextBlock,
+      ]);
+    }
+
+    // Set default variable values
+    const templateVars = t?.variables || [];
     const defaultVars: Record<string, string> = {};
-    for (const v of t.variables) {
-      defaultVars[v] = v === "name" ? "Prénom" : v === "plan" ? "Starter" : v === "credits" ? "500" : v === "remaining" ? "15" : v === "ctaUrl" ? "https://ora-studio.app/hub" : v === "ctaText" ? "Découvrir" : "";
+    for (const v of templateVars) {
+      defaultVars[v] = v === "name" ? "Prénom" : v === "plan" ? "Starter" : v === "credits" ? "500" : v === "remaining" ? "15" : v === "ctaUrl" ? "https://ora-studio.app/hub" : v === "ctaText" ? "Découvrir" : v === "headline" ? "Titre" : v === "subtitle" ? "Sous-titre" : v === "body" ? "Contenu" : v === "offer" ? "-50%" : "";
     }
     setVariables(prev => ({ ...prev, ...defaultVars }));
   };
@@ -1891,7 +2039,7 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
                   onClick={() => loadTemplate(id)}
                   className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer transition-colors ${selectedTemplateId === id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
                 >
-                  <LayoutTemplate size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />{t.name}
+                  {TEMPLATE_BLOCKS[id] ? <Sparkles size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> : <LayoutTemplate size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />}{t.name}
                 </button>
               ))}
             </div>
@@ -1910,10 +2058,20 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
                   placeholder="Objet de l'email..."
                 />
               </div>
-              <div className="pt-4">
+              <div className="pt-4 flex items-center gap-2">
                 <Pill active={abTestEnabled} onClick={() => setAbTestEnabled(!abTestEnabled)}>
                   <FlaskConical size={11} className="inline mr-1" style={{ verticalAlign: "-1px" }} />A/B Test
                 </Pill>
+                <button
+                  onClick={() => handleTranslate(emailLang === "fr" ? "en" : "fr")}
+                  disabled={translating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+                  style={{ fontSize: "12px", fontWeight: 500 }}
+                  title={emailLang === "fr" ? "Traduire en anglais" : "Traduire en français"}
+                >
+                  {translating ? <Loader2 size={11} className="animate-spin" /> : <Languages size={11} />}
+                  {emailLang === "fr" ? "→ EN" : "→ FR"}
+                </button>
               </div>
             </div>
             {abTestEnabled && (
@@ -2008,6 +2166,20 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
                       <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.05em", flex: 1, marginLeft: 4 }}>
                         {BLOCK_PALETTE.find(p => p.type === block.type)?.label || block.type}
                       </span>
+                      {/* AI regenerate — only for text-based blocks */}
+                      {["heading", "text", "highlight", "button"].includes(block.type) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRegenerateBlock(block.id); }}
+                          disabled={regeneratingBlockId === block.id}
+                          className="p-1 rounded hover:bg-purple-50 transition-colors cursor-pointer disabled:opacity-50"
+                          title="Réécrire avec l'IA"
+                        >
+                          {regeneratingBlockId === block.id
+                            ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
+                            : <Wand2 size={12} style={{ color: "#7c3aed" }} />
+                          }
+                        </button>
+                      )}
                       <button onClick={() => moveBlock(block.id, -1)} disabled={idx === 0} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30" title="Monter"><MoveUp size={12} style={{ color: "var(--muted-foreground)" }} /></button>
                       <button onClick={() => moveBlock(block.id, 1)} disabled={idx === blocks.length - 1} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer disabled:opacity-30" title="Descendre"><MoveDown size={12} style={{ color: "var(--muted-foreground)" }} /></button>
                       <button onClick={() => duplicateBlock(block.id)} className="p-1 rounded hover:bg-secondary transition-colors cursor-pointer" title="Dupliquer"><Copy size={12} style={{ color: "var(--muted-foreground)" }} /></button>

@@ -12050,6 +12050,133 @@ app.post("/admin/email/send-to-list", async (c) => {
   }
 });
 
+// POST /admin/email/regenerate-block — AI rewrite a text block
+app.post("/admin/email/regenerate-block", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { content, blockType, context } = body;
+    // blockType: "heading" | "text" | "highlight"
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI API key not configured" }, 500);
+
+    const systemPrompt = `Tu es un expert en email marketing pour ORA Studio, une plateforme de création IA pour artisans décorateurs.
+Réécris le contenu qu'on te donne pour un email professionnel et engageant.
+- Garde le même sens et la même intention
+- Améliore le style, la clarté et l'impact
+- ${blockType === "heading" ? "Retourne un titre court et percutant (max 10 mots)" : "Retourne un paragraphe concis et engageant"}
+- Utilise le vouvoiement
+- Tu peux utiliser le format markdown inline: **gras**, *italique*, [texte](url)
+- Retourne UNIQUEMENT le texte réécrit, sans guillemets, sans explication.`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Contenu actuel:\n${content}\n\n${context ? `Contexte de l'email: ${context}` : ""}` },
+        ],
+        max_tokens: 300,
+        temperature: 0.8,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[email-regen] API error:", res.status, errText.slice(0, 200));
+      return c.json({ error: "AI generation failed" }, 500);
+    }
+
+    const data = await res.json();
+    const newContent = data.choices?.[0]?.message?.content?.trim() || content;
+    return c.json({ success: true, content: newContent });
+  } catch (err) {
+    console.error("[email-regen]", err);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// POST /admin/email/translate — translate email blocks FR↔EN
+app.post("/admin/email/translate", async (c) => {
+  try {
+    await requireAdmin(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { blocks, targetLang } = body;
+    // blocks: Array<{ id, type, content?, left?, right?, text? }>
+    // targetLang: "en" | "fr"
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ error: "AI API key not configured" }, 500);
+
+    // Collect all translatable text from blocks
+    const textsToTranslate: { blockId: string; field: string; text: string }[] = [];
+    for (const b of blocks) {
+      if (b.type === "heading" || b.type === "text" || b.type === "highlight") {
+        if (b.content) textsToTranslate.push({ blockId: b.id, field: "content", text: b.content });
+      }
+      if (b.type === "button" && b.text) {
+        textsToTranslate.push({ blockId: b.id, field: "text", text: b.text });
+      }
+      if (b.type === "columns") {
+        if (b.left) textsToTranslate.push({ blockId: b.id, field: "left", text: b.left });
+        if (b.right) textsToTranslate.push({ blockId: b.id, field: "right", text: b.right });
+      }
+    }
+
+    if (textsToTranslate.length === 0) return c.json({ success: true, translations: [] });
+
+    const langLabel = targetLang === "en" ? "anglais" : "français";
+    const systemPrompt = `Tu es un traducteur professionnel. Traduis chaque texte en ${langLabel}.
+- Conserve le ton professionnel et marketing
+- Conserve le format markdown inline (**gras**, *italique*, [texte](url))
+- Conserve les variables entre {{ }} telles quelles (ex: {{name}}, {{plan}})
+- Retourne un JSON array avec exactement le même nombre d'éléments
+- Chaque élément: { "blockId": "...", "field": "...", "text": "traduction" }
+- Retourne UNIQUEMENT le JSON array, rien d'autre.`;
+
+    const userContent = JSON.stringify(textsToTranslate.map(t => ({ blockId: t.blockId, field: t.field, text: t.text })));
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        max_tokens: 2000,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[email-translate] API error:", res.status, errText.slice(0, 200));
+      return c.json({ error: "Translation API failed" }, 500);
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "[]";
+
+    // Parse the JSON response (handle markdown code blocks)
+    let jsonStr = raw;
+    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jm) jsonStr = jm[1].trim();
+
+    let translations: { blockId: string; field: string; text: string }[] = [];
+    try { translations = JSON.parse(jsonStr); } catch { translations = []; }
+
+    return c.json({ success: true, translations });
+  } catch (err) {
+    console.error("[email-translate]", err);
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
 // ═════════════════════════════════════════════════════════════
 // DEBUG / DIAGNOSTICS
 // ═════════════════════════════════════════════════════════════
