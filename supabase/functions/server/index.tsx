@@ -5948,7 +5948,7 @@ MARQUE DE L'UTILISATEUR :
 - Codes à éviter : ${bp.semiotic_codes?.avoid?.join(", ") || ""}
 - Ton : ${context.tone || bp.tone || "professionnel"}
 ${context.gammes ? `- Gammes/produits : ${JSON.stringify(context.gammes).slice(0, 500)}` : ""}
-${context.products?.length ? `\nPRODUITS DU CATALOGUE :\n${context.products.map((p: any) => `- ${p.name}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? ` : ${p.description.slice(0, 100)}` : ""}`).join("\n")}` : ""}
+${context.products?.length ? `\nPRODUITS DU CATALOGUE (utilisez l'ID dans productId de generate-campaign) :\n${context.products.map((p: any) => `- [ID:${p.id}] ${p.name}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? ` : ${p.description.slice(0, 100)}` : ""}`).join("\n")}` : ""}
 IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir TOUTES les créations (libre ET campagne). En création libre, intègre subtilement l'univers de marque (couleurs, ton, direction photo). En campagne, reste brand-compliant et propose des campagnes autour des vrais produits.` : "";
 
     const today = new Date();
@@ -6060,7 +6060,7 @@ ACTIONS DISPONIBLES :
 - generate-text: { "prompt": "...", "style": "creative"|"professional"|"casual" }
 - generate-music: { "prompt": "...", "instrumental": true/false }
 - generate-video: { "prompt": "...", "model": "ora-motion", "imageUrl": "(optionnel, URL de la photo référence pour img2vid)" }
-- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto" }
+- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "productId": "(OBLIGATOIRE si un produit est mentionné — récupérez l'ID depuis le contexte produits)" }
   Formats : linkedin-post, linkedin-carousel, linkedin-video, linkedin-text, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, facebook-ad, twitter-post, twitter-thread, tiktok-video, youtube-thumbnail, youtube-short, pinterest-pin, blog-article
 - start-video-montage: { "description": "...", "format": "reel"|"linkedin"|"story" }
 - ask-clarification: { "options": ["opt1","opt2","opt3"] }
