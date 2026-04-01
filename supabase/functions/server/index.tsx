@@ -4222,22 +4222,25 @@ app.post("/generate/image-start", async (c) => {
 
       if (photoroomKey) {
         // ── Scene config: keyword → preset, or use full prompt as bgPrompt for custom scenes ──
+        // Per Photoroom docs: use "preserve-hue-and-saturation" for products (keeps exact colors)
+        // beautify is REMOVED from bgPrompt scenes (it re-imagines the subject = alters the product)
+        // Use Studio model for AI Backgrounds (better photorealism)
         const promptLower = rawPrompt.toLowerCase();
-        type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: string; beautify?: string; padding: string };
+        type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: string; beautify?: string; padding: string; useStudioModel?: boolean };
         const sceneMap: Record<string, PhotoroomScene> = {
-          "photoshoot":   { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
-          "packshot":     { bgColor: "F5F5F5", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.08" },
-          "lifestyle":    { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
-          "flat lay":     { bgColor: "FFFFFF", shadow: "ai.floating", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
-          "cinématique":  { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: "ai.auto", padding: "0.05" },
-          "editorial":    { bgPrompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting, magazine quality", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
-          "moodboard":    { bgPrompt: "Atmospheric textural background, soft dreamy palette, artistic mood, creative studio setting", shadow: "ai.soft", lighting: "ai.auto", padding: "0.08" },
-          "3d":           { bgPrompt: "Clean 3D product visualization environment, infinite background, studio HDRI lighting, floating product perspective", shadow: "ai.soft", lighting: "ai.auto", padding: "0.08" },
-          "closeup":      { bgPrompt: "Extreme macro close-up environment, soft bokeh, shallow depth of field, product detail focus", shadow: "ai.soft", lighting: "ai.auto", padding: "0.02" },
-          "aerial":       { bgPrompt: "Bird's-eye view setting, aerial perspective landscape, natural terrain, geographic context", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
-          "ugc":          { bgPrompt: "Authentic casual home environment, natural window light, phone camera aesthetic, real-life setting", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
-          "before-after": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.05" },
-          "default":      { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
+          "photoshoot":   { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.1" },
+          "packshot":     { bgColor: "F5F5F5", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.08" },
+          "lifestyle":    { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true },
+          "flat lay":     { bgColor: "FFFFFF", shadow: "ai.floating", lighting: "ai.preserve-hue-and-saturation", padding: "0.1" },
+          "cinématique":  { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true },
+          "editorial":    { bgPrompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting, magazine quality", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true },
+          "moodboard":    { bgPrompt: "Atmospheric textural background, soft dreamy palette, artistic mood, creative studio setting", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.08", useStudioModel: true },
+          "3d":           { bgPrompt: "Clean 3D product visualization environment, infinite background, studio HDRI lighting, floating product perspective", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.08", useStudioModel: true },
+          "closeup":      { bgPrompt: "Extreme macro close-up environment, soft bokeh, shallow depth of field, product detail focus", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.02", useStudioModel: true },
+          "aerial":       { bgPrompt: "Bird's-eye view setting, aerial perspective landscape, natural terrain, geographic context", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true },
+          "ugc":          { bgPrompt: "Authentic casual home environment, natural window light, phone camera aesthetic, real-life setting", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true },
+          "before-after": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05" },
+          "default":      { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.1" },
         };
 
         // Detect scene type from prompt keywords
@@ -4257,7 +4260,7 @@ app.post("/generate/image-start", async (c) => {
 
         // If no keyword match but prompt is long (campaign prompt), use it as dynamic bgPrompt
         if (!scene && rawPrompt.length > 50) {
-          scene = { bgPrompt: rawPrompt.slice(0, 300), shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" };
+          scene = { bgPrompt: rawPrompt.slice(0, 300), shadow: "ai.soft", lighting: "ai.preserve-hue-and-saturation", padding: "0.05", useStudioModel: true };
           console.log(`[image-start-POST] PHOTOROOM: dynamic bgPrompt from campaign prompt`);
         }
         if (!scene) scene = sceneMap["default"];
@@ -4284,18 +4287,23 @@ app.post("/generate/image-start", async (c) => {
           params.set("shadow.mode", scene.shadow);
         }
         params.set("lighting.mode", scene.lighting);
-        if (scene.beautify) params.set("beautify.mode", scene.beautify);
+        // beautify re-imagines the subject (alters product) — only safe on simple packshot/studio
+        if (scene.beautify && !scene.bgPrompt) params.set("beautify.mode", scene.beautify);
         params.set("outputSize", outputSize);
         params.set("padding", scene.padding);
+        params.set("ignorePaddingAndSnapOnCroppedSides", "false"); // proper centering
         params.set("export.format", "webp");
 
         const photoroomUrl = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
-        console.log(`[image-start-POST] PHOTOROOM: ${photoroomUrl.slice(0, 120)}...`);
+        console.log(`[image-start-POST] PHOTOROOM: model=${scene.useStudioModel ? "studio" : "default"}, ${photoroomUrl.slice(0, 120)}...`);
 
         try {
-          const prRes = await fetch(photoroomUrl, {
-            headers: { "x-api-key": photoroomKey },
-          });
+          const headers: Record<string, string> = { "x-api-key": photoroomKey };
+          // Use Studio model for AI Backgrounds (better photorealism per docs)
+          if (scene.useStudioModel && scene.bgPrompt) {
+            headers["pr-ai-background-model-version"] = "background-studio-beta-2025-03-17";
+          }
+          const prRes = await fetch(photoroomUrl, { headers });
 
           if (prRes.ok) {
             // Response is binary image — upload to Supabase Storage
