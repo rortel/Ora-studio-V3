@@ -8,7 +8,7 @@ import {
   Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
   BookOpen, LayoutGrid, Megaphone, Smartphone, Target, Check,
   ChevronDown, Lightbulb, Package, Globe, Languages,
-  Calendar, Save, Pencil, CheckCircle2, Clock,
+  Calendar, Save, Pencil, CheckCircle2, Clock, Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
@@ -452,7 +452,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], productId, productUrl } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], productId, productUrl, visualStyle: campaignVisualStyle } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -571,8 +571,13 @@ export function StudioPage() {
           const imageModelList: string[] = Array.isArray(imgModels) ? imgModels : [imgModels];
 
           // 1. Generate texts with all selected text models (in parallel)
+          // Inject visual style into the brief so AI generates scene-appropriate imagePrompts
+          const styledBrief = campaignVisualStyle
+            ? `${productBrief}\n\nVISUAL DIRECTION: All imagePrompt fields MUST describe a "${campaignVisualStyle}" scene. Adapt lighting, background, composition to match this visual style.`
+            : productBrief;
+
           const textGenPayload = {
-            brief: productBrief,
+            brief: styledBrief,
             targetAudience: targetAudience || "",
             formats: formats.join(","),
             campaignObjective: objective || "",
@@ -682,7 +687,8 @@ export function StudioPage() {
           for (let i = 0; i < Math.min(visualFormats.length, 4); i++) {
             const copyEntry = (primaryText.copyMap as any)?.[visualFormats[i].format];
             const basePrompt = copyEntry?.imagePrompt || `${brief}, ${visualFormats[i].platform} ${visualFormats[i].format}, professional`;
-            const enrichedPrompt = `${basePrompt}${brandVisualSuffix}`;
+            const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
+            const enrichedPrompt = `${basePrompt}${visualStyleDirective}${brandVisualSuffix}`;
             const aspectRatio = visualFormats[i].format.includes("story") || visualFormats[i].format.includes("reel")
               ? "9:16"
               : visualFormats[i].format.includes("post") && visualFormats[i].platform === "instagram"
@@ -2619,10 +2625,26 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
+  const [visualStyle, setVisualStyle] = useState("");
   const [textModels, setTextModels] = useState<string[]>(["gpt-4o"]);
   const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
   const [inspiring, setInspiring] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Visual scene presets — adapted to product type
+  const SCENE_PRESETS = [
+    { id: "", label: "Auto", desc: "IA choisit le meilleur contexte", icon: "✨" },
+    { id: "Studio Photoshoot", label: "Photo Studio", desc: "Fond blanc/gris, éclairage pro", icon: "📸" },
+    { id: "Packshot", label: "Packshot", desc: "Vue produit détourée, e-commerce", icon: "📦" },
+    { id: "Lifestyle", label: "Lifestyle", desc: "Mise en situation naturelle, golden hour", icon: "🌿" },
+    { id: "Flat Lay", label: "Flat Lay", desc: "Vue du dessus, composition créative", icon: "🎨" },
+    { id: "UGC / Authentic", label: "UGC / Authentique", desc: "Style smartphone, décor naturel", icon: "🤳" },
+    { id: "Cinematic", label: "Cinématique", desc: "Éclairage dramatique, mood sombre", icon: "🎬" },
+    { id: "Editorial / Fashion", label: "Editorial", desc: "Haute couture, direction artistique", icon: "✂️" },
+    { id: "Close-up / Macro", label: "Close-up", desc: "Détail produit, texture, matière", icon: "🔍" },
+    { id: "3D Render", label: "3D", desc: "Rendu 3D, flottant, environnement HDRI", icon: "💎" },
+    { id: "Aerial / Drone", label: "Aérien", desc: "Vue drone, perspective grand angle", icon: "🚁" },
+  ];
 
   const toggleFormat = (id: string) => {
     setSelectedFormats(prev =>
@@ -2691,6 +2713,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       language,
       textModels,
       imageModels,
+      visualStyle,
     });
   };
 
@@ -2802,6 +2825,41 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             </div>
           </div>
         )}
+
+        {/* ═══ MISE EN SITUATION — Visual scene selector ═══ */}
+        <div>
+          <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
+            <Camera size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
+            Mise en situation
+            {visualStyle && (
+              <span className="ml-2 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--background)", background: "var(--foreground)", textTransform: "none", letterSpacing: "normal" }}>
+                {SCENE_PRESETS.find(s => s.id === visualStyle)?.label || visualStyle}
+              </span>
+            )}
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {SCENE_PRESETS.map(scene => {
+              const isSelected = visualStyle === scene.id;
+              return (
+                <button
+                  key={scene.id}
+                  onClick={() => setVisualStyle(scene.id)}
+                  className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer text-left"
+                  style={{
+                    background: isSelected ? "var(--foreground)" : "var(--secondary)",
+                    color: isSelected ? "var(--background)" : "var(--text-primary)",
+                    border: `1.5px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
+                  }}>
+                  <span style={{ fontSize: "16px", lineHeight: 1.2, flexShrink: 0 }}>{scene.icon}</span>
+                  <div>
+                    <div style={{ fontSize: "12px", fontWeight: 600, lineHeight: 1.3 }}>{scene.label}</div>
+                    <div style={{ fontSize: "10px", opacity: 0.7, lineHeight: 1.3, marginTop: 1 }}>{scene.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Format selection */}
         <div>
