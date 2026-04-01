@@ -457,25 +457,48 @@ export function StudioPage() {
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
           let productRefUrls: string[] = [];
+
+          // Helper: extract image URLs from a product object
+          const extractProductImages = (prod: any): string[] => {
+            const urls: string[] = [];
+            if (prod.images?.length > 0) {
+              for (const img of prod.images) {
+                if (img.signedUrl) urls.push(img.signedUrl);
+              }
+            }
+            if (urls.length === 0 && prod.imageUrls?.length > 0) {
+              for (const url of prod.imageUrls) {
+                if (url && typeof url === "string" && url.startsWith("http")) urls.push(url);
+              }
+            }
+            if (urls.length === 0 && prod.imageUrl) {
+              urls.push(prod.imageUrl);
+            }
+            return urls;
+          };
+
+          // 1. Try specific product if productId provided
           if (productId && products.length) {
             const prod = products.find((p: any) => p.id === productId);
             if (prod) {
               productBrief = `${productBrief}\n\nPRODUCT FOCUS: ${prod.name}${prod.price ? ` (${prod.price})` : ""}${prod.category ? ` — ${prod.category}` : ""}${prod.description ? `\n${prod.description}` : ""}`;
-              // Collect product image URLs for Photoroom (real product photos)
-              if (prod.images?.length > 0) {
-                for (const img of prod.images) {
-                  if (img.signedUrl) productRefUrls.push(img.signedUrl);
-                }
-              }
-              if (productRefUrls.length === 0 && prod.imageUrls?.length > 0) {
-                for (const url of prod.imageUrls) {
-                  if (url && typeof url === "string" && url.startsWith("http")) productRefUrls.push(url);
-                }
-              }
-              if (productRefUrls.length === 0 && prod.imageUrl) {
-                productRefUrls.push(prod.imageUrl);
-              }
+              productRefUrls = extractProductImages(prod);
               console.log(`[studio] Product "${prod.name}": ${productRefUrls.length} ref image(s) for Photoroom`);
+            }
+          }
+
+          // 2. FALLBACK: if no specific product refs, collect images from ALL products in catalog
+          // This ensures Photoroom is called even for generic brand campaigns
+          if (productRefUrls.length === 0 && products.length > 0) {
+            for (const prod of products) {
+              const imgs = extractProductImages(prod);
+              productRefUrls.push(...imgs);
+              if (productRefUrls.length >= 5) break; // cap at 5 refs
+            }
+            if (productRefUrls.length > 0) {
+              console.log(`[studio] No specific product — using ${productRefUrls.length} ref(s) from catalog for Photoroom`);
+            } else {
+              console.log(`[studio] No product images found in catalog — Photoroom will be skipped`);
             }
           }
 
