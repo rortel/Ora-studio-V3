@@ -1466,7 +1466,13 @@ const BLOCK_PALETTE: { type: EmailBlockType; label: string; icon: typeof Type }[
   { type: "highlight", label: "Highlight", icon: MessageSquareQuote },
 ];
 
-const AVAILABLE_VARIABLES = ["name", "plan", "credits", "remaining", "ctaUrl", "ctaText", "company", "email"];
+const AVAILABLE_VARIABLES = [
+  "name", "email", "plan", "credits", "creditsUsed",
+  "company", "sector",
+  "totalGenerations", "totalImages", "totalVideos", "totalTexts", "totalAudio",
+  "memberSince", "lastActive",
+  "remaining", "ctaUrl", "ctaText",
+];
 
 function createBlock(type: EmailBlockType): EmailBlock {
   const id = uid();
@@ -1644,7 +1650,13 @@ function EmailTab({ adminPost, users }: { adminPost: (path: string, body?: any) 
   const [result, setResult] = useState<{ sent: number; failed: number } | null>(null);
 
   /* ── Variables ── */
-  const [variables, setVariables] = useState<Record<string, string>>({ name: "Prénom", plan: "Starter", credits: "500", ctaUrl: "https://ora-studio.app/hub", ctaText: "Découvrir" });
+  const [variables, setVariables] = useState<Record<string, string>>({
+    name: "Marie", email: "marie@exemple.com", plan: "Studio", credits: "312", creditsUsed: "188",
+    company: "Atelier Dumas", sector: "Décoration intérieure",
+    totalGenerations: "59", totalImages: "47", totalVideos: "5", totalTexts: "12", totalAudio: "3",
+    memberSince: "2 mars 2026", lastActive: "31 mars 2026",
+    remaining: "15", ctaUrl: "https://ora-studio.app/hub", ctaText: "Découvrir",
+  });
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
   /* ── A/B testing ── */

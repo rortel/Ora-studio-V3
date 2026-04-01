@@ -501,7 +501,76 @@ async function resolveEmailList(list: any): Promise<Array<{ email: string; name:
   return [];
 }
 
-// sendCampaign — send emails to recipients with optional A/B testing, returns campaign stats
+// enrichUserVariables — load real user data to personalize email per recipient
+async function enrichUserVariables(email: string, baseVars: Record<string, string>): Promise<Record<string, string>> {
+  try {
+    // Find user profile by email
+    const allProfiles = await kv.getByPrefix("user:");
+    const profile = allProfiles.find((p: any) => p.email?.toLowerCase() === email.toLowerCase());
+    if (!profile) return { ...baseVars, name: baseVars.name || email.split("@")[0] };
+
+    const userId = profile.userId;
+
+    // Load vault + library in parallel
+    const [vault, libItems] = await Promise.all([
+      userId ? kv.get(`vault:${userId}`).catch(() => null) : null,
+      userId ? kv.getByPrefix(`lib:${userId}:`).catch(() => []) : [],
+    ]);
+
+    // Count generations by type
+    const items = libItems || [];
+    const totalGenerations = items.length;
+    const totalImages = items.filter((i: any) => i.type === "image").length;
+    const totalVideos = items.filter((i: any) => i.type === "video").length;
+    const totalTexts = items.filter((i: any) => i.type === "text").length;
+    const totalAudio = items.filter((i: any) => i.type === "audio" || i.type === "music").length;
+
+    // Format dates
+    const memberSince = profile.createdAt ? new Date(profile.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
+    const lastActive = profile.lastLoginAt ? new Date(profile.lastLoginAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
+
+    // Plan display names
+    const planNames: Record<string, string> = { free: "Free", starter: "Starter", generate: "Pro", studio: "Studio" };
+
+    // Build enriched variables (user data takes priority, but admin overrides win)
+    const enriched: Record<string, string> = {
+      // User profile
+      name: profile.name || email.split("@")[0],
+      email: profile.email || email,
+      plan: planNames[profile.plan] || profile.plan || "Free",
+      credits: String(profile.credits ?? 0),
+      creditsUsed: String(profile.creditsUsed ?? profile.credits_used ?? 0),
+      memberSince,
+      lastActive,
+      // Vault / brand
+      company: vault?.company_name || vault?.brandName || "",
+      sector: vault?.sector || vault?.activity || "",
+      // Library stats
+      totalGenerations: String(totalGenerations),
+      totalImages: String(totalImages),
+      totalVideos: String(totalVideos),
+      totalTexts: String(totalTexts),
+      totalAudio: String(totalAudio),
+      // Spread admin-provided variables last (they override auto values if explicitly set and non-empty)
+    };
+
+    // Admin-provided vars override only if they have real content (not placeholder defaults)
+    const placeholders = new Set(["Prénom", "Starter", "500", "15", ""]);
+    for (const [k, v] of Object.entries(baseVars)) {
+      if (v && !placeholders.has(v)) {
+        enriched[k] = v;
+      }
+    }
+
+    console.log(`[email-enrich] ${email}: name=${enriched.name}, plan=${enriched.plan}, credits=${enriched.credits}, company=${enriched.company}, gens=${totalGenerations}`);
+    return enriched;
+  } catch (err) {
+    console.warn(`[email-enrich] Failed for ${email}:`, err);
+    return { ...baseVars, name: baseVars.name || email.split("@")[0] };
+  }
+}
+
+// sendCampaign — send personalized emails to recipients with optional A/B testing
 async function sendCampaign(opts: {
   recipients: Array<{ email: string; name: string }>;
   subject: string;
@@ -517,7 +586,10 @@ async function sendCampaign(opts: {
 
   for (let i = 0; i < opts.recipients.length; i++) {
     const r = opts.recipients[i];
-    const vars = { ...opts.variables, name: r.name };
+
+    // Enrich variables with real user data for each recipient
+    const vars = await enrichUserVariables(r.email, { ...opts.variables, name: r.name });
+
     let subject = opts.subject;
     if (opts.abTest) {
       subject = i % 2 === 0 ? opts.abTest.subjectA : opts.abTest.subjectB;
