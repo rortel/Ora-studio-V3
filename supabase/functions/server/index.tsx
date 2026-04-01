@@ -4276,8 +4276,13 @@ app.post("/generate/image-start", async (c) => {
         params.set("imageUrl", imageRefUrl);
         params.set("removeBackground", "true");
         if (scene.bgColor) params.set("background.color", scene.bgColor);
-        if (scene.bgPrompt) params.set("background.prompt", scene.bgPrompt);
-        params.set("shadow.mode", scene.shadow);
+        if (scene.bgPrompt) {
+          // AI Background already includes natural shadows — don't add shadow.mode (per Photoroom docs)
+          params.set("background.prompt", scene.bgPrompt);
+        } else {
+          // Only add shadow on solid-color backgrounds
+          params.set("shadow.mode", scene.shadow);
+        }
         params.set("lighting.mode", scene.lighting);
         if (scene.beautify) params.set("beautify.mode", scene.beautify);
         params.set("outputSize", outputSize);
