@@ -18,6 +18,7 @@ import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { CampaignLab } from "../components/CampaignLab";
 import { RouteGuard } from "../components/RouteGuard";
+import { applyLogoOverlay, type LogoOverlayConfig } from "../lib/logo-overlay";
 
 /* ═══════════════════════════════════
    TYPES
@@ -255,6 +256,9 @@ function HubPageContent() {
   const [refImage, setRefImage] = useState<{ file: File; previewUrl: string; signedUrl?: string; uploading?: boolean } | null>(null);
   const [refStrength, setRefStrength] = useState(0.75);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
+
+  // ── Brand Logo overlay config (loaded from vault) ──
+  const [logoConfig, setLogoConfig] = useState<LogoOverlayConfig | null>(null);
 
   // ── Brand Engine state ──
   const [brandBrief, setBrandBrief] = useState<{ angle: string; hook: string; emotional_arc: string; benefit_focus: string; visual_direction: string; dont: string } | null>(null);
@@ -608,6 +612,37 @@ function HubPageContent() {
     }
   }, [libraryFolders, serverPost]);
 
+  // ── Load brand logo config from vault on mount ──
+  useEffect(() => {
+    serverPost("/vault/load", {}).then(vaultRes => {
+      const vault = vaultRes?.vault;
+      if (vault?.logo_url) {
+        setLogoConfig({
+          logoUrl: vault.logo_url,
+          position: vault.logo_position || "bottom-right",
+          sizePercent: vault.logo_size_percent || 12,
+          opacity: vault.logo_opacity ?? 0.9,
+        });
+        console.log("[HubPage] Brand logo loaded for overlay:", vault.logo_url.slice(0, 60));
+      }
+    }).catch(() => {});
+  }, [serverPost]);
+
+  // ── Apply logo overlay to generated images ──
+  const applyLogoToGenerations = useCallback(async (items: GeneratedItem[]): Promise<GeneratedItem[]> => {
+    if (!logoConfig) return items;
+    const updated = await Promise.all(items.map(async (item) => {
+      if (item.preview.kind === "image" && (item.preview as any).imageUrl) {
+        try {
+          const overlayUrl = await applyLogoOverlay((item.preview as any).imageUrl, logoConfig);
+          return { ...item, preview: { ...item.preview, imageUrl: overlayUrl, imageUrlOriginal: (item.preview as any).imageUrl } };
+        } catch { return item; }
+      }
+      return item;
+    }));
+    return updated;
+  }, [logoConfig]);
+
   // ── Brand Engine: post-generation scoring ──
   const prevIsGenerating = useRef(false);
   useEffect(() => {
@@ -631,6 +666,27 @@ function HubPageContent() {
           }
         }).catch(() => {});
       }).catch(() => {});
+
+      // ── Auto compliance check (brand guard) ──
+      const imgUrl = (resultPreview as any)?.imageUrl || null;
+      const copyText = (resultPreview as any)?.excerpt || (resultPreview as any)?.text || null;
+      if (imgUrl || copyText) {
+        serverPost("/generate/compliance-check", {
+          imageUrl: imgUrl,
+          copy: copyText,
+          assetType: firstGen?.type || "image",
+        }).then(compRes => {
+          if (compRes?.success && compRes.score != null) {
+            console.log(`[Compliance] Auto-check: ${compRes.score}/100 (${compRes.details?.rating})`);
+            if (compRes.score < 60) {
+              toast.warning(`Conformité brand : ${compRes.score}/100 — ${compRes.details?.rating === "needs-revision" ? "À réviser" : "Acceptable"}`, {
+                duration: 6000,
+                description: compRes.details?.textIssues?.[0] || compRes.details?.visualIssues?.[0] || compRes.details?.toneIssues?.[0] || "",
+              });
+            }
+          }
+        }).catch(() => {});
+      }
     }
     prevIsGenerating.current = isGenerating;
   }, [isGenerating, generations, serverPost]);
@@ -841,7 +897,7 @@ function HubPageContent() {
           return;
         }
         if (data.success && data.results) {
-          const items: GeneratedItem[] = data.results.map((r: any, i: number) => {
+          const rawItems: GeneratedItem[] = data.results.map((r: any, i: number) => {
             const model = activeModels[i] || activeModels[0];
             if (r.success && r.result.imageUrl) {
               return { id: `gen-${Date.now()}-${i}`, type: "image" as ContentType, model: { ...model, speed: ((r.result.latencyMs || 0) < 10000 ? "fast" : (r.result.latencyMs || 0) < 30000 ? "medium" : "slow") as "fast"|"medium"|"slow" }, prompt: currentPrompt, timestamp: `${ts} (${(r.result.latencyMs / 1000).toFixed(1)}s)`, saved: true, selected: false, preview: { kind: "image" as const, palette: palettes[i % palettes.length], label: `Visual Lab - ${model.name} via ${r.result.provider || "AI"}`, imageUrl: r.result.imageUrl } };
@@ -849,6 +905,8 @@ function HubPageContent() {
             const errorMsg = r.error ? ` - ${String(r.error).slice(0, 80)}` : "";
             return { id: `gen-${Date.now()}-${i}`, type: "image" as ContentType, model, prompt: currentPrompt, timestamp: ts, saved: false, selected: false, preview: { kind: "image" as const, palette: palettes[i % palettes.length], label: `${model.name} (failed${errorMsg})` } };
           });
+          // Apply brand logo overlay to generated images
+          const items = await applyLogoToGenerations(rawItems);
           setGenerations(items);
           autoSaveToLibrary(items);
         } else {
@@ -892,7 +950,7 @@ function HubPageContent() {
         }
         console.log("[HubPage] Image results:", data.success, data.results?.length, data.error);
         if (data.success && data.results) {
-          const items: GeneratedItem[] = data.results.map((r: any, i: number) => {
+          const rawItems: GeneratedItem[] = data.results.map((r: any, i: number) => {
             const model = activeModels[i] || activeModels[0];
             if (r.success && r.result.imageUrl) {
               return { id: `gen-${Date.now()}-${i}`, type: "image" as ContentType, model: { ...model, speed: ((r.result.latencyMs || 0) < 10000 ? "fast" : (r.result.latencyMs || 0) < 30000 ? "medium" : "slow") as "fast"|"medium"|"slow" }, prompt: currentPrompt, timestamp: `${ts} (${(r.result.latencyMs / 1000).toFixed(1)}s)`, saved: true, selected: false, preview: { kind: "image" as const, palette: palettes[i % palettes.length], label: `Generated by ${model.name} via ${r.result.provider || "AI"}`, imageUrl: r.result.imageUrl } };
@@ -900,6 +958,8 @@ function HubPageContent() {
             const errorMsg = r.error ? ` — ${String(r.error).slice(0, 80)}` : "";
             return { id: `gen-${Date.now()}-${i}`, type: "image" as ContentType, model, prompt: currentPrompt, timestamp: ts, saved: false, selected: false, preview: { kind: "image" as const, palette: palettes[i % palettes.length], label: `${model.name} (failed${errorMsg})` } };
           });
+          // Apply brand logo overlay to generated images
+          const items = await applyLogoToGenerations(rawItems);
           setGenerations(items);
           autoSaveToLibrary(items);
         } else {
