@@ -4223,21 +4223,21 @@ app.post("/generate/image-start", async (c) => {
       if (photoroomKey) {
         // ── Scene config: keyword → preset, or use full prompt as bgPrompt for custom scenes ──
         const promptLower = rawPrompt.toLowerCase();
-        type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: boolean; beautify?: string; outputSize: string; padding: string };
+        type PhotoroomScene = { bgColor?: string; bgPrompt?: string; shadow: string; lighting: string; beautify?: string; padding: string };
         const sceneMap: Record<string, PhotoroomScene> = {
-          "photoshoot":   { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
-          "packshot":     { bgColor: "F0F0F0", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.08" },
-          "lifestyle":    { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "flat lay":     { bgColor: "FFFFFF", shadow: "ai.floating", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
-          "cinématique":  { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "editorial":    { bgPrompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting, magazine quality", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "moodboard":    { bgPrompt: "Atmospheric textural background, soft dreamy palette, artistic mood, creative studio setting", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.08" },
-          "3d":           { bgPrompt: "Clean 3D product visualization environment, infinite background, studio HDRI lighting, floating product perspective", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.08" },
-          "closeup":      { bgPrompt: "Extreme macro close-up environment, soft bokeh, shallow depth of field, product detail focus", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.02" },
-          "aerial":       { bgPrompt: "Bird's-eye view setting, aerial perspective landscape, natural terrain, geographic context", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "ugc":          { bgPrompt: "Authentic casual home environment, natural window light, phone camera aesthetic, real-life setting", shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" },
-          "before-after": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.05" },
-          "default":      { bgColor: "FFFFFF", shadow: "ai.soft", lighting: true, beautify: "ai.auto", outputSize: "1000x1000", padding: "0.1" },
+          "photoshoot":   { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
+          "packshot":     { bgColor: "F5F5F5", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.08" },
+          "lifestyle":    { bgPrompt: "Beautiful natural outdoor environment, warm golden hour sunlight, shallow depth of field, editorial lifestyle photography", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
+          "flat lay":     { bgColor: "FFFFFF", shadow: "ai.floating", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
+          "cinématique":  { bgPrompt: "Dramatic cinematic scene, moody dark atmospheric lighting, deep contrast, rich cinematic color grading, film noir", shadow: "ai.hard", lighting: "ai.auto", padding: "0.05" },
+          "editorial":    { bgPrompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting, magazine quality", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
+          "moodboard":    { bgPrompt: "Atmospheric textural background, soft dreamy palette, artistic mood, creative studio setting", shadow: "ai.soft", lighting: "ai.auto", padding: "0.08" },
+          "3d":           { bgPrompt: "Clean 3D product visualization environment, infinite background, studio HDRI lighting, floating product perspective", shadow: "ai.soft", lighting: "ai.auto", padding: "0.08" },
+          "closeup":      { bgPrompt: "Extreme macro close-up environment, soft bokeh, shallow depth of field, product detail focus", shadow: "ai.soft", lighting: "ai.auto", padding: "0.02" },
+          "aerial":       { bgPrompt: "Bird's-eye view setting, aerial perspective landscape, natural terrain, geographic context", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
+          "ugc":          { bgPrompt: "Authentic casual home environment, natural window light, phone camera aesthetic, real-life setting", shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" },
+          "before-after": { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.05" },
+          "default":      { bgColor: "FFFFFF", shadow: "ai.soft", lighting: "ai.auto", beautify: "ai.auto", padding: "0.1" },
         };
 
         // Detect scene type from prompt keywords
@@ -4257,10 +4257,18 @@ app.post("/generate/image-start", async (c) => {
 
         // If no keyword match but prompt is long (campaign prompt), use it as dynamic bgPrompt
         if (!scene && rawPrompt.length > 50) {
-          scene = { bgPrompt: rawPrompt.slice(0, 300), shadow: "ai.soft", lighting: true, outputSize: "1000x1000", padding: "0.05" };
+          scene = { bgPrompt: rawPrompt.slice(0, 300), shadow: "ai.soft", lighting: "ai.auto", padding: "0.05" };
           console.log(`[image-start-POST] PHOTOROOM: dynamic bgPrompt from campaign prompt`);
         }
         if (!scene) scene = sceneMap["default"];
+
+        // ── Resolve output size from aspect ratio ──
+        const arSizeMap: Record<string, string> = {
+          "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+          "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+          "2:3": "800x1200", "3:2": "1200x800",
+        };
+        const outputSize = arSizeMap[aspectRatio] || "1080x1080";
 
         // ── Build Photoroom GET URL ──
         // GET https://image-api.photoroom.com/v2/edit?imageUrl=...&removeBackground=true&...
@@ -4270,11 +4278,11 @@ app.post("/generate/image-start", async (c) => {
         if (scene.bgColor) params.set("background.color", scene.bgColor);
         if (scene.bgPrompt) params.set("background.prompt", scene.bgPrompt);
         params.set("shadow.mode", scene.shadow);
-        if (scene.lighting) params.set("lighting.mode", "ai.auto");
+        params.set("lighting.mode", scene.lighting);
         if (scene.beautify) params.set("beautify.mode", scene.beautify);
-        params.set("outputSize", scene.outputSize);
+        params.set("outputSize", outputSize);
         params.set("padding", scene.padding);
-        params.set("export.format", "png");
+        params.set("export.format", "webp");
 
         const photoroomUrl = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
         console.log(`[image-start-POST] PHOTOROOM: ${photoroomUrl.slice(0, 120)}...`);
@@ -4287,12 +4295,12 @@ app.post("/generate/image-start", async (c) => {
           if (prRes.ok) {
             // Response is binary image — upload to Supabase Storage
             const imageBuffer = await prRes.arrayBuffer();
-            const fileName = `photoroom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+            const fileName = `photoroom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
             const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
 
             const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
               .from("make-cad57f79-media")
-              .upload(storagePath, imageBuffer, { contentType: "image/png", upsert: true });
+              .upload(storagePath, imageBuffer, { contentType: "image/webp", upsert: true });
 
             if (uploadError) {
               console.log(`[image-start-POST] Photoroom upload error: ${uploadError.message}`);
