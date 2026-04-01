@@ -321,6 +321,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [multiModelEnabled, setMultiModelEnabled] = useState(true);
   const [textModelsSelected, setTextModelsSelected] = useState<string[]>(["gpt-4o", "claude-sonnet-4-20250514"]);
   const [imageModelsSelected, setImageModelsSelected] = useState<string[]>(["photon-1", "flux-pro-v1.1"]);
+  const [videoModelsSelected, setVideoModelsSelected] = useState<string[]>(["ray-flash-2"]);
 
   // ── Brand Engine: Territories ──
   const [territories, setTerritories] = useState<{ id: string; name: string; description: string; angle: string; emotion: string; example_prompts: string[]; best_for: string[] }[]>([]);
@@ -924,8 +925,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   };
 
   // ── Helper: Video generation with optional first-frame image ──
-  const generateVideoWithKeyframe = async (fmt: FormatOption, vidPrompt: string, keyframeImageUrl?: string) => {
-    const params = new URLSearchParams({ prompt: vidPrompt.slice(0, 400), model: videoModel });
+  const generateVideoWithKeyframe = async (fmt: FormatOption, vidPrompt: string, keyframeImageUrl?: string, modelOverride?: string) => {
+    const params = new URLSearchParams({ prompt: vidPrompt.slice(0, 400), model: modelOverride || videoModel });
     if (keyframeImageUrl) params.set("imageUrl", keyframeImageUrl);
     const startUrl = `${API_BASE}/generate/video-start?${params.toString()}`;
     console.log(`[CampaignLab] Video START [${fmt.id}]: hasKeyframe=${!!keyframeImageUrl}`, startUrl.slice(0, 150));
@@ -1375,9 +1376,35 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               }
             }
 
-            const videoUrl = await generateVideoWithKeyframe(fmt, vidPrompt, keyframeUrl);
+            const videoModelsToUse = multiModelEnabled && videoModelsSelected.length > 1
+              ? videoModelsSelected : [videoModel];
+
+            // Generate with all selected video models in parallel
+            const videoModelResults = await Promise.all(videoModelsToUse.map(async (mdl) => {
+              try {
+                const url = await generateVideoWithKeyframe(fmt, vidPrompt, keyframeUrl, mdl);
+                return { model: mdl, videoUrl: url, status: "ready" as const };
+              } catch (e: any) {
+                console.warn(`[CampaignLab] Video [${fmt.id}] model ${mdl} failed:`, e?.message);
+                return { model: mdl, videoUrl: "", status: "error" as const, error: e?.message };
+              }
+            }));
+
+            const videoVariants: AssetVariant[] = videoModelResults.map(r => {
+              const modelInfo = VIDEO_MODELS.find(m => m.id === r.model);
+              return { model: r.model, modelLabel: modelInfo?.label || r.model, videoUrl: r.videoUrl, status: r.status };
+            });
+            const bestVideo = videoModelResults.find(r => r.videoUrl) || videoModelResults[0];
+
             setAssets(prev => prev.map(a =>
-              a.formatId === fmt.id ? { ...a, status: "ready", videoUrl, model: "ray-flash-2" } : a
+              a.formatId === fmt.id ? {
+                ...a, status: bestVideo.videoUrl ? "ready" : "error", videoUrl: bestVideo.videoUrl, model: bestVideo.model,
+                variants: [
+                  ...(a.variants || []),
+                  ...videoVariants.filter(v => v.status === "ready"),
+                ],
+                selectedVariant: 0,
+              } : a
             ));
           } catch (err: any) {
             console.error(`[CampaignLab] Video [${fmt.id}] error:`, err?.message);
@@ -2904,7 +2931,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 {[
                   { label: "Text", models: TEXT_MODELS, value: textModel, set: setTextModel, icon: FileText, multiSelected: textModelsSelected, setMulti: setTextModelsSelected, canMulti: true },
                   { label: "Images", models: IMAGE_MODELS, value: imageModel, set: setImageModel, icon: ImageIcon, multiSelected: imageModelsSelected, setMulti: setImageModelsSelected, canMulti: true },
-                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: [] as string[], setMulti: null as any, canMulti: false },
+                  { label: "Videos", models: VIDEO_MODELS, value: videoModel, set: setVideoModel, icon: Film, multiSelected: videoModelsSelected, setMulti: setVideoModelsSelected, canMulti: true },
                 ].map(({ label, models, value, set, icon: Icon, multiSelected, setMulti, canMulti }) => (
                   <div key={label} className="mb-2 last:mb-0">
                     <div className="flex items-center gap-1.5 mb-1">
