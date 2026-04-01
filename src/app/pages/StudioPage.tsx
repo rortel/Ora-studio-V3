@@ -456,10 +456,26 @@ export function StudioPage() {
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
+          let productRefUrls: string[] = [];
           if (productId && products.length) {
             const prod = products.find((p: any) => p.id === productId);
             if (prod) {
               productBrief = `${productBrief}\n\nPRODUCT FOCUS: ${prod.name}${prod.price ? ` (${prod.price})` : ""}${prod.category ? ` — ${prod.category}` : ""}${prod.description ? `\n${prod.description}` : ""}`;
+              // Collect product image URLs for Photoroom (real product photos)
+              if (prod.images?.length > 0) {
+                for (const img of prod.images) {
+                  if (img.signedUrl) productRefUrls.push(img.signedUrl);
+                }
+              }
+              if (productRefUrls.length === 0 && prod.imageUrls?.length > 0) {
+                for (const url of prod.imageUrls) {
+                  if (url && typeof url === "string" && url.startsWith("http")) productRefUrls.push(url);
+                }
+              }
+              if (productRefUrls.length === 0 && prod.imageUrl) {
+                productRefUrls.push(prod.imageUrl);
+              }
+              console.log(`[studio] Product "${prod.name}": ${productRefUrls.length} ref image(s) for Photoroom`);
             }
           }
 
@@ -586,7 +602,36 @@ export function StudioPage() {
                 ? "1:1"
                 : "16:9";
 
-            // Generate with all image models (in parallel)
+            // ── PHOTOROOM AUTO: if product has ref images, generate real-product scene first ──
+            let photoroomUrl: string | null = null;
+            if (productRefUrls.length > 0) {
+              const refUrl = productRefUrls[i % productRefUrls.length];
+              try {
+                console.log(`[studio] Photoroom AUTO [${visualFormats[i].format}]: preserving real product pixels`);
+                const prRes = await fetch(`${API_BASE}/generate/image-start`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+                  body: JSON.stringify({
+                    prompt: enrichedPrompt.slice(0, 500),
+                    imageRefUrl: refUrl,
+                    refSource: "upload",
+                    aspectRatio,
+                    model: "photon-1",
+                    _token: getAuthHeader(),
+                  }),
+                  signal: AbortSignal.timeout(60_000),
+                });
+                const prData = await prRes.json();
+                if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
+                  photoroomUrl = prData.imageUrl || prData.results[0].result.imageUrl;
+                  console.log(`[studio] Photoroom OK [${visualFormats[i].format}]: ${(photoroomUrl || "").slice(0, 80)}`);
+                }
+              } catch (e: any) {
+                console.warn(`[studio] Photoroom failed [${visualFormats[i].format}]:`, e?.message);
+              }
+            }
+
+            // Generate with all selected generative models (in parallel)
             const imgResults = await Promise.all(
               imageModelList.map(model =>
                 serverGet(
@@ -598,40 +643,45 @@ export function StudioPage() {
               )
             );
 
-            // Set primary image
-            const primaryImg = imgResults.find(r => r.imageUrl);
+            // Combine: Photoroom first (real product), then generative models
+            const allImgResults: { model: string; imageUrl: string | null; imageModel?: string }[] = [];
+            if (photoroomUrl) {
+              allImgResults.push({ model: "photoroom", imageUrl: photoroomUrl, imageModel: "Photoroom (Real Product)" });
+            }
+            allImgResults.push(...imgResults);
+
+            // Set primary image — prefer Photoroom (real product) over generative
+            const primaryImg = allImgResults.find(r => r.imageUrl);
             if (primaryImg) {
               visualFormats[i].imageUrl = primaryImg.imageUrl!;
             }
 
             // Add image variants to text variants
-            if (imgResults.filter(r => r.imageUrl).length > 1 && visualFormats[i].variants) {
-              // Attach each image model result to the first text variant that doesn't have an image yet
-              for (const imgR of imgResults) {
+            const successfulImgs = allImgResults.filter(r => r.imageUrl);
+            if (successfulImgs.length > 1 && visualFormats[i].variants) {
+              for (const imgR of successfulImgs) {
                 if (!imgR.imageUrl) continue;
                 const existingV = visualFormats[i].variants!.find(v => !v.imageUrl);
                 if (existingV) {
                   existingV.imageUrl = imgR.imageUrl;
-                  existingV.imageModel = imgR.model;
+                  existingV.imageModel = imgR.imageModel || imgR.model;
                 } else {
-                  // Add as additional variant
                   visualFormats[i].variants!.push({
                     model: imgR.model,
                     text: visualFormats[i].text,
                     imageUrl: imgR.imageUrl,
-                    imageModel: imgR.model,
+                    imageModel: imgR.imageModel || imgR.model,
                   });
                 }
               }
-            } else if (imgResults.filter(r => r.imageUrl).length > 1) {
-              // No text variants but multiple image models — create image-only variants
-              visualFormats[i].variants = imgResults
+            } else if (successfulImgs.length > 1) {
+              visualFormats[i].variants = successfulImgs
                 .filter(r => r.imageUrl)
                 .map(r => ({
                   model: r.model,
                   text: visualFormats[i].text,
                   imageUrl: r.imageUrl!,
-                  imageModel: r.model,
+                  imageModel: r.imageModel || r.model,
                 }));
               visualFormats[i].selectedVariant = 0;
             }
