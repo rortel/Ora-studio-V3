@@ -710,19 +710,25 @@ export function StudioPage() {
             ? `. ${brandVisualParts.join(". ")}.`
             : "";
 
-          // 3. Generate images for visual formats — all selected image models
-          const visualFormats = posts.filter(p =>
+          // 3. Split visual formats into IMAGE vs VIDEO
+          const VIDEO_FORMAT_KEYWORDS = ["video", "reel", "short"];
+          const isVideoFormat = (f: string) => VIDEO_FORMAT_KEYWORDS.some(k => f.includes(k));
+
+          const allVisualFormats = posts.filter(p =>
             !p.format.includes("text") && !p.format.includes("article") && !p.format.includes("thread")
           );
+          const imageOnlyFormats = allVisualFormats.filter(p => !isVideoFormat(p.format));
+          const videoFormats = allVisualFormats.filter(p => isVideoFormat(p.format));
 
-          for (let i = 0; i < Math.min(visualFormats.length, 4); i++) {
-            const copyEntry = (primaryText.copyMap as any)?.[visualFormats[i].format];
-            const basePrompt = copyEntry?.imagePrompt || `${brief}, ${visualFormats[i].platform} ${visualFormats[i].format}, professional`;
+          // 3a. Generate IMAGES for image formats
+          for (let i = 0; i < Math.min(imageOnlyFormats.length, 4); i++) {
+            const copyEntry = (primaryText.copyMap as any)?.[imageOnlyFormats[i].format];
+            const basePrompt = copyEntry?.imagePrompt || `${brief}, ${imageOnlyFormats[i].platform} ${imageOnlyFormats[i].format}, professional`;
             const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
             const enrichedPrompt = `${basePrompt}${visualStyleDirective}${brandVisualSuffix}`;
-            const aspectRatio = visualFormats[i].format.includes("story") || visualFormats[i].format.includes("reel")
+            const aspectRatio = imageOnlyFormats[i].format.includes("story")
               ? "9:16"
-              : visualFormats[i].format.includes("post") && visualFormats[i].platform === "instagram"
+              : imageOnlyFormats[i].format.includes("post") && imageOnlyFormats[i].platform === "instagram"
                 ? "1:1"
                 : "16:9";
 
@@ -731,7 +737,7 @@ export function StudioPage() {
             if (productRefUrls.length > 0) {
               const refUrl = productRefUrls[i % productRefUrls.length];
               try {
-                console.log(`[studio] Photoroom AUTO [${visualFormats[i].format}]: preserving real product pixels, ref=${refUrl.slice(0, 100)}`);
+                console.log(`[studio] Photoroom AUTO [${imageOnlyFormats[i].format}]: preserving real product pixels, ref=${refUrl.slice(0, 100)}`);
                 const prRes = await fetch(`${API_BASE}/generate/image-start`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
@@ -746,15 +752,15 @@ export function StudioPage() {
                   signal: AbortSignal.timeout(60_000),
                 });
                 const prData = await prRes.json();
-                console.log(`[studio] Photoroom RESPONSE [${visualFormats[i].format}]:`, JSON.stringify({ success: prData.success, hasImageUrl: !!prData.imageUrl, hasResults: !!prData.results, error: prData.error, provider: prData.provider }).slice(0, 300));
+                console.log(`[studio] Photoroom RESPONSE [${imageOnlyFormats[i].format}]:`, JSON.stringify({ success: prData.success, hasImageUrl: !!prData.imageUrl, hasResults: !!prData.results, error: prData.error, provider: prData.provider }).slice(0, 300));
                 if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
                   photoroomUrl = prData.imageUrl || prData.results[0].result.imageUrl;
-                  console.log(`[studio] Photoroom OK [${visualFormats[i].format}]: ${(photoroomUrl || "").slice(0, 80)}`);
+                  console.log(`[studio] Photoroom OK [${imageOnlyFormats[i].format}]: ${(photoroomUrl || "").slice(0, 80)}`);
                 } else {
-                  console.warn(`[studio] Photoroom SKIP [${visualFormats[i].format}]: no image in response`, prData.error || "");
+                  console.warn(`[studio] Photoroom SKIP [${imageOnlyFormats[i].format}]: no image in response`, prData.error || "");
                 }
               } catch (e: any) {
-                console.warn(`[studio] Photoroom failed [${visualFormats[i].format}]:`, e?.message);
+                console.warn(`[studio] Photoroom failed [${imageOnlyFormats[i].format}]:`, e?.message);
               }
             }
 
@@ -780,38 +786,90 @@ export function StudioPage() {
             // Set primary image — prefer Photoroom (real product) over generative
             const primaryImg = allImgResults.find(r => r.imageUrl);
             if (primaryImg) {
-              visualFormats[i].imageUrl = primaryImg.imageUrl!;
+              imageOnlyFormats[i].imageUrl = primaryImg.imageUrl!;
             }
 
             // Add image variants to text variants
             const successfulImgs = allImgResults.filter(r => r.imageUrl);
-            if (successfulImgs.length > 1 && visualFormats[i].variants) {
+            if (successfulImgs.length > 1 && imageOnlyFormats[i].variants) {
               for (const imgR of successfulImgs) {
                 if (!imgR.imageUrl) continue;
-                const existingV = visualFormats[i].variants!.find(v => !v.imageUrl);
+                const existingV = imageOnlyFormats[i].variants!.find(v => !v.imageUrl);
                 if (existingV) {
                   existingV.imageUrl = imgR.imageUrl;
                   existingV.imageModel = imgR.imageModel || imgR.model;
                 } else {
-                  visualFormats[i].variants!.push({
+                  imageOnlyFormats[i].variants!.push({
                     model: imgR.model,
-                    text: visualFormats[i].text,
+                    text: imageOnlyFormats[i].text,
                     imageUrl: imgR.imageUrl,
                     imageModel: imgR.imageModel || imgR.model,
                   });
                 }
               }
             } else if (successfulImgs.length > 1) {
-              visualFormats[i].variants = successfulImgs
+              imageOnlyFormats[i].variants = successfulImgs
                 .filter(r => r.imageUrl)
                 .map(r => ({
                   model: r.model,
-                  text: visualFormats[i].text,
+                  text: imageOnlyFormats[i].text,
                   imageUrl: r.imageUrl!,
                   imageModel: r.imageModel || r.model,
                 }));
-              visualFormats[i].selectedVariant = 0;
+              imageOnlyFormats[i].selectedVariant = 0;
             }
+          }
+
+          // 3b. Generate VIDEOS for video formats (reel, tiktok-video, linkedin-video, youtube-short, facebook-video)
+          if (videoFormats.length > 0) {
+            console.log(`[studio] Generating ${videoFormats.length} video(s) for formats: ${videoFormats.map(v => v.format).join(", ")}`);
+
+            // Launch all video generations in parallel (start + poll)
+            const videoPromises = videoFormats.slice(0, 3).map(async (vf, i) => {
+              const copyEntry = (primaryText.copyMap as any)?.[vf.format];
+              const videoPrompt = copyEntry?.videoPrompt || copyEntry?.imagePrompt || `${brief}, ${vf.platform} ${vf.format}, professional cinematic`;
+              const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
+              const fullVideoPrompt = `${videoPrompt}${visualStyleDirective}${brandVisualSuffix}`.slice(0, 500);
+              const aspectRatio = vf.format.includes("reel") || vf.format.includes("short") || vf.format.includes("tiktok")
+                ? "9:16" : "16:9";
+
+              // If we have a product image, use it as image-to-video source
+              const imageUrlForVideo = productRefUrls.length > 0 ? productRefUrls[i % productRefUrls.length] : undefined;
+
+              try {
+                console.log(`[studio] Video START [${vf.format}]: prompt="${fullVideoPrompt.slice(0, 80)}...", imageRef=${imageUrlForVideo ? "yes" : "no"}`);
+                const startRes = await serverGet(
+                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=ora-motion${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}`
+                );
+                if (startRes.success && startRes.generationId) {
+                  console.log(`[studio] Video POLLING [${vf.format}]: genId=${startRes.generationId}`);
+                  const videoUrl = await pollVideo(startRes.generationId);
+                  if (videoUrl) {
+                    console.log(`[studio] Video OK [${vf.format}]: ${videoUrl.slice(0, 80)}`);
+                    vf.videoUrl = videoUrl;
+                  } else {
+                    console.warn(`[studio] Video TIMEOUT/FAIL [${vf.format}]`);
+                  }
+                } else {
+                  console.warn(`[studio] Video START failed [${vf.format}]:`, startRes.error || "no generationId");
+                }
+              } catch (e: any) {
+                console.warn(`[studio] Video error [${vf.format}]:`, e?.message);
+              }
+
+              // Also generate a thumbnail image for the video card (non-blocking for UX)
+              try {
+                const thumbPrompt = copyEntry?.imagePrompt || fullVideoPrompt;
+                const thumbRes = await serverGet(
+                  `/generate/image-via-get?prompt=${encodeURIComponent(thumbPrompt)}&models=${imageModelList[0] || "photon-1"}&aspectRatio=${aspectRatio}`
+                );
+                if (thumbRes.success && thumbRes.results?.[0]?.result?.imageUrl) {
+                  vf.imageUrl = thumbRes.results[0].result.imageUrl;
+                }
+              } catch { /* thumbnail is optional */ }
+            });
+
+            await Promise.all(videoPromises);
           }
 
           if (posts.length > 0) {
