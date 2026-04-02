@@ -366,7 +366,7 @@ function CalendarPageContent() {
                 <button
                   onClick={handleDeployAll}
                   disabled={deployingAll}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg transition-all cursor-pointer"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full transition-all cursor-pointer"
                   style={{
                     background: deployingAll ? "rgba(17,17,17,0.08)" : "var(--ora-signal)",
                     color: deployingAll ? "var(--ora-signal)" : "#fff",
@@ -379,8 +379,8 @@ function CalendarPageContent() {
                 </button>
               )}
               <button onClick={() => { if (selectedDay) setShowNew(true); }}
-                className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
-                style={{ fontSize: "14px", fontWeight: 500 }}>
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full hover:opacity-90 transition-opacity cursor-pointer"
+                style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}>
                 <Plus size={15} /> {t("calendar.newContent")}
               </button>
             </div>
@@ -416,7 +416,7 @@ function CalendarPageContent() {
           <div className="px-5 py-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--ora-signal)", color: "#fff" }}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--ora-signal)", color: "#fff" }}>
                   <Send size={14} />
                 </div>
                 <div>
@@ -443,7 +443,7 @@ function CalendarPageContent() {
                 const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
                 const PIcon = CAL_CONNECTABLE_PLATFORMS.find(cp => cp.id === acc.platform)?.icon || Send;
                 return (
-                  <span key={i} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                  <span key={i} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl"
                     style={{ background: "rgba(17,17,17,0.06)", fontSize: "12px", fontWeight: 500, color: "var(--foreground)" }}>
                     <PIcon size={13} style={{ color: "#666" }} />
                     {pName} {acc.username ? <span style={{ color: "var(--text-secondary)" }}>@{acc.username}</span> : ""}
@@ -458,7 +458,7 @@ function CalendarPageContent() {
                 return (
                   <button key={p.id} onClick={() => handleConnectPlatform(p.id)}
                     disabled={isConnecting || !!connectingPlatform}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
                     style={{
                       background: isConnecting ? "rgba(17,17,17,0.08)" : "rgba(26,23,20,0.02)",
                       border: isConnecting ? "1px solid rgba(17,17,17,0.2)" : "1px solid var(--border)",
@@ -489,8 +489,8 @@ function CalendarPageContent() {
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-foreground" style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em" }}>{monthNames[currentMonth]} {currentYear}</h2>
                 <div className="flex items-center gap-1">
-                  <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-secondary transition-colors cursor-pointer text-muted-foreground"><ChevronLeft size={16} /></button>
-                  <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-secondary transition-colors cursor-pointer text-muted-foreground"><ChevronRight size={16} /></button>
+                  <button onClick={prevMonth} className="p-1.5 rounded-full hover:bg-secondary transition-colors cursor-pointer text-muted-foreground"><ChevronLeft size={16} /></button>
+                  <button onClick={nextMonth} className="p-1.5 rounded-full hover:bg-secondary transition-colors cursor-pointer text-muted-foreground"><ChevronRight size={16} /></button>
                 </div>
               </div>
               <div className="grid grid-cols-7 gap-0 mb-2">
@@ -533,8 +533,8 @@ function CalendarPageContent() {
                   <p className="text-muted-foreground mb-4" style={{ fontSize: "13px", lineHeight: 1.5, whiteSpace: "pre-line" }}>
                     {t("calendar.noContentPlannedDesc")}
                   </p>
-                  <Link to="/campaign-lab" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white transition-opacity hover:opacity-90"
-                    style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}>
+                  <Link to="/campaign-lab" className="inline-flex items-center gap-2 px-4 py-2 rounded-full transition-opacity hover:opacity-90"
+                    style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "13px", fontWeight: 500 }}>
                     {t("calendar.openCampaignLab")}
                   </Link>
                 </div>
@@ -559,7 +559,7 @@ function CalendarPageContent() {
                   <AnimatePresence>
                     {showNew && selectedDay && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-4">
-                        <div className="border border-ora-signal/20 rounded-lg p-3 space-y-2 bg-ora-signal-light/20">
+                        <div className="border border-ora-signal/20 rounded-xl p-3 space-y-2 bg-ora-signal-light/20">
                           <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={t("calendar.contentTitle")}
                             className="w-full bg-card border border-border rounded-md px-3 py-2 text-foreground placeholder:text-muted-foreground/50 focus:border-ora-signal outline-none" style={{ fontSize: "13px" }} />
                           <div className="flex gap-2">
@@ -596,7 +596,7 @@ function CalendarPageContent() {
 
                         return (
                           <motion.div key={event.id} layout
-                            className="border border-border rounded-lg overflow-hidden hover:border-border-strong transition-colors group">
+                            className="border border-border rounded-xl overflow-hidden hover:border-border-strong transition-colors group">
                             {/* Event header */}
                             <div className="p-3.5 cursor-pointer" onClick={() => setExpandedEvent(isExpanded ? null : event.id)}>
                               <div className="flex items-start justify-between mb-2">
@@ -655,7 +655,7 @@ function CalendarPageContent() {
                                         </div>
 
                                         {/* Platform-styled preview card */}
-                                        <div className="rounded-lg border border-border overflow-hidden" style={{ background: "var(--secondary)" }}>
+                                        <div className="rounded-xl border border-border overflow-hidden" style={{ background: "var(--secondary)" }}>
                                           <div className="flex items-center gap-2.5 px-3 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
                                             <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: event.color + "20" }}>
                                               <Icon size={12} style={{ color: event.color }} />

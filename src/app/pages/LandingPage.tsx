@@ -1,16 +1,15 @@
 import { Hero } from "../components/Hero";
-import { SocialProof } from "../components/SocialProof";
-import { ThreeSteps } from "../components/ThreeSteps";
-import { StudioExperience } from "../components/StudioExperience";
+import { LogoMarquee } from "../components/LogoMarquee";
+import { ProductShowcase } from "../components/ProductShowcase";
 import { Pricing } from "../components/Pricing";
 import { FAQ } from "../components/FAQ";
 import { CTASection } from "../components/CTASection";
 
 /**
- * Landing — 4 screens:
- * 1. Hero (living output grid + ORA + CTA) + model marquee
- * 2. "One prompt, all models" aggregator diagram
- * 3. Studio campaign multi-format preview
+ * Landing — Visual-first structure:
+ * 1. Hero (video + headline)
+ * 2. Logo Marquee (AI model logos, infinite scroll)
+ * 3. Product Showcase (3 full-bleed sections: Studio, Vault, Calendar)
  * 4. Pricing + FAQ + CTA
  */
 
@@ -18,9 +17,8 @@ export function LandingPage() {
   return (
     <>
       <Hero />
-      <SocialProof />
-      <ThreeSteps />
-      <StudioExperience />
+      <LogoMarquee />
+      <ProductShowcase />
       <Pricing />
       <FAQ />
       <CTASection />

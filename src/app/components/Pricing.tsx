@@ -98,7 +98,7 @@ export function Pricing() {
               style={{
                 background: "#FFFFFF",
                 border: p.highlighted
-                  ? "1.5px solid #111111"
+                  ? "1.5px solid #7C3AED"
                   : "1px solid rgba(0,0,0,0.06)",
                 minHeight: 420,
               }}
@@ -107,7 +107,7 @@ export function Pricing() {
                 <span
                   className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full"
                   style={{
-                    background: "#111111",
+                    background: "linear-gradient(135deg, #7C3AED, #EC4899)",
                     fontSize: "11px",
                     fontWeight: 500,
                     color: "#FFFFFF",
@@ -177,7 +177,7 @@ export function Pricing() {
               <ul className="space-y-3 flex-1">
                 {p.features.map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
-                    <Check size={13} style={{ color: "#111111" }} strokeWidth={2} />
+                    <Check size={13} style={{ color: "#7C3AED" }} strokeWidth={2} />
                     <span style={{ fontSize: "13px", color: "#666666", fontFamily: "'Inter', sans-serif" }}>{f}</span>
                   </li>
                 ))}
@@ -187,7 +187,7 @@ export function Pricing() {
                 to="/login?mode=signup"
                 className="group mt-8 flex items-center justify-center gap-2 py-3 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
                 style={{
-                  background: p.highlighted ? "#111111" : "transparent",
+                  background: p.highlighted ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "transparent",
                   border: p.highlighted ? "none" : "1px solid rgba(0,0,0,0.12)",
                   color: p.highlighted ? "#FFFFFF" : "#111111",
                   fontSize: "13px",

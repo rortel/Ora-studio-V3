@@ -24,7 +24,7 @@
   --muted: #F5F5F5;
   --muted-foreground: #999999;
 
-  --accent: #111111;
+  --accent: #7C3AED;
   --accent-foreground: #FFFFFF;
 
   /* ── System states ── */
@@ -33,10 +33,10 @@
   --ora-ocre: #111111;
 
   /* ── Legacy compatibility ── */
-  --ora-signal: #111111;
-  --ora-signal-light: rgba(17, 17, 17, 0.04);
-  --ora-signal-medium: rgba(17, 17, 17, 0.08);
-  --ora-signal-ring: rgba(17, 17, 17, 0.12);
+  --ora-signal: #7C3AED;
+  --ora-signal-light: rgba(124, 58, 237, 0.04);
+  --ora-signal-medium: rgba(124, 58, 237, 0.08);
+  --ora-signal-ring: rgba(124, 58, 237, 0.12);
 
   --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
@@ -96,11 +96,15 @@
   --text-secondary: #666666;
   --text-tertiary: #999999;
 
-  /* ── Accent palette (now grayscale) ── */
-  --accent-warm: #111111;
-  --accent-warm-light: rgba(17, 17, 17, 0.06);
-  --accent-warm-medium: rgba(17, 17, 17, 0.12);
-  --accent-warm-ring: rgba(17, 17, 17, 0.20);
+  /* ── Accent palette (creative violet) ── */
+  --accent-warm: #7C3AED;
+  --accent-warm-light: rgba(124, 58, 237, 0.06);
+  --accent-warm-medium: rgba(124, 58, 237, 0.12);
+  --accent-warm-ring: rgba(124, 58, 237, 0.20);
+
+  /* ── Gradient CTA ── */
+  --gradient-cta: linear-gradient(135deg, #7C3AED, #EC4899);
+  --gradient-cta-hover: linear-gradient(135deg, #6D28D9, #DB2777);
 
   /* ── Dark sections (footer, dark bands) ── */
   --dark-bg: #111111;

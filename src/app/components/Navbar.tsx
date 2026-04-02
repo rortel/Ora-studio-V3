@@ -105,10 +105,10 @@ export function Navbar() {
                 </Link>
                 <Link
                   to="/login?mode=signup"
-                  className="px-5 py-2 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
+                  className="px-5 py-2 rounded-full transition-all duration-200 hover:shadow-md hover:shadow-purple-500/25 active:scale-[0.98]"
                   style={{
-                    background: lightMode ? "#FFFFFF" : "var(--primary)",
-                    color: lightMode ? "#111111" : "var(--primary-foreground)",
+                    background: lightMode ? "#FFFFFF" : "linear-gradient(135deg, #7C3AED, #EC4899)",
+                    color: lightMode ? "#111111" : "#FFFFFF",
                     fontSize: "14px",
                     fontWeight: 600,
                     letterSpacing: "-0.01em",
@@ -216,8 +216,8 @@ export function Navbar() {
                     onClick={() => setMobileOpen(false)}
                     className="px-8 py-4 rounded-full text-center"
                     style={{
-                      background: "var(--primary)",
-                      color: "var(--primary-foreground)",
+                      background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                      color: "#FFFFFF",
                       fontSize: "16px",
                       fontWeight: 600,
                     }}

@@ -1582,7 +1582,7 @@ function HubPageContent() {
       {promptCollapsed && generations.length > 0 && (contentType === "image" || contentType === "film") && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
           <button onClick={() => setPromptCollapsed(false)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all hover:scale-105"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-full cursor-pointer transition-all hover:scale-105"
             style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.1)" }}>
             <Paintbrush size={14} style={{ color: "var(--ora-signal)" }} />
             <span style={{ fontSize: "12px", fontWeight: 500, color: "rgba(255,255,255,0.8)" }}>New prompt</span>
@@ -1919,8 +1919,8 @@ function HubPageContent() {
               </div>
             ) : (
               <button onClick={handleGenerate} disabled={!prompt.trim() || (!!refImage && refImage.uploading)}
-                className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:opacity-90"
-                style={{ background: prompt.trim() ? "var(--primary)" : "var(--secondary)", color: prompt.trim() ? "var(--primary-foreground)" : "var(--muted-foreground)" }}>
+                className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed transition-all hover:opacity-90"
+                style={{ background: prompt.trim() ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "var(--secondary)", color: prompt.trim() ? "#FFFFFF" : "var(--muted-foreground)" }}>
                 <ArrowUp size={16} />
               </button>
             )}
@@ -1982,7 +1982,7 @@ function HubPageContent() {
                     onChange={(e) => setSoundStyle(e.target.value)}
                     placeholder="Style: Lo-fi, Orchestral, Afrobeat..."
                     className="w-full px-3 py-2 rounded-lg border outline-none"
-                    style={{ fontSize: "12px", borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }}
+                    style={{ fontSize: "12px", borderColor: "var(--border)", background: "var(--secondary)", color: "var(--foreground)" }}
                   />
                 </div>
                 {/* Title */}
@@ -1993,7 +1993,7 @@ function HubPageContent() {
                     onChange={(e) => setSoundTitle(e.target.value)}
                     placeholder="Track title..."
                     className="w-full px-3 py-2 rounded-lg border outline-none"
-                    style={{ fontSize: "12px", borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }}
+                    style={{ fontSize: "12px", borderColor: "var(--border)", background: "var(--secondary)", color: "var(--foreground)" }}
                   />
                 </div>
               </div>
@@ -2044,7 +2044,7 @@ function HubPageContent() {
                         placeholder={"Write your own lyrics or click 'AI Generate Lyrics'\n\nUse structure tags:\n[Verse 1]\nYour verse here...\n\n[Chorus]\nYour chorus here...\n\n[Bridge]\nYour bridge here..."}
                         rows={soundLyrics.trim() ? Math.min(12, Math.max(5, soundLyrics.split("\n").length + 2)) : 5}
                         className="w-full px-3 py-2.5 rounded-lg border outline-none resize-y"
-                        style={{ fontSize: "12px", lineHeight: 1.65, borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)", fontFamily: "inherit" }}
+                        style={{ fontSize: "12px", lineHeight: 1.65, borderColor: "var(--border)", background: "var(--secondary)", color: "var(--foreground)" }}
                       />
                       {soundLyrics.trim() && (
                         <div className="mt-2 flex items-center gap-2">
@@ -2419,32 +2419,32 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           {/* Action buttons — glass morphism */}
           <div className="flex items-center justify-center gap-2 px-4 pb-4 pt-1">
             <button onClick={() => onSave(currentItem)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${currentItem.saved ? "text-white" : "text-white/70 hover:text-white"}`}
+              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full transition-all cursor-pointer ${currentItem.saved ? "text-white" : "text-white/70 hover:text-white"}`}
               style={{ background: currentItem.saved ? "rgba(17,17,17,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               {currentItem.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
               {currentItem.saved ? t("hub.saved") : t("hub.saveToLibrary")}
             </button>
             {currentItem.saved && (
               <Link to="/hub/library"
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-white/50 hover:text-white transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-full text-white/50 hover:text-white transition-all cursor-pointer"
                 style={{ fontSize: "11px", fontWeight: 400 }}>
                 {t("hub.viewLibrary")} <ChevronRight size={11} />
               </Link>
             )}
             <button onClick={() => onCompareAll(displayGens)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-white/70 hover:text-white transition-all cursor-pointer"
               style={{ background: displayGens.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(17,17,17,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               <Columns2 size={14} /> {t("hub.compareAll")} ({displayGens.length})
             </button>
             {currentItem.type === "image" && currentItem.preview.kind === "image" && (currentItem.preview.imageUrl) && onAnimate && (
               <button onClick={() => onAnimate(currentItem)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-white/70 hover:text-white transition-all cursor-pointer"
                 style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
                 <Play size={14} /> {t("hub.animate")}
               </button>
             )}
             <button onClick={() => onExport(currentItem)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-white/70 hover:text-white transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               <Download size={14} /> {t("hub.exportHd")}
             </button>
@@ -2580,7 +2580,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
         <div className="flex items-center gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); onSave(); }}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-[var(--secondary)] text-foreground hover:bg-[var(--surface-3)] hover:scale-105"}`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-full transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-[var(--secondary)] text-foreground hover:bg-[var(--surface-3)] hover:scale-105"}`}
             style={{ fontSize: "12px", fontWeight: 700 }}
           >
             {item.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
@@ -3184,12 +3184,12 @@ function CompareView({ items, onRemove, onSave, onExport }: {
                   </div>
                   <div className="flex items-center gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
                     <button onClick={() => onSave(item)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
                       style={{ borderColor: item.saved ? undefined : "var(--border)", fontSize: "11px", fontWeight: 500 }}>
                       {item.saved ? <Check size={11} /> : <Heart size={11} />}
                       {item.saved ? t("hub.saved") : t("hub.save")}
                     </button>
-                    <button onClick={() => onExport(item)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-muted-foreground hover:text-foreground cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "11px" }}>
+                    <button onClick={() => onExport(item)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border text-muted-foreground hover:text-foreground cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "11px" }}>
                       <Download size={11} />
                     </button>
                   </div>
@@ -3248,13 +3248,13 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={onSave}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
+              className={`flex items-center gap-2.5 px-6 py-3 rounded-full transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
               style={{ fontSize: "15px", fontWeight: 500 }}>
               {item.saved ? <Check size={16} /> : <Heart size={16} />}
               {item.saved ? t("hub.saved") : t("hub.save")}
             </button>
             <button onClick={onExport}
-              className="flex items-center gap-2.5 px-6 py-3 rounded-xl bg-white/10 text-white/70 hover:text-white hover:bg-white/20 cursor-pointer transition-all"
+              className="flex items-center gap-2.5 px-6 py-3 rounded-full bg-white/10 text-white/70 hover:text-white hover:bg-white/20 cursor-pointer transition-all"
               style={{ fontSize: "15px", fontWeight: 500 }}>
               <Download size={16} /> {t("hub.exportHd")}
             </button>
@@ -3334,12 +3334,12 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
           </p>
           <div className="flex items-center gap-2">
             <button onClick={onSave}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
               style={{ borderColor: item.saved ? undefined : "var(--border)", fontSize: "13px", fontWeight: 500 }}>
               {item.saved ? <Check size={14} /> : <Heart size={14} />}
               {item.saved ? t("hub.savedToLibrary") : t("hub.saveToLibrary")}
             </button>
-            <button onClick={onExport} className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-secondary cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "13px" }}>
+            <button onClick={onExport} className="flex items-center gap-2 px-4 py-2 rounded-full border hover:bg-secondary cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "13px" }}>
               <Download size={14} /> {t("hub.exportHd")}
             </button>
             <div className="flex-1" />
