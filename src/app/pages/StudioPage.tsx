@@ -2184,26 +2184,46 @@ const MOMENT_PRESETS = [
 ];
 
 const CONFIG_TEXT_MODELS = [
+  // OpenAI
   { id: "gpt-4o", label: "GPT-4o", badge: "Fast" },
-  { id: "gpt-4.1", label: "GPT-4.1", badge: "Smart" },
-  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet", badge: "Creative" },
-  { id: "claude-haiku-4-20250514", label: "Claude Haiku", badge: "Ultra Fast" },
-  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal" },
+  { id: "gpt-5", label: "GPT-5", badge: "Smart" },
+  { id: "gpt-5.1", label: "GPT-5.1", badge: "Premium" },
+  // Anthropic
+  { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative" },
+  { id: "claude-haiku", label: "Claude Haiku", badge: "Ultra Fast" },
+  { id: "claude-opus", label: "Claude Opus", badge: "Best" },
+  // Google
+  { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Multimodal" },
+  // DeepSeek
+  { id: "deepseek", label: "DeepSeek v3", badge: "Open Source" },
 ];
 
 const CONFIG_IMAGE_MODELS = [
+  // Luma
   { id: "photon-1", label: "Luma Photon", badge: "Quality" },
   { id: "photon-flash-1", label: "Photon Flash", badge: "Fast" },
-  { id: "flux-pro-v1.1", label: "Flux Pro", badge: "Creative" },
-  { id: "flux-schnell", label: "Flux Schnell", badge: "Ultra Fast" },
-  { id: "dall-e-3", label: "DALL-E 3", badge: "Precise" },
+  // FAL / Flux
+  { id: "flux-pro", label: "Flux Pro (FAL)", badge: "Creative" },
+  { id: "flux-schnell", label: "Flux Schnell (FAL)", badge: "Ultra Fast" },
+  // OpenAI
+  { id: "dall-e", label: "DALL-E 3", badge: "Precise" },
+  // Leonardo
+  { id: "phoenix-1.0", label: "Leonardo Phoenix", badge: "Versatile" },
+  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo" },
+  // Higgsfield
+  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed" },
+  { id: "soul", label: "Soul (Higgsfield)", badge: "Artistic" },
+  { id: "nano-banana", label: "Nano Banana", badge: "Fast" },
 ];
 
 const CONFIG_VIDEO_MODELS = [
-  { id: "ora-motion", label: "Luma Ray 2", badge: "Quality" },
-  { id: "ray-flash-2", label: "Ray Flash", badge: "Fast" },
+  // Luma
+  { id: "ray-2", label: "Luma Ray 2", badge: "Quality" },
+  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast" },
+  // Higgsfield
   { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic" },
-  { id: "seedance-v1", label: "Seedance", badge: "TikTok" },
+  { id: "seedance-v1", label: "Seedance v1", badge: "TikTok" },
+  { id: "dop", label: "DOP (Higgsfield)", badge: "Creative" },
 ];
 
 const TONE_OPTIONS = [

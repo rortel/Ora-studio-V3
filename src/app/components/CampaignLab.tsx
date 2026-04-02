@@ -212,24 +212,44 @@ const CONNECTABLE_PLATFORMS = [
 
 /* ── AI Model Options ── */
 const TEXT_MODELS = [
-  { id: "gpt-4o",                    label: "GPT-4o",          badge: "Fast",       color: "#666666" },
-  { id: "gpt-4.1",                   label: "GPT-4.1",         badge: "Smart",      color: "#666666" },
-  { id: "claude-sonnet-4-20250514",  label: "Claude Sonnet",   badge: "Creative",   color: "#888888" },
-  { id: "claude-haiku-4-20250514",   label: "Claude Haiku",    badge: "Ultra Fast", color: "#888888" },
-  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash", badge: "Multimodal", color: "#666666" },
+  // OpenAI
+  { id: "gpt-4o",         label: "GPT-4o",           badge: "Fast",        color: "#666666" },
+  { id: "gpt-5",          label: "GPT-5",            badge: "Smart",       color: "#666666" },
+  { id: "gpt-5.1",        label: "GPT-5.1",          badge: "Premium",     color: "#666666" },
+  // Anthropic
+  { id: "claude-sonnet",  label: "Claude Sonnet",    badge: "Creative",    color: "#888888" },
+  { id: "claude-haiku",   label: "Claude Haiku",     badge: "Ultra Fast",  color: "#888888" },
+  { id: "claude-opus",    label: "Claude Opus",      badge: "Best",        color: "#888888" },
+  // Google
+  { id: "gemini-pro",     label: "Gemini 2.5 Pro",   badge: "Multimodal",  color: "#666666" },
+  // DeepSeek
+  { id: "deepseek",       label: "DeepSeek v3",      badge: "Open Source", color: "#999999" },
 ];
 const IMAGE_MODELS = [
-  { id: "photon-1",        label: "Luma Photon",       badge: "Quality",    color: "#666666" },
-  { id: "photon-flash-1",  label: "Luma Photon Flash", badge: "Fast",       color: "#666666" },
-  { id: "flux-pro-v1.1",   label: "Flux Pro",          badge: "Creative",   color: "#999999" },
-  { id: "flux-schnell",    label: "Flux Schnell",      badge: "Ultra Fast", color: "#999999" },
-  { id: "dall-e-3",        label: "DALL-E 3",          badge: "Precise",    color: "#666666" },
+  // Luma
+  { id: "photon-1",        label: "Luma Photon",        badge: "Quality",    color: "#666666" },
+  { id: "photon-flash-1",  label: "Photon Flash",       badge: "Fast",       color: "#666666" },
+  // FAL / Flux
+  { id: "flux-pro",        label: "Flux Pro (FAL)",     badge: "Creative",   color: "#999999" },
+  { id: "flux-schnell",    label: "Flux Schnell (FAL)", badge: "Ultra Fast", color: "#999999" },
+  // OpenAI
+  { id: "dall-e",          label: "DALL-E 3",           badge: "Precise",    color: "#666666" },
+  // Leonardo
+  { id: "phoenix-1.0",     label: "Leonardo Phoenix",   badge: "Versatile",  color: "#aa7744" },
+  { id: "lucid-realism",   label: "Leonardo Realism",   badge: "Photo",      color: "#aa7744" },
+  // Higgsfield
+  { id: "seedream-v4",     label: "SeedDream v4",       badge: "Detailed",   color: "#777777" },
+  { id: "soul",            label: "Soul (Higgsfield)",  badge: "Artistic",   color: "#777777" },
+  { id: "nano-banana",     label: "Nano Banana",        badge: "Fast",       color: "#777777" },
 ];
 const VIDEO_MODELS = [
-  { id: "ray-flash-2", label: "Ray Flash 2",  badge: "Fast · $0.08",    color: "#666666" },
-  { id: "ray-2",       label: "Ray 2",        badge: "Premium · $0.15", color: "#666666" },
-  { id: "kling-v2.1",  label: "Kling v2.1",  badge: "Alt",             color: "#666666" },
-  { id: "seedance-v1", label: "SeedAnce v1",  badge: "Alt",             color: "#666666" },
+  // Luma
+  { id: "ray-2",        label: "Luma Ray 2",       badge: "Quality",   color: "#666666" },
+  { id: "ray-flash-2",  label: "Ray Flash 2",      badge: "Fast",      color: "#666666" },
+  // Higgsfield
+  { id: "kling-v2.1",   label: "Kling v2.1",       badge: "Cinematic", color: "#777777" },
+  { id: "seedance-v1",  label: "Seedance v1",      badge: "TikTok",    color: "#777777" },
+  { id: "dop",          label: "DOP (Higgsfield)",  badge: "Creative",  color: "#777777" },
 ];
 
 const VAULT_PILLS = [
