@@ -633,7 +633,7 @@ function LibraryPageContent() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="flex items-center gap-2 px-5 py-3 rounded-lg transition-all hover:opacity-80 cursor-pointer"
+              className="flex items-center gap-2 px-5 py-3 rounded-full transition-all hover:opacity-80 cursor-pointer"
               style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "14px", fontWeight: 500, border: "1px solid var(--border)" }}
             >
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
@@ -649,8 +649,8 @@ function LibraryPageContent() {
             />
             <Link
               to="/hub"
-              className="flex items-center gap-2 px-5 py-3 rounded-lg transition-all hover:opacity-90"
-              style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
+              className="flex items-center gap-2 px-5 py-3 rounded-full transition-all hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
             >
               <Plus size={14} />
               {t("library.generateNew")}
@@ -694,8 +694,8 @@ function LibraryPageContent() {
             {campaignItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "var(--accent-warm-light)", boxShadow: "var(--shadow-md)" }}>
-                  <Sparkles size={28} style={{ color: "#FFF" }} />
+                  style={{ background: "rgba(124, 58, 237, 0.06)" }}>
+                  <Sparkles size={28} style={{ color: "#7C3AED" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {t("library.noCampaigns")}
@@ -706,7 +706,7 @@ function LibraryPageContent() {
                 <Link
                   to="/hub"
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
                 >
                   <Rocket size={14} />
                   {t("library.openAiHub")}
@@ -825,7 +825,7 @@ function LibraryPageContent() {
                   <div className="flex items-center gap-3 mb-6">
                     <button
                       onClick={() => setOpenCampaignId(null)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors cursor-pointer"
                       style={{ background: "rgba(17,17,17,0.03)", border: "1px solid rgba(17,17,17,0.04)", fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)" }}
                     >
                       <ChevronRight size={12} className="rotate-180" /> {t("library.back")}
@@ -851,7 +851,7 @@ function LibraryPageContent() {
                     <button
                       onClick={() => handleDownloadCampaign(openItem)}
                       disabled={isDownloading}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer"
                       style={{ background: "rgba(17,17,17,0.1)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 600 }}
                     >
                       {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
@@ -859,7 +859,7 @@ function LibraryPageContent() {
                     </button>
                     <button
                       onClick={() => handleDuplicateCampaign(openItem)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer"
                       style={{ background: "rgba(17,17,17,0.05)", border: "1px solid rgba(17,17,17,0.1)", color: "var(--foreground)", fontSize: "12px", fontWeight: 600 }}
                     >
                       <Copy size={12} />
@@ -1103,7 +1103,7 @@ function LibraryPageContent() {
             {/* Toolbar */}
             <div className="flex items-center gap-3 mb-5 flex-wrap">
               {/* Search */}
-              <div className="flex-1 flex items-center gap-2 rounded-lg px-3 py-2 border border-border bg-card min-w-[200px] max-w-[360px]"
+              <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2 border border-border bg-card min-w-[200px] max-w-[360px]"
                 style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
                 <Search size={14} className="text-muted-foreground flex-shrink-0" />
                 <input
@@ -1169,7 +1169,7 @@ function LibraryPageContent() {
               </div>
 
               {/* View toggle */}
-              <div className="flex items-center gap-0.5 bg-secondary rounded-lg p-0.5">
+              <div className="flex items-center gap-0.5 bg-secondary rounded-xl p-0.5">
                 <button
                   onClick={() => setViewMode("grid")}
                   className={`w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-colors ${viewMode === "grid" ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"}`}
@@ -1213,8 +1213,8 @@ function LibraryPageContent() {
             {filteredItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "var(--accent-warm-light)", boxShadow: "var(--shadow-md)" }}>
-                  <BookOpen size={28} style={{ color: "#FFF" }} />
+                  style={{ background: "rgba(124, 58, 237, 0.06)" }}>
+                  <BookOpen size={28} style={{ color: "#7C3AED" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {items.length === 0 ? t("library.noContent") : t("library.noResults")}
@@ -1237,7 +1237,7 @@ function LibraryPageContent() {
                     <Link
                       to="/hub"
                       className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                      style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 500 }}
+                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
                     >
                       <Rocket size={14} />
                       {t("library.openAiHub")}
@@ -1458,7 +1458,7 @@ function LibraryPageContent() {
               <div className="px-5 py-3 border-t border-border flex justify-end">
                 <button
                   onClick={() => setMoveTargetItem(null)}
-                  className="px-4 py-2 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+                  className="px-4 py-2 rounded-full text-muted-foreground hover:text-foreground cursor-pointer"
                   style={{ fontSize: "13px" }}
                 >{t("calendar.cancel")}</button>
               </div>
@@ -1493,7 +1493,7 @@ function LibraryPageContent() {
                   <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
                     <button
                       onClick={() => handleDownload(previewItem)}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white transition-all cursor-pointer hover:scale-105"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-full text-white transition-all cursor-pointer hover:scale-105"
                       style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}
                     >
                       <Download size={14} /> {t("library.download")}
@@ -1537,7 +1537,7 @@ function LibraryPageContent() {
                     {(previewItem.preview?.kind === "text" || previewItem.preview?.kind === "code") && (
                       <button
                         onClick={() => copyToClipboard(previewItem.preview.kind === "text" ? previewItem.preview.excerpt : previewItem.preview.snippet)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+                        className="flex items-center gap-2 px-4 py-2 rounded-full hover:opacity-90 transition-opacity cursor-pointer"
                         style={{ background: "rgba(17,17,17,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
                       >
                         <Copy size={14} /> {t("library.copyText")}
@@ -1545,21 +1545,21 @@ function LibraryPageContent() {
                     )}
                     <button
                       onClick={() => { setPreviewItem(null); setRepurposeItem(previewItem); setRepurposeResult(null); }}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 rounded-full hover:opacity-90 transition-opacity cursor-pointer"
                       style={{ background: "rgba(17,17,17,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
                     >
                       <RefreshCw size={14} /> Décliner
                     </button>
                     <button
                       onClick={() => handleDownload(previewItem)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer"
+                      className="flex items-center gap-2 px-4 py-2 rounded-full text-white hover:opacity-90 transition-opacity cursor-pointer"
                       style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}
                     >
                       <Download size={14} /> {t("library.download")}
                     </button>
                     <button
                       onClick={() => setPreviewItem(null)}
-                      className="px-4 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground cursor-pointer"
+                      className="px-4 py-2 rounded-full border border-border text-muted-foreground hover:text-foreground cursor-pointer"
                       style={{ fontSize: "13px" }}
                     >{t("calendar.cancel")}</button>
                   </div>
@@ -1627,7 +1627,7 @@ function LibraryPageContent() {
                             <button
                               key={fmt.id}
                               onClick={() => toggleRepurposeFormat(fmt.id)}
-                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium cursor-pointer transition-all"
                               style={{
                                 background: selected ? "var(--ora-signal)" : "var(--secondary)",
                                 color: selected ? "#fff" : "var(--text-secondary)",
@@ -1697,7 +1697,7 @@ function LibraryPageContent() {
                     <button
                       onClick={() => { setRepurposeItem(null); setRepurposeResult(null); }}
                       disabled={repurposing}
-                      className="px-4 py-2.5 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                      className="px-4 py-2.5 rounded-full text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
                       style={{ fontSize: "13px" }}
                     >
                       Annuler
@@ -1705,7 +1705,7 @@ function LibraryPageContent() {
                     <button
                       onClick={handleRepurpose}
                       disabled={repurposing || repurposeFormats.length === 0}
-                      className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
+                      className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-full text-white hover:opacity-90 transition-all cursor-pointer disabled:opacity-50"
                       style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 600 }}
                     >
                       {repurposing ? (
@@ -1718,7 +1718,7 @@ function LibraryPageContent() {
                 ) : (
                   <button
                     onClick={() => { setRepurposeItem(null); setRepurposeResult(null); fetchData(); }}
-                    className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-all cursor-pointer"
+                    className="ml-auto flex items-center gap-2 px-5 py-2.5 rounded-full text-white hover:opacity-90 transition-all cursor-pointer"
                     style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 600 }}
                   >
                     <Check size={14} /> Fermer

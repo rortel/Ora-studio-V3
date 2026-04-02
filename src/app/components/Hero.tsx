@@ -54,12 +54,12 @@ export function Hero() {
         className="relative flex flex-col items-center justify-center text-center px-6 h-full"
         style={{ zIndex: 2 }}
       >
-        {/* Badge */}
+        {/* Reviews badge — social proof like Blaze */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={loaded ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="mb-8"
+          className="mb-8 flex items-center gap-3"
         >
           <span
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full"
@@ -74,10 +74,14 @@ export function Hero() {
               border: "1px solid rgba(255,255,255,0.1)",
             }}
           >
-            <span style={{
-              width: 5, height: 5, borderRadius: "50%",
-              background: "#FFFFFF", display: "inline-block",
-            }} />
+            {/* 5 stars */}
+            <span className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <svg key={i} width="11" height="11" viewBox="0 0 24 24" fill="#FBBF24" stroke="none">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+              ))}
+            </span>
             {t("hero.badge")}
           </span>
         </motion.div>
@@ -133,10 +137,10 @@ export function Hero() {
         >
           <Link
             to="/login?mode=signup"
-            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg active:scale-[0.98]"
+            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
             style={{
-              background: "#FFFFFF",
-              color: "#111111",
+              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+              color: "#FFFFFF",
               fontFamily: "'Inter', sans-serif",
               fontSize: "14px",
               fontWeight: 500,

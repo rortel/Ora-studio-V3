@@ -1011,7 +1011,7 @@ function VaultPageContent() {
               whileTap={{ scale: 0.98 }}
               onClick={() => saveVault()}
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 transition-all shrink-0"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-50 transition-all shrink-0"
               style={{
                 background: saveOk ? "rgba(93,138,77,0.1)" : "var(--accent-warm-light)",
                 border: saveOk ? "1px solid rgba(93,138,77,0.25)" : "1px solid var(--accent-warm-medium)",
@@ -1036,7 +1036,7 @@ function VaultPageContent() {
             whileTap={{ scale: 0.98 }}
             onClick={handleResetVault}
             disabled={resetting}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer disabled:opacity-50 transition-all shrink-0"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-full cursor-pointer disabled:opacity-50 transition-all shrink-0"
             style={{
               background: "rgba(239,68,68,0.06)",
               border: "1px solid rgba(239,68,68,0.2)",
@@ -1062,7 +1062,7 @@ function VaultPageContent() {
 
         {/* URL row */}
         <div className="flex items-center gap-2.5 mb-3">
-          <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
+          <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-xl"
             style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)" }}>
             <Globe size={15} style={{ color: "var(--accent)", opacity: 0.7 }} />
             <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
@@ -1073,14 +1073,14 @@ function VaultPageContent() {
           </div>
           <button
             onClick={() => handleAnalyzeUrl(false)} disabled={analyzing || !urlInput.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
-            style={{ background: "var(--accent)", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
+            style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
             {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             {t("vault.scanBtn")}
           </button>
           <button
             onClick={() => handleAnalyzeUrl(true)} disabled={analyzing || !urlInput.trim()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
             style={{ border: "1px solid var(--border-strong)", fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
             <Layers size={13} /> {t("vault.deep")}
           </button>
@@ -1088,7 +1088,7 @@ function VaultPageContent() {
 
         {/* File drop */}
         <div onClick={() => !analyzing && fileRef.current?.click()}
-          className="flex items-center justify-center gap-2.5 py-3.5 rounded-lg cursor-pointer transition-all"
+          className="flex items-center justify-center gap-2.5 py-3.5 rounded-xl cursor-pointer transition-all"
           style={{
             border: `1px dashed ${dragOver ? "rgba(17,17,17,0.5)" : "rgba(26,23,20,0.04)"}`,
             background: dragOver ? "rgba(17,17,17,0.04)" : "transparent",
@@ -1181,7 +1181,7 @@ function VaultPageContent() {
 
                 <div className="flex items-center gap-2.5 shrink-0">
                   {vault.confidence_score > 0 && (
-                    <div className="flex items-baseline gap-1 px-3 py-1.5 rounded-lg"
+                    <div className="flex items-baseline gap-1 px-3 py-1.5 rounded-xl"
                       style={{ background: "rgba(17,17,17,0.08)", border: "1px solid rgba(17,17,17,0.15)" }}>
                       <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--accent)" }}>{vault.confidence_score}</span>
                       <span style={{ fontSize: "10px", color: "rgba(17,17,17,0.6)", fontWeight: 500 }}>/100</span>
@@ -1189,7 +1189,7 @@ function VaultPageContent() {
                   )}
                   {vault.source_url && (
                     <button onClick={() => handleAnalyzeUrl(true)} disabled={analyzing}
-                      className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer transition-all hover:bg-white/[0.06]"
+                      className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-white/[0.06]"
                       style={{ border: "1px solid rgba(26,23,20,0.04)" }}>
                       <RefreshCw size={13} className={analyzing ? "animate-spin" : ""} style={{ color: "var(--text-tertiary)" }} />
                     </button>
@@ -1210,7 +1210,7 @@ function VaultPageContent() {
                 <button
                   key={key}
                   onClick={() => setVaultTab(key)}
-                  className="px-4 py-2 rounded-lg cursor-pointer transition-all whitespace-nowrap"
+                  className="px-4 py-2 rounded-full cursor-pointer transition-all whitespace-nowrap"
                   style={{
                     fontSize: "13px",
                     fontWeight: 500,
@@ -1247,7 +1247,7 @@ function VaultPageContent() {
                             { label: t("vault.usp"), value: vault.usp, key: "usp" },
                             { label: t("vault.values"), value: vault.values, key: "values" },
                           ].filter(x => x.value).map((field) => (
-                            <div key={field.key} className="p-3 rounded-lg"
+                            <div key={field.key} className="p-3 rounded-xl"
                               style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                                 {field.label}
@@ -1257,7 +1257,7 @@ function VaultPageContent() {
                           ))}
                         </div>
                         {vault.brand_guidelines_text && (
-                          <div className="p-3 rounded-lg"
+                          <div className="p-3 rounded-xl"
                             style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               {t("vault.brandGuidelines")}
@@ -1341,12 +1341,12 @@ function VaultPageContent() {
                                 <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{u.name}</span>
                                 <div className="flex items-center gap-2">
                                   <button onClick={() => setUniverseEditing(universeEditing === u.id ? null : u.id)}
-                                    className="px-2.5 py-1 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+                                    className="px-2.5 py-1 rounded-full cursor-pointer transition-colors hover:bg-secondary"
                                     style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
                                     {universeEditing === u.id ? t("vault.close") : t("vault.edit")}
                                   </button>
                                   <button onClick={() => handleDeleteUniverse(u.id)}
-                                    className="p-1.5 rounded-lg cursor-pointer transition-colors hover:bg-red-50"
+                                    className="p-1.5 rounded-full cursor-pointer transition-colors hover:bg-red-50"
                                     style={{ color: "#DC2626" }}>
                                     <Trash2 size={12} />
                                   </button>
@@ -1414,7 +1414,7 @@ function VaultPageContent() {
                                       const keywords = (document.getElementById(`uni-kw-${u.id}`) as HTMLInputElement)?.value.split(",").map(s => s.trim()).filter(Boolean) || u.keywords;
                                       handleUpdateUniverse(u.id, { name, description, colors, tone_override, keywords });
                                     }}
-                                    className="px-4 py-2 rounded-lg cursor-pointer transition-all"
+                                    className="px-4 py-2 rounded-full cursor-pointer transition-all"
                                     style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
                                     {t("vault.saveBtn")}
                                   </button>
@@ -1469,12 +1469,12 @@ function VaultPageContent() {
                           </div>
                           <div className="flex gap-2">
                             <button onClick={handleAddUniverse} disabled={!newUniverse.name.trim()}
-                              className="px-4 py-2 rounded-lg cursor-pointer transition-all disabled:opacity-30"
+                              className="px-4 py-2 rounded-full cursor-pointer transition-all disabled:opacity-30"
                               style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
                               {t("vault.create")}
                             </button>
                             <button onClick={() => setShowAddUniverse(false)}
-                              className="px-4 py-2 rounded-lg cursor-pointer transition-all"
+                              className="px-4 py-2 rounded-full cursor-pointer transition-all"
                               style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
                               {t("vault.cancel")}
                             </button>
@@ -1503,7 +1503,7 @@ function VaultPageContent() {
                     {vault.target_audiences.length > 0 ? (
                       <div className="space-y-2">
                         {vault.target_audiences.map((a, i) => (
-                          <div key={i} className="p-3 rounded-lg"
+                          <div key={i} className="p-3 rounded-xl"
                             style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{a.name}</span>
                             {a.description && (
@@ -1552,7 +1552,7 @@ function VaultPageContent() {
                   {vault.tone ? (
                     <div className="space-y-3">
                       {vault.tone.primary_tone && (
-                        <span className="inline-block px-3 py-1.5 rounded-lg"
+                        <span className="inline-block px-3 py-1.5 rounded-xl"
                           style={{ background: "rgba(17,17,17,0.12)", border: "1px solid rgba(17,17,17,0.2)", color: "var(--accent)", fontSize: "12px", fontWeight: 500 }}>
                           {vault.tone.primary_tone}
                         </span>
@@ -1628,7 +1628,7 @@ function VaultPageContent() {
                     {vault.key_messages.length > 0 ? (
                       <div className="space-y-1.5">
                         {vault.key_messages.map((m, i) => (
-                          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg"
+                          <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-xl"
                             style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)" }}>
                             <ArrowRight size={11} style={{ color: "var(--accent)", marginTop: 3, flexShrink: 0, opacity: 0.6 }} />
                             <span style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)" }}>{m}</span>
@@ -1651,7 +1651,7 @@ function VaultPageContent() {
                             {t("vault.voiceDesc")}
                           </p>
                           <button onClick={handleLearnVoice} disabled={voiceLearning}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:bg-secondary"
                             style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
                             {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} {t("vault.reanalyze")}
                           </button>
@@ -1756,13 +1756,13 @@ function VaultPageContent() {
                         {/* Vocabulary & Style details */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {vault.voice_profile.vocabulary?.register && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.register")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.voice_profile.vocabulary.register}</p>
                             </div>
                           )}
                           {vault.voice_profile.sentence_style?.structure && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.sentenceStyle")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
                                 {vault.voice_profile.sentence_style.structure}, longueur {vault.voice_profile.sentence_style.avg_length || "moyenne"}
@@ -1773,7 +1773,7 @@ function VaultPageContent() {
 
                         {/* Rhetorical devices */}
                         {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
-                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                          <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               {t("vault.rhetoricalDevices")}
                             </span>
@@ -2007,7 +2007,7 @@ function VaultPageContent() {
                           { label: t("vault.lighting"), value: vault.photo_style.lighting },
                           { label: t("vault.subjects"), value: vault.photo_style.subjects },
                         ].filter(x => x.value).map((x, i) => (
-                          <div key={i} className="p-2.5 rounded-lg"
+                          <div key={i} className="p-2.5 rounded-xl"
                             style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               {x.label}
@@ -2029,7 +2029,7 @@ function VaultPageContent() {
                         {vault.image_calibration.rules && (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {Object.entries(vault.image_calibration.rules).filter(([, v]) => v).map(([key, value]) => (
-                              <div key={key} className="p-2.5 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                              <div key={key} className="p-2.5 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                                   {key}
                                 </span>
@@ -2071,7 +2071,7 @@ function VaultPageContent() {
                           </div>
                         )}
                         {vault.image_calibration.mood && (
-                          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                          <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Mood</span>
                             <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.image_calibration.mood}</p>
                           </div>
@@ -2105,7 +2105,7 @@ function VaultPageContent() {
                     <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{t("vault.scanCompetitor")}</span>
                   </div>
                   <div className="flex items-center gap-2.5">
-                    <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
+                    <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-xl"
                       style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)" }}>
                       <Globe size={15} style={{ color: "var(--accent)", opacity: 0.7 }} />
                       <input type="text" value={competitorUrl} onChange={(e) => setCompetitorUrl(e.target.value)}
@@ -2115,8 +2115,8 @@ function VaultPageContent() {
                         style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 400 }} />
                     </div>
                     <button onClick={handleScanCompetitor} disabled={competitorLoading || !competitorUrl.trim()}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
-                      style={{ background: "var(--accent)", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
+                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
                       {competitorLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                       {t("vault.scanBtn")}
                     </button>
@@ -2160,7 +2160,7 @@ function VaultPageContent() {
                             )}
                           </div>
                           <button onClick={() => handleRemoveCompetitor(idx)}
-                            className="p-2 rounded-lg cursor-pointer transition-colors hover:bg-red-50"
+                            className="p-2 rounded-full cursor-pointer transition-colors hover:bg-red-50"
                             style={{ color: "#DC2626", border: "1px solid rgba(220,38,38,0.2)" }}>
                             <Trash2 size={13} />
                           </button>
@@ -2168,13 +2168,13 @@ function VaultPageContent() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {comp.positioning && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.positioning")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.positioning}</p>
                             </div>
                           )}
                           {comp.tone && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.toneLabel")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.tone}</p>
                             </div>
@@ -2192,7 +2192,7 @@ function VaultPageContent() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                           {comp.strengths && comp.strengths.length > 0 && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.strengths")}</span>
                               <ul className="mt-2 space-y-1">
                                 {comp.strengths.map((s, si) => (
@@ -2204,7 +2204,7 @@ function VaultPageContent() {
                             </div>
                           )}
                           {comp.weaknesses && comp.weaknesses.length > 0 && (
-                            <div className="p-3 rounded-lg" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                            <div className="p-3 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                               <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.weaknesses")}</span>
                               <ul className="mt-2 space-y-1">
                                 {comp.weaknesses.map((w, wi) => (
@@ -2299,7 +2299,7 @@ function SectionCard({ icon: Icon, title, count, children, open, onToggle }: {
         className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors hover:bg-white/[0.02]"
         style={{ background: "transparent" }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
             style={{ background: "rgba(17,17,17,0.08)" }}>
             <Icon size={15} style={{ color: "var(--accent)" }} />
           </div>
@@ -2344,7 +2344,7 @@ function SectionCard({ icon: Icon, title, count, children, open, onToggle }: {
 function ToneGauge({ label, value }: { label: string; value: number }) {
   const pct = Math.min(100, Math.max(0, (value / 10) * 100));
   return (
-    <div className="p-2.5 rounded-lg"
+    <div className="p-2.5 rounded-xl"
       style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between mb-1.5">
         <span style={{ fontSize: "10px", fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -2406,7 +2406,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
           This strategy is automatically injected into every generation — images, text, video, and audio.
         </p>
         <button onClick={onEdit}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:bg-secondary"
           style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
           <RefreshCw size={11} /> Reconfigure
         </button>
@@ -2424,7 +2424,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Narrative register */}
-        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+        <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
           <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             {t("vault.narrativeRegister")}
           </span>
@@ -2434,7 +2434,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
 
         {/* Creative tension */}
         {platform.creative_tension && (
-          <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+          <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
               {t("vault.creativeTension")}
             </span>
@@ -2453,7 +2453,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
           { key: "subvert" as const, label: t("vault.subvert"), color: "#d97706" },
         ] as const).map(({ key, label, color }) => (
           platform.semiotic_codes[key].length > 0 && (
-            <div key={key} className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+            <div key={key} className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
               <span style={{ fontSize: "9px", fontWeight: 600, color, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 {label}
               </span>
@@ -2472,7 +2472,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
 
       {/* Photo direction */}
       {platform.photo_direction && (
-        <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
+        <div className="p-3 rounded-xl" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
           <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
             {t("vault.photoDirection")}
           </span>

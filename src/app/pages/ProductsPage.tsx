@@ -275,7 +275,6 @@ export function ProductsPage() {
               </Link>
               <h1
                 style={{
-                  fontFamily: "'Inter', sans-serif",
                   fontSize: "clamp(1.75rem, 4vw, 2.5rem)",
                   fontWeight: 600,
                   color: "var(--text-primary)",
@@ -292,13 +291,12 @@ export function ProductsPage() {
 
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl cursor-pointer transition-all hover:opacity-90 hover:-translate-y-0.5"
+              className="flex items-center gap-2 px-5 py-3 rounded-full cursor-pointer transition-all hover:opacity-90 hover:-translate-y-0.5"
               style={{
-                background: "var(--accent)",
-                color: "#fff",
+                background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                color: "#FFFFFF",
                 fontSize: "14px",
                 fontWeight: 500,
-                boxShadow: "0 4px 12px rgba(17,17,17,0.25)",
               }}
             >
               <Plus size={16} /> {t("products.newProduct")}
@@ -321,7 +319,7 @@ export function ProductsPage() {
               <AlertCircle size={32} style={{ color: "var(--destructive)" }} />
               <p style={{ fontSize: "14px", color: "var(--destructive)" }}>{error}</p>
               <button onClick={loadProducts}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl cursor-pointer text-[13px] font-medium"
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-full cursor-pointer text-[13px] font-medium"
                 style={{ background: "var(--secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
                 {t("products.retry")}
               </button>
@@ -340,15 +338,15 @@ export function ProductsPage() {
               >
                 <Package size={28} style={{ color: "var(--accent)" }} />
               </div>
-              <p style={{ fontSize: "18px", fontWeight: 600, fontFamily: "'Inter', sans-serif", color: "var(--text-primary)", marginBottom: 4 }}>
+              <p style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
                 {t("products.noProducts")}
               </p>
               <p style={{ fontSize: "14px", color: "var(--text-secondary)", marginBottom: 20 }}>
                 {t("products.noProductsDesc")}
               </p>
               <button onClick={openCreate}
-                className="flex items-center gap-2 px-5 py-3 rounded-xl cursor-pointer transition-all hover:opacity-90"
-                style={{ background: "var(--accent)", color: "#fff", fontSize: "14px", fontWeight: 500 }}>
+                className="flex items-center gap-2 px-5 py-3 rounded-full cursor-pointer transition-all hover:opacity-90"
+                style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}>
                 <Plus size={16} /> {t("products.createProduct")}
               </button>
             </div>
@@ -391,7 +389,7 @@ export function ProductsPage() {
                     {/* Info */}
                     <div className="p-5">
                       <div className="flex items-start justify-between mb-2">
-                        <h3 className="line-clamp-1" style={{ fontSize: "16px", fontWeight: 600, fontFamily: "'Inter', sans-serif", color: "var(--text-primary)" }}>
+                        <h3 className="line-clamp-1" style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)" }}>
                           {product.name}
                         </h3>
                         {product.price && (
@@ -425,7 +423,7 @@ export function ProductsPage() {
 
                       {/* Generate Campaign CTA */}
                       <button onClick={() => navigate(`/hub?type=campaign&productId=${product.id}`)}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl cursor-pointer transition-all hover:opacity-90 mb-3"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-full cursor-pointer transition-all hover:opacity-90 mb-3"
                         style={{ background: "var(--primary)", color: "var(--primary-foreground)", fontSize: "13px", fontWeight: 500 }}>
                         <Sparkles size={14} /> {t("products.generateCampaign")}
                       </button>
@@ -496,7 +494,7 @@ export function ProductsPage() {
                   {/* Header */}
                   <div className="flex items-center justify-between px-6 py-5"
                     style={{ borderBottom: "1px solid var(--border)" }}>
-                    <h2 style={{ fontSize: "18px", fontWeight: 600, fontFamily: "'Inter', sans-serif", color: "var(--text-primary)" }}>
+                    <h2 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-primary)" }}>
                       {editingProduct ? t("products.editProduct") : t("products.newProduct")}
                     </h2>
                     <button onClick={() => setDialogOpen(false)}
@@ -546,7 +544,7 @@ export function ProductsPage() {
                           onFocus={e => e.target.style.borderColor = "var(--accent)"}
                           onBlur={e => e.target.style.borderColor = "var(--border)"} />
                         <button onClick={handleScrape} disabled={scraping || !url.trim()}
-                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 whitespace-nowrap text-[12px] font-medium"
+                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-full cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 whitespace-nowrap text-[12px] font-medium"
                           style={{ background: "var(--accent-warm-light)", border: "1px solid var(--accent-warm-medium)", color: "var(--accent)" }}>
                           {scraping ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                           {scraping ? t("products.fetching") : t("products.autoFill")}
@@ -749,7 +747,7 @@ export function ProductsPage() {
                             if (e.target.files && editingProduct) { handleImageUpload(editingProduct.id, e.target.files); e.target.value = ""; }
                           }} />
                         <button onClick={() => fileInputRef.current?.click()} disabled={uploadingImages}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-colors disabled:opacity-40 text-[12px] font-medium"
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-full cursor-pointer transition-colors disabled:opacity-40 text-[12px] font-medium"
                           style={{ color: "var(--text-secondary)", border: "1px dashed var(--border-accent)" }}
                           onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
@@ -764,15 +762,15 @@ export function ProductsPage() {
                   <div className="flex items-center justify-between px-6 py-4"
                     style={{ borderTop: "1px solid var(--border)" }}>
                     <button onClick={() => setDialogOpen(false)}
-                      className="px-5 py-2.5 rounded-xl cursor-pointer transition-colors text-[13px]"
+                      className="px-5 py-2.5 rounded-full cursor-pointer transition-colors text-[13px]"
                       style={{ color: "var(--text-secondary)" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--secondary)"}
                       onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       {t("products.cancel")}
                     </button>
                     <button onClick={handleSave} disabled={saving || !name.trim()}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 text-[13px] font-medium"
-                      style={{ background: "var(--accent)", color: "#fff" }}>
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-full cursor-pointer transition-all hover:opacity-90 disabled:opacity-40 text-[13px] font-medium"
+                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF" }}>
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                       {saving ? t("products.saving") : (editingProduct ? t("products.saveChanges") : t("products.createProduct"))}
                     </button>

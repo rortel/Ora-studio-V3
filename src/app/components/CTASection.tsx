@@ -52,9 +52,9 @@ export function CTASection() {
         >
           <Link
             to="/login?mode=signup"
-            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg active:scale-[0.98]"
+            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
             style={{
-              background: "#111111",
+              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
               color: "#FFFFFF",
               fontSize: "14px",
               fontWeight: 500,
