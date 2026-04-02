@@ -2140,7 +2140,8 @@ const CONFIG_FORMATS = [
   { id: "youtube-thumbnail", label: "Thumbnail", platform: "YouTube", icon: Youtube, type: "image" as const },
   { id: "youtube-short", label: "Short", platform: "YouTube", icon: Film, type: "video" as const },
   { id: "pinterest-pin", label: "Pin", platform: "Pinterest", icon: ImageIcon, type: "image" as const },
-  { id: "blog-article", label: "Blog SEO", platform: "Web", icon: BookOpen, type: "text" as const },
+  { id: "blog-article", label: "Article de blog", platform: "Blog", icon: BookOpen, type: "text" as const },
+  { id: "press-release", label: "Communiqué de presse", platform: "PR", icon: FileText, type: "text" as const },
 ];
 
 const CONFIG_PLATFORMS = [
@@ -2151,7 +2152,34 @@ const CONFIG_PLATFORMS = [
   { name: "Twitter/X", icon: Twitter },
   { name: "YouTube", icon: Youtube },
   { name: "Pinterest", icon: ImageIcon },
-  { name: "Web", icon: BookOpen },
+];
+
+// Formats longs (non social media)
+const CONFIG_LONG_FORMATS = [
+  { id: "blog-article", label: "Article de blog", icon: BookOpen },
+  { id: "press-release", label: "Communiqué de presse", icon: FileText },
+];
+
+const OBJECTIVE_PRESETS = [
+  { id: "awareness", label: "Notoriété", icon: "📣" },
+  { id: "conversion", label: "Conversion", icon: "🛒" },
+  { id: "engagement", label: "Engagement", icon: "💬" },
+  { id: "traffic", label: "Trafic", icon: "🔗" },
+  { id: "launch", label: "Lancement", icon: "🚀" },
+  { id: "loyalty", label: "Fidélisation", icon: "💎" },
+  { id: "event", label: "Événement", icon: "🎁" },
+];
+
+const AUDIENCE_PRESETS = [
+  "Grand public", "Pros / B2B", "Jeunes 18-25", "Familles", "Premium / Luxe", "Seniors 55+",
+];
+
+const CTA_PRESETS = [
+  "Acheter", "Découvrir", "S'inscrire", "Télécharger", "Prendre RDV", "En savoir plus",
+];
+
+const MOMENT_PRESETS = [
+  "Lancement produit", "Soldes / Promo", "Noël", "Saint-Valentin", "Été", "Rentrée", "Black Friday", "Marronnier",
 ];
 
 const CONFIG_TEXT_MODELS = [
@@ -2707,38 +2735,63 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   serverPost: (path: string, body: any, timeoutMs?: number) => Promise<any>;
 }) {
   const { t } = useI18n();
+
+  // ── State ──
   const [brief, setBrief] = useState(params.brief || "");
+  const [selectedProduct, setSelectedProduct] = useState<string>(params.productId || "");
+  const [objective, setObjective] = useState(params.objective || "awareness");
+  const [selectedNetworks, setSelectedNetworks] = useState<string[]>(["LinkedIn", "Instagram", "Facebook"]);
   const [selectedFormats, setSelectedFormats] = useState<string[]>(
     params.formats || ["linkedin-post", "instagram-post", "facebook-post"]
   );
-  const [selectedProduct, setSelectedProduct] = useState<string>(params.productId || "");
-  const [objective, setObjective] = useState(params.objective || "");
-  const [tone, setTone] = useState(params.toneOfVoice || "Professionnel");
+  const [visualStyle, setVisualStyle] = useState("");
+  const [tone, setTone] = useState(params.toneOfVoice || "");
   const [targetAudience, setTargetAudience] = useState(params.targetAudience || "");
   const [callToAction, setCallToAction] = useState(params.callToAction || "");
+  const [moment, setMoment] = useState("");
+  const [isSponsored, setIsSponsored] = useState(false);
+  const [postCount, setPostCount] = useState("3");
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
-  const [visualStyle, setVisualStyle] = useState("");
   const [textModels, setTextModels] = useState<string[]>(["gpt-4o"]);
   const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
   const [inspiring, setInspiring] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Visual scene presets — adapted to product type
+  // Visual scene presets
   const SCENE_PRESETS = [
-    { id: "", label: "Auto", desc: "IA choisit le meilleur contexte", icon: "✨" },
-    { id: "Studio Photoshoot", label: "Photo Studio", desc: "Fond blanc/gris, éclairage pro", icon: "📸" },
-    { id: "Packshot", label: "Packshot", desc: "Vue produit détourée, e-commerce", icon: "📦" },
-    { id: "Lifestyle", label: "Lifestyle", desc: "Mise en situation naturelle, golden hour", icon: "🌿" },
-    { id: "Flat Lay", label: "Flat Lay", desc: "Vue du dessus, composition créative", icon: "🎨" },
-    { id: "UGC / Authentic", label: "UGC / Authentique", desc: "Style smartphone, décor naturel", icon: "🤳" },
-    { id: "Cinematic", label: "Cinématique", desc: "Éclairage dramatique, mood sombre", icon: "🎬" },
-    { id: "Editorial / Fashion", label: "Editorial", desc: "Haute couture, direction artistique", icon: "✂️" },
-    { id: "Close-up / Macro", label: "Close-up", desc: "Détail produit, texture, matière", icon: "🔍" },
-    { id: "3D Render", label: "3D", desc: "Rendu 3D, flottant, environnement HDRI", icon: "💎" },
-    { id: "Aerial / Drone", label: "Aérien", desc: "Vue drone, perspective grand angle", icon: "🚁" },
+    { id: "", label: "Auto", desc: "IA choisit", icon: "✨" },
+    { id: "Studio Photoshoot", label: "Studio", desc: "Fond blanc, pro", icon: "📸" },
+    { id: "Packshot", label: "Packshot", desc: "E-commerce", icon: "📦" },
+    { id: "Lifestyle", label: "Lifestyle", desc: "Golden hour", icon: "🌿" },
+    { id: "Flat Lay", label: "Flat Lay", desc: "Vue dessus", icon: "🎨" },
+    { id: "UGC / Authentic", label: "UGC", desc: "Authentique", icon: "🤳" },
+    { id: "Cinematic", label: "Cinéma", desc: "Dramatique", icon: "🎬" },
+    { id: "Editorial / Fashion", label: "Editorial", desc: "Magazine", icon: "✂️" },
+    { id: "Close-up / Macro", label: "Close-up", desc: "Détail", icon: "🔍" },
+    { id: "3D Render", label: "3D", desc: "Rendu 3D", icon: "💎" },
+    { id: "Aerial / Drone", label: "Aérien", desc: "Drone", icon: "🚁" },
   ];
+
+  // ── Auto-select formats when networks change ──
+  const toggleNetwork = (network: string) => {
+    setSelectedNetworks(prev => {
+      const next = prev.includes(network) ? prev.filter(n => n !== network) : [...prev, network];
+      // Auto-update formats based on selected networks
+      const autoFormats: string[] = [];
+      for (const net of next) {
+        const netFormats = CONFIG_FORMATS.filter(f => f.platform === net);
+        // Select smart defaults per platform (post + 1 visual format)
+        const post = netFormats.find(f => f.id.includes("post"));
+        const visual = netFormats.find(f => f.type === "image" && !f.id.includes("post") && !f.id.includes("ad"));
+        if (post) autoFormats.push(post.id);
+        if (visual) autoFormats.push(visual.id);
+      }
+      setSelectedFormats([...new Set(autoFormats)]);
+      return next;
+    });
+  };
 
   const toggleFormat = (id: string) => {
     setSelectedFormats(prev =>
@@ -2746,39 +2799,17 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     );
   };
 
-  const togglePlatform = (platform: string) => {
-    const platformFormats = CONFIG_FORMATS.filter(f => f.platform === platform).map(f => f.id);
-    const allSelected = platformFormats.every(f => selectedFormats.includes(f));
-    if (allSelected) {
-      setSelectedFormats(prev => prev.filter(f => !platformFormats.includes(f)));
-    } else {
-      setSelectedFormats(prev => [...new Set([...prev, ...platformFormats])]);
-    }
-  };
-
   const toggleTextModel = (id: string) => {
-    setTextModels(prev =>
-      prev.includes(id)
-        ? prev.length > 1 ? prev.filter(m => m !== id) : prev // keep at least 1
-        : [...prev, id]
-    );
+    setTextModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
   };
-
   const toggleImageModel = (id: string) => {
-    setImageModels(prev =>
-      prev.includes(id)
-        ? prev.length > 1 ? prev.filter(m => m !== id) : prev
-        : [...prev, id]
-    );
+    setImageModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
   };
 
   const handleInspireMe = async () => {
     setInspiring(true);
     try {
-      const res = await serverPost("/topics/suggest", {
-        productId: selectedProduct || undefined,
-        count: 3,
-      });
+      const res = await serverPost("/topics/suggest", { productId: selectedProduct || undefined, count: 3 });
       if (res.success && res.topics?.length) {
         const topic = res.topics[0];
         if (topic.brief) setBrief(topic.brief);
@@ -2789,16 +2820,24 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     setInspiring(false);
   };
 
+  // Placeholder dynamique selon l'objectif
+  const briefPlaceholder = {
+    awareness: "Ex: Faire connaître notre gamme verveine auprès des 25-45 ans...",
+    conversion: "Ex: Soldes d'été -30%, pousser à l'achat immédiat...",
+    engagement: "Ex: Créer du lien avec notre communauté, partage d'expérience...",
+    traffic: "Ex: Diriger vers notre nouvelle page produit...",
+    launch: "Ex: Nouveau packaging, mettre en avant le côté premium...",
+    loyalty: "Ex: Remercier nos clients fidèles, programme de fidélité...",
+    event: "Ex: Salon Maison & Objet, stand H42, invitation...",
+  }[objective] || t("studio.briefPlaceholder");
+
   const handleGenerate = () => {
-    if (!selectedFormats.length) {
-      toast.error(t("studio.selectAtLeastOneFormat"));
-      return;
-    }
+    if (!selectedFormats.length) { toast.error(t("studio.selectAtLeastOneFormat")); return; }
     onGenerate({
-      brief,
+      brief: `${brief}${moment ? `\nMoment: ${moment}` : ""}${isSponsored ? "\nContenu sponsorisé — CTA direct" : ""}${postCount !== "3" ? `\nNombre de posts souhaité: ${postCount}` : ""}`,
       formats: selectedFormats,
       productId: selectedProduct,
-      objective,
+      objective: OBJECTIVE_PRESETS.find(o => o.id === objective)?.label || objective,
       toneOfVoice: tone,
       targetAudience,
       callToAction,
@@ -2814,6 +2853,28 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const brandName = vault?.brandName || vault?.brand_name || vault?.sections?.find((s: any) =>
     s.items?.find((i: any) => i.label?.toLowerCase().includes("nom"))
   )?.items?.find((i: any) => i.label?.toLowerCase().includes("nom"))?.value || "";
+
+  // Chip helper
+  const Chip = ({ selected, onClick, children, size = "md" }: { selected: boolean; onClick: () => void; children: React.ReactNode; size?: "sm" | "md" }) => (
+    <button onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg transition-all cursor-pointer ${size === "sm" ? "px-2 py-1" : "px-2.5 py-1.5"}`}
+      style={{
+        background: selected ? "var(--foreground)" : "var(--secondary)",
+        color: selected ? "var(--background)" : "var(--text-primary)",
+        border: "1px solid", borderColor: selected ? "var(--foreground)" : "var(--border)",
+        fontSize: size === "sm" ? "10px" : "11px", fontWeight: 500,
+      }}>
+      {selected && <Check size={size === "sm" ? 8 : 10} />}
+      {children}
+    </button>
+  );
+
+  const SectionLabel = ({ icon: Icon, children }: { icon?: any; children: React.ReactNode }) => (
+    <label style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
+      {Icon && <Icon size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />}
+      {children}
+    </label>
+  );
 
   return (
     <motion.div
@@ -2847,17 +2908,50 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         </button>
       </div>
 
-      <div className="px-5 py-4 space-y-5" style={{ maxHeight: "60vh", overflowY: "auto" }}>
+      <div className="px-5 py-4 space-y-5" style={{ maxHeight: "65vh", overflowY: "auto" }}>
+
+        {/* ═══ NIVEAU 1 — Essentiel (toujours visible) ═══ */}
+
+        {/* Produit */}
+        {products.length > 0 && (
+          <div>
+            <SectionLabel icon={Package}>Produit</SectionLabel>
+            <div className="flex flex-wrap gap-2">
+              <Chip selected={!selectedProduct} onClick={() => setSelectedProduct("")}>Marque globale</Chip>
+              {products.map((p: any) => (
+                <Chip key={p.id} selected={selectedProduct === p.id} onClick={() => setSelectedProduct(p.id)}>
+                  {p.name}{p.price && <span style={{ opacity: 0.6 }}>· {p.price}</span>}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Objectif */}
+        <div>
+          <SectionLabel icon={Target}>Objectif de communication</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {OBJECTIVE_PRESETS.map(obj => (
+              <button key={obj.id} onClick={() => setObjective(obj.id)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer"
+                style={{
+                  background: objective === obj.id ? "var(--foreground)" : "var(--secondary)",
+                  color: objective === obj.id ? "var(--background)" : "var(--text-primary)",
+                  border: `1.5px solid ${objective === obj.id ? "var(--foreground)" : "var(--border)"}`,
+                  fontSize: "12px", fontWeight: 500,
+                }}>
+                <span style={{ fontSize: "14px" }}>{obj.icon}</span>
+                {obj.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Brief */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
-              {t("studio.briefLabel")}
-            </label>
-            <button
-              onClick={handleInspireMe}
-              disabled={inspiring}
+            <SectionLabel>{t("studio.briefLabel")}</SectionLabel>
+            <button onClick={handleInspireMe} disabled={inspiring}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
               style={{ background: "var(--secondary)", fontSize: "11px", fontWeight: 500 }}
               onMouseEnter={e => { e.currentTarget.style.background = "var(--border)"; }}
@@ -2866,156 +2960,117 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {t("studio.inspireMe")}
             </button>
           </div>
-          <textarea
-            value={brief}
-            onChange={e => setBrief(e.target.value)}
-            placeholder={t("studio.briefPlaceholder")}
+          <textarea value={brief} onChange={e => setBrief(e.target.value)}
+            placeholder={briefPlaceholder}
             className="w-full rounded-xl px-3.5 py-2.5 resize-none outline-none transition-all"
-            style={{
-              background: "var(--secondary)", border: "1px solid var(--border)",
-              fontSize: "13px", lineHeight: 1.6, minHeight: 72,
-            }}
+            style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", lineHeight: 1.6, minHeight: 64 }}
             onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
           />
         </div>
 
-        {/* Product selector */}
-        {products.length > 0 && (
-          <div>
-            <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-              <Package size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
-              {t("studio.productLabel")}
-            </label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setSelectedProduct("")}
-                className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-                style={{
-                  background: !selectedProduct ? "var(--foreground)" : "var(--secondary)",
-                  color: !selectedProduct ? "var(--background)" : "var(--text-primary)",
-                  border: "1px solid",
-                  borderColor: !selectedProduct ? "var(--foreground)" : "var(--border)",
-                  fontSize: "12px", fontWeight: 500,
-                }}>
-                {t("studio.globalBrand")}
-              </button>
-              {products.map((p: any) => (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedProduct(p.id)}
-                  className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+        {/* ═══ NIVEAU 2 — Visible, pré-rempli ═══ */}
+
+        {/* Réseaux sociaux (toggles visuels) */}
+        <div>
+          <SectionLabel>Réseaux sociaux</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {CONFIG_PLATFORMS.map(platform => {
+              const Icon = platform.icon;
+              const isOn = selectedNetworks.includes(platform.name);
+              const formatCount = CONFIG_FORMATS.filter(f => f.platform === platform.name && selectedFormats.includes(f.id)).length;
+              return (
+                <button key={platform.name} onClick={() => toggleNetwork(platform.name)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer"
                   style={{
-                    background: selectedProduct === p.id ? "var(--foreground)" : "var(--secondary)",
-                    color: selectedProduct === p.id ? "var(--background)" : "var(--text-primary)",
-                    border: "1px solid",
-                    borderColor: selectedProduct === p.id ? "var(--foreground)" : "var(--border)",
+                    background: isOn ? "var(--foreground)" : "var(--secondary)",
+                    color: isOn ? "var(--background)" : "var(--text-primary)",
+                    border: `1.5px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
                     fontSize: "12px", fontWeight: 500,
                   }}>
-                  {p.name}
-                  {p.price && <span style={{ opacity: 0.6, marginLeft: 4 }}>· {p.price}</span>}
+                  <Icon size={14} />
+                  {platform.name}
+                  {isOn && formatCount > 0 && (
+                    <span style={{ fontSize: "9px", fontWeight: 700, opacity: 0.7 }}>{formatCount}</span>
+                  )}
                 </button>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Formats détaillés par réseau sélectionné */}
+        {selectedNetworks.length > 0 && (
+          <div>
+            <SectionLabel>Formats ({selectedFormats.length} {t("studio.formatsSelected")})</SectionLabel>
+            <div className="space-y-2.5">
+              {selectedNetworks.map(network => {
+                const formats = CONFIG_FORMATS.filter(f => f.platform === network);
+                if (!formats.length) return null;
+                return (
+                  <div key={network}>
+                    <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>{network}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {formats.map(fmt => (
+                        <Chip key={fmt.id} size="sm" selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
+                          {fmt.label}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* ═══ MISE EN SITUATION — Visual scene selector ═══ */}
+        {/* Formats longs */}
         <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            <Camera size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
+          <SectionLabel icon={BookOpen}>Formats longs</SectionLabel>
+          <div className="flex flex-wrap gap-2">
+            {CONFIG_LONG_FORMATS.map(fmt => (
+              <Chip key={fmt.id} selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
+                {fmt.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        {/* Mise en situation */}
+        <div>
+          <SectionLabel icon={Camera}>
             Mise en situation
             {visualStyle && (
               <span className="ml-2 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--background)", background: "var(--foreground)", textTransform: "none", letterSpacing: "normal" }}>
                 {SCENE_PRESETS.find(s => s.id === visualStyle)?.label || visualStyle}
               </span>
             )}
-          </label>
-          <div className="grid grid-cols-2 gap-2">
+          </SectionLabel>
+          <div className="grid grid-cols-3 gap-1.5">
             {SCENE_PRESETS.map(scene => {
               const isSelected = visualStyle === scene.id;
               return (
-                <button
-                  key={scene.id}
-                  onClick={() => setVisualStyle(scene.id)}
-                  className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl transition-all cursor-pointer text-left"
+                <button key={scene.id} onClick={() => setVisualStyle(scene.id)}
+                  className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-all cursor-pointer text-center"
                   style={{
                     background: isSelected ? "var(--foreground)" : "var(--secondary)",
                     color: isSelected ? "var(--background)" : "var(--text-primary)",
                     border: `1.5px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
                   }}>
-                  <span style={{ fontSize: "16px", lineHeight: 1.2, flexShrink: 0 }}>{scene.icon}</span>
-                  <div>
-                    <div style={{ fontSize: "12px", fontWeight: 600, lineHeight: 1.3 }}>{scene.label}</div>
-                    <div style={{ fontSize: "10px", opacity: 0.7, lineHeight: 1.3, marginTop: 1 }}>{scene.desc}</div>
-                  </div>
+                  <span style={{ fontSize: "16px" }}>{scene.icon}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 600, lineHeight: 1.2 }}>{scene.label}</span>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Format selection */}
-        <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            {t("studio.formatsLabel")} ({selectedFormats.length} {t("studio.formatsSelected")})
-          </label>
-          <div className="space-y-3">
-            {CONFIG_PLATFORMS.map(platform => {
-              const formats = CONFIG_FORMATS.filter(f => f.platform === platform.name);
-              const selectedCount = formats.filter(f => selectedFormats.includes(f.id)).length;
-              const Icon = platform.icon;
-              return (
-                <div key={platform.name}>
-                  <button
-                    onClick={() => togglePlatform(platform.name)}
-                    className="flex items-center gap-2 mb-1.5 cursor-pointer group"
-                    style={{ fontSize: "12px", fontWeight: 600 }}>
-                    <Icon size={13} style={{ color: "var(--muted-foreground)" }} />
-                    <span>{platform.name}</span>
-                    {selectedCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded" style={{
-                        background: "var(--foreground)", color: "var(--background)",
-                        fontSize: "10px", fontWeight: 700,
-                      }}>
-                        {selectedCount}
-                      </span>
-                    )}
-                  </button>
-                  <div className="flex flex-wrap gap-1.5">
-                    {formats.map(fmt => {
-                      const selected = selectedFormats.includes(fmt.id);
-                      return (
-                        <button
-                          key={fmt.id}
-                          onClick={() => toggleFormat(fmt.id)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
-                          style={{
-                            background: selected ? "var(--foreground)" : "var(--secondary)",
-                            color: selected ? "var(--background)" : "var(--text-primary)",
-                            border: "1px solid",
-                            borderColor: selected ? "var(--foreground)" : "var(--border)",
-                            fontSize: "11px", fontWeight: 500,
-                          }}>
-                          {selected && <Check size={10} />}
-                          {fmt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Advanced toggle — all secondary options */}
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
+        {/* ═══ NIVEAU 3 — Dépliable "Affiner" ═══ */}
+        <button onClick={() => setShowAdvanced(!showAdvanced)}
           className="flex items-center gap-2 cursor-pointer transition-all w-full"
           style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground)" }}>
           <ChevronDown size={13} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
-          Affiner (ton, cible, modèles IA, langue...)
+          Affiner (audience, ton, CTA, moment, modèles IA...)
         </button>
 
         <AnimatePresence>
@@ -3027,105 +3082,97 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               transition={{ duration: 0.2 }}
               className="space-y-4 overflow-hidden"
             >
-              {/* Tone */}
+              {/* Audience */}
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  {t("studio.toneLabel")}
-                </label>
+                <SectionLabel>Audience cible</SectionLabel>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {AUDIENCE_PRESETS.map(a => (
+                    <Chip key={a} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>{a}</Chip>
+                  ))}
+                </div>
+                <input value={targetAudience} onChange={e => setTargetAudience(e.target.value)}
+                  placeholder="Ou décrivez votre audience..."
+                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
+                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                />
+              </div>
+
+              {/* Ton */}
+              <div>
+                <SectionLabel>Ton (override vault)</SectionLabel>
                 <div className="flex flex-wrap gap-1.5">
                   {TONE_OPTIONS.map(tn => (
-                    <button
-                      key={tn}
-                      onClick={() => setTone(tn)}
-                      className="px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
-                      style={{
-                        background: tone === tn ? "var(--foreground)" : "var(--secondary)",
-                        color: tone === tn ? "var(--background)" : "var(--text-primary)",
-                        border: "1px solid",
-                        borderColor: tone === tn ? "var(--foreground)" : "var(--border)",
-                        fontSize: "11px", fontWeight: 500,
-                      }}>
-                      {tn}
-                    </button>
+                    <Chip key={tn} size="sm" selected={tone === tn} onClick={() => setTone(tone === tn ? "" : tn)}>{tn}</Chip>
                   ))}
                 </div>
               </div>
 
-              {/* Objective */}
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  <Target size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.objectiveLabel")}
-                </label>
-                <input
-                  value={objective}
-                  onChange={e => setObjective(e.target.value)}
-                  placeholder={t("studio.objectivePlaceholder")}
-                  className="w-full rounded-lg px-3 py-2 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
-              </div>
-
-              {/* Target audience */}
-              <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  {t("studio.targetLabel")}
-                </label>
-                <input
-                  value={targetAudience}
-                  onChange={e => setTargetAudience(e.target.value)}
-                  placeholder={t("studio.targetPlaceholder")}
-                  className="w-full rounded-lg px-3 py-2 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
-              </div>
-
               {/* CTA */}
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  {t("studio.ctaFieldLabel")}
-                </label>
-                <input
-                  value={callToAction}
-                  onChange={e => setCallToAction(e.target.value)}
-                  placeholder={t("studio.ctaFieldPlaceholder")}
-                  className="w-full rounded-lg px-3 py-2 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
+                <SectionLabel>Call-to-action</SectionLabel>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {CTA_PRESETS.map(c => (
+                    <Chip key={c} size="sm" selected={callToAction === c} onClick={() => setCallToAction(callToAction === c ? "" : c)}>{c}</Chip>
+                  ))}
+                </div>
+                <input value={callToAction} onChange={e => setCallToAction(e.target.value)}
+                  placeholder="Ou CTA personnalisé..."
+                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
                   onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
                 />
               </div>
 
-              {/* Content angle */}
+              {/* Moment / Date */}
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  {t("studio.contentAngleLabel")}
-                </label>
-                <input
-                  value={contentAngle}
-                  onChange={e => setContentAngle(e.target.value)}
-                  placeholder={t("studio.contentAnglePlaceholder")}
-                  className="w-full rounded-lg px-3 py-2 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px" }}
+                <SectionLabel icon={Calendar}>Moment / Contexte</SectionLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {MOMENT_PRESETS.map(m => (
+                    <Chip key={m} size="sm" selected={moment === m} onClick={() => setMoment(moment === m ? "" : m)}>{m}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Organique / Sponsorisé */}
+              <div>
+                <SectionLabel>Diffusion</SectionLabel>
+                <div className="flex gap-2">
+                  <Chip selected={!isSponsored} onClick={() => setIsSponsored(false)}>Organique</Chip>
+                  <Chip selected={isSponsored} onClick={() => setIsSponsored(true)}>Sponsorisé (ads)</Chip>
+                </div>
+              </div>
+
+              {/* Nombre de posts */}
+              <div>
+                <SectionLabel>Nombre de posts</SectionLabel>
+                <div className="flex gap-1.5">
+                  {["1", "3", "5", "7", "10"].map(n => (
+                    <Chip key={n} size="sm" selected={postCount === n} onClick={() => setPostCount(n)}>{n}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Angle / Messages clés */}
+              <div>
+                <SectionLabel>Angle éditorial</SectionLabel>
+                <input value={contentAngle} onChange={e => setContentAngle(e.target.value)}
+                  placeholder="Ex: Axer sur le naturel et l'origine Grasse..."
+                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
                   onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
                 />
               </div>
 
-              {/* Key messages */}
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  {t("studio.keyMessagesLabel")}
-                </label>
-                <textarea
-                  value={keyMessages}
-                  onChange={e => setKeyMessages(e.target.value)}
-                  placeholder={t("studio.keyMessagesPlaceholder")}
-                  className="w-full rounded-lg px-3 py-2 resize-none outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", minHeight: 56 }}
+                <SectionLabel>Messages clés</SectionLabel>
+                <textarea value={keyMessages} onChange={e => setKeyMessages(e.target.value)}
+                  placeholder="Points essentiels à faire passer..."
+                  className="w-full rounded-lg px-3 py-1.5 resize-none outline-none transition-all"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", minHeight: 48 }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
                   onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
                 />
@@ -3134,11 +3181,11 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               {/* AI Models */}
               <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
                 <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
-                  <Columns2 size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.aiModelsLabel")}
+                  <Columns2 size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Modèles IA
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>{t("studio.textLabel")}</label>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Texte</label>
                     <div className="space-y-0.5">
                       {CONFIG_TEXT_MODELS.map(m => {
                         const sel = textModels.includes(m.id);
@@ -3174,21 +3221,10 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
               {/* Language */}
               <div>
-                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                  <Languages size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.languageLabel")}
-                </label>
+                <SectionLabel icon={Languages}>Langue</SectionLabel>
                 <div className="flex flex-wrap gap-1">
                   {LANGUAGE_OPTIONS.map(l => (
-                    <button key={l.id} onClick={() => setLanguage(l.id)}
-                      className="px-2 py-1 rounded-lg transition-all cursor-pointer"
-                      style={{
-                        background: language === l.id ? "var(--foreground)" : "var(--secondary)",
-                        color: language === l.id ? "var(--background)" : "var(--text-primary)",
-                        border: "1px solid", borderColor: language === l.id ? "var(--foreground)" : "var(--border)",
-                        fontSize: "10px", fontWeight: 500,
-                      }}>
-                      {l.label}
-                    </button>
+                    <Chip key={l.id} size="sm" selected={language === l.id} onClick={() => setLanguage(l.id)}>{l.label}</Chip>
                   ))}
                 </div>
               </div>
@@ -3201,26 +3237,19 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       <div className="px-5 py-4 flex items-center justify-between gap-3"
         style={{ borderTop: "1px solid var(--border)" }}>
         <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-          {selectedFormats.length} {selectedFormats.length > 1 ? t("studio.formatPlural") : t("studio.formatSingular")}
+          {selectedFormats.length} format{selectedFormats.length > 1 ? "s" : ""}
           {selectedProduct && ` · ${products.find((p: any) => p.id === selectedProduct)?.name || "Produit"}`}
-          {(textModels.length > 1 || imageModels.length > 1) && (
-            <span style={{ color: "var(--foreground)", fontWeight: 600 }}>
-              {" · "}{t("studio.comparisonLabel")} {textModels.length > 1 ? `${textModels.length} ${t("studio.textsCount")}` : ""}{textModels.length > 1 && imageModels.length > 1 ? " + " : ""}{imageModels.length > 1 ? `${imageModels.length} ${t("studio.imagesCount")}` : ""}
-            </span>
-          )}
+          {selectedNetworks.length > 0 && ` · ${selectedNetworks.join(", ")}`}
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={onCancel}
+          <button onClick={onCancel}
             className="px-4 py-2 rounded-xl cursor-pointer transition-all"
             style={{ background: "var(--secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid var(--border)" }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
             {t("studio.cancel")}
           </button>
-          <button
-            onClick={handleGenerate}
-            disabled={!selectedFormats.length}
+          <button onClick={handleGenerate} disabled={!selectedFormats.length}
             className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40"
             style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
             <Sparkles size={14} />
