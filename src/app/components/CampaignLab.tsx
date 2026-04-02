@@ -1664,6 +1664,39 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
   };
 
+  // ── Open Konva editor for any image asset (auto-creates template if needed) ──
+  const handleEditVisual = (asset: GeneratedAsset) => {
+    if (!asset.imageUrl || asset.type === "text") return;
+    const fmt = FORMAT_OPTIONS.find(f => f.id === asset.formatId);
+    // If template already assigned, just open editor
+    if (assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId])) {
+      setEditorAsset(asset);
+      return;
+    }
+    // Auto-create a basic template from the image
+    const arParts = (fmt?.aspectRatio || "1:1").split(/[:/]/);
+    const arW = parseFloat(arParts[0]) || 1;
+    const arH = parseFloat(arParts[1]) || 1;
+    const canvasW = arW >= arH ? 1080 : Math.round(1080 * (arW / arH));
+    const canvasH = arH >= arW ? 1080 : Math.round(1080 * (arH / arW));
+    const autoId = `auto-${asset.formatId}-${Date.now()}`;
+    const autoTemplate: import("./templates/types").TemplateDefinition = {
+      id: autoId, name: "Éditeur direct", formatId: asset.formatId,
+      aspectRatio: fmt?.aspectRatio || "1:1", canvasWidth: canvasW, canvasHeight: canvasH,
+      category: "minimal", source: "ai-generated",
+      layers: [
+        { id: "bg", type: "background-image", x: 0, y: 0, width: 100, height: 100, dataBinding: { source: "asset", field: "imageUrl" }, zIndex: 0 },
+        { id: "grad", type: "gradient-overlay", x: 0, y: 50, width: 100, height: 50, style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.7 }] }, zIndex: 1 },
+        { id: "headline", type: "text", x: 5, y: 70, width: 65, height: 15, dataBinding: { source: "asset", field: "headline" }, style: { fontSize: 5, fontWeight: 700, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.15 }, visible: { when: "asset.headline", notEmpty: true }, zIndex: 3 },
+        { id: "cta", type: "text", x: 5, y: 88, width: 35, height: 6, dataBinding: { source: "asset", field: "ctaText" }, style: { fontSize: 2.2, fontWeight: 600, color: "#FFFFFF", textAlign: "left", textTransform: "uppercase", letterSpacing: 1.5 }, visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 4 },
+        { id: "logo", type: "logo", x: 88, y: 5, width: 8, height: 8, dataBinding: { source: "vault", field: "logoUrl" }, style: { objectFit: "contain", opacity: 0.9 }, visible: { when: "vault.logoUrl", notEmpty: true }, zIndex: 5 },
+      ],
+    };
+    registerTemplate(autoTemplate);
+    setAssetTemplates(prev => ({ ...prev, [asset.formatId]: autoId }));
+    setEditorAsset(asset);
+  };
+
   // ── Regenerate a single asset with custom prompt (re-prompt) ──
   const handleRegenerateAsset = async (asset: GeneratedAsset, customPrompt: string) => {
     if (!customPrompt.trim() || regeneratingAsset) return;
@@ -3444,13 +3477,22 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             >
                               <Eye size={13} /> Voir
                             </button>
-                            {asset.type !== "text" && (
+                            {asset.type === "image" && asset.imageUrl && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); setRepromptText(asset.imagePrompt || asset.videoPrompt || ""); }}
+                                onClick={(e) => { e.stopPropagation(); handleEditVisual(asset); }}
                                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer"
                                 style={{ background: "rgba(255,255,255,0.9)", color: "#111", fontSize: "11px", fontWeight: 600, border: "none" }}
                               >
                                 <Pencil size={13} /> Éditer
+                              </button>
+                            )}
+                            {asset.type === "video" && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); setRepromptText(asset.videoPrompt || ""); }}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer"
+                                style={{ background: "rgba(255,255,255,0.9)", color: "#111", fontSize: "11px", fontWeight: 600, border: "none" }}
+                              >
+                                <RefreshCw size={13} /> Re-prompt
                               </button>
                             )}
                           </div>
@@ -3509,40 +3551,31 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{asset.label}</span>
                           {asset.status === "ready" && (
                             <div className="flex items-center gap-1">
-                              {/* Regenerate image button */}
-                              {asset.type !== "text" && (
+                              {/* Edit visual (Konva) for images / Re-prompt for videos */}
+                              {asset.type === "image" && asset.imageUrl && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleEditVisual(asset); }}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  title="Éditer le visuel"
+                                  style={{ background: "rgba(26,23,20,0.03)" }}
+                                >
+                                  <Pencil size={12} style={{ color: "var(--ora-signal)" }} />
+                                </button>
+                              )}
+                              {asset.type === "video" && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedAsset(asset);
-                                    setRepromptText(asset.imagePrompt || asset.videoPrompt || "");
+                                    setRepromptText(asset.videoPrompt || "");
                                   }}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                  title="Éditer / Régénérer le visuel"
+                                  title="Régénérer la vidéo"
                                   style={{ background: regeneratingAsset === asset.formatId ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}
                                 >
                                   {regeneratingAsset === asset.formatId
                                     ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
                                     : <RefreshCw size={12} style={{ color: "var(--ora-signal)" }} />}
-                                </button>
-                              )}
-                              {/* Edit template button */}
-                              {asset.type === "image" && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (assetTemplates[asset.formatId] && getTemplateById(assetTemplates[asset.formatId])) {
-                                      setEditorAsset(asset);
-                                    } else {
-                                      setGalleryFormatId(asset.formatId);
-                                      setGalleryOpen(true);
-                                    }
-                                  }}
-                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                  title={assetTemplates[asset.formatId] ? "Edit template" : "Choose template"}
-                                  style={{ background: assetTemplates[asset.formatId] ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}
-                                >
-                                  <Pencil size={12} style={{ color: assetTemplates[asset.formatId] ? "var(--ora-signal)" : "var(--text-secondary)" }} />
                                 </button>
                               )}
                               <button onClick={() => handleDeployAsset(asset)}
@@ -3866,8 +3899,15 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       : <><Send size={12} /> Deploy to {selectedAsset.platform}</>}
                   </button>
                   {/* Edit / Template buttons */}
-                  {selectedAsset.type === "image" && (
+                  {selectedAsset.type === "image" && selectedAsset.imageUrl && (
                     <>
+                      <button
+                        onClick={() => { handleEditVisual(selectedAsset); setSelectedAsset(null); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                        style={{ background: "rgba(17,17,17,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(17,17,17,0.3)" }}
+                      >
+                        <Pencil size={12} /> Éditer le visuel
+                      </button>
                       <button
                         onClick={() => {
                           setGalleryFormatId(selectedAsset.formatId);
@@ -3878,15 +3918,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       >
                         <LayoutGrid size={12} /> Templates
                       </button>
-                      {assetTemplates[selectedAsset.formatId] && getTemplateById(assetTemplates[selectedAsset.formatId]) && (
-                        <button
-                          onClick={() => { setEditorAsset(selectedAsset); setSelectedAsset(null); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
-                          style={{ background: "rgba(17,17,17,0.15)", color: "var(--ora-signal)", fontSize: "12px", fontWeight: 600, border: "1px solid rgba(17,17,17,0.3)" }}
-                        >
-                          <Pencil size={12} /> Edit
-                        </button>
-                      )}
                     </>
                   )}
                   <button onClick={() => handleSaveAsset(selectedAsset)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "12px", fontWeight: 600 }}>
