@@ -2949,137 +2949,13 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* Tone */}
-        <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            {t("studio.toneLabel")}
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {TONE_OPTIONS.map(tn => (
-              <button
-                key={tn}
-                onClick={() => setTone(tn)}
-                className="px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-                style={{
-                  background: tone === tn ? "var(--foreground)" : "var(--secondary)",
-                  color: tone === tn ? "var(--background)" : "var(--text-primary)",
-                  border: "1px solid",
-                  borderColor: tone === tn ? "var(--foreground)" : "var(--border)",
-                  fontSize: "11px", fontWeight: 500,
-                }}>
-                {tn}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ═══ AI MODELS — COMPARE — first-class section ═══ */}
-        <div className="rounded-xl p-4" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Columns2 size={13} style={{ color: "var(--foreground)" }} />
-            <label style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {t("studio.aiModelsLabel")}
-            </label>
-            <span style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500 }}>
-              — {t("studio.aiModelsCompareHint")}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                {t("studio.textLabel")}
-                {textModels.length > 1 && (
-                  <span className="ml-1.5 px-1.5 py-0.5 rounded" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "9px", fontWeight: 700 }}>
-                    {textModels.length} {t("studio.modelsCount")}
-                  </span>
-                )}
-              </label>
-              <div className="space-y-1">
-                {CONFIG_TEXT_MODELS.map(m => {
-                  const sel = textModels.includes(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => toggleTextModel(m.id)}
-                      className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
-                      style={{
-                        background: sel ? "var(--foreground)" : "transparent",
-                        color: sel ? "var(--background)" : "var(--text-primary)",
-                        fontSize: "11px", fontWeight: 500,
-                      }}>
-                      {sel && <Check size={10} />}
-                      <span>{m.label}</span>
-                      <span style={{ fontSize: "9px", opacity: 0.6, marginLeft: "auto" }}>{m.badge}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
-                Image
-                {imageModels.length > 1 && (
-                  <span className="ml-1.5 px-1.5 py-0.5 rounded" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "9px", fontWeight: 700 }}>
-                    {imageModels.length} {t("studio.modelsCount")}
-                  </span>
-                )}
-              </label>
-              <div className="space-y-1">
-                {CONFIG_IMAGE_MODELS.map(m => {
-                  const sel = imageModels.includes(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => toggleImageModel(m.id)}
-                      className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
-                      style={{
-                        background: sel ? "var(--foreground)" : "transparent",
-                        color: sel ? "var(--background)" : "var(--text-primary)",
-                        fontSize: "11px", fontWeight: 500,
-                      }}>
-                      {sel && <Check size={10} />}
-                      <span>{m.label}</span>
-                      <span style={{ fontSize: "9px", opacity: 0.6, marginLeft: "auto" }}>{m.badge}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Language */}
-        <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 8 }}>
-            <Languages size={11} className="inline mr-1.5" style={{ verticalAlign: "-1px" }} />
-            {t("studio.languageLabel")}
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {LANGUAGE_OPTIONS.map(l => (
-              <button
-                key={l.id}
-                onClick={() => setLanguage(l.id)}
-                className="px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
-                style={{
-                  background: language === l.id ? "var(--foreground)" : "var(--secondary)",
-                  color: language === l.id ? "var(--background)" : "var(--text-primary)",
-                  border: "1px solid",
-                  borderColor: language === l.id ? "var(--foreground)" : "var(--border)",
-                  fontSize: "11px", fontWeight: 500,
-                }}>
-                {l.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Advanced toggle — refinement fields */}
+        {/* Advanced toggle — all secondary options */}
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="flex items-center gap-2 cursor-pointer transition-all w-full"
           style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground)" }}>
           <ChevronDown size={13} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
-          {t("studio.refineAdvanced")}
+          Affiner (ton, cible, modèles IA, langue...)
         </button>
 
         <AnimatePresence>
@@ -3091,6 +2967,30 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               transition={{ duration: 0.2 }}
               className="space-y-4 overflow-hidden"
             >
+              {/* Tone */}
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
+                  {t("studio.toneLabel")}
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {TONE_OPTIONS.map(tn => (
+                    <button
+                      key={tn}
+                      onClick={() => setTone(tn)}
+                      className="px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
+                      style={{
+                        background: tone === tn ? "var(--foreground)" : "var(--secondary)",
+                        color: tone === tn ? "var(--background)" : "var(--text-primary)",
+                        border: "1px solid",
+                        borderColor: tone === tn ? "var(--foreground)" : "var(--border)",
+                        fontSize: "11px", fontWeight: 500,
+                      }}>
+                      {tn}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Objective */}
               <div>
                 <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
@@ -3169,6 +3069,68 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
                   onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
                 />
+              </div>
+
+              {/* AI Models */}
+              <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
+                  <Columns2 size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.aiModelsLabel")}
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>{t("studio.textLabel")}</label>
+                    <div className="space-y-0.5">
+                      {CONFIG_TEXT_MODELS.map(m => {
+                        const sel = textModels.includes(m.id);
+                        return (
+                          <button key={m.id} onClick={() => toggleTextModel(m.id)}
+                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
+                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
+                            {sel && <Check size={9} />}
+                            <span>{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Image</label>
+                    <div className="space-y-0.5">
+                      {CONFIG_IMAGE_MODELS.map(m => {
+                        const sel = imageModels.includes(m.id);
+                        return (
+                          <button key={m.id} onClick={() => toggleImageModel(m.id)}
+                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
+                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
+                            {sel && <Check size={9} />}
+                            <span>{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Language */}
+              <div>
+                <label style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
+                  <Languages size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> {t("studio.languageLabel")}
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  {LANGUAGE_OPTIONS.map(l => (
+                    <button key={l.id} onClick={() => setLanguage(l.id)}
+                      className="px-2 py-1 rounded-lg transition-all cursor-pointer"
+                      style={{
+                        background: language === l.id ? "var(--foreground)" : "var(--secondary)",
+                        color: language === l.id ? "var(--background)" : "var(--text-primary)",
+                        border: "1px solid", borderColor: language === l.id ? "var(--foreground)" : "var(--border)",
+                        fontSize: "10px", fontWeight: 500,
+                      }}>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </motion.div>
           )}
