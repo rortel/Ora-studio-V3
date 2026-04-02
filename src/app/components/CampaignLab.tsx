@@ -3436,8 +3436,23 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         )}
 
                         {asset.status === "ready" && (
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Eye size={18} style={{ color: "white" }} />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); }}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: "11px", fontWeight: 600 }}
+                            >
+                              <Eye size={13} /> Voir
+                            </button>
+                            {asset.type !== "text" && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setSelectedAsset(asset); setRepromptText(asset.imagePrompt || asset.videoPrompt || ""); }}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer"
+                                style={{ background: "rgba(255,255,255,0.9)", color: "#111", fontSize: "11px", fontWeight: 600, border: "none" }}
+                              >
+                                <Pencil size={13} /> Éditer
+                              </button>
+                            )}
                           </div>
                         )}
                         <div className="absolute top-3 left-3">
@@ -3494,6 +3509,23 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{asset.label}</span>
                           {asset.status === "ready" && (
                             <div className="flex items-center gap-1">
+                              {/* Regenerate image button */}
+                              {asset.type !== "text" && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedAsset(asset);
+                                    setRepromptText(asset.imagePrompt || asset.videoPrompt || "");
+                                  }}
+                                  className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
+                                  title="Éditer / Régénérer le visuel"
+                                  style={{ background: regeneratingAsset === asset.formatId ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}
+                                >
+                                  {regeneratingAsset === asset.formatId
+                                    ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
+                                    : <RefreshCw size={12} style={{ color: "var(--ora-signal)" }} />}
+                                </button>
+                              )}
                               {/* Edit template button */}
                               {asset.type === "image" && (
                                 <button
