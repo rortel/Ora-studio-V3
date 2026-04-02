@@ -3293,57 +3293,89 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 )}
               </div>
 
-              {/* Social Accounts — transparent integration */}
-              <div className="mb-4 px-4 py-3 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: "rgba(17,17,17,0.12)" }}>
-                    <Send size={11} style={{ color: "var(--ora-signal)" }} />
-                  </div>
-                  <span style={{ fontSize: "12px", color: "var(--foreground)", fontWeight: 600 }}>Social Accounts</span>
-                  {zernioLoading && <Loader2 size={10} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
-                  {!zernioLoading && zernioAccounts.length > 0 && (
-                    <button onClick={refreshZernioAccounts} className="ml-auto cursor-pointer" title="Refresh accounts">
-                      <RefreshCw size={10} style={{ color: "var(--text-secondary)" }} />
-                    </button>
-                  )}
-                </div>
-                {/* Connected accounts */}
-                {zernioAccounts.length > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap mb-2 ml-9">
-                    {zernioAccounts.map((acc: any, i: number) => {
-                      const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
-                      return (
-                        <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-                          style={{ background: `${PLATFORM_COLORS[pName] || "var(--text-secondary)"}15`, fontSize: "11px", fontWeight: 600, color: PLATFORM_COLORS[pName] || "var(--text-tertiary)" }}>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#666666" }} />
-                          {pName} {acc.username ? `@${acc.username}` : ""}
+              {/* Social Accounts — prominent connection panel */}
+              <div className="mb-6 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                <div className="px-5 py-4" style={{ background: "var(--card)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--ora-signal)", color: "#fff" }}>
+                        <Send size={14} />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 600, display: "block" }}>Connecter vos réseaux</span>
+                        <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                          {zernioAccounts.length > 0
+                            ? `${zernioAccounts.length} compte${zernioAccounts.length > 1 ? "s" : ""} connecté${zernioAccounts.length > 1 ? "s" : ""}`
+                            : "Connectez vos réseaux pour publier directement"}
                         </span>
-                      );
-                    })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {zernioLoading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
+                      {!zernioLoading && zernioAccounts.length > 0 && (
+                        <button onClick={refreshZernioAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }} title="Actualiser">
+                          <RefreshCw size={12} style={{ color: "var(--text-secondary)" }} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                )}
-                {/* Connect buttons for unconnected platforms */}
-                <div className="flex items-center gap-2 flex-wrap ml-9">
-                  {CONNECTABLE_PLATFORMS.filter(p => !zernioAccounts.some((a: any) => a.platform === p.id)).map(p => {
-                    const isConnecting = connectingPlatform === p.id;
-                    return (
-                      <button key={p.id} onClick={() => handleConnectPlatform(p.id)}
-                        disabled={isConnecting || !!connectingPlatform}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all cursor-pointer"
-                        style={{
-                          background: isConnecting ? `${p.color}20` : "rgba(255,255,255,0.03)",
-                          border: `1px solid ${isConnecting ? `${p.color}40` : "rgba(26,23,20,0.04)"}`,
-                          fontSize: "11px", fontWeight: 500, color: isConnecting ? p.color : "var(--text-secondary)",
-                          opacity: connectingPlatform && !isConnecting ? 0.4 : 1,
-                        }}>
-                        {isConnecting ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                        {isConnecting ? `Connecting ${p.label}...` : p.label}
-                      </button>
-                    );
-                  })}
-                  {CONNECTABLE_PLATFORMS.filter(p => !zernioAccounts.some((a: any) => a.platform === p.id)).length === 0 && zernioAccounts.length > 0 && (
-                    <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>All platforms connected</span>
+
+                  {/* Connected accounts */}
+                  {zernioAccounts.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap mb-3">
+                      {zernioAccounts.map((acc: any, i: number) => {
+                        const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
+                        const PIcon = CONNECTABLE_PLATFORMS.find(cp => cp.id === acc.platform)?.icon || Send;
+                        return (
+                          <span key={i} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                            style={{ background: "rgba(17,17,17,0.06)", fontSize: "12px", fontWeight: 500, color: "var(--foreground)" }}>
+                            <PIcon size={13} style={{ color: "#666666" }} />
+                            {pName} {acc.username ? <span style={{ color: "var(--text-secondary)" }}>@{acc.username}</span> : ""}
+                            <Check size={11} style={{ color: "#666666" }} />
+                          </span>
+                        );
+                      })}
+                    </div>
                   )}
+
+                  {/* Connect buttons — large, clear */}
+                  {(() => {
+                    const unconnected = CONNECTABLE_PLATFORMS.filter(p => !zernioAccounts.some((a: any) => a.platform === p.id));
+                    if (unconnected.length === 0 && zernioAccounts.length > 0) {
+                      return (
+                        <div className="flex items-center gap-2 py-1">
+                          <CheckCircle2 size={13} style={{ color: "#666666" }} />
+                          <span style={{ fontSize: "12px", color: "#666666", fontWeight: 500 }}>Tous les réseaux sont connectés</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-4 gap-2">
+                        {unconnected.map(p => {
+                          const isConnecting = connectingPlatform === p.id;
+                          const PIcon = p.icon;
+                          return (
+                            <button key={p.id} onClick={() => handleConnectPlatform(p.id)}
+                              disabled={isConnecting || !!connectingPlatform}
+                              className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl transition-all cursor-pointer"
+                              style={{
+                                background: isConnecting ? "rgba(17,17,17,0.08)" : "rgba(26,23,20,0.02)",
+                                border: isConnecting ? "1px solid rgba(17,17,17,0.2)" : "1px solid var(--border)",
+                                opacity: connectingPlatform && !isConnecting ? 0.4 : 1,
+                              }}>
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(17,17,17,0.06)" }}>
+                                {isConnecting ? <Loader2 size={15} className="animate-spin" style={{ color: "var(--ora-signal)" }} /> : <PIcon size={15} style={{ color: "var(--foreground)" }} />}
+                              </div>
+                              <span style={{ fontSize: "10px", fontWeight: 600, color: isConnecting ? "var(--ora-signal)" : "var(--foreground)" }}>
+                                {isConnecting ? "..." : p.label}
+                              </span>
+                              {!isConnecting && <Plus size={10} style={{ color: "var(--text-secondary)" }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

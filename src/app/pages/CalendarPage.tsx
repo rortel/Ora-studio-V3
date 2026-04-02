@@ -12,8 +12,19 @@ import {
   Check, FileText, Calendar, Linkedin, Mail,
   MessageSquare, Image, Loader2, Trash2, Video, Hash,
   Type, Eye, Play, Send, Download, AlertCircle, Rocket,
-  ExternalLink, CheckCircle2,
+  ExternalLink, CheckCircle2, Instagram, Facebook, Twitter, Youtube, Clapperboard, RefreshCw,
 } from "lucide-react";
+
+// Platforms available for social connection
+const CAL_CONNECTABLE_PLATFORMS = [
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "twitter", label: "Twitter/X", icon: Twitter },
+  { id: "tiktok", label: "TikTok", icon: Clapperboard },
+  { id: "youtube", label: "YouTube", icon: Youtube },
+  { id: "pinterest", label: "Pinterest", icon: Image },
+];
 
 type ContentStatus = "draft" | "scheduled" | "published" | "review" | "deploying" | "failed";
 
@@ -88,6 +99,11 @@ function CalendarPageContent() {
   const [deployingEvent, setDeployingEvent] = useState<string | null>(null);
   const [deployingAll, setDeployingAll] = useState(false);
 
+  // ── Social accounts (Zernio) ──
+  const [socialAccounts, setSocialAccounts] = useState<any[]>([]);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
+
   const { getAuthHeader } = useAuth();
 
   const daysOfWeek = [t("calendar.dayMon"), t("calendar.dayTue"), t("calendar.dayWed"), t("calendar.dayThu"), t("calendar.dayFri"), t("calendar.daySat"), t("calendar.daySun")];
@@ -122,6 +138,59 @@ function CalendarPageContent() {
   }, [getAuthHeader]);
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  // ── Load social accounts ──
+  const loadSocialAccounts = useCallback(async () => {
+    setSocialLoading(true);
+    try {
+      const token = await getAuthHeader();
+      const res = await fetch(`${API_BASE}/zernio/accounts/list`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.accounts) setSocialAccounts(data.accounts);
+    } catch (err) { console.log("[Calendar] Social accounts fetch:", err); }
+    finally { setSocialLoading(false); }
+  }, [getAuthHeader]);
+
+  useEffect(() => { loadSocialAccounts(); }, [loadSocialAccounts]);
+
+  // ── Connect a social platform via OAuth popup ──
+  const handleConnectPlatform = async (platform: string) => {
+    setConnectingPlatform(platform);
+    try {
+      const token = await getAuthHeader();
+      const qp = new URLSearchParams({ redirectUrl: window.location.origin + "/hub/calendar" });
+      if (token) qp.set("_token", token);
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?${qp.toString()}`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ _token: token }),
+      });
+      const data = await res.json();
+      if (!data.success || !data.authUrl) {
+        toast.error(data.error || `Connexion ${platform} échouée`);
+        setConnectingPlatform(null);
+        return;
+      }
+      const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
+      if (!popup) { toast.error("Popup bloqué. Autorisez les popups pour ce site."); setConnectingPlatform(null); return; }
+      const poll = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(poll);
+          setConnectingPlatform(null);
+          setTimeout(() => loadSocialAccounts(), 1500);
+          toast.success(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connecté`);
+        }
+      }, 500);
+      setTimeout(() => { clearInterval(poll); if (!popup.closed) popup.close(); setConnectingPlatform(null); }, 300_000);
+    } catch (err: any) {
+      toast.error(`Erreur: ${err?.message || "Inconnue"}`);
+      setConnectingPlatform(null);
+    }
+  };
 
   const handleCreate = async () => {
     if (!newTitle.trim() || selectedDay === null) return;
@@ -340,6 +409,74 @@ function CalendarPageContent() {
               </motion.div>
             );
           })}
+        </div>
+
+        {/* Social Accounts — connect your networks */}
+        <div className="mb-6 rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--card)" }}>
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "var(--ora-signal)", color: "#fff" }}>
+                  <Send size={14} />
+                </div>
+                <div>
+                  <span style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 600, display: "block" }}>Réseaux connectés</span>
+                  <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                    {socialAccounts.length > 0
+                      ? `${socialAccounts.length} compte${socialAccounts.length > 1 ? "s" : ""} — publiez directement depuis le calendrier`
+                      : "Connectez vos réseaux pour publier directement"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {socialLoading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
+                {!socialLoading && socialAccounts.length > 0 && (
+                  <button onClick={loadSocialAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }}>
+                    <RefreshCw size={12} style={{ color: "var(--text-secondary)" }} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Connected */}
+              {socialAccounts.map((acc: any, i: number) => {
+                const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
+                const PIcon = CAL_CONNECTABLE_PLATFORMS.find(cp => cp.id === acc.platform)?.icon || Send;
+                return (
+                  <span key={i} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                    style={{ background: "rgba(17,17,17,0.06)", fontSize: "12px", fontWeight: 500, color: "var(--foreground)" }}>
+                    <PIcon size={13} style={{ color: "#666" }} />
+                    {pName} {acc.username ? <span style={{ color: "var(--text-secondary)" }}>@{acc.username}</span> : ""}
+                    <Check size={11} style={{ color: "#666" }} />
+                  </span>
+                );
+              })}
+              {/* Unconnected */}
+              {CAL_CONNECTABLE_PLATFORMS.filter(p => !socialAccounts.some((a: any) => a.platform === p.id)).map(p => {
+                const isConnecting = connectingPlatform === p.id;
+                const PIcon = p.icon;
+                return (
+                  <button key={p.id} onClick={() => handleConnectPlatform(p.id)}
+                    disabled={isConnecting || !!connectingPlatform}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+                    style={{
+                      background: isConnecting ? "rgba(17,17,17,0.08)" : "rgba(26,23,20,0.02)",
+                      border: isConnecting ? "1px solid rgba(17,17,17,0.2)" : "1px solid var(--border)",
+                      fontSize: "12px", fontWeight: 500, color: isConnecting ? "var(--ora-signal)" : "var(--text-secondary)",
+                      opacity: connectingPlatform && !isConnecting ? 0.4 : 1,
+                    }}>
+                    {isConnecting ? <Loader2 size={13} className="animate-spin" /> : <PIcon size={13} />}
+                    {isConnecting ? "..." : `+ ${p.label}`}
+                  </button>
+                );
+              })}
+              {CAL_CONNECTABLE_PLATFORMS.filter(p => !socialAccounts.some((a: any) => a.platform === p.id)).length === 0 && socialAccounts.length > 0 && (
+                <span className="flex items-center gap-1.5" style={{ fontSize: "11px", color: "#666" }}>
+                  <CheckCircle2 size={12} /> Tous les réseaux connectés
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {loading ? (
