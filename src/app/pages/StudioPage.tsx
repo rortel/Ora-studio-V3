@@ -444,7 +444,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], productId, productUrl, visualStyle: campaignVisualStyle } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -839,8 +839,9 @@ export function StudioPage() {
 
               try {
                 console.log(`[studio] Video START [${vf.format}]: prompt="${fullVideoPrompt.slice(0, 80)}...", imageRef=${imageUrlForVideo ? "yes" : "no"}`);
+                const videoModel = Array.isArray(vidModels) && vidModels.length > 0 ? vidModels[0] : "ora-motion";
                 const startRes = await serverGet(
-                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=ora-motion${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}`
+                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=${videoModel}${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}`
                 );
                 if (startRes.success && startRes.generationId) {
                   console.log(`[studio] Video POLLING [${vf.format}]: genId=${startRes.generationId}`);
@@ -2198,6 +2199,13 @@ const CONFIG_IMAGE_MODELS = [
   { id: "dall-e-3", label: "DALL-E 3", badge: "Precise" },
 ];
 
+const CONFIG_VIDEO_MODELS = [
+  { id: "ora-motion", label: "Luma Ray 2", badge: "Quality" },
+  { id: "ray-flash-2", label: "Ray Flash", badge: "Fast" },
+  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic" },
+  { id: "seedance-v1", label: "Seedance", badge: "TikTok" },
+];
+
 const TONE_OPTIONS = [
   "Professionnel", "Inspirant", "Décontracté", "Éducatif",
   "Persuasif", "Humoristique", "Authentique", "Premium",
@@ -2756,6 +2764,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [language, setLanguage] = useState(params.language || "auto");
   const [textModels, setTextModels] = useState<string[]>(["gpt-4o"]);
   const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
+  const [videoModels, setVideoModels] = useState<string[]>(["ora-motion"]);
   const [inspiring, setInspiring] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -2805,6 +2814,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const toggleImageModel = (id: string) => {
     setImageModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
   };
+  const toggleVideoModel = (id: string) => {
+    setVideoModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
+  };
 
   const handleInspireMe = async () => {
     setInspiring(true);
@@ -2846,6 +2858,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       language,
       textModels,
       imageModels,
+      videoModels,
       visualStyle,
     });
   };
@@ -3183,7 +3196,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                 <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
                   <Columns2 size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Modèles IA
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Texte</label>
                     <div className="space-y-0.5">
@@ -3207,6 +3220,22 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                         const sel = imageModels.includes(m.id);
                         return (
                           <button key={m.id} onClick={() => toggleImageModel(m.id)}
+                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
+                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
+                            {sel && <Check size={9} />}
+                            <span>{m.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Vidéo</label>
+                    <div className="space-y-0.5">
+                      {CONFIG_VIDEO_MODELS.map(m => {
+                        const sel = videoModels.includes(m.id);
+                        return (
+                          <button key={m.id} onClick={() => toggleVideoModel(m.id)}
                             className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
                             style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
                             {sel && <Check size={9} />}
