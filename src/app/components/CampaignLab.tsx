@@ -1471,6 +1471,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
       toast.success(`Campaign generated: ${formats.length} assets${videoFormats.length > 0 ? ` (${videoFormats.length} videos still rendering...)` : ""}`);
 
+      // ═══ AUTO-GENERATE CALENDAR — schedule all ready assets automatically ═══
+      // Small delay to ensure assets state is updated before calendar reads them
+      setTimeout(() => { handleGenerateCalendar(); }, 500);
+
       if (videoFormats.length > 0) {
         console.log(`[CampaignLab] Video generation: ${videoFormats.length} formats (background)`);
         await Promise.all(videoFormats.map(async (fmt) => {
@@ -2052,6 +2056,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     // Update local IDs with server-generated IDs for deploy to work
     const persistEvents = async () => {
       const updatedEvents = [...events];
+      let savedCount = 0;
+      let failCount = 0;
       for (let i = 0; i < events.length; i++) {
         try {
           const data = await serverPost("/calendar", {
@@ -2074,13 +2080,29 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             headline: events[i].headline || "",
             imageUrl: events[i].imageUrl || "",
             videoUrl: events[i].videoUrl || "",
-          }, 10_000);
+          }, 15_000);
           if (data.success && data.event?.id) {
             updatedEvents[i] = { ...updatedEvents[i], id: data.event.id };
+            savedCount++;
+          } else {
+            failCount++;
+            console.error(`[Calendar] Failed to save event ${i}:`, data.error || "unknown");
           }
-        } catch { /* best-effort */ }
+        } catch (err) {
+          failCount++;
+          console.error(`[Calendar] Error saving event ${i}:`, err);
+        }
       }
       setCalendarEvents(updatedEvents);
+      if (savedCount > 0) {
+        toast.success(`${savedCount} posts programmés dans le calendrier`, {
+          action: { label: "Voir le calendrier →", onClick: () => window.location.href = "/hub/calendar" },
+          duration: 8000,
+        });
+      }
+      if (failCount > 0) {
+        toast.error(`${failCount} posts n'ont pas pu être sauvegardés`);
+      }
     };
     persistEvents();
   };
