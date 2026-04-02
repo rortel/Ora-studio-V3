@@ -394,7 +394,7 @@ function VaultPageContent() {
 
   // ── Reset vault ──
   const handleResetVault = useCallback(async () => {
-    if (!confirm("Réinitialiser le Brand Vault ? Toutes les données seront effacées.")) return;
+    if (!confirm(t("vault.resetConfirm"))) return;
     setResetting(true);
     try {
       // Send EMPTY_VAULT with all fields explicitly null/empty to overwrite everything
@@ -431,7 +431,7 @@ function VaultPageContent() {
     if (!/^https?:\/\//.test(url)) url = `https://${url}`;
     setAnalyzing(true);
     setAnalyzeError(null);
-    setAnalyzeProgress(deepScan ? "Deep scanning website + sub-pages..." : "Scanning website...");
+    setAnalyzeProgress(deepScan ? t("vault.deepScanning") : t("vault.scanning"));
     try {
       console.log("[Vault] Analyzing URL:", url, "deep:", deepScan);
       const res = await fetch(apiUrl("/vault/analyze"), {
@@ -994,7 +994,7 @@ function VaultPageContent() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="mb-3 uppercase" style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.1em", color: "var(--accent)" }}>
-              Brand Intelligence
+              {t("vault.title")}
             </p>
             <h1 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.15, color: "var(--foreground)" }}>
               {t("vault.title")}
@@ -1044,10 +1044,10 @@ function VaultPageContent() {
               fontWeight: 500,
               color: "#ef4444",
             }}
-            title="Réinitialiser le vault"
+            title={t("vault.resetConfirm")}
           >
             {resetting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            Reset
+            {t("vault.reset")}
           </motion.button>
         </div>
       </motion.div>
@@ -1067,7 +1067,7 @@ function VaultPageContent() {
             <Globe size={15} style={{ color: "var(--accent)", opacity: 0.7 }} />
             <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !analyzing && handleAnalyzeUrl()}
-              placeholder="yourcompany.com" disabled={analyzing}
+              placeholder={t("vault.scanPlaceholder")} disabled={analyzing}
               className="flex-1 bg-transparent outline-none placeholder:text-white/15"
               style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 400 }} />
           </div>
@@ -1076,13 +1076,13 @@ function VaultPageContent() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
             style={{ background: "var(--accent)", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
             {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-            Scan
+            {t("vault.scanBtn")}
           </button>
           <button
             onClick={() => handleAnalyzeUrl(true)} disabled={analyzing || !urlInput.trim()}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
             style={{ border: "1px solid var(--border-strong)", fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
-            <Layers size={13} /> Deep
+            <Layers size={13} /> {t("vault.deep")}
           </button>
         </div>
 
@@ -1201,11 +1201,11 @@ function VaultPageContent() {
             {/* ═══ TAB NAVIGATION ═══ */}
             <div className="flex items-center gap-1.5 mb-6 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
               {([
-                { key: "identity" as const, label: "Identité" },
-                { key: "audience" as const, label: "Audience" },
-                { key: "voice" as const, label: "Voix" },
-                { key: "visuals" as const, label: "Visuels" },
-                { key: "competitors" as const, label: "Concurrents" },
+                { key: "identity" as const, label: t("vault.tabIdentity") },
+                { key: "audience" as const, label: t("vault.tabAudience") },
+                { key: "voice" as const, label: t("vault.tabVoice") },
+                { key: "visuals" as const, label: t("vault.tabVisuals") },
+                { key: "competitors" as const, label: t("vault.tabCompetitors") },
               ]).map(({ key, label }) => (
                 <button
                   key={key}
@@ -1237,7 +1237,7 @@ function VaultPageContent() {
                       open={isOpen("charter")} onToggle={() => toggleSection("charter")}>
                       <div className="space-y-3">
                         <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                          These fields directly feed into AI generation. The more precise, the better the output.
+                          {t("vault.guidelinesDesc")}
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {[
@@ -1329,7 +1329,7 @@ function VaultPageContent() {
 
                 {/* Product Universes */}
                 <div className="md:col-span-2">
-                  <SectionCard icon={Layers} title="Univers produit" count={(vault.universes || []).length}
+                  <SectionCard icon={Layers} title={t("vault.productUniverse")} count={(vault.universes || []).length}
                     open={isOpen("universes")} onToggle={() => toggleSection("universes")}>
                     <div className="space-y-3">
                       {(vault.universes || []).length > 0 ? (
@@ -1343,7 +1343,7 @@ function VaultPageContent() {
                                   <button onClick={() => setUniverseEditing(universeEditing === u.id ? null : u.id)}
                                     className="px-2.5 py-1 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
                                     style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
-                                    {universeEditing === u.id ? "Fermer" : "Modifier"}
+                                    {universeEditing === u.id ? t("vault.close") : t("vault.edit")}
                                   </button>
                                   <button onClick={() => handleDeleteUniverse(u.id)}
                                     className="p-1.5 rounded-lg cursor-pointer transition-colors hover:bg-red-50"
@@ -1374,32 +1374,32 @@ function VaultPageContent() {
                               {universeEditing === u.id && (
                                 <div className="mt-4 pt-4 space-y-3" style={{ borderTop: "1px solid var(--border)" }}>
                                   <div>
-                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Nom</label>
+                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.name")}</label>
                                     <input defaultValue={u.name} id={`uni-name-${u.id}`}
                                       className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                       style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
                                   </div>
                                   <div>
-                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.description")}</label>
                                     <textarea defaultValue={u.description} id={`uni-desc-${u.id}`}
                                       className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none resize-none"
                                       style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)", minHeight: 60 }} />
                                   </div>
                                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div>
-                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs (hex, virgules)</label>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.colorsHex")}</label>
                                       <input defaultValue={(u.colors || []).join(", ")} id={`uni-colors-${u.id}`}
                                         className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                         style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
                                     </div>
                                     <div>
-                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Ton</label>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.toneLabel")}</label>
                                       <input defaultValue={u.tone_override || ""} id={`uni-tone-${u.id}`}
                                         className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                         style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
                                     </div>
                                     <div>
-                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-clés (virgules)</label>
+                                      <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.keywords")}</label>
                                       <input defaultValue={(u.keywords || []).join(", ")} id={`uni-kw-${u.id}`}
                                         className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                         style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }} />
@@ -1416,7 +1416,7 @@ function VaultPageContent() {
                                     }}
                                     className="px-4 py-2 rounded-lg cursor-pointer transition-all"
                                     style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
-                                    Enregistrer
+                                    {t("vault.saveBtn")}
                                   </button>
                                 </div>
                               )}
@@ -1424,59 +1424,59 @@ function VaultPageContent() {
                           ))}
                         </div>
                       ) : (
-                        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Aucun univers produit défini.</p>
+                        <p style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>{t("vault.noProductUniverse")}</p>
                       )}
 
                       {/* Add universe */}
                       {showAddUniverse ? (
                         <div className="p-4 rounded-xl space-y-3" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                           <div>
-                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Nom *</label>
+                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.nameRequired")}</label>
                             <input value={newUniverse.name} onChange={(e) => setNewUniverse({ ...newUniverse, name: e.target.value })}
                               className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                               style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                              placeholder="Ex: Gamme Premium" />
+                              placeholder={t("vault.universePlaceholder")} />
                           </div>
                           <div>
-                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Description</label>
+                            <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.description")}</label>
                             <textarea value={newUniverse.description} onChange={(e) => setNewUniverse({ ...newUniverse, description: e.target.value })}
                               className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none resize-none"
                               style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)", minHeight: 60 }}
-                              placeholder="Description de l'univers..." />
+                              placeholder={t("vault.universeDescPlaceholder")} />
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Couleurs (hex, virgules)</label>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.colorsHex")}</label>
                               <input value={newUniverse.colors} onChange={(e) => setNewUniverse({ ...newUniverse, colors: e.target.value })}
                                 className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                 style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                                placeholder="#FF0000, #00FF00" />
+                                placeholder={t("vault.colorsPlaceholder")} />
                             </div>
                             <div>
-                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Ton</label>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.toneLabel")}</label>
                               <input value={newUniverse.tone_override} onChange={(e) => setNewUniverse({ ...newUniverse, tone_override: e.target.value })}
                                 className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                 style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                                placeholder="Luxe, formel" />
+                                placeholder={t("vault.tonePlaceholder")} />
                             </div>
                             <div>
-                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mots-clés (virgules)</label>
+                              <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.keywords")}</label>
                               <input value={newUniverse.keywords} onChange={(e) => setNewUniverse({ ...newUniverse, keywords: e.target.value })}
                                 className="w-full mt-1 px-3 py-2 rounded-lg bg-transparent outline-none"
                                 style={{ fontSize: "13px", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                                placeholder="premium, haut de gamme" />
+                                placeholder={t("vault.keywordsPlaceholder")} />
                             </div>
                           </div>
                           <div className="flex gap-2">
                             <button onClick={handleAddUniverse} disabled={!newUniverse.name.trim()}
                               className="px-4 py-2 rounded-lg cursor-pointer transition-all disabled:opacity-30"
                               style={{ fontSize: "12px", fontWeight: 500, background: "var(--accent)", color: "#fff" }}>
-                              Créer
+                              {t("vault.create")}
                             </button>
                             <button onClick={() => setShowAddUniverse(false)}
                               className="px-4 py-2 rounded-lg cursor-pointer transition-all"
                               style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-tertiary)", border: "1px solid var(--border)" }}>
-                              Annuler
+                              {t("vault.cancel")}
                             </button>
                           </div>
                         </div>
@@ -1484,7 +1484,7 @@ function VaultPageContent() {
                         <button onClick={() => setShowAddUniverse(true)}
                           className="flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-90"
                           style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                          <Plus size={14} /> Ajouter un univers
+                          <Plus size={14} /> {t("vault.addUniverse")}
                         </button>
                       )}
                     </div>
@@ -1641,19 +1641,19 @@ function VaultPageContent() {
 
                 {/* Learned Brand Voice -- full width */}
                 <div className="md:col-span-2">
-                  <SectionCard icon={MessageSquare} title="Voix de marque apprise"
+                  <SectionCard icon={MessageSquare} title={t("vault.learnedVoice")}
                     count={vault.voice_profile ? 1 : 0}
                     open={isOpen("voice")} onToggle={() => toggleSection("voice")}>
                     {vault.voice_profile ? (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                            Profil vocal appris depuis vos contenus Library. Automatiquement injecté dans chaque génération de texte.
+                            {t("vault.voiceDesc")}
                           </p>
                           <button onClick={handleLearnVoice} disabled={voiceLearning}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-secondary"
                             style={{ fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)", border: "1px solid var(--border)", opacity: voiceLearning ? 0.5 : 1 }}>
-                            {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Réanalyser
+                            {voiceLearning ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} {t("vault.reanalyze")}
                           </button>
                         </div>
 
@@ -1661,7 +1661,7 @@ function VaultPageContent() {
                         {vault.voice_profile.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Synthèse
+                              {t("vault.synthesis")}
                             </span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
                               {vault.voice_profile.summary}
@@ -1673,7 +1673,7 @@ function VaultPageContent() {
                         {vault.voice_profile.tone_markers && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Marqueurs de ton
+                              {t("vault.toneMarkers")}
                             </span>
                             {vault.voice_profile.tone_markers.primary_tone && (
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 6, fontWeight: 500 }}>
@@ -1682,11 +1682,11 @@ function VaultPageContent() {
                             )}
                             <div className="grid grid-cols-5 gap-3 mt-3">
                               {([
-                                { key: "formality", label: "Formalité" },
-                                { key: "confidence", label: "Confiance" },
-                                { key: "warmth", label: "Chaleur" },
-                                { key: "humor", label: "Humour" },
-                                { key: "urgency", label: "Urgence" },
+                                { key: "formality", label: t("vault.formality") },
+                                { key: "confidence", label: t("vault.confidence") },
+                                { key: "warmth", label: t("vault.warmth") },
+                                { key: "humor", label: t("vault.humor") },
+                                { key: "urgency", label: t("vault.urgency") },
                               ] as const).map(({ key, label }) => {
                                 const val = (vault.voice_profile?.tone_markers as any)?.[key] ?? 0;
                                 return (
@@ -1706,7 +1706,7 @@ function VaultPageContent() {
                         {vault.voice_profile.key_phrases && vault.voice_profile.key_phrases.length > 0 && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Phrases clés
+                              {t("vault.keyPhrases")}
                             </span>
                             <div className="flex flex-wrap gap-2 mt-3">
                               {vault.voice_profile.key_phrases.map((phrase, i) => (
@@ -1725,7 +1725,7 @@ function VaultPageContent() {
                             {vault.voice_profile.do_patterns && vault.voice_profile.do_patterns.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  À faire
+                                  {t("vault.toDo")}
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.voice_profile.do_patterns.map((p, i) => (
@@ -1739,7 +1739,7 @@ function VaultPageContent() {
                             {vault.voice_profile.dont_patterns && vault.voice_profile.dont_patterns.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  À éviter
+                                  {t("vault.toAvoid")}
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.voice_profile.dont_patterns.map((p, i) => (
@@ -1757,13 +1757,13 @@ function VaultPageContent() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {vault.voice_profile.vocabulary?.register && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Registre</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.register")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>{vault.voice_profile.vocabulary.register}</p>
                             </div>
                           )}
                           {vault.voice_profile.sentence_style?.structure && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Style de phrase</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.sentenceStyle")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
                                 {vault.voice_profile.sentence_style.structure}, longueur {vault.voice_profile.sentence_style.avg_length || "moyenne"}
                               </p>
@@ -1775,7 +1775,7 @@ function VaultPageContent() {
                         {vault.voice_profile.rhetorical_devices && vault.voice_profile.rhetorical_devices.length > 0 && (
                           <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Procédés rhétoriques
+                              {t("vault.rhetoricalDevices")}
                             </span>
                             <div className="flex flex-wrap gap-2 mt-2">
                               {vault.voice_profile.rhetorical_devices.map((d, i) => (
@@ -1791,7 +1791,7 @@ function VaultPageContent() {
                     ) : (
                       <div className="text-center py-8">
                         <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 400, margin: "0 auto 16px" }}>
-                          Analysez vos contenus texte de la Library pour apprendre automatiquement votre style d'écriture et l'appliquer à toutes les générations.
+                          {t("vault.analyzeVoiceDesc")}
                         </p>
                         <button onClick={handleLearnVoice} disabled={voiceLearning}
                           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
@@ -1801,7 +1801,7 @@ function VaultPageContent() {
                             opacity: voiceLearning ? 0.6 : 1,
                           }}>
                           {voiceLearning ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-                          {voiceLearning ? "Analyse en cours..." : "Analyser mes contenus"}
+                          {voiceLearning ? t("vault.analyzing") : t("vault.analyzeMyContent")}
                         </button>
                         {voiceError && (
                           <p style={{ fontSize: "12px", color: "#ef4444", marginTop: 12 }}>{voiceError}</p>
@@ -1814,24 +1814,24 @@ function VaultPageContent() {
                 {/* Text Calibration Results */}
                 {vault.text_calibration && (
                   <div className="md:col-span-2">
-                    <SectionCard icon={FileText} title="Calibration texte" count={1}
+                    <SectionCard icon={FileText} title={t("vault.textCalibration")} count={1}
                       open={isOpen("text-cal")} onToggle={() => toggleSection("text-cal")}>
                       <div className="space-y-4">
                         {vault.text_calibration.rules && (
                           <div className="flex flex-wrap gap-3">
                             {vault.text_calibration.rules.vouvoiement !== undefined && (
                               <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.vouvoiement ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.vouvoiement ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.vouvoiement ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
-                                Vouvoiement: {vault.text_calibration.rules.vouvoiement ? "Oui" : "Non"}
+                                {t("vault.vouvoiement")}{vault.text_calibration.rules.vouvoiement ? t("vault.yes") : t("vault.no")}
                               </span>
                             )}
                             {vault.text_calibration.rules.emoji !== undefined && (
                               <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.emoji ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.emoji ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.emoji ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
-                                Emojis: {vault.text_calibration.rules.emoji ? "Oui" : "Non"}
+                                {t("vault.emojis")}{vault.text_calibration.rules.emoji ? t("vault.yes") : t("vault.no")}
                               </span>
                             )}
                             {vault.text_calibration.rules.hashtags !== undefined && (
                               <span className="px-3 py-1.5 rounded-lg" style={{ fontSize: "12px", fontWeight: 500, background: vault.text_calibration.rules.hashtags ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)", color: vault.text_calibration.rules.hashtags ? "#22c55e" : "#ef4444", border: `1px solid ${vault.text_calibration.rules.hashtags ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}` }}>
-                                Hashtags: {vault.text_calibration.rules.hashtags ? "Oui" : "Non"}
+                                {t("vault.hashtags")}{vault.text_calibration.rules.hashtags ? t("vault.yes") : t("vault.no")}
                               </span>
                             )}
                             {vault.text_calibration.rules.structure && (
@@ -1847,7 +1847,7 @@ function VaultPageContent() {
                             {vault.text_calibration.do_examples && vault.text_calibration.do_examples.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Exemples à suivre
+                                  {t("vault.examplesToFollow")}
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.text_calibration.do_examples.map((ex, i) => (
@@ -1861,7 +1861,7 @@ function VaultPageContent() {
                             {vault.text_calibration.dont_examples && vault.text_calibration.dont_examples.length > 0 && (
                               <div className="p-4 rounded-xl" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
                                 <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                                  Exemples à éviter
+                                  {t("vault.examplesToAvoid")}
                                 </span>
                                 <ul className="mt-2 space-y-1.5">
                                   {vault.text_calibration.dont_examples.map((ex, i) => (
@@ -1877,7 +1877,7 @@ function VaultPageContent() {
                         {vault.text_calibration.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                              Synthèse
+                              {t("vault.synthesis")}
                             </span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>
                               {vault.text_calibration.summary}
@@ -1911,7 +1911,7 @@ function VaultPageContent() {
                         {vault.colors.slice(0, 3).length > 0 && (
                           <div>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
-                              Principales
+                              {t("vault.primaryColors")}
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {vault.colors.slice(0, 3).map((c, i) => (
@@ -1929,7 +1929,7 @@ function VaultPageContent() {
                         {vault.colors.slice(3, 6).length > 0 && (
                           <div>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
-                              Secondaires
+                              {t("vault.secondaryColors")}
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {vault.colors.slice(3, 6).map((c, i) => (
@@ -1947,7 +1947,7 @@ function VaultPageContent() {
                         {vault.colors.slice(6).length > 0 && (
                           <div>
                             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }}>
-                              Accents
+                              {t("vault.accentColors")}
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {vault.colors.slice(6).map((c, i) => (
@@ -1975,7 +1975,7 @@ function VaultPageContent() {
                         <div key={i} className="px-3 py-2.5 rounded-lg flex items-center justify-between"
                           style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
                           <span style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)", fontFamily: f }}>{f}</span>
-                          <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Font</span>
+                          <span style={{ fontSize: "9px", color: "var(--text-tertiary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{t("vault.font")}</span>
                         </div>
                       ))}
                     </div>
@@ -2023,7 +2023,7 @@ function VaultPageContent() {
                 {/* Image Calibration Results */}
                 {vault.image_calibration && (
                   <div className="md:col-span-2">
-                    <SectionCard icon={Camera} title="Calibration visuelle" count={1}
+                    <SectionCard icon={Camera} title={t("vault.visualCalibration")} count={1}
                       open={isOpen("img-cal")} onToggle={() => toggleSection("img-cal")}>
                       <div className="space-y-4">
                         {vault.image_calibration.rules && (
@@ -2078,7 +2078,7 @@ function VaultPageContent() {
                         )}
                         {vault.image_calibration.summary && (
                           <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
-                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Synthèse</span>
+                            <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.synthesis")}</span>
                             <p style={{ fontSize: "13px", lineHeight: 1.6, color: "var(--foreground)", marginTop: 6 }}>{vault.image_calibration.summary}</p>
                           </div>
                         )}
@@ -2102,7 +2102,7 @@ function VaultPageContent() {
                   style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                   <div className="flex items-center gap-2.5 mb-3">
                     <Trophy size={16} style={{ color: "var(--accent)" }} />
-                    <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Scanner un concurrent</span>
+                    <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{t("vault.scanCompetitor")}</span>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-lg"
@@ -2110,7 +2110,7 @@ function VaultPageContent() {
                       <Globe size={15} style={{ color: "var(--accent)", opacity: 0.7 }} />
                       <input type="text" value={competitorUrl} onChange={(e) => setCompetitorUrl(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !competitorLoading && handleScanCompetitor()}
-                        placeholder="concurrent.com" disabled={competitorLoading}
+                        placeholder={t("vault.competitorPlaceholder")} disabled={competitorLoading}
                         className="flex-1 bg-transparent outline-none placeholder:text-white/15"
                         style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 400 }} />
                     </div>
@@ -2118,7 +2118,7 @@ function VaultPageContent() {
                       className="flex items-center gap-2 px-5 py-2.5 rounded-lg cursor-pointer disabled:opacity-30 transition-opacity"
                       style={{ background: "var(--accent)", fontSize: "13px", fontWeight: 500, color: "#FFF" }}>
                       {competitorLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                      Scanner
+                      {t("vault.scanBtn")}
                     </button>
                   </div>
                   {competitorError && (
@@ -2169,13 +2169,13 @@ function VaultPageContent() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {comp.positioning && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Positionnement</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.positioning")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.positioning}</p>
                             </div>
                           )}
                           {comp.tone && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Ton</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.toneLabel")}</span>
                               <p style={{ fontSize: "12px", color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>{comp.tone}</p>
                             </div>
                           )}
@@ -2193,7 +2193,7 @@ function VaultPageContent() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                           {comp.strengths && comp.strengths.length > 0 && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>Forces</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#22c55e", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.strengths")}</span>
                               <ul className="mt-2 space-y-1">
                                 {comp.strengths.map((s, si) => (
                                   <li key={si} style={{ fontSize: "11px", lineHeight: 1.5, color: "var(--foreground)" }}>
@@ -2205,7 +2205,7 @@ function VaultPageContent() {
                           )}
                           {comp.weaknesses && comp.weaknesses.length > 0 && (
                             <div className="p-3 rounded-lg" style={{ background: "rgba(239,68,68,0.04)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>Faiblesses</span>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t("vault.weaknesses")}</span>
                               <ul className="mt-2 space-y-1">
                                 {comp.weaknesses.map((w, wi) => (
                                   <li key={wi} style={{ fontSize: "11px", lineHeight: 1.5, color: "var(--foreground)" }}>
@@ -2242,7 +2242,7 @@ function VaultPageContent() {
                       <Trophy size={20} style={{ color: "var(--text-tertiary)" }} />
                     </div>
                     <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                      Scannez un site concurrent pour comparer positionnement, ton et identité visuelle.
+                      {t("vault.scanCompetitorDesc")}
                     </p>
                   </div>
                 )}
@@ -2397,6 +2397,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
   platform: NonNullable<VaultData["brand_platform"]>;
   onEdit: () => void;
 }) {
+  const { t } = useI18n();
   const reg = REGISTER_LABELS[platform.narrative_register] || { label: platform.narrative_register, desc: "" };
   return (
     <div className="space-y-4">
@@ -2414,7 +2415,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
       {/* Promise */}
       <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
         <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-          Brand promise
+          {t("vault.promise")}
         </span>
         <p style={{ fontSize: "14px", fontWeight: 500, lineHeight: 1.5, color: "var(--foreground)", marginTop: 6 }}>
           "{platform.promise}"
@@ -2425,7 +2426,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
         {/* Narrative register */}
         <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
           <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Narrative register
+            {t("vault.narrativeRegister")}
           </span>
           <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)", marginTop: 4 }}>{reg.label}</p>
           <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: 2, lineHeight: 1.4 }}>{reg.desc}</p>
@@ -2435,7 +2436,7 @@ function BrandStrategyDisplay({ platform, onEdit }: {
         {platform.creative_tension && (
           <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
             <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Creative tension
+              {t("vault.creativeTension")}
             </span>
             <p style={{ fontSize: "12px", lineHeight: 1.55, color: "var(--foreground)", marginTop: 4 }}>
               {platform.creative_tension}
@@ -2447,9 +2448,9 @@ function BrandStrategyDisplay({ platform, onEdit }: {
       {/* Semiotic codes */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {([
-          { key: "adopt" as const, label: "Codes to adopt", color: "#16a34a" },
-          { key: "avoid" as const, label: "Codes to avoid", color: "#dc2626" },
-          { key: "subvert" as const, label: "Codes to subvert", color: "#d97706" },
+          { key: "adopt" as const, label: t("vault.adopt"), color: "#16a34a" },
+          { key: "avoid" as const, label: t("vault.avoid"), color: "#dc2626" },
+          { key: "subvert" as const, label: t("vault.subvert"), color: "#d97706" },
         ] as const).map(({ key, label, color }) => (
           platform.semiotic_codes[key].length > 0 && (
             <div key={key} className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
@@ -2473,14 +2474,14 @@ function BrandStrategyDisplay({ platform, onEdit }: {
       {platform.photo_direction && (
         <div className="p-3 rounded-lg" style={{ background: "rgba(26,23,20,0.02)", border: "1px solid var(--border)" }}>
           <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Photographic direction
+            {t("vault.photoDirection")}
           </span>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
             {([
-              { label: "Framing", value: platform.photo_direction.framing },
-              { label: "Lighting", value: platform.photo_direction.lighting },
-              { label: "Human presence", value: platform.photo_direction.human_presence },
-              { label: "Composition", value: platform.photo_direction.composition },
+              { label: t("vault.framing"), value: platform.photo_direction.framing },
+              { label: t("vault.lighting"), value: platform.photo_direction.lighting },
+              { label: t("vault.humanPresence"), value: platform.photo_direction.human_presence },
+              { label: t("vault.composition"), value: platform.photo_direction.composition },
             ]).filter(f => f.value).map((field) => (
               <div key={field.label}>
                 <span style={{ fontSize: "9px", color: "var(--text-tertiary)", textTransform: "uppercase" }}>{field.label}</span>
@@ -2530,6 +2531,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
   vault: VaultData;
   onComplete: (platform: NonNullable<VaultData["brand_platform"]>) => void;
 }) {
+  const { t } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "ai", text: buildWelcomeMessage(vault) },
   ]);
@@ -2564,7 +2566,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
       // Final AI message before synthesis
       const synthMsg: ChatMessage = {
         role: "ai",
-        text: "J'ai assez d'éléments. Je synthétise votre plateforme de marque…",
+        text: t("vault.strategySynthesizing"),
       };
       setMessages([...newMessages, synthMsg]);
       setAiThinking(false);
@@ -2662,7 +2664,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
     return (
       <div className="flex flex-col items-center py-8 gap-3">
         <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent)" }} />
-        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>Synthèse de votre plateforme de marque en cours…</p>
+        <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{t("vault.strategySynthesisLoading")}</p>
         <p style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>Extraction des codes sémiotiques, du registre narratif et de la direction photographique</p>
       </div>
     );
@@ -2671,7 +2673,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
   return (
     <div className="space-y-3">
       <p style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-        Discutez avec votre stratégiste de marque. En 2-3 échanges, il définira votre plateforme de marque pour guider chaque génération.
+        {t("vault.strategyDesc")}
       </p>
 
       {/* Chat messages area */}
@@ -2735,7 +2737,7 @@ function BrandStrategyOnboarding({ vault, onComplete }: {
         <textarea
           value={currentInput}
           onChange={(e) => setCurrentInput(e.target.value)}
-          placeholder="Votre réponse…"
+          placeholder={t("vault.yourAnswer")}
           disabled={aiThinking || synthesizing}
           className="flex-1 rounded-xl px-4 py-3 resize-none transition-all disabled:opacity-50"
           style={{

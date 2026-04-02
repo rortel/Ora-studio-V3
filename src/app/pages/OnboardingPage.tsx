@@ -8,6 +8,7 @@ import {
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { OraLogo } from "../components/OraLogo";
+import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
    TYPES
@@ -34,6 +35,7 @@ interface ScanResult {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { accessToken, user, isLoading } = useAuth();
   const tokenRef = useRef(accessToken);
   useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
@@ -135,10 +137,10 @@ export function OnboardingPage() {
         if (data.scan.tone_of_voice?.primary) setEditTone(data.scan.tone_of_voice.primary);
         if (data.scan.logo?.url) setLogoUrl(data.scan.logo.url);
       } else {
-        setScanError(data.error || "Le scan a échoué. Vous pouvez continuer manuellement.");
+        setScanError(data.error || t("onboarding.scanFailed"));
       }
     } catch (err: any) {
-      setScanError(err?.message === "The operation was aborted" ? "Le scan a pris trop de temps." : "Erreur réseau. Vous pouvez continuer manuellement.");
+      setScanError(err?.message === "The operation was aborted" ? t("onboarding.scanTimeout") : t("onboarding.networkError"));
     } finally {
       setScanning(false);
     }
@@ -282,32 +284,32 @@ export function OnboardingPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Building2 size={20} style={{ color: "var(--foreground)" }} />
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
-                  Votre marque
+                  {t("onboarding.yourBrand")}
                 </h2>
               </div>
               <p style={{ fontSize: 14, color: "var(--muted-foreground)", marginBottom: 28, lineHeight: 1.5 }}>
-                Commençons par les bases. Comment s'appelle votre entreprise ?
+                {t("onboarding.step1Desc")}
               </p>
 
-              <label style={labelStyle}>Nom de l'entreprise *</label>
+              <label style={labelStyle}>{t("onboarding.companyNameLabel")}</label>
               <input
                 type="text"
                 value={companyName}
                 onChange={e => setCompanyName(e.target.value)}
-                placeholder="Ex: ORA Studio"
+                placeholder={t("onboarding.companyNamePlaceholder")}
                 style={inputStyle}
                 autoFocus
                 onKeyDown={e => { if (e.key === "Enter" && companyName.trim()) handleStep1Next(); }}
               />
 
-              <label style={{ ...labelStyle, marginTop: 20 }}>Site web (optionnel)</label>
+              <label style={{ ...labelStyle, marginTop: 20 }}>{t("onboarding.websiteLabel")}</label>
               <div style={{ position: "relative" }}>
                 <Globe size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--muted-foreground)" }} />
                 <input
                   type="url"
                   value={websiteUrl}
                   onChange={e => setWebsiteUrl(e.target.value)}
-                  placeholder="https://votre-site.com"
+                  placeholder={t("onboarding.websitePlaceholder")}
                   style={{ ...inputStyle, paddingLeft: 36 }}
                   onKeyDown={e => { if (e.key === "Enter" && companyName.trim()) handleStep1Next(); }}
                 />
@@ -315,7 +317,7 @@ export function OnboardingPage() {
               {hasUrl && (
                 <p style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
                   <Sparkles size={12} />
-                  Nous scannerons votre site pour extraire automatiquement votre identité de marque.
+                  {t("onboarding.scanHelper")}
                 </p>
               )}
 
@@ -324,7 +326,7 @@ export function OnboardingPage() {
                 disabled={!companyName.trim()}
                 style={{ ...btnPrimary, marginTop: 28, opacity: companyName.trim() ? 1 : 0.4 }}
               >
-                Suivant
+                {t("onboarding.next")}
                 <ArrowRight size={16} />
               </button>
             </motion.div>
@@ -342,17 +344,17 @@ export function OnboardingPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Sparkles size={20} style={{ color: "var(--foreground)" }} />
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
-                  Scan automatique
+                  {t("onboarding.autoScan")}
                 </h2>
               </div>
               <p style={{ fontSize: 14, color: "var(--muted-foreground)", marginBottom: 24, lineHeight: 1.5 }}>
-                Analyse de <strong style={{ color: "var(--foreground)" }}>{websiteUrl.trim()}</strong>
+                {t("onboarding.analyzingPrefix")} <strong style={{ color: "var(--foreground)" }}>{websiteUrl.trim()}</strong>
               </p>
 
               {scanning && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
                   <Loader2 size={32} className="animate-spin" style={{ color: "var(--foreground)" }} />
-                  <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>Extraction de l'identité de marque...</p>
+                  <p style={{ fontSize: 14, color: "var(--muted-foreground)" }}>{t("onboarding.extractingIdentity")}</p>
                   <div style={{ width: "100%", height: 4, borderRadius: 2, background: "var(--border)", overflow: "hidden" }}>
                     <motion.div
                       style={{ height: "100%", borderRadius: 2, background: "var(--foreground)" }}
@@ -417,7 +419,7 @@ export function OnboardingPage() {
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                         <Palette size={14} style={{ color: "var(--foreground)" }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground)" }}>Couleurs détectées</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground)" }}>{t("onboarding.colorsDetected")}</span>
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
                         {allColors.slice(0, 8).map((c, i) => (
@@ -444,7 +446,7 @@ export function OnboardingPage() {
                   {scanFoundLogo && (
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <Check size={16} style={{ color: "#10b981" }} />
-                      <span style={{ fontSize: 13, color: "var(--foreground)" }}>Logo détecté</span>
+                      <span style={{ fontSize: 13, color: "var(--foreground)" }}>{t("onboarding.logoDetected")}</span>
                       <img
                         src={scanResult.logo!.url!}
                         alt="Logo"
@@ -458,11 +460,11 @@ export function OnboardingPage() {
               {!scanning && (
                 <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
                   <button onClick={goNext} style={btnSecondary}>
-                    {scanError ? "Continuer" : "Passer"}
+                    {scanError ? t("onboarding.continue") : t("onboarding.skip")}
                   </button>
                   {scanResult && (
                     <button onClick={goNext} style={btnPrimary}>
-                      Suivant
+                      {t("onboarding.next")}
                       <ArrowRight size={16} />
                     </button>
                   )}
@@ -483,11 +485,11 @@ export function OnboardingPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Upload size={20} style={{ color: "var(--foreground)" }} />
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
-                  Votre logo
+                  {t("onboarding.yourLogo")}
                 </h2>
               </div>
               <p style={{ fontSize: 14, color: "var(--muted-foreground)", marginBottom: 24, lineHeight: 1.5 }}>
-                Ajoutez votre logo pour personnaliser vos créations. Formats : PNG, JPG, SVG.
+                {t("onboarding.logoDesc")}
               </p>
 
               {/* Drop zone */}
@@ -534,9 +536,9 @@ export function OnboardingPage() {
                   <>
                     <Upload size={24} style={{ color: "var(--muted-foreground)" }} />
                     <p style={{ fontSize: 14, color: "var(--muted-foreground)", margin: 0 }}>
-                      Glissez votre logo ici ou <span style={{ color: "var(--foreground)", fontWeight: 600 }}>parcourir</span>
+                      {t("onboarding.dropLogoHere")} <span style={{ color: "var(--foreground)", fontWeight: 600 }}>{t("onboarding.browse")}</span>
                     </p>
-                    <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0 }}>PNG, JPG ou SVG</p>
+                    <p style={{ fontSize: 12, color: "var(--muted-foreground)", margin: 0 }}>{t("onboarding.logoFormats")}</p>
                   </>
                 )}
               </div>
@@ -557,18 +559,18 @@ export function OnboardingPage() {
                   onClick={() => { setLogoFile(null); setLogoPreview(null); setLogoUrl(null); }}
                   style={{ ...btnText, marginTop: 12, fontSize: 12 }}
                 >
-                  <X size={14} /> Supprimer
+                  <X size={14} /> {t("onboarding.delete")}
                 </button>
               )}
 
               <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
-                <button onClick={goNext} style={btnSecondary}>Passer</button>
+                <button onClick={goNext} style={btnSecondary}>{t("onboarding.skip")}</button>
                 <button
                   onClick={goNext}
                   disabled={logoUploading}
                   style={{ ...btnPrimary, opacity: logoUploading ? 0.5 : 1 }}
                 >
-                  Suivant
+                  {t("onboarding.next")}
                   <ArrowRight size={16} />
                 </button>
               </div>
@@ -587,11 +589,11 @@ export function OnboardingPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Check size={20} style={{ color: "var(--foreground)" }} />
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
-                  Confirmation
+                  {t("onboarding.confirmation")}
                 </h2>
               </div>
               <p style={{ fontSize: 14, color: "var(--muted-foreground)", marginBottom: 24, lineHeight: 1.5 }}>
-                Vérifiez les informations avant de lancer votre studio.
+                {t("onboarding.step4Desc")}
               </p>
 
               {/* Summary card */}
@@ -616,7 +618,7 @@ export function OnboardingPage() {
 
                 {/* Editable name */}
                 <div>
-                  <label style={labelStyle}>Nom de l'entreprise</label>
+                  <label style={labelStyle}>{t("onboarding.companyName")}</label>
                   <input
                     type="text"
                     value={editName}
@@ -627,24 +629,24 @@ export function OnboardingPage() {
 
                 {/* Editable sector */}
                 <div>
-                  <label style={labelStyle}>Secteur d'activité</label>
+                  <label style={labelStyle}>{t("onboarding.industry")}</label>
                   <input
                     type="text"
                     value={editSector}
                     onChange={e => setEditSector(e.target.value)}
-                    placeholder="Ex: Tech, Mode, Restauration..."
+                    placeholder={t("onboarding.industryPlaceholder")}
                     style={inputStyle}
                   />
                 </div>
 
                 {/* Editable tone */}
                 <div>
-                  <label style={labelStyle}>Ton de voix</label>
+                  <label style={labelStyle}>{t("onboarding.toneOfVoice")}</label>
                   <input
                     type="text"
                     value={editTone}
                     onChange={e => setEditTone(e.target.value)}
-                    placeholder="Ex: Professionnel, Décontracté, Inspirant..."
+                    placeholder={t("onboarding.tonePlaceholder")}
                     style={inputStyle}
                   />
                 </div>
@@ -652,7 +654,7 @@ export function OnboardingPage() {
                 {/* Colors (read-only) */}
                 {allColors.length > 0 && (
                   <div>
-                    <label style={labelStyle}>Couleurs de marque</label>
+                    <label style={labelStyle}>{t("onboarding.brandColors")}</label>
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       {allColors.slice(0, 8).map((c, i) => (
                         <div key={i} style={{
@@ -674,12 +676,12 @@ export function OnboardingPage() {
                   {saving ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      Sauvegarde...
+                      {t("onboarding.saving")}
                     </>
                   ) : (
                     <>
                       <Sparkles size={16} />
-                      Lancer mon studio
+                      {t("onboarding.launchStudio")}
                     </>
                   )}
                 </button>
@@ -693,13 +695,13 @@ export function OnboardingPage() {
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                     marginBottom: 16, color: "#10b981", fontSize: 14, fontWeight: 600,
                   }}>
-                    <Check size={18} /> Profil enregistré
+                    <Check size={18} /> {t("onboarding.profileSaved")}
                   </div>
                   <button
                     onClick={() => navigate("/hub")}
                     style={btnPrimary}
                   >
-                    Accéder à mon studio
+                    {t("onboarding.goToStudio")}
                     <ArrowRight size={16} />
                   </button>
                 </motion.div>
@@ -727,7 +729,7 @@ export function OnboardingPage() {
             textUnderlineOffset: 3,
           }}
         >
-          Passer la configuration
+          {t("onboarding.skipConfig")}
         </button>
       )}
     </div>

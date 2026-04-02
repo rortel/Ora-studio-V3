@@ -15,6 +15,9 @@ import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { useI18n } from "../lib/i18n";
+import { TemplateEditor } from "../components/TemplateEditor";
+import { registerTemplate, getTemplateById, getTemplatesForFormat } from "../components/templates";
+import type { TemplateDefinition } from "../components/templates/types";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ORA STUDIO — Unified conversational creation
@@ -65,6 +68,7 @@ interface CampaignPost {
   hashtags?: string;
   headline?: string;
   cta?: string;
+  aspectRatio?: string;
   variants?: CampaignPostVariant[];
   selectedVariant?: number;
 }
@@ -986,16 +990,16 @@ export function StudioPage() {
       let suggestions: string[] = [];
 
       if (hasBrand && hasProducts) {
-        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}** et vos produits.\n\nQuel produit ou sujet souhaitez-vous mettre en avant ?\n\n📦 Vos produits : ${allProducts.join(", ")}`;
+        welcomeContent = t("studio.campaignWelcomeWithProducts").replace("{brand}", brandName).replace("{products}", allProducts.join(", "));
         // Show ALL products as suggestion chips (max 8 for UI readability)
-        suggestions = allProducts.slice(0, 8).map((n: string) => `Campagne ${n}`);
-        suggestions.push("Campagne de notoriété");
+        suggestions = allProducts.slice(0, 8).map((n: string) => `${t("studio.campaignPrefix")} ${n}`);
+        suggestions.push(t("studio.campaignAwareness"));
       } else if (hasBrand) {
-        welcomeContent = `Bienvenue en mode **Campagne** ! Je connais votre marque **${brandName}**.\n\nQuel est l'objectif de votre campagne ? Nouveau produit, promotion, notoriété, événement ?`;
-        suggestions = ["Lancement produit", "Promotion saisonnière", "Campagne de notoriété"];
+        welcomeContent = t("studio.campaignWelcomeWithBrand").replace("{brand}", brandName);
+        suggestions = [t("studio.productLaunch"), t("studio.seasonalPromotion"), t("studio.campaignAwareness")];
       } else {
-        welcomeContent = "Bienvenue en mode **Campagne** !\n\nPour créer une campagne cohérente avec votre marque, je vous recommande de **compléter votre Brand Vault** d'abord (logo, couleurs, ton, produits).\n\nSinon, décrivez simplement votre campagne et je m'adapte.";
-        suggestions = ["Compléter mon Brand Vault", "Lancer sans marque", "Campagne générique"];
+        welcomeContent = t("studio.campaignWelcomeNoBrand");
+        suggestions = [t("studio.completeBrandVault"), t("studio.launchWithoutBrand"), t("studio.genericCampaign")];
       }
 
       setMessages([{
@@ -1926,7 +1930,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
                       <button onClick={e => { e.stopPropagation(); onEdit(item, "image", result.prompt); }}
                         className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer"
                         style={{ background: "rgba(255,255,255,0.2)" }}
-                        title="Éditer">
+                        title={t("studio.edit")}>
                         <Pencil size={10} style={{ color: "#fff" }} />
                       </button>
                     )}
@@ -2004,7 +2008,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
             <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success(t("studio.textCopied")); }}
               className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
               style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
-              title="Copier">
+              title={t("studio.copy")}>
               <BookOpen size={12} />
             </button>
           </div>
@@ -2274,6 +2278,44 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   const [posts, setPosts] = useState<CampaignPost[]>(initialPosts.map(p => ({ ...p })));
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [campaignName, setCampaignName] = useState(`Campagne ${new Date().toLocaleDateString("fr-FR")}`);
+
+  // ── Konva editor state ──
+  const [editorPostIdx, setEditorPostIdx] = useState<number | null>(null);
+  const [editorTemplateId, setEditorTemplateId] = useState<string | null>(null);
+
+  const openKonvaEditor = (idx: number) => {
+    const post = posts[idx];
+    if (!post.imageUrl) return;
+    // Auto-create a template for this post's format
+    const formatId = post.format || "generic";
+    const existing = getTemplatesForFormat(formatId);
+    let templateId: string;
+    if (existing.length > 0) {
+      templateId = existing[0].id;
+    } else {
+      const arParts = (post.aspectRatio || "1:1").split(/[:/]/);
+      const arW = parseFloat(arParts[0]) || 1;
+      const arH = parseFloat(arParts[1]) || 1;
+      const canvasW = arW >= arH ? 1080 : Math.round(1080 * (arW / arH));
+      const canvasH = arH >= arW ? 1080 : Math.round(1080 * (arH / arW));
+      templateId = `auto-finalizer-${formatId}-${Date.now()}`;
+      const autoTemplate: TemplateDefinition = {
+        id: templateId, name: "Éditeur direct", formatId,
+        aspectRatio: post.aspectRatio || "1:1", canvasWidth: canvasW, canvasHeight: canvasH,
+        category: "minimal", source: "ai-generated",
+        layers: [
+          { id: "bg", type: "background-image", x: 0, y: 0, width: 100, height: 100, dataBinding: { source: "asset", field: "imageUrl" }, zIndex: 0 },
+          { id: "grad", type: "gradient-overlay", x: 0, y: 50, width: 100, height: 50, style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.7 }] }, zIndex: 1 },
+          { id: "headline", type: "text", x: 5, y: 70, width: 65, height: 15, dataBinding: { source: "asset", field: "headline" }, style: { fontSize: 5, fontWeight: 700, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.15 }, visible: { when: "asset.headline", notEmpty: true }, zIndex: 3 },
+          { id: "cta", type: "text", x: 5, y: 88, width: 35, height: 6, dataBinding: { source: "asset", field: "ctaText" }, style: { fontSize: 2.2, fontWeight: 600, color: "#FFFFFF", textAlign: "left", textTransform: "uppercase", letterSpacing: 1.5 }, visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 4 },
+          { id: "logo", type: "logo", x: 88, y: 5, width: 8, height: 8, dataBinding: { source: "vault", field: "logoUrl" }, style: { objectFit: "contain", opacity: 0.9 }, visible: { when: "vault.logoUrl", notEmpty: true }, zIndex: 5 },
+        ],
+      };
+      registerTemplate(autoTemplate);
+    }
+    setEditorTemplateId(templateId);
+    setEditorPostIdx(idx);
+  };
   const [scheduling, setScheduling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scheduledDates, setScheduledDates] = useState<Record<number, { date: string; time: string }>>({});
@@ -2483,9 +2525,19 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
                   {/* Expanded edit area */}
                   {editingIdx === idx && (
                     <div className="p-3.5 space-y-3">
-                      {/* Image preview */}
+                      {/* Image preview with edit button */}
                       {post.imageUrl && (
-                        <img src={post.imageUrl} className="w-full rounded-lg" style={{ maxHeight: 200, objectFit: "cover" }} alt="" />
+                        <div className="relative group/img">
+                          <img src={post.imageUrl} className="w-full rounded-lg" style={{ maxHeight: 200, objectFit: "cover" }} alt="" />
+                          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-all rounded-lg flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                            <button
+                              onClick={() => openKonvaEditor(idx)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.95)", color: "#111", fontSize: "11px", fontWeight: 600 }}>
+                              <Pencil size={12} /> {t("studio.editVisual")}
+                            </button>
+                          </div>
+                        </div>
                       )}
 
                       {/* Variant selector */}
@@ -2750,6 +2802,36 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
           </button>
         )}
       </div>
+
+      {/* ── Konva Template Editor ── */}
+      {editorPostIdx !== null && editorTemplateId && getTemplateById(editorTemplateId) && (() => {
+        const post = posts[editorPostIdx];
+        const editorAsset = {
+          formatId: post.format || "generic",
+          imageUrl: post.imageUrl || "",
+          headline: post.headline || "",
+          caption: post.text || "",
+          ctaText: post.cta || "",
+          hashtags: post.hashtags || "",
+          label: post.platform || "",
+          type: "image" as const,
+        };
+        return (
+          <TemplateEditor
+            open={true}
+            onOpenChange={(open) => { if (!open) { setEditorPostIdx(null); setEditorTemplateId(null); } }}
+            template={getTemplateById(editorTemplateId)!}
+            asset={editorAsset as any}
+            vault={vault}
+            brandLogoUrl={logoUrl || vault?.logo_url || vault?.logo?.url || ""}
+            onSave={(updatedTemplate) => {
+              registerTemplate(updatedTemplate);
+              setEditorPostIdx(null);
+              setEditorTemplateId(null);
+            }}
+          />
+        );
+      })()}
     </motion.div>
   );
 }
@@ -3124,7 +3206,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
                 <input value={targetAudience} onChange={e => setTargetAudience(e.target.value)}
-                  placeholder="Ou décrivez votre audience..."
+                  placeholder={t("studio.audiencePlaceholder")}
                   className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -3151,7 +3233,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
                 <input value={callToAction} onChange={e => setCallToAction(e.target.value)}
-                  placeholder="Ou CTA personnalisé..."
+                  placeholder={t("studio.customCtaPlaceholder")}
                   className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -3192,7 +3274,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               <div>
                 <SectionLabel>Angle éditorial</SectionLabel>
                 <input value={contentAngle} onChange={e => setContentAngle(e.target.value)}
-                  placeholder="Ex: Axer sur le naturel et l'origine Grasse..."
+                  placeholder={t("studio.directionPlaceholder")}
                   className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
@@ -3203,7 +3285,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               <div>
                 <SectionLabel>Messages clés</SectionLabel>
                 <textarea value={keyMessages} onChange={e => setKeyMessages(e.target.value)}
-                  placeholder="Points essentiels à faire passer..."
+                  placeholder={t("studio.keyPointsPlaceholder")}
                   className="w-full rounded-lg px-3 py-1.5 resize-none outline-none transition-all"
                   style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", minHeight: 48 }}
                   onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}

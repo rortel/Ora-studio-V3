@@ -1,11 +1,12 @@
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Home, FolderOpen, Calendar, Palette,
-  User, LogOut, Shield,
+  User, LogOut, Shield, Zap,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
+import { useI18n } from "../lib/i18n";
 import { useState, useRef, useEffect } from "react";
 
 /**
@@ -13,20 +14,6 @@ import { useState, useRef, useEffect } from "react";
  *   Desktop: ~52px icon-only sidebar, tooltips on hover
  *   Mobile:  bottom tab bar (5 items)
  */
-
-const navItems = [
-  { icon: Home, label: "Home", href: "/hub" },
-  { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
-  { icon: FolderOpen, label: "Content", href: "/hub/library" },
-  { icon: Palette, label: "Brand Kit", href: "/hub/vault" },
-];
-
-const mobileNavItems = [
-  { icon: Home, label: "Home", href: "/hub" },
-  { icon: Calendar, label: "Calendar", href: "/hub/calendar" },
-  { icon: FolderOpen, label: "Content", href: "/hub/library" },
-  { icon: Palette, label: "Brand", href: "/hub/vault" },
-];
 
 function isNavActive(href: string, pathname: string): boolean {
   if (href === "/hub/library") return pathname.startsWith("/hub/library");
@@ -37,10 +24,32 @@ function isNavActive(href: string, pathname: string): boolean {
 
 export function AppSidebar() {
   const location = useLocation();
-  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { user, profile, signOut, remainingCredits, plan, isAdmin } = useAuth();
+  const { t } = useI18n();
   const [tooltip, setTooltip] = useState<string | null>(null);
+
+  const navItems = [
+    { icon: Home, label: t("sidebar.home"), href: "/hub" },
+    { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
+    { icon: Palette, label: t("sidebar.brandKit"), href: "/hub/vault" },
+  ];
+
+  const mobileNavItems = [
+    { icon: Home, label: t("sidebar.home"), href: "/hub" },
+    { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
+    { icon: Palette, label: t("sidebar.brand"), href: "/hub/vault" },
+  ];
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
+
+  // Credit calculations
+  const totalCredits = profile?.credits || 50;
+  const creditPercent = isAdmin ? 100 : Math.min(100, Math.round((remainingCredits / totalCredits) * 100));
+  const creditColor = creditPercent > 30 ? "var(--accent)" : creditPercent > 10 ? "#f59e0b" : "var(--destructive)";
+  const showCredits = !isAdmin && plan !== "business";
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -123,6 +132,65 @@ export function AppSidebar() {
           })}
         </nav>
 
+        {/* Credit counter */}
+        {showCredits && (
+          <div className="relative mb-3 w-full flex justify-center">
+            <button
+              onClick={() => navigate("/subscribe")}
+              onMouseEnter={() => setTooltip(t("sidebar.credits"))}
+              onMouseLeave={() => setTooltip(null)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 hover:bg-secondary cursor-pointer relative"
+              title={`${remainingCredits} ${t("sidebar.credits").toLowerCase()}`}
+            >
+              <Zap size={16} style={{ color: creditColor }} />
+              {/* Mini progress ring */}
+              <svg
+                className="absolute inset-0"
+                viewBox="0 0 36 36"
+                style={{ width: 36, height: 36 }}
+              >
+                <circle
+                  cx="18" cy="18" r="15"
+                  fill="none"
+                  stroke="var(--border)"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx="18" cy="18" r="15"
+                  fill="none"
+                  stroke={creditColor}
+                  strokeWidth="2"
+                  strokeDasharray={`${creditPercent * 0.94} 94.2`}
+                  strokeDashoffset="0"
+                  strokeLinecap="round"
+                  transform="rotate(-90 18 18)"
+                  style={{ transition: "stroke-dasharray 0.5s ease" }}
+                />
+              </svg>
+            </button>
+            <AnimatePresence>
+              {tooltip === t("sidebar.credits") && (
+                <motion.div
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -4 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute left-[56px] top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-lg whitespace-nowrap pointer-events-none z-[100]"
+                  style={{
+                    background: "var(--text-primary)",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: "#FFFFFF",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  {remainingCredits} {t("sidebar.credits").toLowerCase()}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         {/* Bottom -- avatar */}
         <div className="relative" ref={avatarRef}>
           <button
@@ -159,7 +227,7 @@ export function AppSidebar() {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <User size={14} /> Profile
+                  <User size={14} /> {t("sidebar.profile")}
                 </Link>
                 {profile?.role === "admin" && (
                   <Link
@@ -170,7 +238,7 @@ export function AppSidebar() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <Shield size={14} /> Admin
+                    <Shield size={14} /> {t("sidebar.admin")}
                   </Link>
                 )}
                 <button
@@ -180,7 +248,7 @@ export function AppSidebar() {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  <LogOut size={14} /> Sign out
+                  <LogOut size={14} /> {t("sidebar.signOut")}
                 </button>
               </motion.div>
             )}

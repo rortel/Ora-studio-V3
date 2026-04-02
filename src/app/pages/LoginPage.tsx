@@ -118,7 +118,7 @@ export function LoginPage() {
 
       console.log("Signed up and in:", signInData.session?.user?.id);
       // After signup -> subscription page to choose plan
-      navigate("/subscribe");
+      navigate("/onboarding");
     } catch (err: any) {
       console.error("Signup exception:", err);
       if (err?.name === "AbortError") {

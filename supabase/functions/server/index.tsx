@@ -2579,8 +2579,260 @@ app.post("/auth/choose-plan", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// STRIPE PAYMENT — Checkout Sessions, Webhooks, Customer Portal
+// Set STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in Supabase secrets
+// ══════════════════════════════════════════════════════════════
+
+const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
+const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
+const FRONTEND_URL = Deno.env.get("FRONTEND_URL") || "https://ora-studio.app";
+
+// Stripe Price IDs — set these in env or use defaults
+const STRIPE_PRICES: Record<string, string> = {
+  generate: Deno.env.get("STRIPE_PRICE_GENERATE") || "", // Pro €39/mo
+  studio: Deno.env.get("STRIPE_PRICE_STUDIO") || "",     // Business €149/mo
+};
+
+async function stripeRequest(endpoint: string, body: Record<string, string>, method = "POST"): Promise<any> {
+  const res = await fetch(`https://api.stripe.com/v1${endpoint}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${STRIPE_SECRET_KEY}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: method !== "GET" ? new URLSearchParams(body).toString() : undefined,
+    signal: AbortSignal.timeout(15_000),
+  });
+  return res.json();
+}
+
+// Create Stripe Checkout Session
+app.post("/stripe/create-checkout-session", async (c) => {
+  try {
+    if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
+    const user = await requireAuth(c);
+    const { plan } = await c.req.json();
+
+    if (!["generate", "studio"].includes(plan)) {
+      return c.json({ error: "Invalid plan. Use 'generate' or 'studio'" }, 400);
+    }
+
+    const priceId = STRIPE_PRICES[plan];
+    if (!priceId) return c.json({ error: `Stripe price not configured for plan: ${plan}` }, 500);
+
+    // Check if user already has a Stripe customer ID
+    const profile = await getOrCreateProfile(user.id, user.email);
+    let customerId = profile.stripeCustomerId;
+
+    // Create customer if doesn't exist
+    if (!customerId) {
+      const customer = await stripeRequest("/customers", {
+        email: user.email,
+        "metadata[userId]": user.id,
+        "metadata[plan]": plan,
+        name: profile.name || user.email.split("@")[0],
+      });
+      if (customer.error) {
+        console.log("[stripe] customer creation failed:", customer.error);
+        return c.json({ error: "Failed to create Stripe customer" }, 500);
+      }
+      customerId = customer.id;
+      profile.stripeCustomerId = customerId;
+      await kv.set(`user:${user.id}`, profile);
+    }
+
+    // Create Checkout Session
+    const session = await stripeRequest("/checkout/sessions", {
+      customer: customerId,
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      mode: "subscription",
+      success_url: `${FRONTEND_URL}/subscribe?success=true&plan=${plan}`,
+      cancel_url: `${FRONTEND_URL}/subscribe?canceled=true`,
+      "metadata[userId]": user.id,
+      "metadata[plan]": plan,
+      "subscription_data[metadata][userId]": user.id,
+      "subscription_data[metadata][plan]": plan,
+      allow_promotion_codes: "true",
+    });
+
+    if (session.error) {
+      console.log("[stripe] checkout session error:", session.error);
+      return c.json({ error: session.error.message || "Stripe session creation failed" }, 500);
+    }
+
+    console.log(`[stripe] checkout session created for user=${user.id.slice(0, 8)} plan=${plan} session=${session.id}`);
+    return c.json({ success: true, url: session.url, sessionId: session.id });
+  } catch (err) {
+    console.log("[stripe] create-checkout-session error:", err);
+    return c.json({ error: `Stripe error: ${err}` }, 500);
+  }
+});
+
+// Stripe Customer Portal (manage subscription)
+app.post("/stripe/portal", async (c) => {
+  try {
+    if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
+    const user = await requireAuth(c);
+    const profile = await getOrCreateProfile(user.id, user.email);
+
+    if (!profile.stripeCustomerId) {
+      return c.json({ error: "No active subscription found" }, 400);
+    }
+
+    const session = await stripeRequest("/billing_portal/sessions", {
+      customer: profile.stripeCustomerId,
+      return_url: `${FRONTEND_URL}/profile`,
+    });
+
+    if (session.error) {
+      console.log("[stripe] portal error:", session.error);
+      return c.json({ error: "Failed to create portal session" }, 500);
+    }
+
+    return c.json({ success: true, url: session.url });
+  } catch (err) {
+    return c.json({ error: `Portal error: ${err}` }, 500);
+  }
+});
+
+// Stripe Webhook — handles subscription lifecycle events
+app.post("/stripe/webhook", async (c) => {
+  try {
+    if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
+
+    const rawBody = await c.req.text();
+    const sig = c.req.header("stripe-signature") || "";
+
+    // Verify webhook signature if secret is set
+    if (STRIPE_WEBHOOK_SECRET && sig) {
+      // Use Stripe's signature verification via crypto
+      const encoder = new TextEncoder();
+      const parts = sig.split(",");
+      const tPart = parts.find((p: string) => p.startsWith("t="))?.split("=")[1];
+      const v1Part = parts.find((p: string) => p.startsWith("v1="))?.split("=")[1];
+
+      if (tPart && v1Part) {
+        const payload = `${tPart}.${rawBody}`;
+        const key = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(STRIPE_WEBHOOK_SECRET),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"]
+        );
+        const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+        const expectedSig = Array.from(new Uint8Array(signature))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+
+        if (expectedSig !== v1Part) {
+          console.log("[stripe webhook] signature verification FAILED");
+          return c.json({ error: "Invalid signature" }, 400);
+        }
+      }
+    }
+
+    const event = JSON.parse(rawBody);
+    console.log(`[stripe webhook] event=${event.type} id=${event.id}`);
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const userId = session.metadata?.userId;
+        const plan = session.metadata?.plan;
+        if (userId && plan) {
+          const profile = await getOrCreateProfile(userId, session.customer_email || "");
+          profile.plan = plan;
+          profile.credits = PLAN_CREDITS[plan] || PLAN_CREDITS.free;
+          profile.creditsUsed = 0;
+          profile.stripeCustomerId = session.customer;
+          profile.stripeSubscriptionId = session.subscription;
+          await kv.set(`user:${userId}`, profile);
+          await logEvent("subscription_created", { userId, plan, stripeCustomer: session.customer });
+
+          // Send confirmation email
+          const name = profile.name || profile.email?.split("@")[0] || "there";
+          if (profile.email) {
+            const { subject, html } = emailPlanConfirmation(name, plan, profile.credits);
+            sendEmail(profile.email, subject, html).catch(() => {});
+          }
+          console.log(`[stripe webhook] activated plan=${plan} for user=${userId.slice(0, 8)} credits=${profile.credits}`);
+        }
+        break;
+      }
+
+      case "invoice.paid": {
+        // Monthly renewal — reset credits
+        const invoice = event.data.object;
+        const subscriptionId = invoice.subscription;
+        if (subscriptionId && invoice.billing_reason === "subscription_cycle") {
+          // Find user by subscription ID
+          const allUsers = await kv.getByPrefix("user:").catch(() => []);
+          const userEntry = (allUsers as any[]).find((u: any) => u?.stripeSubscriptionId === subscriptionId);
+          if (userEntry) {
+            const plan = userEntry.plan;
+            userEntry.credits = PLAN_CREDITS[plan] || PLAN_CREDITS.free;
+            userEntry.creditsUsed = 0;
+            await kv.set(`user:${userEntry.userId}`, userEntry);
+            console.log(`[stripe webhook] renewed credits for user=${userEntry.userId?.slice(0, 8)} plan=${plan}`);
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        // Subscription canceled — downgrade to free
+        const sub = event.data.object;
+        const userId = sub.metadata?.userId;
+        if (userId) {
+          const profile = await kv.get(`user:${userId}`).catch(() => null);
+          if (profile) {
+            profile.plan = "free";
+            profile.credits = PLAN_CREDITS.free;
+            profile.creditsUsed = 0;
+            profile.stripeSubscriptionId = null;
+            await kv.set(`user:${userId}`, profile);
+            await logEvent("subscription_canceled", { userId, previousPlan: sub.metadata?.plan });
+            console.log(`[stripe webhook] canceled → free for user=${userId.slice(0, 8)}`);
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        // Plan change (upgrade/downgrade)
+        const sub = event.data.object;
+        const userId = sub.metadata?.userId;
+        const newPlan = sub.metadata?.plan;
+        if (userId && newPlan) {
+          const profile = await kv.get(`user:${userId}`).catch(() => null);
+          if (profile && profile.plan !== newPlan) {
+            profile.plan = newPlan;
+            profile.credits = PLAN_CREDITS[newPlan] || PLAN_CREDITS.free;
+            profile.creditsUsed = 0;
+            profile.stripeSubscriptionId = sub.id;
+            await kv.set(`user:${userId}`, profile);
+            console.log(`[stripe webhook] plan updated to ${newPlan} for user=${userId.slice(0, 8)}`);
+          }
+        }
+        break;
+      }
+
+      default:
+        console.log(`[stripe webhook] unhandled event type: ${event.type}`);
+    }
+
+    return c.json({ received: true });
+  } catch (err) {
+    console.log("[stripe webhook] error:", err);
+    return c.json({ error: `Webhook error: ${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // GENERATION ROUTES
-// ══════════════════════════════��═══════════════════════════════
+// ══════════════════════════════════════════════════════════════
 
 app.post("/generate/text-multi", async (c) => {
   const t0 = Date.now();
@@ -12252,6 +12504,8 @@ const zernioHeaders = () => {
 const ZERNIO_PLATFORM_MAP: Record<string, string> = {
   LinkedIn: "linkedin", Instagram: "instagram", Facebook: "facebook",
   "Twitter/X": "twitter", Twitter: "twitter",
+  TikTok: "tiktok", tiktok: "tiktok",
+  YouTube: "youtube", youtube: "youtube",
 };
 
 // ── Shared helper: get or create user-scoped Zernio profile ──
@@ -12438,9 +12692,13 @@ app.post("/campaign/deploy", async (c) => {
     const ZERNIO_KEY = Deno.env.get("ZERNIO_API_KEY");
     if (!ZERNIO_KEY) return c.json({ success: false, error: "Zernio API key not configured" }, 500);
 
-    const zernioPlatform = ZERNIO_PLATFORM_MAP[platform] || platform.toLowerCase();
     if (platform === "Email" || platform === "Web") {
       return c.json({ success: true, status: "skipped", reason: `${platform} not supported by Zernio — use direct sending` });
+    }
+    const zernioPlatform = ZERNIO_PLATFORM_MAP[platform];
+    if (!zernioPlatform) {
+      console.warn(`[deploy] Platform "${platform}" is not in ZERNIO_PLATFORM_MAP — skipping`);
+      return c.json({ success: false, error: `Platform ${platform} is not yet supported for auto-deploy` }, 400);
     }
 
     console.log(`[deploy] user=${user.id.slice(0, 8)}, platform=${platform}->${zernioPlatform}, hasImage=${!!imageUrl}, hasVideo=${!!videoUrl}, scheduled=${!!scheduledAt}`);
@@ -12534,8 +12792,9 @@ app.post("/campaign/deploy-batch", async (c) => {
 
     const results: any[] = [];
     for (const dep of deployments) {
-      const zernioPlatform = ZERNIO_PLATFORM_MAP[dep.platform] || dep.platform?.toLowerCase();
       if (dep.platform === "Email" || dep.platform === "Web") { results.push({ formatId: dep.formatId, platform: dep.platform, success: true, status: "skipped", reason: "Not supported by Zernio" }); continue; }
+      const zernioPlatform = ZERNIO_PLATFORM_MAP[dep.platform];
+      if (!zernioPlatform) { console.warn(`[deploy-batch] Platform "${dep.platform}" is not in ZERNIO_PLATFORM_MAP — skipping`); results.push({ formatId: dep.formatId, platform: dep.platform, success: false, status: "skipped", error: `Platform ${dep.platform} is not yet supported for auto-deploy` }); continue; }
       const acctId = dep.accountId || connectedAccounts.find((a: any) => a.platform === zernioPlatform)?._id;
       if (!acctId) { results.push({ formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: `No Zernio account connected for ${dep.platform}`, needsConnect: true }); continue; }
 
@@ -16628,8 +16887,8 @@ app.post("/calendar/deploy", async (c) => {
     const platform = event.channel || event.channelIcon || "LinkedIn";
     const zernioPlatform = ZERNIO_PLATFORM_MAP[platform];
     if (!zernioPlatform) {
-      await kv.set(eventId, { ...event, status: "published", deployedAt: new Date().toISOString() });
-      return c.json({ success: true, status: "published", message: `${platform} marked as published (not a social platform)` });
+      console.warn(`[calendar-deploy] Platform "${platform}" is not in ZERNIO_PLATFORM_MAP — skipping`);
+      return c.json({ success: false, error: `Platform ${platform} is not yet supported for auto-deploy` }, 400);
     }
 
     const profileId = await getOrCreateZernioProfile(user.id, user.email);
@@ -16737,8 +16996,8 @@ app.post("/calendar/deploy-all", async (c) => {
       const zernioPlatform = ZERNIO_PLATFORM_MAP[platform];
 
       if (!zernioPlatform) {
-        await kv.set(eventKvKey, { ...ev, _kvKey: undefined, status: "published", deployedAt: new Date().toISOString() });
-        results.push({ eventId: eventKvKey, platform, success: true, status: "published" });
+        console.warn(`[calendar-deploy-batch] Platform "${platform}" is not in ZERNIO_PLATFORM_MAP — skipping`);
+        results.push({ eventId: eventKvKey, platform, success: false, status: "skipped", error: `Platform ${platform} is not yet supported for auto-deploy` });
         continue;
       }
 

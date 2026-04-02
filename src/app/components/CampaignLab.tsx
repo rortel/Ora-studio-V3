@@ -22,6 +22,8 @@ import { SVGTemplateEngine } from "./SVGTemplateEngine";
 import { HTMLTemplateEngine } from "./HTMLTemplateEngine";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateGallery } from "./TemplateGallery";
+import { CreditGuard, CreditBadge } from "./CreditGuard";
+import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
    TYPES
@@ -216,40 +218,61 @@ const TEXT_MODELS = [
   { id: "gpt-4o",         label: "GPT-4o",           badge: "Fast",        color: "#666666" },
   { id: "gpt-5",          label: "GPT-5",            badge: "Smart",       color: "#666666" },
   { id: "gpt-5.1",        label: "GPT-5.1",          badge: "Premium",     color: "#666666" },
+  { id: "gpt-5.2",        label: "GPT-5.2",          badge: "Latest",      color: "#666666" },
   // Anthropic
-  { id: "claude-sonnet",  label: "Claude Sonnet",    badge: "Creative",    color: "#888888" },
+  { id: "claude-sonnet",  label: "Claude Sonnet 4",  badge: "Creative",    color: "#888888" },
   { id: "claude-haiku",   label: "Claude Haiku",     badge: "Ultra Fast",  color: "#888888" },
-  { id: "claude-opus",    label: "Claude Opus",      badge: "Best",        color: "#888888" },
+  { id: "claude-opus",    label: "Claude Opus 4",    badge: "Best",        color: "#888888" },
   // Google
   { id: "gemini-pro",     label: "Gemini 2.5 Pro",   badge: "Multimodal",  color: "#666666" },
+  { id: "gemini-flash",   label: "Gemini Flash",     badge: "Fast",        color: "#666666" },
   // DeepSeek
   { id: "deepseek",       label: "DeepSeek v3",      badge: "Open Source", color: "#999999" },
 ];
 const IMAGE_MODELS = [
   // Luma
-  { id: "photon-1",        label: "Luma Photon",        badge: "Quality",    color: "#666666" },
-  { id: "photon-flash-1",  label: "Photon Flash",       badge: "Fast",       color: "#666666" },
+  { id: "photon-1",          label: "Luma Photon",          badge: "Quality",    color: "#666666" },
+  { id: "photon-flash-1",    label: "Photon Flash",         badge: "Fast",       color: "#666666" },
   // FAL / Flux
-  { id: "flux-pro",        label: "Flux Pro (FAL)",     badge: "Creative",   color: "#999999" },
-  { id: "flux-schnell",    label: "Flux Schnell (FAL)", badge: "Ultra Fast", color: "#999999" },
+  { id: "flux-pro",          label: "Flux Pro (FAL)",       badge: "Creative",   color: "#999999" },
+  { id: "flux-pro-2-leo",    label: "Flux Pro 2",           badge: "Latest",     color: "#999999" },
+  { id: "flux-schnell",      label: "Flux Schnell (FAL)",   badge: "Ultra Fast", color: "#999999" },
   // OpenAI
-  { id: "dall-e",          label: "DALL-E 3",           badge: "Precise",    color: "#666666" },
+  { id: "dall-e",            label: "DALL-E 3",             badge: "Precise",    color: "#666666" },
+  { id: "gpt-image-leo",     label: "GPT Image",            badge: "GPT-4o",     color: "#666666" },
+  // Ideogram
+  { id: "ideogram-3-leo",    label: "Ideogram v3",          badge: "Text+Image", color: "#555555" },
   // Leonardo
-  { id: "phoenix-1.0",     label: "Leonardo Phoenix",   badge: "Versatile",  color: "#aa7744" },
-  { id: "lucid-realism",   label: "Leonardo Realism",   badge: "Photo",      color: "#aa7744" },
-  // Higgsfield
-  { id: "seedream-v4",     label: "SeedDream v4",       badge: "Detailed",   color: "#777777" },
-  { id: "soul",            label: "Soul (Higgsfield)",  badge: "Artistic",   color: "#777777" },
-  { id: "nano-banana",     label: "Nano Banana",        badge: "Fast",       color: "#777777" },
+  { id: "phoenix-1.0",       label: "Leonardo Phoenix",     badge: "Versatile",  color: "#aa7744" },
+  { id: "lucid-realism",     label: "Leonardo Realism",     badge: "Photo",      color: "#aa7744" },
+  { id: "leonardo-lightning", label: "Leonardo Lightning",   badge: "Fast",       color: "#aa7744" },
+  { id: "leonardo-kino",     label: "Leonardo Kino",        badge: "Cinematic",  color: "#aa7744" },
+  // ByteDance / Higgsfield
+  { id: "seedream-v4",       label: "SeedDream v4",         badge: "Detailed",   color: "#777777" },
+  { id: "seedream-v4.5",     label: "SeedDream v4.5",       badge: "Latest",     color: "#777777" },
+  { id: "soul",              label: "Soul (Higgsfield)",    badge: "Artistic",   color: "#777777" },
+  { id: "nano-banana",       label: "Nano Banana",          badge: "Fast",       color: "#777777" },
+  // Kontext
+  { id: "kontext-pro-leo",   label: "Kontext Pro",          badge: "Edit",       color: "#888888" },
 ];
 const VIDEO_MODELS = [
   // Luma
-  { id: "ray-2",        label: "Luma Ray 2",       badge: "Quality",   color: "#666666" },
-  { id: "ray-flash-2",  label: "Ray Flash 2",      badge: "Fast",      color: "#666666" },
+  { id: "ray-2",            label: "Luma Ray 2",         badge: "Quality",   color: "#666666" },
+  { id: "ray-flash-2",      label: "Ray Flash 2",        badge: "Fast",      color: "#666666" },
+  // Google / OpenAI
+  { id: "veo-3.1",          label: "Veo 3.1 (Google)",   badge: "Premium",   color: "#555555" },
+  { id: "sora-2",           label: "Sora 2 (OpenAI)",    badge: "Premium",   color: "#555555" },
+  // Runway
+  { id: "runway-gen3",      label: "Runway Gen-3",       badge: "Cinematic", color: "#888888" },
+  // Pika
+  { id: "pika",             label: "Pika",               badge: "Fast",      color: "#999999" },
+  // Kling / ByteDance
+  { id: "kling-v2.1",       label: "Kling v2.1",         badge: "Cinematic", color: "#777777" },
+  { id: "seedance-v1",      label: "Seedance v1",        badge: "TikTok",    color: "#777777" },
+  { id: "seedance-2.0",     label: "Seedance 2.0",       badge: "Quality",   color: "#777777" },
+  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro",   badge: "Pro",       color: "#777777" },
   // Higgsfield
-  { id: "kling-v2.1",   label: "Kling v2.1",       badge: "Cinematic", color: "#777777" },
-  { id: "seedance-v1",  label: "Seedance v1",      badge: "TikTok",    color: "#777777" },
-  { id: "dop",          label: "DOP (Higgsfield)",  badge: "Creative",  color: "#777777" },
+  { id: "dop",              label: "DOP (Higgsfield)",    badge: "Creative",  color: "#777777" },
 ];
 
 const VAULT_PILLS = [
@@ -266,6 +289,7 @@ const VAULT_PILLS = [
    ═══════════════════════════════════ */
 
 export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProductId }: CampaignLabProps) {
+  const { t } = useI18n();
   const auth = useAuth();
   const getAuthToken = useCallback(() => auth.getAuthHeader(), [auth]);
 
@@ -489,7 +513,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       setRefPhotos(refCandidates.slice(0, 10));
       console.log(`[CampaignLab] Product ref photos: ${refCandidates.length} (${refCandidates[0].preview.slice(0, 60)}...)`);
     }
-    toast.success(`Product "${product.name}" loaded`);
+    toast.success(t("studio.productLoaded").replace("{name}", product.name));
   }, []);
 
   // ── Load products on mount ──
@@ -550,13 +574,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       const data = await res.json();
       if (data.success && data.logoUrl) {
         setLogoUrl(data.logoUrl);
-        toast.success("Logo uploaded");
+        toast.success(t("studio.logoUploaded"));
       } else {
-        toast.error(data.error || "Logo upload failed");
+        toast.error(data.error || t("studio.logoUploadFailed"));
       }
     } catch (err) {
       console.error("[CampaignLab] Logo upload error:", err);
-      toast.error("Logo upload failed");
+      toast.error(t("studio.logoUploadFailed"));
     } finally {
       setUploadingLogo(false);
       if (logoInputRef.current) logoInputRef.current.value = "";
@@ -656,10 +680,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         setTopicSuggestions(res.topics);
         setTopicsUpcoming(res.upcomingEvents || []);
       } else {
-        toast.error(res.error || "Failed to suggest topics");
+        toast.error(res.error || t("studio.topicFailed"));
       }
     } catch (err: any) {
-      toast.error("Topic suggestion failed");
+      toast.error(t("studio.topicFailed"));
       console.error("[topics]", err);
     } finally {
       setTopicsLoading(false);
@@ -691,7 +715,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }
 
     setShowTopics(false);
-    toast.success("Topic applied!");
+    toast.success(t("studio.topicApplied"));
   };
 
   // ── Helper: Scan product/service URL → extract info and pre-fill brief ──
@@ -700,7 +724,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     if (!targetUrl) return;
     // Basic URL validation
     if (!/^https?:\/\/.+\..+/.test(targetUrl)) {
-      toast.error("Enter a valid URL (https://...)");
+      toast.error(t("studio.enterValidUrl"));
       return;
     }
     setScanningUrl(true);
@@ -726,13 +750,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           setKeyMessages(p.features.map((f: string) => `- ${f}`).join("\n"));
         }
 
-        toast.success(`${p.name || "Page"} scanned — brief pre-filled`);
+        toast.success(t("studio.pageScanSuccess").replace("{name}", p.name || "Page"));
       } else {
-        toast.error("Could not extract info from this page");
+        toast.error(t("studio.pageScanFailed"));
       }
     } catch (err: any) {
       console.warn("[CampaignLab] URL scan failed:", err?.message);
-      toast.error("Scan failed — check the URL");
+      toast.error(t("studio.scanFailedUrl"));
     } finally {
       setScanningUrl(false);
     }
@@ -1032,11 +1056,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
   const handleGenerate = async () => {
     if (!brief.trim() && !productUrls.trim()) {
-      toast.error("Add a brief or product URL to start");
+      toast.error(t("studio.addBriefToStart"));
       return;
     }
     if (selectedFormats.length === 0) {
-      toast.error("Select at least one format");
+      toast.error(t("studio.selectOneFormat"));
       return;
     }
 
@@ -1190,7 +1214,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       }
       const textSuccess = Object.keys(copyMap).length > 0;
       if (!textSuccess) {
-        toast.error("Text generation failed. Images will still generate.");
+        toast.error(t("studio.textGenFailed"));
       }
       console.log("[CampaignLab] copyMap keys:", Object.keys(copyMap));
 
@@ -1469,7 +1493,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         setAssetTemplates(prev => ({ ...prev, ...autoTemplates }));
       }
 
-      toast.success(`Campaign generated: ${formats.length} assets${videoFormats.length > 0 ? ` (${videoFormats.length} videos still rendering...)` : ""}`);
+      toast.success(t("studio.campaignGenerated").replace("{count}", String(formats.length)) + (videoFormats.length > 0 ? ` ${t("studio.videosRendering").replace("{count}", String(videoFormats.length))}` : ""));
 
       // ═══ AUTO-GENERATE CALENDAR — schedule all ready assets automatically ═══
       // Small delay to ensure assets state is updated before calendar reads them
@@ -1555,7 +1579,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
     } catch (err: any) {
       console.error("[CampaignLab] Generation error:", err);
-      toast.error(err.message || "Campaign generation failed");
+      toast.error(err.message || t("studio.campaignGenFailed"));
       setPhase("input");
     }
   };
@@ -1656,13 +1680,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             error: (a.type === "text" && hasCopy) ? undefined : a.error,
           };
         }));
-        toast.success(`Text generated: ${Object.keys(copyMap).length} formats`);
+        toast.success(t("studio.textGenerated").replace("{count}", String(Object.keys(copyMap).length)));
       } else {
-        toast.error("Text generation failed again. Check console for details.");
+        toast.error(t("studio.textRetryFailed"));
       }
     } catch (err: any) {
       console.error("[CampaignLab] Retry text failed:", err);
-      toast.error(`Retry failed: ${err?.message || "unknown error"}`);
+      toast.error(`${t("studio.retryFailed")}: ${err?.message || "unknown error"}`);
     } finally {
       setRetryingTexts(false);
     }
@@ -1719,23 +1743,23 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         if (results.length > 0) {
           setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, imageUrl: results[0].imageUrl, imagePrompt: customPrompt } : a));
           setSelectedAsset(prev => prev && prev.formatId === asset.formatId ? { ...prev, imageUrl: results[0].imageUrl, imagePrompt: customPrompt } : prev);
-          toast.success("Image regenerated");
+          toast.success(t("studio.imageRegenSuccess"));
         } else {
           const classicUrl = await generateImageClassic(fmt, fullPrompt + REALISM_SUFFIX);
           setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, imageUrl: classicUrl, imagePrompt: customPrompt } : a));
           setSelectedAsset(prev => prev && prev.formatId === asset.formatId ? { ...prev, imageUrl: classicUrl, imagePrompt: customPrompt } : prev);
-          toast.success("Image regenerated (fallback)");
+          toast.success(t("studio.imageRegenSuccess"));
         }
       } else if (asset.type === "video") {
         toast("Regenerating video (this may take a few minutes)...");
         const videoUrl = await generateVideoWithKeyframe(fmt, fullPrompt + ". " + diversitySuffix, undefined);
         setAssets(prev => prev.map(a => a.formatId === asset.formatId ? { ...a, videoUrl, videoPrompt: customPrompt } : a));
         setSelectedAsset(prev => prev && prev.formatId === asset.formatId ? { ...prev, videoUrl, videoPrompt: customPrompt } : prev);
-        toast.success("Video regenerated");
+        toast.success(t("studio.videoRegenSuccess"));
       }
     } catch (err: any) {
       console.error("[CampaignLab] Regenerate error:", err);
-      toast.error(`Regeneration failed: ${err?.message || "Unknown error"}`);
+      toast.error(`${t("studio.regenFailed")}: ${err?.message || "Unknown error"}`);
     } finally {
       setRegeneratingAsset(null);
       setRepromptText("");
@@ -1804,21 +1828,21 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     setSavingCampaign(true);
     try {
       const readyAssets = assets.filter(a => a.status === "ready");
-      if (readyAssets.length === 0) { if (!silent) toast.error("No ready assets to save"); savingRef.current = false; setSavingCampaign(false); return; }
+      if (readyAssets.length === 0) { if (!silent) toast.error(t("studio.noReadyAssets")); savingRef.current = false; setSavingCampaign(false); return; }
       const campaignItem = buildCampaignItem(readyAssets, campaignSavedIdRef.current || undefined);
       const res = await serverPost("/library/items", { item: campaignItem });
       if (res.success) {
         setCampaignSavedId(campaignItem.id);
         campaignSavedIdRef.current = campaignItem.id;
-        if (!silent) toast.success(`Campaign saved to Library (${readyAssets.length} assets)`);
+        if (!silent) toast.success(t("studio.campaignSavedCount").replace("{count}", String(readyAssets.length)));
         else console.log(`[CampaignLab] Auto-saved campaign ${campaignItem.id} (${readyAssets.length} assets)`);
       } else {
         console.error("[CampaignLab] Save campaign failed:", res.error);
-        if (!silent) toast.error(`Save failed: ${res.error || "Unknown error"}`);
+        if (!silent) toast.error(`${t("studio.saveFailed")}: ${res.error || "Unknown error"}`);
       }
     } catch (err: any) {
       console.error("[CampaignLab] Save campaign error:", err);
-      if (!silent) toast.error(`Save failed: ${err?.message || "Unknown error"}`);
+      if (!silent) toast.error(`${t("studio.saveFailed")}: ${err?.message || "Unknown error"}`);
     } finally {
       savingRef.current = false;
       setSavingCampaign(false);
@@ -1886,7 +1910,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       if (token) qp.set("_token", token);
       const data = await serverGet(`/zernio/connect/${platform}?${qp.toString()}`);
       if (!data.success || !data.authUrl) {
-        toast.error(data.error || `Failed to initiate ${platform} connection`);
+        toast.error(data.error || t("studio.connectFailed").replace("{platform}", platform));
         setConnectingPlatform(null);
         return;
       }
@@ -1894,7 +1918,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       // Open OAuth popup
       const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
       if (!popup) {
-        toast.error("Popup blocked. Please allow popups for this site.");
+        toast.error(t("studio.popupBlocked"));
         setConnectingPlatform(null);
         return;
       }
@@ -1906,7 +1930,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           setConnectingPlatform(null);
           // Refresh accounts after OAuth completes
           setTimeout(() => refreshZernioAccounts(), 1500);
-          toast.success(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected successfully`);
+          toast.success(t("studio.connectSuccess").replace("{platform}", platform.charAt(0).toUpperCase() + platform.slice(1)));
         }
       }, 500);
 
@@ -1918,7 +1942,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       }, 300_000);
     } catch (err: any) {
       console.error(`[CampaignLab] Connect ${platform} error:`, err);
-      toast.error(`Connection failed: ${err?.message || "Unknown error"}`);
+      toast.error(`${t("studio.connectionFailed")}: ${err?.message || "Unknown error"}`);
       setConnectingPlatform(null);
     }
   }, [serverGet, getAuthToken, refreshZernioAccounts]);
@@ -1926,7 +1950,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   // ── Generate editorial calendar from ready assets (frontend-only, deterministic) ──
   const handleGenerateCalendar = () => {
     const readyAssets = assets.filter(a => a.status === "ready");
-    if (readyAssets.length === 0) { toast.error("No ready assets to schedule"); return; }
+    if (readyAssets.length === 0) { toast.error(t("studio.noAssetsToSchedule")); return; }
     setCalendarLoading(true);
     setShowCalendarPanel(true);
 
@@ -2049,7 +2073,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       setCalendarViewMonth(events[0].month);
       setCalendarViewYear(events[0].year);
     }
-    toast.success(`Editorial calendar: ${events.length} posts planned`);
+    toast.success(t("studio.calendarPlanned").replace("{count}", String(events.length)));
     setCalendarLoading(false);
 
     // Persist events to server so CalendarPage can display them
@@ -2101,7 +2125,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         });
       }
       if (failCount > 0) {
-        toast.error(`${failCount} posts n'ont pas pu être sauvegardés`);
+        toast.error(t("studio.calendarSavePartialFail").replace("{count}", String(failCount)));
       }
     };
     persistEvents();
@@ -2132,19 +2156,19 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       } else if (data.success) {
         const status = data.status === "scheduled" ? "scheduled" : "deployed";
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: status }));
-        toast.success(`${asset.label} ${status === "scheduled" ? "scheduled" : "deployed"} to ${asset.platform}${data.zernioPostUrl ? "" : ""}`);
+        toast.success(t("studio.deploySuccess").replace("{label}", asset.label).replace("{status}", status === "scheduled" ? t("studio.statusScheduled") : t("studio.statusPublished")).replace("{platform}", asset.platform));
       } else if (data.needsConnect) {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
         const zernioPlatform = ZERNIO_PLATFORM_MAP_FE[asset.platform] || asset.platform.toLowerCase();
-        toast.error(`No ${asset.platform} account connected. Click "Connect" to link your account.`, { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(zernioPlatform) } });
+        toast.error(t("studio.noAccountConnected").replace("{platform}", asset.platform), { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(zernioPlatform) } });
       } else {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
-        toast.error(`Deploy failed: ${data.error || "Unknown error"}`);
+        toast.error(`${t("studio.deployFailed")}: ${data.error || "Unknown error"}`);
         console.error("[CampaignLab] Deploy error:", data.error);
       }
     } catch (err: any) {
       setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
-      toast.error(`Deploy error: ${err?.message || "Network error"}`);
+      toast.error(`${t("studio.deployError")}: ${err?.message || "Network error"}`);
       console.error("[CampaignLab] Deploy error:", err);
     }
   };
@@ -2197,12 +2221,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         if (needConnect > 0) msg += ` -- ${needConnect} need social account connection`;
         toast.success(msg);
       } else {
-        toast.error(data.error || "Batch deploy failed");
+        toast.error(data.error || t("studio.batchDeployFailed"));
         readyAssets.forEach(a => setDeployingAssets(prev => ({ ...prev, [a.formatId]: "error" })));
       }
     } catch (err: any) {
       console.error("[CampaignLab] Batch deploy error:", err);
-      toast.error("Batch deploy failed");
+      toast.error(t("studio.batchDeployFailed"));
       readyAssets.forEach(a => setDeployingAssets(prev => ({ ...prev, [a.formatId]: "error" })));
     } finally {
       setDeployingAll(false);
@@ -2292,10 +2316,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           </div>
           <div>
             <h2 style={{ fontSize: "17px", fontWeight: 600, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
-              Campaign Lab
+              {t("studio.campaignLab")}
             </h2>
             <p style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: 1 }}>
-              One brief. Every format. Brand-compliant.
+              {t("studio.campaignLabDesc")}
             </p>
           </div>
         </div>
@@ -2307,7 +2331,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
             >
               <Film size={13} />
-              Video Editor
+              {t("studio.videoEditor")}
             </Link>
             <button
               onClick={handleSaveCampaign}
@@ -2316,7 +2340,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               style={{ background: "rgba(17,17,17,0.12)", border: "1px solid rgba(17,17,17,0.25)", color: "var(--ora-signal)", fontSize: "13px", fontWeight: 600, opacity: savingCampaign ? 0.6 : 1 }}
             >
               {savingCampaign ? <Loader2 size={13} className="animate-spin" /> : campaignSavedId ? <Check size={13} /> : <Save size={13} />}
-              {savingCampaign ? "Saving..." : campaignSavedId ? "Saved" : "Save Campaign"}
+              {savingCampaign ? t("studio.saving") : campaignSavedId ? t("studio.saved") : t("studio.saveCampaign")}
             </button>
             <button
               onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); setCampaignSavedId(null); }}
@@ -2324,7 +2348,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
             >
               <RefreshCw size={13} />
-              New Campaign
+              {t("studio.newCampaign")}
             </button>
           </div>
         )}
@@ -2345,12 +2369,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 mr-1">
                     <Compass size={12} className="text-muted-foreground" />
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Territory</span>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{t("studio.territory")}</span>
                   </div>
                   <button onClick={() => setSelectedTerritory(null)}
                     className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
                     style={{ fontSize: "11px", fontWeight: 500, background: !selectedTerritory ? "var(--foreground)" : "var(--secondary)", color: !selectedTerritory ? "var(--background)" : "var(--muted-foreground)", border: "1px solid " + (!selectedTerritory ? "var(--foreground)" : "var(--border)") }}>
-                    Free
+                    {t("studio.free")}
                   </button>
                   {territories.map(t => (
                     <button key={t.id} onClick={() => setSelectedTerritory(selectedTerritory?.id === t.id ? null : t)}
@@ -2361,7 +2385,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   ))}
                   <button onClick={loadTerritories} disabled={territoriesLoading}
                     className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-30"
-                    title="Refresh territories">
+                    title={t("studio.refreshTerritories")}>
                     <RefreshCw size={10} className={territoriesLoading ? "animate-spin" : ""} />
                   </button>
                   {selectedTerritory && (
@@ -2379,7 +2403,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 <textarea
                   value={brief}
                   onChange={e => setBrief(e.target.value)}
-                  placeholder={"Describe your campaign...\ne.g. Launch our new summer collection -- luxury, minimalist, target 25-45 professionals."}
+                  placeholder={t("studio.descPlaceholder")}
                   className="w-full rounded-xl px-5 py-4 resize-none transition-all"
                   style={{
                     background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)",
@@ -2402,7 +2426,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     }}
                   >
                     {topicsLoading ? <Loader2 size={13} className="animate-spin" /> : <Lightbulb size={13} />}
-                    {topicsLoading ? "Generating ideas..." : "Inspire me"}
+                    {topicsLoading ? t("studio.generatingIdeas") : t("studio.inspireMe")}
                   </button>
                   {topicsUpcoming.length > 0 && !showTopics && (
                     <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
@@ -2449,11 +2473,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       {topicsLoading ? (
                         <div className="flex items-center justify-center py-8 gap-2">
                           <Loader2 size={16} className="animate-spin" style={{ color: "#999999" }} />
-                          <span style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>Analyzing your brand, products & trends...</span>
+                          <span style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>{t("studio.analyzingBrand")}</span>
                         </div>
                       ) : topicSuggestions.length === 0 ? (
                         <div className="text-center py-6" style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                          No suggestions yet. Click "Inspire me" to generate ideas.
+                          {t("studio.noSuggestions")}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2582,7 +2606,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       value={productUrls}
                       onChange={e => { setProductUrls(e.target.value); setScannedProduct(null); }}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleScanUrl(); } }}
-                      placeholder="Paste your product or service page URL..."
+                      placeholder={t("studio.urlPlaceholder")}
                       className="w-full rounded-xl pl-10 pr-4 py-3 transition-all"
                       style={{ background: "var(--card)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "14px", outline: "none" }}
                       onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
@@ -2799,20 +2823,23 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               </div>
 
               {/* Generate Button — RIGHT AFTER formats */}
-              <button
-                onClick={handleGenerate}
-                disabled={!canGenerate}
-                className="w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all cursor-pointer"
-                style={{
-                  background: canGenerate ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
-                  color: canGenerate ? "#fff" : "var(--text-secondary)",
-                  fontWeight: 600, fontSize: "15px",
-                  cursor: canGenerate ? "pointer" : "not-allowed",
-                }}
-              >
-                <Sparkles size={18} />
-                Generate Campaign ({selectedFormats.length} format{selectedFormats.length !== 1 ? "s" : ""})
-              </button>
+              <CreditGuard cost={selectedFormats.length * 5} type="image">
+                <button
+                  onClick={handleGenerate}
+                  disabled={!canGenerate}
+                  className="w-full flex items-center justify-center gap-3 py-4 rounded-xl transition-all cursor-pointer"
+                  style={{
+                    background: canGenerate ? "var(--ora-signal)" : "rgba(26,23,20,0.03)",
+                    color: canGenerate ? "#fff" : "var(--text-secondary)",
+                    fontWeight: 600, fontSize: "15px",
+                    cursor: canGenerate ? "pointer" : "not-allowed",
+                  }}
+                >
+                  <Sparkles size={18} />
+                  Generate Campaign ({selectedFormats.length} format{selectedFormats.length !== 1 ? "s" : ""})
+                  <CreditBadge cost={selectedFormats.length * 5} />
+                </button>
+              </CreditGuard>
 
               {/* ═══ SECTION 2: ADVANCED — Collapsible ═══ */}
               <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
@@ -2994,7 +3021,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             <input
                               value={targetAudience}
                               onChange={e => setTargetAudience(e.target.value)}
-                              placeholder="e.g. Tech professionals 25-45"
+                              placeholder={t("studio.targetPlaceholder")}
                               className="w-full rounded-xl px-4 py-2.5 transition-all"
                               style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
                               onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
@@ -3009,7 +3036,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             <input
                               value={ctaText}
                               onChange={e => setCtaText(e.target.value)}
-                              placeholder='e.g. "Start free trial"'
+                              placeholder={t("studio.ctaPlaceholder")}
                               className="w-full rounded-xl px-4 py-2.5 transition-all"
                               style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
                               onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
@@ -3027,7 +3054,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <input
                             value={contentAngle}
                             onChange={e => setContentAngle(e.target.value)}
-                            placeholder='e.g. "3 reasons why...", customer success story, data-driven insight'
+                            placeholder={t("studio.anglePlaceholder")}
                             className="w-full rounded-xl px-4 py-2.5 transition-all"
                             style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", outline: "none" }}
                             onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
@@ -3044,7 +3071,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                           <textarea
                             value={keyMessages}
                             onChange={e => setKeyMessages(e.target.value)}
-                            placeholder={"- Product saves 10 hours/week\n- Used by 500+ companies\n- Free trial, no credit card"}
+                            placeholder={t("studio.keyMsgPlaceholder")}
                             className="w-full rounded-xl px-4 py-3 resize-none transition-all"
                             style={{ background: "var(--background)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", lineHeight: 1.6, minHeight: 70, outline: "none" }}
                             onFocus={e => (e.target.style.border = "1px solid rgba(17,17,17,0.4)")}
@@ -3188,7 +3215,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                   if (multiSelected.length > 1) { setMulti(multiSelected.filter((id: string) => id !== m.id)); set(multiSelected.filter((id: string) => id !== m.id)[0]); }
                                 } else {
                                   if (multiSelected.length < 3) setMulti([...multiSelected, m.id]);
-                                  else toast.error("Max 3 models");
+                                  else toast.error(t("studio.maxModels"));
                                 }
                               } else { set(m.id); }
                             }}
@@ -3220,13 +3247,13 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               <Loader2 size={32} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
               <div className="text-center">
                 <p style={{ fontSize: "16px", fontWeight: 600, color: "var(--foreground)", marginBottom: 4 }}>
-                  Generating campaign...
+                  {t("studio.generatingCampaign")}
                 </p>
                 <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
                   {refPhotos.length > 0
                     ? generationProgress < 10 ? "Uploading reference photos..."
                     : generationProgress < 35 ? "Analyzing visual DNA + generating copy..."
-                    : generationProgress < 90 ? "Generating visuals with reference matching..."
+                    : generationProgress < 90 ? t("studio.generatingVisualsRef")
                     : "Finalizing campaign..."
                     : "15 agents working: copy, visuals, compliance, adaptation"
                   }
@@ -3265,7 +3292,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     Campaign Ready
                   </h3>
                   <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: 2 }}>
-                    {assets.filter(a => a.status === "ready").length}/{assets.length} assets generated
+                    {assets.filter(a => a.status === "ready").length}/{assets.length} {t("studio.assetsGenerated")}
                     {(vault?.brandName || vault?.company_name) ? ` for ${vault.brandName || vault.company_name}` : ""}
                     {Object.values(deployingAssets).filter(s => s === "deployed" || s === "scheduled").length > 0 && (
                       <span style={{ color: "#666666", marginLeft: 8 }}>
@@ -3288,7 +3315,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     }}
                   >
                     {retryingTexts ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                    {retryingTexts ? "Generating texts..." : "Retry Texts"}
+                    {retryingTexts ? t("studio.generatingTexts") : t("studio.retryTexts")}
                   </button>
                 )}
               </div>
@@ -3313,7 +3340,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     <div className="flex items-center gap-2">
                       {zernioLoading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
                       {!zernioLoading && zernioAccounts.length > 0 && (
-                        <button onClick={refreshZernioAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }} title="Actualiser">
+                        <button onClick={refreshZernioAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }} title={t("studio.refresh")}>
                           <RefreshCw size={12} style={{ color: "var(--text-secondary)" }} />
                         </button>
                       )}
@@ -3504,7 +3531,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         ) : asset.status === "generating" ? (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2">
                             <Loader2 size={20} className="animate-spin" style={{ color }} />
-                            <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>Generating...</span>
+                            <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{t("studio.generatingProgress")}</span>
                           </div>
                         ) : asset.status === "error" ? (
                           <div className="w-full h-full flex flex-col items-center justify-center gap-3">
@@ -3513,7 +3540,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                             <button onClick={(e) => { e.stopPropagation(); retryTextGeneration(); }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md cursor-pointer"
                               style={{ background: "var(--ora-signal)", color: "#fff", fontSize: "11px", fontWeight: 600 }}>
-                              <RefreshCw size={10} /> Retry Texts
+                              <RefreshCw size={10} /> {t("studio.retryTexts")}
                             </button>
                           </div>
                         ) : (
@@ -3610,7 +3637,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleEditVisual(asset); }}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                  title="Éditer le visuel"
+                                  title={t("studio.editVisual")}
                                   style={{ background: "rgba(26,23,20,0.03)" }}
                                 >
                                   <Pencil size={12} style={{ color: "var(--ora-signal)" }} />
@@ -3624,7 +3651,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                                     setRepromptText(asset.videoPrompt || "");
                                   }}
                                   className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                  title="Régénérer la vidéo"
+                                  title={t("studio.regenerateVideo")}
                                   style={{ background: regeneratingAsset === asset.formatId ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}
                                 >
                                   {regeneratingAsset === asset.formatId
@@ -3635,7 +3662,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                               <button onClick={() => handleDeployAsset(asset)}
                                 disabled={deployingAssets[asset.formatId] === "deploying" || deployingAssets[asset.formatId] === "deployed"}
                                 className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer"
-                                title={deployingAssets[asset.formatId] === "deployed" ? "Published" : deployingAssets[asset.formatId] === "scheduled" ? "Scheduled" : "Publish to platform"}
+                                title={deployingAssets[asset.formatId] === "deployed" ? t("studio.statusPublished") : deployingAssets[asset.formatId] === "scheduled" ? t("studio.statusScheduled") : t("studio.publishToPlatform")}
                                 style={{ background: deployingAssets[asset.formatId] === "deployed" ? "rgba(17,17,17,0.15)" : deployingAssets[asset.formatId] === "scheduled" ? "rgba(17,17,17,0.15)" : "rgba(26,23,20,0.03)" }}>
                                 {deployingAssets[asset.formatId] === "deploying" ? <Loader2 size={12} className="animate-spin" style={{ color: "var(--ora-signal)" }} />
                                   : deployingAssets[asset.formatId] === "deployed" ? <Check size={12} style={{ color: "#666666" }} />
@@ -3663,17 +3690,17 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         {asset.status === "ready" && (
                           <div className="flex items-center gap-1 mt-2">
                             <Check size={11} style={{ color: "#666666" }} />
-                            <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>Brand-compliant</span>
+                            <span style={{ fontSize: "10px", color: "#666666", fontWeight: 600 }}>{t("studio.brandCompliant")}</span>
                           </div>
                         )}
 
                         {deployingAssets[asset.formatId] && (
                           <div className="flex items-center gap-1 mt-1">
-                            {deployingAssets[asset.formatId] === "deployed" && <><Send size={9} style={{ color: "#666666" }} /><span style={{ fontSize: "9px", color: "#666666", fontWeight: 600 }}>Published</span></>}
-                            {deployingAssets[asset.formatId] === "scheduled" && <><Clock size={9} style={{ color: "var(--ora-signal)" }} /><span style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600 }}>Scheduled</span></>}
-                            {deployingAssets[asset.formatId] === "deploying" && <><Loader2 size={9} className="animate-spin" style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>Deploying...</span></>}
-                            {deployingAssets[asset.formatId] === "skipped" && <><Check size={9} style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>Skipped (not supported)</span></>}
-                            {deployingAssets[asset.formatId] === "error" && <><AlertCircle size={9} style={{ color: "#d4183d" }} /><span style={{ fontSize: "9px", color: "#d4183d", fontWeight: 600 }}>Deploy failed</span></>}
+                            {deployingAssets[asset.formatId] === "deployed" && <><Send size={9} style={{ color: "#666666" }} /><span style={{ fontSize: "9px", color: "#666666", fontWeight: 600 }}>{t("studio.statusPublished")}</span></>}
+                            {deployingAssets[asset.formatId] === "scheduled" && <><Clock size={9} style={{ color: "var(--ora-signal)" }} /><span style={{ fontSize: "9px", color: "var(--ora-signal)", fontWeight: 600 }}>{t("studio.statusScheduled")}</span></>}
+                            {deployingAssets[asset.formatId] === "deploying" && <><Loader2 size={9} className="animate-spin" style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>{t("studio.deploying")}</span></>}
+                            {deployingAssets[asset.formatId] === "skipped" && <><Check size={9} style={{ color: "var(--text-secondary)" }} /><span style={{ fontSize: "9px", color: "var(--text-secondary)", fontWeight: 600 }}>{t("studio.skippedUnsupported")}</span></>}
+                            {deployingAssets[asset.formatId] === "error" && <><AlertCircle size={9} style={{ color: "#d4183d" }} /><span style={{ fontSize: "9px", color: "#d4183d", fontWeight: 600 }}>{t("studio.deployFailed")}</span></>}
                           </div>
                         )}
                       </div>
@@ -3699,7 +3726,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     }}
                   >
                     {calendarLoading ? <Loader2 size={14} className="animate-spin" /> : calendarGenerated ? <Check size={14} /> : <Calendar size={14} />}
-                    {calendarLoading ? "Generating schedule..." : calendarGenerated ? `${calendarEvents.length} posts planned` : "Plan Editorial Calendar"}
+                    {calendarLoading ? t("studio.generatingSchedule") : calendarGenerated ? `${calendarEvents.length} ${t("studio.postsPlanned")}` : t("studio.planCalendar")}
                   </button>
 
                   {calendarGenerated && (
@@ -3735,7 +3762,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       }}
                     >
                       {deployingAll ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                      {deployingAll ? "Deploying..." : calendarGenerated ? "Deploy All (Scheduled)" : "Deploy All Now"}
+                      {deployingAll ? t("studio.deploying") : calendarGenerated ? t("studio.deployAllScheduled") : t("studio.deployAllNow")}
                     </button>
                   </div>
                 </div>
@@ -3948,7 +3975,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       opacity: deployingAssets[selectedAsset.formatId] === "deploying" ? 0.6 : 1,
                     }}
                   >
-                    {deployingAssets[selectedAsset.formatId] === "deploying" ? <><Loader2 size={12} className="animate-spin" /> Deploying...</>
+                    {deployingAssets[selectedAsset.formatId] === "deploying" ? <><Loader2 size={12} className="animate-spin" /> {t("studio.deploying")}</>
                       : deployingAssets[selectedAsset.formatId] === "deployed" ? <><Check size={12} /> Deployed</>
                       : <><Send size={12} /> Deploy to {selectedAsset.platform}</>}
                   </button>
@@ -4271,7 +4298,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                 <div className="flex items-center gap-2 px-4 py-3 rounded-lg" style={{ background: "rgba(17,17,17,0.06)", border: "1px solid rgba(17,17,17,0.12)" }}>
                   <Shield size={14} style={{ color: "#666666" }} />
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#666666" }}>Brand-compliant</span>
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#666666" }}>{t("studio.brandCompliant")}</span>
                   <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>-- Validated by Compliance Guard agent</span>
                 </div>
               </div>

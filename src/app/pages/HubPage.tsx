@@ -19,6 +19,8 @@ import { useAuth } from "../lib/auth-context";
 import { CampaignLab } from "../components/CampaignLab";
 import { RouteGuard } from "../components/RouteGuard";
 import { applyLogoOverlay, type LogoOverlayConfig } from "../lib/logo-overlay";
+import { CreditGuard, CreditBadge } from "../components/CreditGuard";
+import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
    TYPES
@@ -231,6 +233,7 @@ export function HubPage() {
 }
 
 function HubPageContent() {
+  const { t } = useI18n();
   const { user, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
@@ -295,7 +298,7 @@ function HubPageContent() {
 
   const generateLyricsFromPrompt = async () => {
     const p = prompt.trim() || soundStyle.trim();
-    if (!p) { toast.error("Type a prompt or style first"); return; }
+    if (!p) { toast.error(t("hub.typePromptFirst")); return; }
     setIsGeneratingLyrics(true);
     try {
       const res = await fetch(`${API_BASE}/suno/lyrics`, {
@@ -349,7 +352,7 @@ function HubPageContent() {
     const inIframe = window.self !== window.top;
     if (inIframe) {
       console.warn("[Voice] Running inside an iframe — mic access is blocked by browser security policy");
-      toast.error("Microphone blocked in preview", {
+      toast.error(t("hub.micBlocked"), {
         description: "Open the app in a new tab to use voice prompt.",
         duration: 8000,
         action: {
@@ -408,12 +411,12 @@ function HubPageContent() {
           if (data.success && data.text) {
             console.log(`[Voice] Transcription OK (${data.latencyMs}ms): "${data.text.slice(0, 80)}"`);
             setPrompt((prev) => (prev ? prev + " " + data.text : data.text));
-            toast.success("Voice transcribed", { description: `${data.text.slice(0, 60)}${data.text.length > 60 ? "..." : ""}` });
+            toast.success(t("hub.voiceTranscribed"), { description: `${data.text.slice(0, 60)}${data.text.length > 60 ? "..." : ""}` });
             // Focus input after transcription
             setTimeout(() => inputRef.current?.focus(), 100);
           } else {
             console.error("[Voice] Transcription failed:", data.error);
-            toast.error("Transcription failed", { description: data.error || "Unknown error" });
+            toast.error(t("hub.transcriptionFailed"), { description: data.error || "Unknown error" });
           }
         } catch (err: any) {
           console.error("[Voice] Transcription error:", err);
@@ -430,7 +433,7 @@ function HubPageContent() {
     } catch (err: any) {
       console.error("[Voice] Mic access error:", err?.name, err?.message);
       if (err?.name === "NotAllowedError") {
-        toast.error("Microphone access denied", {
+        toast.error(t("hub.micDenied"), {
           description: "Click the lock icon in your browser's address bar to allow microphone access, then try again.",
           duration: 8000,
         });
@@ -502,6 +505,7 @@ function HubPageContent() {
   }, [contentType]);
 
   const auth = useAuth();
+  const { remainingCredits, isAdmin, plan } = auth;
   const getAuthToken = useCallback(() => {
     return auth.getAuthHeader();
   }, [auth]);
@@ -719,6 +723,16 @@ function HubPageContent() {
     if (!prompt.trim() || isGenerating || activeModels.length === 0) {
       console.warn("[HubPage] handleGenerate SKIPPED:", { emptyPrompt: !prompt.trim(), isGenerating, noModels: activeModels.length === 0 });
       return;
+    }
+    // Credit check — block if insufficient (non-admin, non-business)
+    if (!isAdmin && plan !== "business") {
+      const costMap: Record<string, number> = { text: 2, code: 2, image: 5, film: 30, audio: 5 };
+      const costPerModel = costMap[contentType] || 2;
+      const totalCost = costPerModel * activeModels.length;
+      if (remainingCredits < totalCost) {
+        toast.error(`Not enough credits. Need ${totalCost}, have ${remainingCredits}.`);
+        return;
+      }
     }
     setIsGenerating(true);
     setGenerationError(null);
@@ -1263,7 +1277,7 @@ function HubPageContent() {
     setGenerations((prev) => prev.map((g) => g.id === item.id ? { ...g, saved: !g.saved } : g));
     if (!item.saved) {
       setLibrary((prev) => [{ ...item, saved: true, tags: [contentType], folder: undefined, source: "content" as const }, ...prev]);
-      toast.success("Saved to Library", { duration: 2000 });
+      toast.success(t("hub.savedToLibrary"), { duration: 2000 });
       serverPost("/library/items", { item: { ...item, saved: true, tags: [contentType] } })
         .then(data => { if (data.success) console.log("[HubPage] Saved to server:", item.id); else console.warn("[HubPage] Save failed:", data.error); })
         .catch(err => console.error("[HubPage] Save error:", err));
@@ -1426,10 +1440,10 @@ function HubPageContent() {
 
   // ── Folder management ──
   const handleCreateFolder = useCallback((source: LibraryTab) => {
-    const newFolder: LibraryFolder = { id: `f-${Date.now()}`, name: "New Folder", source };
+    const newFolder: LibraryFolder = { id: `f-${Date.now()}`, name: t("hub.newFolder"), source };
     setLibraryFolders(prev => [...prev, newFolder]);
     setEditingFolderId(newFolder.id);
-    setEditingFolderName("New Folder");
+    setEditingFolderName(t("hub.newFolder"));
   }, []);
 
   const handleRenameFolder = useCallback((folderId: string, newName: string) => {
@@ -1456,9 +1470,9 @@ function HubPageContent() {
   });
 
   const tabDef = [
-    { id: "generate" as HubTab, label: "Generate", icon: Sparkles, count: generations.length },
-    { id: "library" as HubTab, label: "Library", icon: BookOpen, count: library.length },
-    { id: "compare" as HubTab, label: "Compare", icon: Columns2, count: compareItems.length },
+    { id: "generate" as HubTab, label: t("hub.generate"), icon: Sparkles, count: generations.length },
+    { id: "library" as HubTab, label: t("hub.library"), icon: BookOpen, count: library.length },
+    { id: "compare" as HubTab, label: t("hub.compare"), icon: Columns2, count: compareItems.length },
   ];
 
   return (
@@ -1480,7 +1494,7 @@ function HubPageContent() {
             style={{ fontSize: "12px", fontWeight: activeTab === "compare" ? 600 : 400 }}
           >
             <Columns2 size={13} />
-            Compare
+            {t("hub.compare")}
             {compareItems.length > 0 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full ${activeTab === "compare" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
@@ -1492,7 +1506,7 @@ function HubPageContent() {
           </button>
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-ora-signal-light">
             <span className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
-            <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>{activeModels.length} models</span>
+            <span className="text-ora-signal" style={{ fontSize: "11px", fontWeight: 500 }}>{activeModels.length} {activeModels.length > 1 ? t("hub.modelsSelected") : t("hub.model")}</span>
           </div>
         </div>
       </div>
@@ -1738,7 +1752,7 @@ function HubPageContent() {
                     <div className="flex items-center gap-2 mb-1.5">
                       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-ora-signal-light">
                         {contentType === "film" ? <Film size={10} className="text-ora-signal" /> : <Layers size={10} className="text-ora-signal" />}
-                        <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)" }}>{contentType === "film" ? "Motion Lab" : "Visual Lab"}</span>
+                        <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--ora-signal)" }}>{contentType === "film" ? t("hub.motionLab") : t("hub.visualLab")}</span>
                       </div>
                       <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
                         {refImage.uploading ? "Uploading..." : refImage.signedUrl ? "Ready" : "Upload failed"}
@@ -1794,7 +1808,7 @@ function HubPageContent() {
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 mr-1">
                 <Compass size={12} className="text-muted-foreground" />
-                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>Territory</span>
+                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{t("hub.territory")}</span>
               </div>
               <button onClick={() => setSelectedTerritory(null)}
                 className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
@@ -1803,21 +1817,21 @@ function HubPageContent() {
                   background: !selectedTerritory ? "var(--foreground)" : "var(--secondary)",
                   color: !selectedTerritory ? "var(--background)" : "var(--muted-foreground)",
                   border: "1px solid " + (!selectedTerritory ? "var(--foreground)" : "var(--border)"),
-                }}>Free</button>
-              {territories.map(t => (
-                <button key={t.id} onClick={() => setSelectedTerritory(selectedTerritory?.id === t.id ? null : t)}
+                }}>{t("hub.free")}</button>
+              {territories.map(terr => (
+                <button key={terr.id} onClick={() => setSelectedTerritory(selectedTerritory?.id === terr.id ? null : terr)}
                   className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
-                  title={t.description}
+                  title={terr.description}
                   style={{
                     fontSize: "11px", fontWeight: 500,
-                    background: selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--secondary)",
-                    color: selectedTerritory?.id === t.id ? "var(--background)" : "var(--muted-foreground)",
-                    border: "1px solid " + (selectedTerritory?.id === t.id ? "var(--foreground)" : "var(--border)"),
-                  }}>{t.name}</button>
+                    background: selectedTerritory?.id === terr.id ? "var(--foreground)" : "var(--secondary)",
+                    color: selectedTerritory?.id === terr.id ? "var(--background)" : "var(--muted-foreground)",
+                    border: "1px solid " + (selectedTerritory?.id === terr.id ? "var(--foreground)" : "var(--border)"),
+                  }}>{terr.name}</button>
               ))}
               <button onClick={loadTerritories} disabled={territoriesLoading}
                 className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-30"
-                title="Refresh territories">
+                title={t("hub.refreshTerritories")}>
                 <RefreshCw size={10} className={territoriesLoading ? "animate-spin" : ""} />
               </button>
             </div>
@@ -1875,7 +1889,7 @@ function HubPageContent() {
               <div className="flex items-center gap-2 px-2 flex-shrink-0">
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                   className="w-4 h-4 border-2 border-ora-signal border-t-transparent rounded-full" />
-                <span style={{ fontSize: "11px", color: "var(--ora-signal)", fontWeight: 500 }}>Transcribing...</span>
+                <span style={{ fontSize: "11px", color: "var(--ora-signal)", fontWeight: 500 }}>{t("hub.transcribing")}</span>
               </div>
             ) : isRecording ? (
               <button onClick={stopRecording}
@@ -1900,7 +1914,7 @@ function HubPageContent() {
               <div className="flex items-center gap-2 px-3">
                 <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.2, repeat: Infinity }} className="w-1.5 h-1.5 rounded-full bg-ora-signal" />
                 <span style={{ fontSize: "12px", color: "var(--ora-signal)", fontWeight: 500 }}>
-                  {refImage && contentType === "film" ? "Motion Lab" : refImage ? "Visual Lab" : "Generating"} from {activeModels.length} model{activeModels.length > 1 ? "s" : ""}...
+                  {refImage && contentType === "film" ? t("hub.motionLab") : refImage ? t("hub.visualLab") : t("hub.generating")} from {activeModels.length} {activeModels.length > 1 ? t("hub.modelsSelected") : t("hub.model")}...
                 </span>
               </div>
             ) : (
@@ -1916,7 +1930,7 @@ function HubPageContent() {
               {(contentType === "image" || contentType === "film") && !refImage && (
                 <button onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1 text-muted-foreground hover:text-ora-signal cursor-pointer transition-colors"
-                  style={{ fontSize: "10px", fontWeight: 400 }}><Upload size={9} /> {contentType === "film" ? "Drop image for Motion Lab" : "Drop image for Visual Lab"}</button>
+                  style={{ fontSize: "10px", fontWeight: 400 }}><Upload size={9} /> {contentType === "film" ? t("hub.dropMotionLab") : t("hub.dropVisualLab")}</button>
               )}
               <span className="w-px h-3 bg-border" />
               <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
@@ -1949,7 +1963,7 @@ function HubPageContent() {
                       background: soundInstrumental ? "var(--ora-signal)" : "transparent",
                       color: soundInstrumental ? "#fff" : "var(--muted-foreground)",
                     }}
-                  ><MicOff size={11} /> Instrumental</button>
+                  ><MicOff size={11} /> {t("hub.instrumental")}</button>
                   <button
                     onClick={() => setSoundInstrumental(false)}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-md cursor-pointer transition-all"
@@ -1958,7 +1972,7 @@ function HubPageContent() {
                       background: !soundInstrumental ? "var(--ora-signal)" : "transparent",
                       color: !soundInstrumental ? "#fff" : "var(--muted-foreground)",
                     }}
-                  ><Mic size={11} /> Vocals</button>
+                  ><Mic size={11} /> {t("hub.vocals")}</button>
                 </div>
                 {/* Style */}
                 <div className="flex-1 min-w-[140px]">
@@ -1996,10 +2010,10 @@ function HubPageContent() {
                     <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--foreground)" }}>Lyrics</span>
+                          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--foreground)" }}>{t("hub.lyrics")}</span>
                           {soundLyrics.trim() && (
                             <span className="px-1.5 py-0.5 rounded-md" style={{ fontSize: "9px", fontWeight: 600, color: "var(--ora-signal)", background: "var(--ora-signal-light)" }}>
-                              {soundLyrics.trim().split("\n").length} lines
+                              {soundLyrics.trim().split("\n").length} {t("hub.lines")}
                             </span>
                           )}
                         </div>
@@ -2011,7 +2025,7 @@ function HubPageContent() {
                             style={{ fontSize: "11px", fontWeight: 600, color: "#fff", background: "var(--ora-signal)" }}
                           >
                             {isGeneratingLyrics ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                            AI Generate Lyrics
+                            {t("hub.aiGenerateLyrics")}
                           </button>
                           {soundLyrics.trim() && (
                             <button
@@ -2019,7 +2033,7 @@ function HubPageContent() {
                               className="flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
                               style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)", background: "var(--secondary)" }}
                             >
-                              <X size={9} /> Clear
+                              <X size={9} /> {t("hub.clear")}
                             </button>
                           )}
                         </div>
@@ -2035,11 +2049,11 @@ function HubPageContent() {
                       {soundLyrics.trim() && (
                         <div className="mt-2 flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "9px", fontWeight: 500, color: "var(--muted-foreground)", background: "var(--secondary)" }}>
-                            {soundLyrics.trim().split(/\s+/).length} words
+                            {soundLyrics.trim().split(/\s+/).length} {t("hub.words")}
                           </span>
                           {soundLyrics.includes("[") && (
                             <span className="px-2 py-0.5 rounded-md" style={{ fontSize: "9px", fontWeight: 500, color: "var(--ora-signal)", background: "var(--ora-signal-light)" }}>
-                              Structured
+                              {t("hub.structured")}
                             </span>
                           )}
                         </div>
@@ -2058,7 +2072,7 @@ function HubPageContent() {
             <button onClick={() => setPromptCollapsed(true)}
               className="flex items-center gap-1 px-2 py-0.5 rounded text-muted-foreground/50 hover:text-muted-foreground cursor-pointer transition-colors"
               style={{ fontSize: "9px" }}>
-              <ChevronDown size={8} /> Hide prompt bar
+              <ChevronDown size={8} /> {t("hub.hidePromptBar")}
             </button>
           </div>
         )}
@@ -2111,6 +2125,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
   brandScore?: { overall: number; verdict: string; suggestion: string; scores: Record<string, number> } | null;
   brandBrief?: { angle: string; hook: string; emotional_arc: string; benefit_focus: string; visual_direction: string; dont: string } | null;
 }) {
+  const { t } = useI18n();
   const [sliderIndex, setSliderIndex] = useState(0);
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
   const touchStartX = useRef(0);
@@ -2167,13 +2182,13 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <X size={24} style={{ color: "var(--destructive)" }} />
         </div>
         <h2 className="text-foreground mb-3" style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em" }}>
-          Generation failed
+          {t("hub.generationFailed")}
         </h2>
         <p className="text-muted-foreground text-center max-w-[500px] mb-4" style={{ fontSize: "14px", lineHeight: 1.55 }}>
           {error}
         </p>
         <p className="text-muted-foreground/60 text-center max-w-[420px] mb-6" style={{ fontSize: "12px", lineHeight: 1.5 }}>
-          The AI providers may be slow or temporarily unavailable. Try again.
+          {t("hub.generationFailedDesc")}
         </p>
       </div>
     );
@@ -2186,10 +2201,10 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
           <Sparkles size={28} style={{ color: "var(--foreground)" }} />
         </div>
         <h2 className="mb-3" style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.04em", color: "var(--foreground)" }}>
-          Generate anything
+          {t("hub.generateAnything")}
         </h2>
         <p className="text-center max-w-[420px] mb-8" style={{ fontSize: "15px", lineHeight: 1.55, color: "var(--text-tertiary)" }}>
-          Type what you need below. Select models to compare, then hit Enter. ORA generates from <span style={{ fontWeight: 600, color: "var(--foreground)" }}>{activeModels.length} model{activeModels.length > 1 ? "s" : ""}</span> — you pick the best.
+          {t("hub.generateAnythingDesc")}
         </p>
         <div className="flex flex-wrap justify-center gap-2 max-w-[500px]">
           {getSuggestions(contentType).map((s) => (
@@ -2407,31 +2422,31 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
               className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${currentItem.saved ? "text-white" : "text-white/70 hover:text-white"}`}
               style={{ background: currentItem.saved ? "rgba(17,17,17,0.5)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
               {currentItem.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
-              {currentItem.saved ? "Saved" : "Save to Library"}
+              {currentItem.saved ? t("hub.saved") : t("hub.saveToLibrary")}
             </button>
             {currentItem.saved && (
               <Link to="/hub/library"
                 className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-white/50 hover:text-white transition-all cursor-pointer"
                 style={{ fontSize: "11px", fontWeight: 400 }}>
-                View Library <ChevronRight size={11} />
+                {t("hub.viewLibrary")} <ChevronRight size={11} />
               </Link>
             )}
             <button onClick={() => onCompareAll(displayGens)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
               style={{ background: displayGens.every(g => compareItems.find(c => c.id === g.id)) ? "rgba(17,17,17,0.4)" : "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
-              <Columns2 size={14} /> Compare All ({displayGens.length})
+              <Columns2 size={14} /> {t("hub.compareAll")} ({displayGens.length})
             </button>
             {currentItem.type === "image" && currentItem.preview.kind === "image" && (currentItem.preview.imageUrl) && onAnimate && (
               <button onClick={() => onAnimate(currentItem)}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
                 style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
-                <Play size={14} /> Animate
+                <Play size={14} /> {t("hub.animate")}
               </button>
             )}
             <button onClick={() => onExport(currentItem)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white/70 hover:text-white transition-all cursor-pointer"
               style={{ background: "rgba(255,255,255,0.1)", backdropFilter: "blur(16px)", fontSize: "12px", fontWeight: 500 }}>
-              <Download size={14} /> Export HD
+              <Download size={14} /> {t("hub.exportHd")}
             </button>
           </div>
 
@@ -2466,7 +2481,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
         <div className="flex items-center gap-3">
           <div>
             <p className="text-muted-foreground mb-0.5" style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-              Results from {generations.length} models
+              {t("hub.resultsFrom")} {generations.length} {t("hub.models")}
             </p>
             <p className="text-foreground truncate max-w-[400px]" style={{ fontSize: "13px", fontWeight: 500 }}>
               "{generations[0]?.prompt}"
@@ -2489,7 +2504,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
         <button onClick={() => { /* regenerate */ }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
           style={{ borderColor: "var(--border)", fontSize: "11px", fontWeight: 500 }}>
-          <RotateCcw size={11} /> Regenerate
+          <RotateCcw size={11} /> {t("hub.regenerate")}
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
@@ -2525,6 +2540,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
   onPreview: () => void;
   onExport: () => void;
 }) {
+  const { t } = useI18n();
   const isComparing = false;
   return (
     <div
@@ -2568,13 +2584,13 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
             style={{ fontSize: "12px", fontWeight: 700 }}
           >
             {item.saved ? <Heart size={14} className="fill-current" /> : <Heart size={14} />}
-            {item.saved ? "Saved" : "Save"}
+            {item.saved ? t("hub.saved") : t("hub.save")}
           </button>
           <div className="flex-1" />
           <button
             onClick={(e) => { e.stopPropagation(); onExport(); }}
             className="w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground cursor-pointer"
-            title="Download"
+            title={t("hub.download")}
           >
             <Download size={11} />
           </button>
@@ -2589,6 +2605,7 @@ function ResultCard({ item, onSave, onPreview, onExport }: {
    ═══════════════════════════════════ */
 
 function SunoActions({ sunoTaskId, sunoAudioId, prompt }: { sunoTaskId: string; sunoAudioId: string; prompt: string }) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState<string | null>(null);
 
   const callSuno = async (action: string, body: Record<string, any>, label: string) => {
@@ -2612,7 +2629,7 @@ function SunoActions({ sunoTaskId, sunoAudioId, prompt }: { sunoTaskId: string; 
             stemKeys.forEach(([, url]) => window.open(url as string, "_blank"));
           } else { toast.error("No stems returned"); }
         }
-        else if (data.lyrics) { toast.success("Lyrics generated", { description: typeof data.lyrics === "string" ? data.lyrics.slice(0, 100) : JSON.stringify(data.lyrics).slice(0, 100), duration: 6000 }); }
+        else if (data.lyrics) { toast.success(t("hub.lyricsGenerated"), { description: typeof data.lyrics === "string" ? data.lyrics.slice(0, 100) : JSON.stringify(data.lyrics).slice(0, 100), duration: 6000 }); }
         else { toast.success(`${label} complete`); }
       } else {
         console.error(`[SunoActions] ${action} failed:`, data.error);
@@ -2840,6 +2857,7 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
   onEditFolderNameChange: (name: string) => void;
   onAnimate?: (item: GeneratedItem) => void;
 }) {
+  const { t } = useI18n();
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [movingItemId, setMovingItemId] = useState<string | null>(null);
 
@@ -2862,8 +2880,8 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
           {(["content", "campaign"] as LibraryTab[]).map(tab => (
             <button key={tab} onClick={() => { onLibraryTabChange(tab); setSelectedFolderId(null); }}
               className={`flex-1 px-3 py-3 transition-colors cursor-pointer ${libraryTab === tab ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              style={{ fontSize: "12px", fontWeight: libraryTab === tab ? 600 : 400, textTransform: "capitalize" }}>
-              {tab}
+              style={{ fontSize: "12px", fontWeight: libraryTab === tab ? 600 : 400 }}>
+              {tab === "content" ? t("hub.allContent") : t("hub.campaigns")}
             </button>
           ))}
         </div>
@@ -2873,7 +2891,7 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
           <button onClick={() => setSelectedFolderId(null)}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg mb-1 transition-colors cursor-pointer ${!selectedFolderId ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground hover:bg-card"}`}
             style={{ fontSize: "12px", fontWeight: !selectedFolderId ? 500 : 400 }}>
-            <FolderOpen size={13} /> All {libraryTab === "content" ? "Content" : "Campaigns"}
+            <FolderOpen size={13} /> {libraryTab === "content" ? t("hub.allContent") : t("hub.campaigns")}
             <span className="ml-auto px-1.5 rounded-full" style={{ fontSize: "9px", background: "var(--muted)", color: "var(--muted-foreground)" }}>
               {items.length}
             </span>
@@ -2910,7 +2928,7 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
           <button onClick={() => onCreateFolder(libraryTab)}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg mt-1 text-muted-foreground/50 hover:text-muted-foreground hover:bg-card transition-colors cursor-pointer"
             style={{ fontSize: "11px" }}>
-            <FolderPlus size={12} /> New Folder
+            <FolderPlus size={12} /> {t("hub.newFolder")}
           </button>
         </div>
       </div>
@@ -2922,7 +2940,7 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
           <div className="flex-1 flex items-center gap-2 bg-secondary/50 rounded-lg px-3 py-2 max-w-[320px]">
             <Search size={14} className="text-muted-foreground" />
             <input value={search} onChange={(e) => onSearchChange(e.target.value)}
-              placeholder={`Search ${libraryTab}...`}
+              placeholder={`${t("hub.search")}...`}
               className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40"
               style={{ fontSize: "13px" }} />
           </div>
@@ -2941,10 +2959,10 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
           <div className="text-center py-16">
             <FolderOpen size={24} className="mx-auto mb-3 text-muted-foreground/30" />
             <p style={{ fontSize: "14px", color: "var(--muted-foreground)" }}>
-              {selectedFolderId ? "This folder is empty" : `No ${libraryTab} items yet`}
+              {selectedFolderId ? t("hub.folderEmpty") : t("hub.noItemsYet")}
             </p>
             <p style={{ fontSize: "12px", color: "var(--muted-foreground)", opacity: 0.6 }}>
-              {libraryTab === "content" ? "Generated content is auto-saved here" : "Campaign assets are auto-saved here"}
+              {libraryTab === "content" ? t("hub.contentAutoSaved") : t("hub.campaignAutoSaved")}
             </p>
           </div>
         ) : (
@@ -2982,10 +3000,10 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
                       <span style={{ fontSize: "8px", color: "var(--muted-foreground)", opacity: 0.5 }}>{item.timestamp}</span>
                     </div>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <button onClick={() => setMovingItemId(movingItemId === item.id ? null : item.id)} className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground cursor-pointer" title="Move to folder">
+                      <button onClick={() => setMovingItemId(movingItemId === item.id ? null : item.id)} className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground cursor-pointer" title={t("hub.moveTo")}>
                         <FolderOpen size={10} />
                       </button>
-                      <button onClick={() => onRemove(item.id)} className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive cursor-pointer" title="Remove">
+                      <button onClick={() => onRemove(item.id)} className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive cursor-pointer" title={t("hub.remove")}>
                         <Trash2 size={10} />
                       </button>
                     </div>
@@ -2994,10 +3012,10 @@ function LibraryView({ items, filter, search, onFilterChange, onSearchChange, on
                   {movingItemId === item.id && (
                     <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
                       className="absolute bottom-0 left-0 right-0 z-20 bg-card border-t p-2 space-y-0.5" style={{ borderColor: "var(--border)", boxShadow: "0 -4px 12px rgba(0,0,0,0.08)" }}>
-                      <p style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)", marginBottom: 4 }}>Move to</p>
+                      <p style={{ fontSize: "9px", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)", marginBottom: 4 }}>{t("hub.moveTo")}</p>
                       <button onClick={() => { onMoveToFolder(item.id, undefined); setMovingItemId(null); }}
                         className="w-full text-left px-2 py-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
-                        style={{ fontSize: "11px" }}>No folder</button>
+                        style={{ fontSize: "11px" }}>{t("hub.noFolder")}</button>
                       {tabFolders.map(f => (
                         <button key={f.id} onClick={() => { onMoveToFolder(item.id, f.id); setMovingItemId(null); }}
                           className={`w-full text-left px-2 py-1 rounded cursor-pointer hover:bg-secondary ${item.folderId === f.id ? "text-ora-signal" : "text-muted-foreground hover:text-foreground"}`}
@@ -3025,6 +3043,7 @@ function CompareView({ items, onRemove, onSave, onExport }: {
   onSave: (item: GeneratedItem) => void;
   onExport: (item: GeneratedItem) => void;
 }) {
+  const { t } = useI18n();
   const [zoomLevel, setZoomLevel] = useState(100);
   const [viewMode, setViewMode] = useState<"grid" | "slider">("grid");
   const [sliderPosition, setSliderPosition] = useState(50);
@@ -3042,9 +3061,9 @@ function CompareView({ items, onRemove, onSave, onExport }: {
     return (
       <div className="flex flex-col items-center justify-center py-24 px-6">
         <Columns2 size={24} className="mb-4 text-muted-foreground/30" />
-        <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)" }}>No items to compare</p>
+        <p style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)" }}>{t("hub.noCompareItems")}</p>
         <p className="text-center mt-2 max-w-[360px]" style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: 1.55 }}>
-          Generate content, then click "Compare" on any result to add it here. Compare up to 8 outputs side by side.
+          {t("hub.noCompareDesc")}
         </p>
       </div>
     );
@@ -3058,29 +3077,29 @@ function CompareView({ items, onRemove, onSave, onExport }: {
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <p style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>
-            Comparing {items.length} result{items.length > 1 ? "s" : ""}
+            {t("hub.comparing")} {items.length} {t("hub.results")}
           </p>
           {canSlider && (
             <div className="flex items-center gap-1 border rounded-lg p-0.5" style={{ borderColor: "var(--border)" }}>
               <button onClick={() => setViewMode("grid")}
                 className={`px-2.5 py-1 rounded-md text-xs cursor-pointer transition-colors ${viewMode === "grid" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground"}`}
-                style={{ fontWeight: viewMode === "grid" ? 500 : 400 }}>Grid</button>
+                style={{ fontWeight: viewMode === "grid" ? 500 : 400 }}>{t("hub.grid")}</button>
               <button onClick={() => setViewMode("slider")}
                 className={`px-2.5 py-1 rounded-md text-xs cursor-pointer transition-colors ${viewMode === "slider" ? "bg-ora-signal-light text-ora-signal" : "text-muted-foreground hover:text-foreground"}`}
-                style={{ fontWeight: viewMode === "slider" ? 500 : 400 }}>Slider</button>
+                style={{ fontWeight: viewMode === "slider" ? 500 : 400 }}>{t("hub.slider")}</button>
             </div>
           )}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>Zoom</span>
+            <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{t("hub.zoom")}</span>
             <input type="range" min="50" max="200" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))}
               className="w-20 h-1 accent-[var(--ora-signal)]" />
             <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{zoomLevel}%</span>
           </div>
           <button onClick={() => items.forEach((item) => onRemove(item.id))}
             className="text-muted-foreground hover:text-foreground cursor-pointer" style={{ fontSize: "11px" }}>
-            Clear all
+            {t("hub.clearAll")}
           </button>
         </div>
       </div>
@@ -3168,7 +3187,7 @@ function CompareView({ items, onRemove, onSave, onExport }: {
                       className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
                       style={{ borderColor: item.saved ? undefined : "var(--border)", fontSize: "11px", fontWeight: 500 }}>
                       {item.saved ? <Check size={11} /> : <Heart size={11} />}
-                      {item.saved ? "Saved" : "Save"}
+                      {item.saved ? t("hub.saved") : t("hub.save")}
                     </button>
                     <button onClick={() => onExport(item)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border text-muted-foreground hover:text-foreground cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "11px" }}>
                       <Download size={11} />
@@ -3180,7 +3199,7 @@ function CompareView({ items, onRemove, onSave, onExport }: {
             {items.length < 8 && (
               <div className="border-2 border-dashed rounded-xl flex flex-col items-center justify-center py-12 text-muted-foreground/30" style={{ borderColor: "var(--border)" }}>
                 <Plus size={20} className="mb-2" />
-                <span style={{ fontSize: "12px" }}>Add to compare</span>
+                <span style={{ fontSize: "12px" }}>{t("hub.addToCompare")}</span>
               </div>
             )}
           </div>
@@ -3200,6 +3219,7 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
   onSave: () => void;
   onExport: () => void;
 }) {
+  const { t } = useI18n();
   const isVisual = item.preview.kind === "image" || item.preview.kind === "film";
   const hasRealImage = item.preview.kind === "image" && (item.preview.imageUrl || item.preview.palette[0]?.startsWith("http"));
   const hasRealVideo = item.preview.kind === "film" && (item.preview as any).videoUrl;
@@ -3231,12 +3251,12 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
               className={`flex items-center gap-2.5 px-6 py-3 rounded-xl transition-all cursor-pointer ${item.saved ? "bg-[var(--accent)] text-white shadow-md" : "bg-white/10 text-white/70 hover:text-white hover:bg-white/20"}`}
               style={{ fontSize: "15px", fontWeight: 500 }}>
               {item.saved ? <Check size={16} /> : <Heart size={16} />}
-              {item.saved ? "Saved" : "Save"}
+              {item.saved ? t("hub.saved") : t("hub.save")}
             </button>
             <button onClick={onExport}
               className="flex items-center gap-2.5 px-6 py-3 rounded-xl bg-white/10 text-white/70 hover:text-white hover:bg-white/20 cursor-pointer transition-all"
               style={{ fontSize: "15px", fontWeight: 500 }}>
-              <Download size={16} /> Export HD
+              <Download size={16} /> {t("hub.exportHd")}
             </button>
             <button onClick={onClose}
               className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white/70 hover:text-white hover:bg-white/25 cursor-pointer transition-all ml-3">
@@ -3317,10 +3337,10 @@ function PreviewModal({ item, onClose, onSave, onExport }: {
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors cursor-pointer ${item.saved ? "bg-primary text-primary-foreground" : "border hover:bg-secondary"}`}
               style={{ borderColor: item.saved ? undefined : "var(--border)", fontSize: "13px", fontWeight: 500 }}>
               {item.saved ? <Check size={14} /> : <Heart size={14} />}
-              {item.saved ? "Saved to Library" : "Save to Library"}
+              {item.saved ? t("hub.savedToLibrary") : t("hub.saveToLibrary")}
             </button>
             <button onClick={onExport} className="flex items-center gap-2 px-4 py-2 rounded-lg border hover:bg-secondary cursor-pointer" style={{ borderColor: "var(--border)", fontSize: "13px" }}>
-              <Download size={14} /> Export HD
+              <Download size={14} /> {t("hub.exportHd")}
             </button>
             <div className="flex-1" />
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer" style={{ fontSize: "13px" }}>Close</button>

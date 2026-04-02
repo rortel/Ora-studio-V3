@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
 import {
   Zap,
@@ -8,6 +8,9 @@ import {
   Check,
   ArrowRight,
   Loader2,
+  CheckCircle2,
+  XCircle,
+  CreditCard,
 } from "lucide-react";
 import { PulseIcon } from "../components/PulseMotif";
 import { useAuth } from "../lib/auth-context";
@@ -16,15 +19,35 @@ import { useI18n } from "../lib/i18n";
 
 export function SubscribePage() {
   const navigate = useNavigate();
-  const { user, profile, accessToken, isLoading: authLoading, refreshProfile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, profile, accessToken, isLoading: authLoading, refreshProfile, plan: currentPlan, remainingCredits } = useAuth();
   const { t } = useI18n();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  // Handle Stripe redirect results
+  useEffect(() => {
+    if (searchParams.get("success") === "true") {
+      const plan = searchParams.get("plan") || "";
+      setSuccessMessage(
+        plan === "studio"
+          ? t("subscribe.successBusiness")
+          : t("subscribe.successPro")
+      );
+      // Refresh profile to get updated plan/credits
+      refreshProfile();
+    }
+    if (searchParams.get("canceled") === "true") {
+      setError(t("subscribe.paymentCanceled"));
+    }
+  }, [searchParams]);
 
   const plans = [
     {
       id: "free" as const,
+      serverPlan: "free",
       name: t("subscribe.freeName"),
       price: "0",
       priceLabel: t("subscribe.freePrice"),
@@ -41,9 +64,11 @@ export function SubscribePage() {
       icon: Zap,
       highlighted: false,
       cta: t("subscribe.freeCta"),
+      requiresStripe: false,
     },
     {
       id: "generate" as const,
+      serverPlan: "generate",
       name: t("subscribe.proName"),
       price: t("subscribe.proPrice"),
       priceLabel: t("subscribe.proPrice"),
@@ -61,9 +86,11 @@ export function SubscribePage() {
       icon: Sparkles,
       highlighted: true,
       cta: t("subscribe.proCta"),
+      requiresStripe: true,
     },
     {
       id: "studio" as const,
+      serverPlan: "studio",
       name: t("subscribe.businessName"),
       price: t("subscribe.businessPrice"),
       priceLabel: t("subscribe.businessPrice"),
@@ -82,6 +109,7 @@ export function SubscribePage() {
       icon: Crown,
       highlighted: false,
       cta: t("subscribe.businessCta"),
+      requiresStripe: true,
     },
   ];
 
@@ -92,7 +120,7 @@ export function SubscribePage() {
     }
   }, [authLoading, user, navigate]);
 
-  const handleChoosePlan = async (planId: string) => {
+  const handleChoosePlan = async (planId: string, requiresStripe: boolean) => {
     setSelectedPlan(planId);
     setLoading(true);
     setError("");
@@ -104,29 +132,80 @@ export function SubscribePage() {
       };
       if (accessToken) headers["X-User-Token"] = accessToken;
 
-      const res = await fetch(`${API_BASE}/auth/choose-plan`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ plan: planId }),
-      });
-      const data = await res.json();
+      if (requiresStripe) {
+        // Paid plan → Create Stripe Checkout Session
+        const res = await fetch(`${API_BASE}/stripe/create-checkout-session`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ plan: planId }),
+        });
+        const data = await res.json();
 
-      if (data.error) {
-        console.error("Choose plan error:", data.error);
-        setError(data.error);
-        setLoading(false);
-        return;
+        if (data.error) {
+          console.error("Stripe checkout error:", data.error);
+          setError(data.error);
+          setLoading(false);
+          return;
+        }
+
+        if (data.url) {
+          // Redirect to Stripe Checkout
+          window.location.href = data.url;
+          return; // Don't setLoading(false) — user is leaving
+        }
+      } else {
+        // Free plan → Direct activation
+        const res = await fetch(`${API_BASE}/auth/choose-plan`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ plan: planId }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          console.error("Choose plan error:", data.error);
+          setError(data.error);
+          setLoading(false);
+          return;
+        }
+
+        console.log("Plan chosen:", planId, data.profile);
+        await refreshProfile();
+        navigate("/hub");
       }
-
-      console.log("Plan chosen:", planId, data.profile);
-      // Refresh profile in auth context then redirect
-      await refreshProfile();
-      navigate("/profile");
     } catch (err) {
       console.error("Choose plan exception:", err);
       setError(t("subscribe.errorActivation"));
       setLoading(false);
     }
+  };
+
+  const handleManageSubscription = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publicAnonKey}`,
+      };
+      if (accessToken) headers["X-User-Token"] = accessToken;
+
+      const res = await fetch(`${API_BASE}/stripe/portal`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      if (data.error) setError(data.error);
+    } catch (err) {
+      setError("Could not open subscription management");
+    }
+    setLoading(false);
   };
 
   if (authLoading) {
@@ -171,19 +250,76 @@ export function SubscribePage() {
           </p>
         </motion.div>
 
+        {/* Success message */}
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center gap-3"
+            style={{
+              background: "rgba(16, 185, 129, 0.06)",
+              border: "1px solid rgba(16, 185, 129, 0.15)",
+            }}
+          >
+            <CheckCircle2 size={20} style={{ color: "#10b981", flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>
+                {successMessage}
+              </p>
+              <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
+                {t("subscribe.successRedirect")}
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         {/* Error */}
         {error && (
-          <div
-            className="max-w-[400px] mx-auto mb-8 p-3 rounded-lg text-center"
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center gap-3"
             style={{
               background: "rgba(212,24,61,0.06)",
               border: "1px solid rgba(212,24,61,0.1)",
-              fontSize: "13px",
-              color: "var(--destructive)",
             }}
           >
-            {error}
-          </div>
+            <XCircle size={20} style={{ color: "var(--destructive)", flexShrink: 0 }} />
+            <p style={{ fontSize: "13px", color: "var(--destructive)" }}>{error}</p>
+          </motion.div>
+        )}
+
+        {/* Current plan indicator */}
+        {currentPlan !== "free" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center justify-between"
+            style={{
+              background: "var(--secondary)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <CreditCard size={18} style={{ color: "var(--accent)" }} />
+              <div>
+                <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
+                  {t("subscribe.currentPlan")}: {currentPlan === "pro" ? "Pro" : "Business"}
+                </p>
+                <p style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+                  {remainingCredits.toLocaleString()} {t("subscribe.creditsRemaining")}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleManageSubscription}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-lg border border-border text-foreground hover:bg-secondary transition-colors cursor-pointer"
+              style={{ fontSize: "12px", fontWeight: 500 }}
+            >
+              {t("subscribe.manageSubscription")}
+            </button>
+          </motion.div>
         )}
 
         {/* Plan Cards */}
@@ -192,6 +328,10 @@ export function SubscribePage() {
             const Icon = plan.icon;
             const isSelected = selectedPlan === plan.id;
             const isLoading = isSelected && loading;
+            const isCurrentPlan =
+              (currentPlan === "pro" && plan.id === "generate") ||
+              (currentPlan === "business" && plan.id === "studio") ||
+              (currentPlan === "free" && plan.id === "free");
 
             return (
               <motion.div
@@ -201,7 +341,7 @@ export function SubscribePage() {
                 transition={{ delay: i * 0.08 }}
                 className={`relative border rounded-xl bg-card p-6 flex flex-col ${
                   plan.highlighted ? "border-ora-signal" : "border-border"
-                }`}
+                } ${isCurrentPlan ? "ring-2 ring-accent/20" : ""}`}
                 style={{
                   boxShadow: plan.highlighted
                     ? "0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(17,17,17,0.08)"
@@ -220,6 +360,21 @@ export function SubscribePage() {
                     }}
                   >
                     {t("subscribe.popular")}
+                  </div>
+                )}
+
+                {/* Current plan badge */}
+                {isCurrentPlan && (
+                  <div
+                    className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full"
+                    style={{
+                      background: "var(--accent)",
+                      color: "#fff",
+                      fontSize: "10px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {t("subscribe.currentBadge")}
                   </div>
                 )}
 
@@ -315,9 +470,9 @@ export function SubscribePage() {
 
                 {/* CTA */}
                 <button
-                  onClick={() => handleChoosePlan(plan.id)}
-                  disabled={loading}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg transition-all cursor-pointer disabled:opacity-60 ${
+                  onClick={() => handleChoosePlan(plan.id, plan.requiresStripe)}
+                  disabled={loading || isCurrentPlan}
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                     plan.highlighted
                       ? "text-white hover:opacity-90"
                       : "border border-border-strong text-foreground hover:bg-secondary"
@@ -331,7 +486,12 @@ export function SubscribePage() {
                   {isLoading ? (
                     <>
                       <Loader2 size={15} className="animate-spin" />
-                      {t("subscribe.activating")}
+                      {plan.requiresStripe ? t("subscribe.redirecting") : t("subscribe.activating")}
+                    </>
+                  ) : isCurrentPlan ? (
+                    <>
+                      <Check size={15} />
+                      {t("subscribe.currentBadge")}
                     </>
                   ) : (
                     <>

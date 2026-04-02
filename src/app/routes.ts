@@ -1,26 +1,29 @@
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./pages/RootLayout";
-import { HubPage } from "./pages/HubPage";
-import { StudioPage } from "./pages/StudioPage";
 import { LandingPage } from "./pages/LandingPage";
-import { PricingPage } from "./pages/PricingPage";
-import { AgentsPage } from "./pages/AgentsPage";
-import { VaultPage } from "./pages/VaultPage";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { AdminPage } from "./pages/AdminPage";
-import { SubscribePage } from "./pages/SubscribePage";
-import { LibraryPage } from "./pages/LibraryPage";
-import { CalendarPage } from "./pages/CalendarPage";
-import { MusicPage } from "./pages/MusicPage";
-import { ProductsPage } from "./pages/ProductsPage";
-import { VideoAssemblerPage } from "./pages/VideoAssemblerPage";
-import { TermsPage } from "./pages/TermsPage";
-import { PrivacyPage } from "./pages/PrivacyPage";
-import { AboutPage } from "./pages/AboutPage";
-import { OnboardingPage } from "./pages/OnboardingPage";
+import { lazy } from "react";
+
+// Lazy-loaded pages (code-splitting)
+const HubPage = lazy(() => import("./pages/HubPage").then(m => ({ default: m.HubPage })));
+const StudioPage = lazy(() => import("./pages/StudioPage").then(m => ({ default: m.StudioPage })));
+const PricingPage = lazy(() => import("./pages/PricingPage").then(m => ({ default: m.PricingPage })));
+const AgentsPage = lazy(() => import("./pages/AgentsPage").then(m => ({ default: m.AgentsPage })));
+const VaultPage = lazy(() => import("./pages/VaultPage").then(m => ({ default: m.VaultPage })));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
+const ProfilePage = lazy(() => import("./pages/ProfilePage").then(m => ({ default: m.ProfilePage })));
+const AdminPage = lazy(() => import("./pages/AdminPage").then(m => ({ default: m.AdminPage })));
+const SubscribePage = lazy(() => import("./pages/SubscribePage").then(m => ({ default: m.SubscribePage })));
+const LibraryPage = lazy(() => import("./pages/LibraryPage").then(m => ({ default: m.LibraryPage })));
+const CalendarPage = lazy(() => import("./pages/CalendarPage").then(m => ({ default: m.CalendarPage })));
+const MusicPage = lazy(() => import("./pages/MusicPage").then(m => ({ default: m.MusicPage })));
+const ProductsPage = lazy(() => import("./pages/ProductsPage").then(m => ({ default: m.ProductsPage })));
+const VideoAssemblerPage = lazy(() => import("./pages/VideoAssemblerPage").then(m => ({ default: m.VideoAssemblerPage })));
+const OnboardingPage = lazy(() => import("./pages/OnboardingPage").then(m => ({ default: m.OnboardingPage })));
+const TermsPage = lazy(() => import("./pages/TermsPage").then(m => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage").then(m => ({ default: m.PrivacyPage })));
+const AboutPage = lazy(() => import("./pages/AboutPage").then(m => ({ default: m.AboutPage })));
 
 /*
   ROUTE ACCESS MATRIX

@@ -171,23 +171,23 @@ function CalendarPageContent() {
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) {
-        toast.error(data.error || `Connexion ${platform} échouée`);
+        toast.error(data.error || t("studio.connectFailed").replace("{platform}", platform));
         setConnectingPlatform(null);
         return;
       }
       const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
-      if (!popup) { toast.error("Popup bloqué. Autorisez les popups pour ce site."); setConnectingPlatform(null); return; }
+      if (!popup) { toast.error(t("studio.popupBlocked")); setConnectingPlatform(null); return; }
       const poll = setInterval(() => {
         if (popup.closed) {
           clearInterval(poll);
           setConnectingPlatform(null);
           setTimeout(() => loadSocialAccounts(), 1500);
-          toast.success(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connecté`);
+          toast.success(t("studio.connectSuccess").replace("{platform}", platform.charAt(0).toUpperCase() + platform.slice(1)));
         }
       }, 500);
       setTimeout(() => { clearInterval(poll); if (!popup.closed) popup.close(); setConnectingPlatform(null); }, 300_000);
     } catch (err: any) {
-      toast.error(`Erreur: ${err?.message || "Inconnue"}`);
+      toast.error(`${t("studio.connectionFailed")}: ${err?.message || "Unknown error"}`);
       setConnectingPlatform(null);
     }
   };
@@ -242,14 +242,14 @@ function CalendarPageContent() {
       const data = await res.json();
       if (data.success) {
         setEvents(prev => prev.map(ev => ev.id === eventId ? { ...ev, status: data.status as ContentStatus, zernioPostId: data.zernioPostId } : ev));
-        toast.success(`${data.status === "scheduled" ? "Scheduled" : "Published"} successfully`);
+        toast.success(data.status === "scheduled" ? t("calendar.scheduledSuccess") : t("calendar.publishedSuccess"));
       } else if (data.needsConnect) {
-        toast.error(`Connect your ${data.platform} account first in Campaign Lab`);
+        toast.error(t("calendar.connectPlatformFirst").replace("{platform}", data.platform));
       } else {
-        toast.error(data.error || "Deploy failed");
+        toast.error(data.error || t("studio.deployFailed"));
       }
     } catch (err: any) {
-      toast.error(`Deploy error: ${err?.message || "Network error"}`);
+      toast.error(`${t("studio.deployError")}: ${err?.message || "Network error"}`);
     } finally {
       setDeployingEvent(null);
     }
@@ -262,7 +262,7 @@ function CalendarPageContent() {
       (ev.copy || ev.caption || ev.headline || ev.imageUrl || ev.videoUrl)
     );
     if (deployableEvents.length === 0) {
-      toast.error("No events with content to deploy");
+      toast.error(t("calendar.noEventsWithContent"));
       return;
     }
     setDeployingAll(true);
@@ -288,15 +288,15 @@ function CalendarPageContent() {
         }));
         const failed = data.results.filter((r: any) => !r.success).length;
         const needConnect = data.results.filter((r: any) => r.needsConnect).length;
-        let msg = `${data.successCount}/${data.totalCount} events deployed`;
+        let msg = t("calendar.eventsDeployed").replace("{success}", data.successCount).replace("{total}", data.totalCount);
         if (failed > 0) msg += ` (${failed} failed)`;
-        if (needConnect > 0) msg += ` -- ${needConnect} need social account connection`;
+        if (needConnect > 0) msg += ` — ${needConnect} need social account connection`;
         toast.success(msg);
       } else {
-        toast.error(data.error || "Batch deploy failed");
+        toast.error(data.error || t("studio.batchDeployFailed"));
       }
     } catch (err: any) {
-      toast.error(`Deploy error: ${err?.message || "Network error"}`);
+      toast.error(`${t("studio.deployError")}: ${err?.message || "Network error"}`);
     } finally {
       setDeployingAll(false);
     }
@@ -420,11 +420,11 @@ function CalendarPageContent() {
                   <Send size={14} />
                 </div>
                 <div>
-                  <span style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 600, display: "block" }}>Réseaux connectés</span>
+                  <span style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 600, display: "block" }}>{t("calendar.socialConnected")}</span>
                   <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                     {socialAccounts.length > 0
-                      ? `${socialAccounts.length} compte${socialAccounts.length > 1 ? "s" : ""} — publiez directement depuis le calendrier`
-                      : "Connectez vos réseaux pour publier directement"}
+                      ? t("calendar.socialConnectedDesc").replace("{count}", String(socialAccounts.length))
+                      : t("calendar.connectPlatformFirst").replace("{platform}", "")}
                   </span>
                 </div>
               </div>
@@ -472,7 +472,7 @@ function CalendarPageContent() {
               })}
               {CAL_CONNECTABLE_PLATFORMS.filter(p => !socialAccounts.some((a: any) => a.platform === p.id)).length === 0 && socialAccounts.length > 0 && (
                 <span className="flex items-center gap-1.5" style={{ fontSize: "11px", color: "#666" }}>
-                  <CheckCircle2 size={12} /> Tous les réseaux connectés
+                  <CheckCircle2 size={12} /> {t("calendar.allNetworksConnected")}
                 </span>
               )}
             </div>

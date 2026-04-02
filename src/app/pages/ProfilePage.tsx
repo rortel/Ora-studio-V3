@@ -215,11 +215,14 @@ const typeIcons: Record<string, typeof ImageIcon> = {
   sound: Music,
 };
 
-const sourceLabels: Record<string, string> = {
-  hub: "AI Hub",
-  remix: "Remix",
-  studio: "Studio",
-};
+function useSourceLabels(): Record<string, string> {
+  const { t } = useI18n();
+  return {
+    hub: t("profile.aiHub"),
+    remix: t("profile.remix"),
+    studio: t("profile.studio"),
+  };
+}
 
 /* ═══════════════════════════════════
    MAIN COMPONENT
@@ -271,14 +274,14 @@ function ProfilePageContent() {
           const items: LibraryAsset[] = data.items.slice(0, 12).map((item: any) => {
             const typeMap: Record<string, string> = { image: "image", text: "text", code: "code", film: "film", sound: "sound" };
             const itemType = typeMap[item.type] || "text";
-            const name = item.customName || item.prompt?.slice(0, 60) || "Untitled";
+            const name = item.customName || item.prompt?.slice(0, 60) || t("profile.untitled");
             const savedDate = item.savedAt ? new Date(item.savedAt) : new Date();
             const now = new Date();
             const diffMs = now.getTime() - savedDate.getTime();
             const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            let dateStr = "Today";
-            if (diffDays === 1) dateStr = "Yesterday";
-            else if (diffDays > 1 && diffDays < 7) dateStr = `${diffDays} days ago`;
+            let dateStr = t("profile.today");
+            if (diffDays === 1) dateStr = t("profile.yesterday");
+            else if (diffDays > 1 && diffDays < 7) dateStr = `${diffDays} ${t("profile.daysAgo")}`;
             else if (diffDays >= 7) dateStr = savedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
             return { id: item.id, type: itemType as LibraryAsset["type"], name, date: dateStr, source: "hub" as const };
@@ -287,11 +290,11 @@ function ProfilePageContent() {
 
           // Build activity from most recent library items
           const typeActions: Record<string, { action: string; icon: typeof Sparkles; iconColor: string }> = {
-            image: { action: "Generated image", icon: ImageIcon, iconColor: "var(--ora-signal)" },
-            text: { action: "Generated text", icon: FileText, iconColor: "#666666" },
-            code: { action: "Generated code", icon: Code2, iconColor: "#666666" },
-            film: { action: "Generated video", icon: Film, iconColor: "#999999" },
-            sound: { action: "Generated audio", icon: Music, iconColor: "#888888" },
+            image: { action: t("profile.generatedImage"), icon: ImageIcon, iconColor: "var(--ora-signal)" },
+            text: { action: t("profile.generatedText"), icon: FileText, iconColor: "#666666" },
+            code: { action: t("profile.generatedCode"), icon: Code2, iconColor: "#666666" },
+            film: { action: t("profile.generatedVideo"), icon: Film, iconColor: "#999999" },
+            sound: { action: t("profile.generatedAudio"), icon: Music, iconColor: "#888888" },
           };
           const acts: ActivityItem[] = items.slice(0, 8).map((item, i) => {
             const cfg = typeActions[item.type] || typeActions.text;
@@ -305,7 +308,7 @@ function ProfilePageContent() {
             };
           });
           if (acts.length === 0) {
-            acts.push({ id: "act-signup", action: "Signed up", detail: "Welcome to ORA", timestamp: "Recently", icon: Sparkles, iconColor: "var(--ora-signal)" });
+            acts.push({ id: "act-signup", action: t("profile.signedUp"), detail: t("profile.welcomeToOra"), timestamp: "Recently", icon: Sparkles, iconColor: "var(--ora-signal)" });
           }
           setRealActivity(acts);
         }
@@ -503,10 +506,11 @@ function ProfilePageContent() {
    ═══════════════════════════════════ */
 
 function PlanBadge({ plan }: { plan: PlanTier }) {
+  const { t } = useI18n();
   const config = {
-    free: { label: "Free", bg: "var(--secondary)", color: "var(--muted-foreground)", icon: null },
-    pro: { label: "Pro", bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
-    business: { label: "Business", bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: Crown },
+    free: { label: t("profile.planFree"), bg: "var(--secondary)", color: "var(--muted-foreground)", icon: null },
+    pro: { label: t("profile.planPro"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
+    business: { label: t("profile.planBusiness"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: Crown },
   }[plan];
   return (
     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full" style={{ background: config.bg, fontSize: "11px", fontWeight: 600, color: config.color }}>
@@ -536,7 +540,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span style={{ fontSize: "28px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.03em", lineHeight: 1.2 }}>
-                    {plan.price === "0" ? "Free" : `${plan.price}`}
+                    {plan.price === "0" ? t("profile.planFree") : `${plan.price}`}
                   </span>
                   {plan.period && <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{plan.period}</span>}
                 </div>
@@ -560,7 +564,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
             <div className="border-t px-5 py-4 bg-ora-signal-light/20" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center gap-3">
                 <Crown size={14} className="text-ora-signal flex-shrink-0" />
-                <p className="flex-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>15 agents, Brand Vault, Studio, Flows, Remix, unlimited campaigns</p>
+                <p className="flex-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.businessFeatures")}</p>
                 <Link to="/pricing" className="text-ora-signal flex items-center gap-1 flex-shrink-0" style={{ fontSize: "12px", fontWeight: 500 }}>
                   {t("profile.seePlans")} <ArrowRight size={12} />
                 </Link>
@@ -662,6 +666,7 @@ function QuickAccess({ isSubscriber }: { isSubscriber: boolean }) {
    ═══════════════════════════════════ */
 
 function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubscriber: boolean }) {
+  const sourceLabels = useSourceLabels();
   const [filter, setFilter] = useState<string>("all");
   const types = ["all", "image", "text", "code", "film", "sound"];
   const filtered = filter === "all" ? library : library.filter((a) => a.type === filter);
@@ -832,7 +837,7 @@ function SocialAccountsSection() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>{t("profile.socialAccounts")}</h3>
-        <button onClick={fetchAccounts} className="cursor-pointer p-1 rounded hover:bg-secondary transition-colors" title="Refresh">
+        <button onClick={fetchAccounts} className="cursor-pointer p-1 rounded hover:bg-secondary transition-colors" title={t("profile.refresh")}>
           <RefreshCw size={12} className={`text-muted-foreground ${loading ? "animate-spin" : ""}`} />
         </button>
       </div>

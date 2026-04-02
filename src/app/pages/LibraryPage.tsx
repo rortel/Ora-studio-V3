@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import JSZip from "jszip";
 import {
   FolderOpen, FolderPlus, Search, Download, Trash2, MoreHorizontal,
   ImageIcon, FileText, Film, Music, Code2, ArrowUpDown,
@@ -412,26 +413,88 @@ function LibraryPageContent() {
     }
   }, []);
 
-  // Download all campaign assets
+  // Download all campaign assets as ZIP
   const handleDownloadCampaign = useCallback(async (item: LibraryItem) => {
     const { assets, brief } = getCampaignData(item);
     if (assets.length === 0) { toast.error("No assets to download"); return; }
     setDownloadingCampaign(item.id);
     const title = (item as any).title || getItemName(item);
+    const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50);
     try {
-      for (let i = 0; i < assets.length; i++) {
-        await downloadAssetFile(assets[i], title);
-        // Small delay between downloads to avoid browser blocking
-        if (i < assets.length - 1) await new Promise(r => setTimeout(r, 500));
+      const zip = new JSZip();
+      // Add brief as text file
+      if (brief) {
+        zip.file("brief.txt", brief);
       }
+      // Download and add each asset
+      for (let i = 0; i < assets.length; i++) {
+        const asset = assets[i];
+        const url = asset.imageUrl || asset.videoUrl || asset.audioUrl;
+        if (!url) continue;
+        try {
+          const response = await fetch(url);
+          const blob = await response.blob();
+          const ext = asset.videoUrl ? "mp4" : asset.audioUrl ? "mp3" : "png";
+          const name = `${asset.label || asset.platform || "asset"}_${i + 1}.${ext}`.replace(/[^a-zA-Z0-9_.-]/g, "_");
+          zip.file(name, blob);
+        } catch (err) {
+          console.warn(`[ZIP] Failed to fetch asset ${i}:`, err);
+        }
+        // Add copy text if available
+        if (asset.headline || asset.body) {
+          const textContent = [
+            asset.headline ? `# ${asset.headline}` : "",
+            asset.body || "",
+            asset.hashtags ? `\n${asset.hashtags}` : "",
+            asset.cta ? `\nCTA: ${asset.cta}` : "",
+          ].filter(Boolean).join("\n\n");
+          zip.file(`${asset.label || asset.platform || "asset"}_${i + 1}_copy.txt`, textContent);
+        }
+      }
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeTitle}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       toast.success(`${assets.length} fichier(s) téléchargé(s)`);
     } catch (err) {
-      console.error("[Library] campaign download error:", err);
+      console.error("[Library] campaign ZIP download error:", err);
       toast.error("Download error");
     } finally {
       setDownloadingCampaign(null);
     }
-  }, [downloadAssetFile]);
+  }, []);
+
+  // Duplicate a campaign
+  const handleDuplicateCampaign = useCallback(async (item: LibraryItem) => {
+    try {
+      const campaignData = getCampaignData(item);
+      const duplicateItem = {
+        ...item,
+        id: `campaign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        savedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        customName: `${getItemName(item)} (copy)`,
+      };
+      // Save via API
+      const res = await serverPost("/library/save", {
+        item: duplicateItem,
+      });
+      if (res.success) {
+        setItems(prev => [duplicateItem, ...prev]);
+        toast.success(t("library.duplicated"));
+      } else {
+        toast.error(res.error || "Duplication failed");
+      }
+    } catch (err: any) {
+      console.error("[Library] duplicate error:", err);
+      toast.error("Duplication failed");
+    }
+  }, [serverPost, t]);
 
   // Copy text to clipboard
   const copyToClipboard = useCallback((text: string) => {
@@ -728,6 +791,14 @@ function LibraryPageContent() {
                               {isDownloading ? <Loader2 size={11} className="animate-spin" style={{ color: "var(--text-tertiary)" }} /> : <Download size={11} style={{ color: "var(--text-tertiary)" }} />}
                             </button>
                             <button
+                              onClick={(e) => { e.stopPropagation(); handleDuplicateCampaign(item); }}
+                              className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
+                              style={{ background: "var(--border)" }}
+                              title={t("library.duplicate")}
+                            >
+                              <Copy size={11} style={{ color: "var(--text-tertiary)" }} />
+                            </button>
+                            <button
                               onClick={(e) => { e.stopPropagation(); handleDeleteItem(item.id); }}
                               className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
                               style={{ background: "var(--border)" }}
@@ -785,6 +856,14 @@ function LibraryPageContent() {
                     >
                       {isDownloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                       {t("library.downloadAll")}
+                    </button>
+                    <button
+                      onClick={() => handleDuplicateCampaign(openItem)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer"
+                      style={{ background: "rgba(17,17,17,0.05)", border: "1px solid rgba(17,17,17,0.1)", color: "var(--foreground)", fontSize: "12px", fontWeight: 600 }}
+                    >
+                      <Copy size={12} />
+                      {t("library.duplicate")}
                     </button>
                   </div>
 
