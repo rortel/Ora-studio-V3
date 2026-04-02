@@ -4206,13 +4206,38 @@ app.post("/generate/image-start", async (c) => {
     const imageRefUrl = body.imageRefUrl || c.req.query("imageRefUrl") || undefined;
     const refSource = body.refSource || c.req.query("refSource") || "";
 
-    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
+    const provider = body.provider || c.req.query("provider") || ""; // "ai" = skip Photoroom, use AI img2img with product ref
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     const imgCredits = getModelCreditCost("image", model);
     if (user) deductCredit(user.id, imgCredits).catch(() => {});
 
     const isUploadRef = refSource === "upload";
+
+    // ═══ AI-ONLY PATH: skip Photoroom, use generative AI with product as reference ═══
+    // This keeps the product identity (shape, colors, brand) while letting AI generate the scene
+    if (imageRefUrl && isUploadRef && provider === "ai") {
+      console.log(`[image-start-POST] AI PROVIDER path — using generateImageWithRef (preserveContent=true)`);
+      try {
+        const result = await generateImageWithRef({
+          prompt: rawPrompt,
+          model: model || "photon-1",
+          imageRefUrl,
+          preserveContent: true,
+          aspectRatio,
+        });
+        if (result?.imageUrl) {
+          console.log(`[image-start-POST] AI PROVIDER OK in ${Date.now() - t0}ms — provider=${result.provider}`);
+          if (user) logEvent("generation", { userId: user.id, type: "image", model, provider: result.provider }).catch(() => {});
+          return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider, directResult: true });
+        }
+      } catch (err) {
+        console.log(`[image-start-POST] AI PROVIDER failed: ${err}`);
+      }
+      // If AI path fails, fall through to Photoroom
+      console.log(`[image-start-POST] AI PROVIDER failed, falling back to Photoroom...`);
+    }
 
     // ═══ PRODUCT PHOTO REFERENCE — PHOTOROOM API ═══
     // Photoroom = non-generative: removes bg/people, keeps product pixels 100% intact

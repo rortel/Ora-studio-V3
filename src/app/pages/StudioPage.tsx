@@ -335,13 +335,18 @@ export function StudioPage() {
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           console.log(`[studio] generate-image refUrl=${refUrl ? "YES" : "NO"} (${refUrl.slice(0, 80)}) models=${modelList.join(",")}`);
           if (refUrl) {
-            // Use image-start POST per model (POST avoids URL length limits with signed URLs)
+            // Use image-start POST per model: first model → Photoroom (pixel-perfect), others → AI (creative scenes)
             const items: any[] = [];
             removeAttachedImage();
+            let photoroomDone = false;
             for (const m of modelList) {
               try {
+                // First model uses Photoroom (real product), subsequent models use AI with product ref
+                const useAiProvider = photoroomDone;
+                photoroomDone = true;
                 const startRes = await serverPost("/generate/image-start", {
                   prompt, model: m, aspectRatio, imageRefUrl: refUrl, refSource: "upload",
+                  ...(useAiProvider ? { provider: "ai" } : {}),
                 }, 180_000); // 180s timeout: Qwen isolation (~60s) + Flux img2img (~20s)
                 if (startRes.success && startRes.directResult && startRes.imageUrl) {
                   // FAL Flux img2img returns result directly (no polling needed)
@@ -765,18 +770,54 @@ export function StudioPage() {
             }
 
             // Generate with all selected generative models (in parallel)
+            // If product ref exists: use image-start POST with provider=ai (AI preserves product identity)
+            // If no product ref: use image-via-get (pure text-to-image)
             const imgResults = await Promise.all(
-              imageModelList.map(model =>
-                serverGet(
-                  `/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`
-                ).then(res => ({
-                  model,
-                  imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null,
-                })).catch(() => ({ model, imageUrl: null }))
-              )
+              imageModelList.map(async (model) => {
+                try {
+                  if (productRefUrls.length > 0) {
+                    // AI with product reference — same real product, different scene interpretation
+                    const refUrl = productRefUrls[i % productRefUrls.length];
+                    console.log(`[studio] AI+ProductRef [${imageOnlyFormats[i].format}/${model}]: using product ref for scene generation`);
+                    const startRes = await serverPost("/generate/image-start", {
+                      prompt: enrichedPrompt.slice(0, 500),
+                      imageRefUrl: refUrl,
+                      refSource: "upload",
+                      provider: "ai",
+                      aspectRatio,
+                      model,
+                      _token: getAuthHeader(),
+                    }, 180_000);
+                    if (startRes.success && startRes.directResult && startRes.imageUrl) {
+                      return { model, imageUrl: startRes.imageUrl, imageModel: `${model} (Product Ref)` };
+                    }
+                    if (startRes.success && startRes.generationId) {
+                      // Poll for result
+                      for (let poll = 0; poll < 30; poll++) {
+                        await new Promise(r => setTimeout(r, 3000));
+                        const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
+                        if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
+                          return { model, imageUrl: statusRes.imageUrl, imageModel: `${model} (Product Ref)` };
+                        }
+                        if (statusRes.state === "failed") break;
+                      }
+                    }
+                    return { model, imageUrl: null };
+                  } else {
+                    // No product ref — pure text-to-image
+                    const res = await serverGet(
+                      `/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`
+                    );
+                    return {
+                      model,
+                      imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null,
+                    };
+                  }
+                } catch { return { model, imageUrl: null }; }
+              })
             );
 
-            // Combine: Photoroom first (real product), then generative models
+            // Combine: Photoroom first (real product), then AI models (same product, different scenes)
             const allImgResults: { model: string; imageUrl: string | null; imageModel?: string }[] = [];
             if (photoroomUrl) {
               allImgResults.push({ model: "photoroom", imageUrl: photoroomUrl, imageModel: "Photoroom (Real Product)" });
@@ -1114,15 +1155,20 @@ export function StudioPage() {
       if (result.type === "image") {
         const refUrl = result.refImageUrl || "";
         if (refUrl) {
-          // Ref image: use image-start + polling per model (image-via-get doesn't support imageRefUrl)
+          // Ref image: compare = same real product, different scene interpretations
+          // Photoroom = pixel-perfect product + generated background
+          // Other models = AI generates scene while preserving product identity via reference
           const items: any[] = [];
           for (const m of selectedModels) {
             try {
+              // Use provider:"ai" for non-photoroom models to skip Photoroom and use AI img2img
+              const isPhotoroomModel = m === "photoroom" || m === "photon-1";
               const startRes = await serverPost("/generate/image-start", {
-                prompt: result.prompt, model: m, aspectRatio: "1:1", imageRefUrl: refUrl, refSource: "upload",
+                prompt: result.prompt, model: m, aspectRatio: "1:1",
+                imageRefUrl: refUrl, refSource: "upload",
+                provider: isPhotoroomModel ? "" : "ai",
               }, 180_000);
               if (startRes.success && startRes.directResult && startRes.imageUrl) {
-                // FAL direct result (no polling)
                 items.push({ url: startRes.imageUrl, model: m, latencyMs: 0 });
               } else if (startRes.success && startRes.generationId) {
                 let imageUrl: string | null = null;
