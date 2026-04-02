@@ -335,38 +335,25 @@ export function StudioPage() {
           const refUrl = attachedImage?.signedUrl || action.params.imageUrl || "";
           console.log(`[studio] generate-image refUrl=${refUrl ? "YES" : "NO"} (${refUrl.slice(0, 80)}) models=${modelList.join(",")}`);
           if (refUrl) {
-            // Use image-start POST per model: first model → Photoroom (pixel-perfect), others → AI (creative scenes)
+            // Product photo attached → Photoroom multi-scene (pixel-perfect product in different backgrounds)
+            const GENERATE_SCENES = [
+              { prompt, label: "Photoroom" },
+              { prompt: "lifestyle", label: "Lifestyle" },
+              { prompt: "packshot", label: "Packshot" },
+            ];
+            const scenesToUse = GENERATE_SCENES.slice(0, modelList.length);
             const items: any[] = [];
             removeAttachedImage();
-            let photoroomDone = false;
-            for (const m of modelList) {
+            for (const scene of scenesToUse) {
               try {
-                // First model uses Photoroom (real product), subsequent models use AI with product ref
-                const useAiProvider = photoroomDone;
-                photoroomDone = true;
                 const startRes = await serverPost("/generate/image-start", {
-                  prompt, model: m, aspectRatio, imageRefUrl: refUrl, refSource: "upload",
-                  ...(useAiProvider ? { provider: "ai" } : {}),
-                }, 180_000); // 180s timeout: Qwen isolation (~60s) + Flux img2img (~20s)
+                  prompt: scene.prompt, model: "photon-1", aspectRatio, imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000);
                 if (startRes.success && startRes.directResult && startRes.imageUrl) {
-                  // FAL Flux img2img returns result directly (no polling needed)
-                  console.log(`[studio] image-start direct result from ${startRes.provider || "fal"}`);
-                  items.push({ url: startRes.imageUrl, model: m, latencyMs: 0 });
-                } else if (startRes.success && startRes.generationId) {
-                  // Luma fallback — poll for completion
-                  let imageUrl: string | null = null;
-                  for (let poll = 0; poll < 30; poll++) {
-                    await new Promise(r => setTimeout(r, 3000));
-                    const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
-                    if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
-                      imageUrl = statusRes.imageUrl;
-                      break;
-                    }
-                    if (statusRes.state === "failed") break;
-                  }
-                  if (imageUrl) items.push({ url: imageUrl, model: m, latencyMs: 0 });
+                  console.log(`[studio] Photoroom scene OK [${scene.label}]`);
+                  items.push({ url: startRes.imageUrl, model: scene.label, latencyMs: 0 });
                 }
-              } catch (err) { console.warn(`[studio] image-start ${m} failed:`, err); }
+              } catch (err) { console.warn(`[studio] Photoroom scene ${scene.label} failed:`, err); }
             }
             result = { type: "image", prompt, items, refImageUrl: refUrl };
           } else {
@@ -726,6 +713,15 @@ export function StudioPage() {
           const videoFormats = allVisualFormats.filter(p => isVideoFormat(p.format));
 
           // 3a. Generate IMAGES for image formats
+          // PRODUCT PRESENT → Photoroom only (pixel-perfect product, multiple scene variants)
+          // NO PRODUCT → AI generative models (text-to-image)
+          const PHOTOROOM_SCENE_VARIANTS = [
+            { id: "lifestyle", label: "Lifestyle", prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography" },
+            { id: "packshot", label: "Packshot", prompt: "packshot" },
+            { id: "cinematic", label: "Cinématique", prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast, cinematic color grading" },
+            { id: "editorial", label: "Editorial", prompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting" },
+          ];
+
           for (let i = 0; i < Math.min(imageOnlyFormats.length, 4); i++) {
             const copyEntry = (primaryText.copyMap as any)?.[imageOnlyFormats[i].format];
             const basePrompt = copyEntry?.imagePrompt || `${brief}, ${imageOnlyFormats[i].platform} ${imageOnlyFormats[i].format}, professional`;
@@ -737,127 +733,91 @@ export function StudioPage() {
                 ? "1:1"
                 : "16:9";
 
-            // ── PHOTOROOM AUTO: if product has ref images, generate real-product scene first ──
-            let photoroomUrl: string | null = null;
             if (productRefUrls.length > 0) {
+              // ── PRODUCT MODE: Photoroom generates multiple scene variants (pixel-perfect product) ──
               const refUrl = productRefUrls[i % productRefUrls.length];
-              try {
-                console.log(`[studio] Photoroom AUTO [${imageOnlyFormats[i].format}]: preserving real product pixels, ref=${refUrl.slice(0, 100)}`);
-                const prRes = await fetch(`${API_BASE}/generate/image-start`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
-                  body: JSON.stringify({
-                    prompt: enrichedPrompt.slice(0, 500),
-                    imageRefUrl: refUrl,
-                    refSource: "upload",
-                    aspectRatio,
-                    model: "photon-1",
-                    _token: getAuthHeader(),
-                  }),
-                  signal: AbortSignal.timeout(60_000),
-                });
-                const prData = await prRes.json();
-                console.log(`[studio] Photoroom RESPONSE [${imageOnlyFormats[i].format}]:`, JSON.stringify({ success: prData.success, hasImageUrl: !!prData.imageUrl, hasResults: !!prData.results, error: prData.error, provider: prData.provider }).slice(0, 300));
-                if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
-                  photoroomUrl = prData.imageUrl || prData.results[0].result.imageUrl;
-                  console.log(`[studio] Photoroom OK [${imageOnlyFormats[i].format}]: ${(photoroomUrl || "").slice(0, 80)}`);
-                } else {
-                  console.warn(`[studio] Photoroom SKIP [${imageOnlyFormats[i].format}]: no image in response`, prData.error || "");
-                }
-              } catch (e: any) {
-                console.warn(`[studio] Photoroom failed [${imageOnlyFormats[i].format}]:`, e?.message);
-              }
-            }
 
-            // Generate with all selected generative models (in parallel)
-            // If product ref exists: use image-start POST with provider=ai (AI preserves product identity)
-            // If no product ref: use image-via-get (pure text-to-image)
-            const imgResults = await Promise.all(
-              imageModelList.map(async (model) => {
-                try {
-                  if (productRefUrls.length > 0) {
-                    // AI with product reference — same real product, different scene interpretation
-                    const refUrl = productRefUrls[i % productRefUrls.length];
-                    console.log(`[studio] AI+ProductRef [${imageOnlyFormats[i].format}/${model}]: using product ref for scene generation`);
-                    const startRes = await serverPost("/generate/image-start", {
-                      prompt: enrichedPrompt.slice(0, 500),
-                      imageRefUrl: refUrl,
-                      refSource: "upload",
-                      provider: "ai",
-                      aspectRatio,
-                      model,
-                      _token: getAuthHeader(),
-                    }, 180_000);
-                    if (startRes.success && startRes.directResult && startRes.imageUrl) {
-                      return { model, imageUrl: startRes.imageUrl, imageModel: `${model} (Product Ref)` };
+              // Primary scene: use the campaign prompt or visual style
+              const primaryScenePrompt = campaignVisualStyle || enrichedPrompt;
+
+              // Build scene list: primary prompt first, then alternate scenes
+              const scenePrompts = [
+                { prompt: primaryScenePrompt.slice(0, 500), label: "Photoroom" },
+                ...PHOTOROOM_SCENE_VARIANTS
+                  .filter(s => !primaryScenePrompt.toLowerCase().includes(s.id))
+                  .slice(0, 2)
+                  .map(s => ({ prompt: s.prompt, label: `Photoroom (${s.label})` })),
+              ];
+
+              // Generate all Photoroom variants in parallel
+              const prResults = await Promise.all(
+                scenePrompts.map(async (scene) => {
+                  try {
+                    console.log(`[studio] Photoroom [${imageOnlyFormats[i].format}/${scene.label}]: ref=${refUrl.slice(0, 60)}`);
+                    const prRes = await fetch(`${API_BASE}/generate/image-start`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+                      body: JSON.stringify({
+                        prompt: scene.prompt,
+                        imageRefUrl: refUrl,
+                        refSource: "upload",
+                        aspectRatio,
+                        model: "photon-1",
+                        _token: getAuthHeader(),
+                      }),
+                      signal: AbortSignal.timeout(60_000),
+                    });
+                    const prData = await prRes.json();
+                    if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
+                      const url = prData.imageUrl || prData.results[0].result.imageUrl;
+                      console.log(`[studio] Photoroom OK [${scene.label}]: ${url.slice(0, 60)}`);
+                      return { model: "photoroom", imageUrl: url, imageModel: scene.label };
                     }
-                    if (startRes.success && startRes.generationId) {
-                      // Poll for result
-                      for (let poll = 0; poll < 30; poll++) {
-                        await new Promise(r => setTimeout(r, 3000));
-                        const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
-                        if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
-                          return { model, imageUrl: statusRes.imageUrl, imageModel: `${model} (Product Ref)` };
-                        }
-                        if (statusRes.state === "failed") break;
-                      }
-                    }
-                    return { model, imageUrl: null };
-                  } else {
-                    // No product ref — pure text-to-image
-                    const res = await serverGet(
-                      `/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`
-                    );
-                    return {
-                      model,
-                      imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null,
-                    };
+                    return { model: "photoroom", imageUrl: null, imageModel: scene.label };
+                  } catch (e: any) {
+                    console.warn(`[studio] Photoroom [${scene.label}] failed:`, e?.message);
+                    return { model: "photoroom", imageUrl: null, imageModel: scene.label };
                   }
-                } catch { return { model, imageUrl: null }; }
-              })
-            );
+                })
+              );
 
-            // Combine: Photoroom first (real product), then AI models (same product, different scenes)
-            const allImgResults: { model: string; imageUrl: string | null; imageModel?: string }[] = [];
-            if (photoroomUrl) {
-              allImgResults.push({ model: "photoroom", imageUrl: photoroomUrl, imageModel: "Photoroom (Real Product)" });
-            }
-            allImgResults.push(...imgResults);
-
-            // Set primary image — prefer Photoroom (real product) over generative
-            const primaryImg = allImgResults.find(r => r.imageUrl);
-            if (primaryImg) {
-              imageOnlyFormats[i].imageUrl = primaryImg.imageUrl!;
-            }
-
-            // Add image variants to text variants
-            const successfulImgs = allImgResults.filter(r => r.imageUrl);
-            if (successfulImgs.length > 1 && imageOnlyFormats[i].variants) {
-              for (const imgR of successfulImgs) {
-                if (!imgR.imageUrl) continue;
-                const existingV = imageOnlyFormats[i].variants!.find(v => !v.imageUrl);
-                if (existingV) {
-                  existingV.imageUrl = imgR.imageUrl;
-                  existingV.imageModel = imgR.imageModel || imgR.model;
-                } else {
-                  imageOnlyFormats[i].variants!.push({
-                    model: imgR.model,
-                    text: imageOnlyFormats[i].text,
-                    imageUrl: imgR.imageUrl,
-                    imageModel: imgR.imageModel || imgR.model,
-                  });
-                }
+              const successfulPr = prResults.filter(r => r.imageUrl);
+              if (successfulPr.length > 0) {
+                imageOnlyFormats[i].imageUrl = successfulPr[0].imageUrl!;
               }
-            } else if (successfulImgs.length > 1) {
-              imageOnlyFormats[i].variants = successfulImgs
-                .filter(r => r.imageUrl)
-                .map(r => ({
+              // Add scene variants
+              if (successfulPr.length > 1) {
+                imageOnlyFormats[i].variants = successfulPr.map(r => ({
                   model: r.model,
                   text: imageOnlyFormats[i].text,
                   imageUrl: r.imageUrl!,
-                  imageModel: r.imageModel || r.model,
+                  imageModel: r.imageModel,
                 }));
-              imageOnlyFormats[i].selectedVariant = 0;
+                imageOnlyFormats[i].selectedVariant = 0;
+              }
+            } else {
+              // ── NO PRODUCT: AI generative models (text-to-image) ──
+              const imgResults = await Promise.all(
+                imageModelList.map(model =>
+                  serverGet(
+                    `/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`
+                  ).then(res => ({
+                    model,
+                    imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null,
+                  })).catch(() => ({ model, imageUrl: null }))
+                )
+              );
+
+              const primaryImg = imgResults.find(r => r.imageUrl);
+              if (primaryImg) {
+                imageOnlyFormats[i].imageUrl = primaryImg.imageUrl!;
+              }
+              if (imgResults.filter(r => r.imageUrl).length > 1) {
+                imageOnlyFormats[i].variants = imgResults
+                  .filter(r => r.imageUrl)
+                  .map(r => ({ model: r.model, text: imageOnlyFormats[i].text, imageUrl: r.imageUrl!, imageModel: r.model }));
+                imageOnlyFormats[i].selectedVariant = 0;
+              }
             }
           }
 
@@ -1155,35 +1115,31 @@ export function StudioPage() {
       if (result.type === "image") {
         const refUrl = result.refImageUrl || "";
         if (refUrl) {
-          // Ref image: compare = same real product, different scene interpretations
-          // Photoroom = pixel-perfect product + generated background
-          // Other models = AI generates scene while preserving product identity via reference
+          // Product ref → Photoroom multi-scene compare (pixel-perfect product, different backgrounds)
+          const COMPARE_SCENES = [
+            { prompt: result.prompt, label: "Original" },
+            { prompt: "lifestyle", label: "Lifestyle" },
+            { prompt: "packshot", label: "Packshot" },
+            { prompt: "cinematic", label: "Cinématique" },
+            { prompt: "editorial", label: "Editorial" },
+          ];
+          // Use as many scenes as selectedModels.length
+          const scenesToGenerate = COMPARE_SCENES.slice(0, selectedModels.length);
           const items: any[] = [];
-          for (const m of selectedModels) {
+          const prPromises = scenesToGenerate.map(async (scene) => {
             try {
-              // Use provider:"ai" for non-photoroom models to skip Photoroom and use AI img2img
-              const isPhotoroomModel = m === "photoroom" || m === "photon-1";
               const startRes = await serverPost("/generate/image-start", {
-                prompt: result.prompt, model: m, aspectRatio: "1:1",
+                prompt: scene.prompt, model: "photon-1", aspectRatio: "1:1",
                 imageRefUrl: refUrl, refSource: "upload",
-                provider: isPhotoroomModel ? "" : "ai",
-              }, 180_000);
+              }, 60_000);
               if (startRes.success && startRes.directResult && startRes.imageUrl) {
-                items.push({ url: startRes.imageUrl, model: m, latencyMs: 0 });
-              } else if (startRes.success && startRes.generationId) {
-                let imageUrl: string | null = null;
-                for (let poll = 0; poll < 30; poll++) {
-                  await new Promise(r => setTimeout(r, 3000));
-                  const statusRes = await serverGet(`/generate/image-status?id=${startRes.generationId}`);
-                  if (statusRes.success && statusRes.state === "completed" && statusRes.imageUrl) {
-                    imageUrl = statusRes.imageUrl; break;
-                  }
-                  if (statusRes.state === "failed") break;
-                }
-                if (imageUrl) items.push({ url: imageUrl, model: m, latencyMs: 0 });
+                return { url: startRes.imageUrl, model: scene.label, latencyMs: 0 };
               }
-            } catch (err) { console.warn(`[studio] compare image-start ${m} failed:`, err); }
-          }
+              return null;
+            } catch (err) { console.warn(`[studio] compare Photoroom ${scene.label} failed:`, err); return null; }
+          });
+          const prResults = await Promise.all(prPromises);
+          for (const r of prResults) { if (r) items.push(r); }
           compareResult = { type: "image", prompt: result.prompt, items, refImageUrl: refUrl };
         } else {
           // No ref image: use batch endpoint
