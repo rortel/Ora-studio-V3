@@ -15289,6 +15289,41 @@ app.post("/library/items", async (c) => {
   }
 });
 
+// ── AI Image Classification helper ──
+async function classifyImage(imageUrl: string): Promise<{ category: string; tags: string[]; description: string; dominant_colors: string[] } | null> {
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openaiKey) { console.log("[classifyImage] No OPENAI_API_KEY, skipping"); return null; }
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You are an image classifier for a business content library. Analyze this image and return JSON with: category (one of: product, ambiance, portrait, logo, packshot, lifestyle, food, interior, exterior, event, graphic, other), tags (array of 3-8 descriptive tags in the image's language context), description (one sentence), dominant_colors (array of 3-5 hex codes). Return ONLY valid JSON." },
+          { role: "user", content: [{ type: "image_url", image_url: { url: imageUrl, detail: "low" } }] },
+        ],
+        max_tokens: 300,
+      }),
+    });
+    if (!res.ok) { const b = await res.text(); console.log(`[classifyImage] OpenAI ${res.status}: ${b.slice(0, 200)}`); return null; }
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content || "";
+    // Strip markdown code fences if present
+    const jsonStr = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    return {
+      category: parsed.category || "other",
+      tags: Array.isArray(parsed.tags) ? parsed.tags.slice(0, 8) : [],
+      description: parsed.description || "",
+      dominant_colors: Array.isArray(parsed.dominant_colors) ? parsed.dominant_colors.slice(0, 5) : [],
+    };
+  } catch (err) {
+    console.log(`[classifyImage] error: ${err}`);
+    return null;
+  }
+}
+
 // POST /library/upload — direct file upload (image, video, audio) to library
 // Accepts base64-encoded file data, stores in Supabase Storage, creates library item
 app.post("/library/upload", async (c) => {
@@ -15369,6 +15404,24 @@ app.post("/library/upload", async (c) => {
 
     await kv.set(`lib:${user.id}:${itemId}`, libItem);
     console.log(`[library/upload] Uploaded ${assetType} "${cleanName}" (${(bytes.byteLength / 1024).toFixed(0)}KB) for user ${user.id}`);
+
+    // Fire-and-forget AI classification for images
+    if (assetType === "image" && signedUrl) {
+      classifyImage(signedUrl).then(async (classification) => {
+        if (classification) {
+          try {
+            const existing = await kv.get(`lib:${user.id}:${itemId}`);
+            if (existing) {
+              (existing as any).classification = classification;
+              (existing as any).updatedAt = new Date().toISOString();
+              await kv.set(`lib:${user.id}:${itemId}`, existing);
+              console.log(`[library/upload] Classification added for ${itemId}: ${classification.category} [${classification.tags.join(", ")}]`);
+            }
+          } catch (e) { console.log(`[library/upload] Failed to save classification: ${e}`); }
+        }
+      }).catch((e) => console.log(`[library/upload] classifyImage fire-and-forget error: ${e}`));
+    }
+
     return c.json({ success: true, item: libItem });
   } catch (err) {
     console.log(`[library/upload] error: ${err}`);

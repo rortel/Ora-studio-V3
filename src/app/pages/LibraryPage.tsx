@@ -40,6 +40,12 @@ interface LibraryItem {
   savedAt: string;
   updatedAt: string;
   customName?: string;
+  classification?: {
+    category: string;
+    tags: string[];
+    description: string;
+    dominant_colors: string[];
+  };
 }
 
 type SortMode = "date-desc" | "date-asc" | "name-asc" | "name-desc" | "modified-desc";
@@ -161,6 +167,7 @@ function LibraryPageContent() {
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("date-desc");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -551,11 +558,15 @@ function LibraryPageContent() {
       if (activeFolderId === "__unfiled__" && item.folderId) return false;
       if (activeFolderId !== null && activeFolderId !== "__unfiled__" && item.folderId !== activeFolderId) return false;
       if (typeFilter !== "all" && item.type !== typeFilter) return false;
+      if (categoryFilter !== "all" && (item.classification?.category || "") !== categoryFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         const name = getItemName(item).toLowerCase();
         const model = (item.model?.name || "").toLowerCase();
-        if (!name.includes(q) && !model.includes(q)) return false;
+        const classifTags = (item.classification?.tags || []).join(" ").toLowerCase();
+        const classifDesc = (item.classification?.description || "").toLowerCase();
+        const classifCat = (item.classification?.category || "").toLowerCase();
+        if (!name.includes(q) && !model.includes(q) && !classifTags.includes(q) && !classifDesc.includes(q) && !classifCat.includes(q)) return false;
       }
       return true;
     }),
@@ -1138,6 +1149,46 @@ function LibraryPageContent() {
                 })}
               </div>
 
+              {/* AI Category filter */}
+              {(() => {
+                const categories = Array.from(new Set(contentItems.map(i => i.classification?.category).filter(Boolean))) as string[];
+                if (categories.length === 0) return null;
+                return (
+                  <>
+                    <div className="w-px h-5 bg-border" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => setCategoryFilter("all")}
+                        className="px-2.5 py-1 rounded-full cursor-pointer transition-all"
+                        style={{
+                          fontSize: "10px", fontWeight: categoryFilter === "all" ? 700 : 500,
+                          background: categoryFilter === "all" ? "rgba(124, 58, 237, 0.12)" : "var(--secondary)",
+                          color: categoryFilter === "all" ? "#7C3AED" : "var(--text-secondary)",
+                          border: categoryFilter === "all" ? "1px solid rgba(124, 58, 237, 0.2)" : "1px solid var(--border)",
+                        }}
+                      >
+                        AI: All
+                      </button>
+                      {categories.map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setCategoryFilter(cat)}
+                          className="px-2.5 py-1 rounded-full cursor-pointer transition-all capitalize"
+                          style={{
+                            fontSize: "10px", fontWeight: categoryFilter === cat ? 700 : 500,
+                            background: categoryFilter === cat ? "rgba(124, 58, 237, 0.12)" : "var(--secondary)",
+                            color: categoryFilter === cat ? "#7C3AED" : "var(--text-secondary)",
+                            border: categoryFilter === cat ? "1px solid rgba(124, 58, 237, 0.2)" : "1px solid var(--border)",
+                          }}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+
               <div className="w-px h-5 bg-border" />
 
               {/* Sort */}
@@ -1314,6 +1365,18 @@ function LibraryPageContent() {
                         <p className="truncate mb-1" style={{ fontSize: "13px", fontWeight: 700, color: "var(--foreground)" }}>
                           {getItemName(item)}
                         </p>
+                        {item.classification && (
+                          <div className="flex flex-wrap gap-1 mb-1.5">
+                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 58, 237, 0.12)", color: "#7C3AED", textTransform: "capitalize" }}>
+                              {item.classification.category}
+                            </span>
+                            {item.classification.tags.slice(0, 4).map((tag) => (
+                              <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 58, 237, 0.06)", color: "#7C3AED" }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)" }}>{item.model?.name || "AI"}</span>
@@ -1382,6 +1445,18 @@ function LibraryPageContent() {
                             <div className="flex items-center gap-1 mt-0.5">
                               <FolderOpen size={9} className="text-muted-foreground" />
                               <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{folder.name}</span>
+                            </div>
+                          )}
+                          {item.classification && (
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 58, 237, 0.12)", color: "#7C3AED", textTransform: "capitalize" }}>
+                                {item.classification.category}
+                              </span>
+                              {item.classification.tags.slice(0, 3).map((tag) => (
+                                <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 58, 237, 0.06)", color: "#7C3AED" }}>
+                                  {tag}
+                                </span>
+                              ))}
                             </div>
                           )}
                         </div>
