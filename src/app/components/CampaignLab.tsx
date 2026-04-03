@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router";
+import { LibraryPicker } from "./LibraryPicker";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { getTemplatesForFormat, getTemplateById, registerTemplate } from "./templates";
@@ -342,6 +343,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [scannedProduct, setScannedProduct] = useState<{ name: string; description: string; price?: string; currency?: string; category?: string; features?: string[] } | null>(null);
   const [vault, setVault] = useState<BrandVault | null>(null);
   const [vaultLoading, setVaultLoading] = useState(true);
+
+  // ── Image source mode ──
+  const [imageMode, setImageMode] = useState<"full-ai" | "my-photos" | null>(null);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
 
   // ── Generation state ──
   const [phase, setPhase] = useState<"input" | "generating" | "results">("input");
@@ -1078,7 +1083,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     }));
     setAssets(placeholders);
 
-    const hasRefs = refPhotos.length > 0;
+    const hasRefs = imageMode === "full-ai" ? false : refPhotos.length > 0;
     // Compose enriched brief from all fields
     const enrichedParts: string[] = [];
     if (brief.trim()) enrichedParts.push(brief.trim());
@@ -1133,8 +1138,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         console.log(`[CampaignLab] ${refSignedUrls.length} uploaded ref URLs obtained`);
       }
 
-      // AUTO: If no uploaded refs but a product is selected, use its catalog images
-      if (refSignedUrls.length === 0 && selectedProduct) {
+      // AUTO: If no uploaded refs but a product is selected, use its catalog images (skip in full-ai mode)
+      if (imageMode !== "full-ai" && refSignedUrls.length === 0 && selectedProduct) {
         // Try images[] (Supabase Storage with signedUrl)
         if (selectedProduct.images?.length > 0) {
           for (const img of selectedProduct.images) {
@@ -1156,8 +1161,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         }
       }
 
-      // LAST RESORT: search web for product images by name
-      if (refSignedUrls.length === 0 && selectedProduct?.name) {
+      // LAST RESORT: search web for product images by name (skip in full-ai mode)
+      if (imageMode !== "full-ai" && refSignedUrls.length === 0 && selectedProduct?.name) {
         try {
           console.log(`[CampaignLab] 🔍 Searching web images for "${selectedProduct.name}"...`);
           const findRes = await serverPost("/products/find-images", {
@@ -2362,7 +2367,114 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
             <motion.div key="input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="max-w-3xl mx-auto px-6 py-8 space-y-6">
 
-              {/* ═══ SECTION 1: ESSENTIAL — Brief + Formats ═══ */}
+              {/* ═══ IMAGE SOURCE CHOICE ═══ */}
+              {imageMode === null && (
+                <div style={{ marginBottom: 32 }}>
+                  <h3 style={{ fontSize: "18px", fontWeight: 600, color: "var(--text-primary)", marginBottom: 8 }}>
+                    {t("studio.imageChoiceTitle")}
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: 20 }}>
+                    {t("studio.imageChoiceSub")}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Full AI card */}
+                    <button onClick={() => setImageMode("full-ai")} className="text-left p-6 rounded-xl border transition-all hover:shadow-md" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)" }}>
+                        <Sparkles size={22} color="#fff" />
+                      </div>
+                      <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>{t("studio.fullAi")}</div>
+                      <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                        {t("studio.fullAiDesc")}
+                      </p>
+                    </button>
+                    {/* My Photos card */}
+                    <button onClick={() => setImageMode("my-photos")} className="text-left p-6 rounded-xl border transition-all hover:shadow-md" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}>
+                        <ImageIcon size={22} color="#fff" />
+                      </div>
+                      <div style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>{t("studio.myPhotos")}</div>
+                      <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                        {t("studio.myPhotosDesc")}
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ IMAGE MODE INDICATOR ═══ */}
+              {imageMode !== null && (
+                <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-xl" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: imageMode === "full-ai" ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "linear-gradient(135deg, #10B981, #06B6D4)" }}>
+                    {imageMode === "full-ai" ? <Sparkles size={14} color="#fff" /> : <ImageIcon size={14} color="#fff" />}
+                  </div>
+                  <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)", flex: 1 }}>
+                    {imageMode === "full-ai" ? t("studio.fullAiTag") : t("studio.myPhotosTag")}
+                  </span>
+                  <button onClick={() => { setImageMode(null); }} style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 500 }}>{t("studio.change")}</button>
+                </div>
+              )}
+
+              {/* ═══ MY PHOTOS: Prominent photo upload section ═══ */}
+              {imageMode === "my-photos" && (
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+                    {t("studio.selectPhotos")}
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: 16 }}>
+                    {t("studio.selectPhotosSub")}
+                  </p>
+                  <div
+                    className="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
+                    style={{ borderColor: "rgba(26,23,20,0.08)", background: "rgba(255,255,255,0.02)" }}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "rgba(17,17,17,0.4)"; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = "rgba(26,23,20,0.08)"; }}
+                    onDrop={e => { e.currentTarget.style.borderColor = "rgba(26,23,20,0.08)"; handlePhotoDrop(e); }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {refPhotos.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-3">
+                        <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}>
+                          <Camera size={24} color="#fff" />
+                        </div>
+                        <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-secondary)" }}>Drop reference photos or click to upload</span>
+                        <span style={{ fontSize: "12px", color: "var(--text-secondary)", opacity: 0.6 }}>JPEG, PNG, WebP — up to 10 photos</span>
+                      </div>
+                    ) : (
+                      <div className="p-4 flex flex-wrap gap-3">
+                        {refPhotos.map((photo, i) => (
+                          <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden group">
+                            <img src={photo.preview} alt="" className="w-full h-full object-cover" />
+                            <button
+                              onClick={e => { e.stopPropagation(); removePhoto(i); }}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            >
+                              <X size={10} style={{ color: "#fff" }} />
+                            </button>
+                          </div>
+                        ))}
+                        {refPhotos.length < 10 && (
+                          <div className="w-20 h-20 rounded-lg border border-dashed flex items-center justify-center" style={{ borderColor: "rgba(26,23,20,0.12)" }}>
+                            <Upload size={14} style={{ color: "var(--text-secondary)" }} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={(e) => { e.preventDefault(); setShowLibraryPicker(true); }}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer"
+                      style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", fontWeight: 500, color: "var(--text-primary)" }}
+                    >
+                      <Package size={14} />
+                      {t("studio.pickFromLibrary")}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ═══ SECTION 1: ESSENTIAL — Brief + Formats (hidden until imageMode is chosen) ═══ */}
+              {imageMode !== null && <>
 
               {/* ── Narrative Territories ── */}
               {territories.length > 0 && (
@@ -2558,7 +2670,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 )}
               </AnimatePresence>
 
-              {/* Reference Photos — compact inline */}
+              {/* Reference Photos — compact inline (hidden in full-ai and my-photos modes since they have their own UI) */}
+              {imageMode !== "full-ai" && imageMode !== "my-photos" && (
               <div>
                 <div
                   className="rounded-xl border-2 border-dashed transition-colors cursor-pointer"
@@ -2594,8 +2707,11 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     </div>
                   )}
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
               </div>
+              )}
+
+              {/* Hidden file input — always rendered so fileInputRef works in all modes */}
+              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
 
               {/* ── Product / Service URL with auto-scan ── */}
               <div>
@@ -3237,6 +3353,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </div>
                 ))}
               </div>
+
+              </>}
             </motion.div>
           )}
 
@@ -4338,6 +4456,31 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           }}
         />
       )}
+
+      {/* Library Picker modal */}
+      <LibraryPicker
+        open={showLibraryPicker}
+        onClose={() => setShowLibraryPicker(false)}
+        onSelect={(urls) => {
+          // Convert URLs to ref photo entries (as blobs fetched from URLs)
+          Promise.all(
+            urls.map(async (url) => {
+              try {
+                const res = await fetch(url);
+                const blob = await res.blob();
+                const file = new File([blob], `library-${Date.now()}.jpg`, { type: blob.type || "image/jpeg" });
+                return { file, preview: url };
+              } catch {
+                return null;
+              }
+            })
+          ).then((results) => {
+            const valid = results.filter(Boolean) as { file: File; preview: string }[];
+            setRefPhotos(prev => [...prev, ...valid].slice(0, 10));
+          });
+        }}
+        maxSelect={10 - refPhotos.length}
+      />
 
     </div>
   );
