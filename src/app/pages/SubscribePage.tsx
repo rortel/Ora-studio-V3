@@ -31,12 +31,16 @@ export function SubscribePage() {
   useEffect(() => {
     if (searchParams.get("success") === "true") {
       const plan = searchParams.get("plan") || "";
-      setSuccessMessage(
-        plan === "studio"
-          ? t("subscribe.successBusiness")
-          : t("subscribe.successPro")
-      );
-      // Refresh profile to get updated plan/credits
+      const pack = searchParams.get("pack") || "";
+      if (pack) {
+        setSuccessMessage(t("subscribe.successPack"));
+      } else if (plan === "business") {
+        setSuccessMessage(t("subscribe.successBusiness"));
+      } else if (plan === "pro") {
+        setSuccessMessage(t("subscribe.successPro"));
+      } else {
+        setSuccessMessage(t("subscribe.successStarter"));
+      }
       refreshProfile();
     }
     if (searchParams.get("canceled") === "true") {
@@ -46,29 +50,29 @@ export function SubscribePage() {
 
   const plans = [
     {
-      id: "free" as const,
-      serverPlan: "free",
-      name: t("subscribe.freeName"),
-      price: "0",
-      priceLabel: t("subscribe.freePrice"),
-      period: "",
-      credits: t("subscribe.freeCredits"),
-      description: t("subscribe.freeDesc"),
+      id: "starter" as const,
+      serverPlan: "starter",
+      name: t("subscribe.starterName"),
+      price: t("subscribe.starterPrice"),
+      priceLabel: t("subscribe.starterPrice"),
+      period: t("subscribe.starterPeriod"),
+      credits: t("subscribe.starterCredits"),
+      description: t("subscribe.starterDesc"),
       features: [
-        t("subscribe.freeF1"),
-        t("subscribe.freeF2"),
-        t("subscribe.freeF3"),
-        t("subscribe.freeF4"),
-        t("subscribe.freeF5"),
+        t("subscribe.starterF1"),
+        t("subscribe.starterF2"),
+        t("subscribe.starterF3"),
+        t("subscribe.starterF4"),
+        t("subscribe.starterF5"),
       ],
       icon: Zap,
       highlighted: false,
-      cta: t("subscribe.freeCta"),
-      requiresStripe: false,
+      cta: t("subscribe.starterCta"),
+      requiresStripe: true,
     },
     {
-      id: "generate" as const,
-      serverPlan: "generate",
+      id: "pro" as const,
+      serverPlan: "pro",
       name: t("subscribe.proName"),
       price: t("subscribe.proPrice"),
       priceLabel: t("subscribe.proPrice"),
@@ -89,8 +93,8 @@ export function SubscribePage() {
       requiresStripe: true,
     },
     {
-      id: "studio" as const,
-      serverPlan: "studio",
+      id: "business" as const,
+      serverPlan: "business",
       name: t("subscribe.businessName"),
       price: t("subscribe.businessPrice"),
       priceLabel: t("subscribe.businessPrice"),
@@ -104,7 +108,6 @@ export function SubscribePage() {
         t("subscribe.businessF4"),
         t("subscribe.businessF5"),
         t("subscribe.businessF6"),
-        t("subscribe.businessF7"),
       ],
       icon: Crown,
       highlighted: false,
@@ -290,7 +293,7 @@ export function SubscribePage() {
         )}
 
         {/* Current plan indicator */}
-        {currentPlan !== "free" && (
+        {currentPlan && currentPlan !== "free" && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -304,7 +307,7 @@ export function SubscribePage() {
               <CreditCard size={18} style={{ color: "var(--accent)" }} />
               <div>
                 <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
-                  {t("subscribe.currentPlan")}: {currentPlan === "pro" ? "Pro" : "Business"}
+                  {t("subscribe.currentPlan")}: {currentPlan === "starter" ? "Starter" : currentPlan === "pro" ? "Pro" : "Business"}
                 </p>
                 <p style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
                   {remainingCredits.toLocaleString()} {t("subscribe.creditsRemaining")}
@@ -328,10 +331,7 @@ export function SubscribePage() {
             const Icon = plan.icon;
             const isSelected = selectedPlan === plan.id;
             const isLoading = isSelected && loading;
-            const isCurrentPlan =
-              (currentPlan === "pro" && plan.id === "generate") ||
-              (currentPlan === "business" && plan.id === "studio") ||
-              (currentPlan === "free" && plan.id === "free");
+            const isCurrentPlan = currentPlan === plan.id;
 
             return (
               <motion.div
