@@ -13,7 +13,7 @@ export function Pricing() {
       period: "/mo",
       desc: t("pricing.starterDesc"),
       credits: t("pricing.starterCredits"),
-      features: [t("pricing.starterF1"), t("pricing.starterF2"), t("pricing.starterF3")],
+      features: [t("pricing.starterF1"), t("pricing.starterF2"), t("pricing.starterF3"), t("pricing.starterF4")],
       cta: t("pricing.starterCta"),
       highlighted: false,
     },

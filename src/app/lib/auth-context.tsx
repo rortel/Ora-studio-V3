@@ -7,23 +7,20 @@ import { supabase, API_BASE, publicAnonKey } from "./supabase";
    Frontend displays: free | pro | business
    ═══════════════════════════════════ */
 
-export type PlanTier = "free" | "pro" | "business";
+export type PlanTier = "free" | "starter" | "pro" | "business";
 export type UserRole = "user" | "admin";
 
 /** Map server plan names to frontend plan names */
 function mapServerPlan(serverPlan: string): PlanTier {
-  if (serverPlan === "generate") return "pro";
-  if (serverPlan === "studio") return "business";
-  if (serverPlan === "pro") return "pro";
-  if (serverPlan === "business") return "business";
+  if (serverPlan === "starter") return "starter";
+  if (serverPlan === "generate" || serverPlan === "pro") return "pro";
+  if (serverPlan === "studio" || serverPlan === "business") return "business";
   return "free";
 }
 
 /** Map frontend plan names back to server plan names (for API calls) */
 export function mapToServerPlan(plan: PlanTier): string {
-  if (plan === "pro") return "generate";
-  if (plan === "business") return "studio";
-  return "free";
+  return plan; // Plans now use same names on server and client
 }
 
 export interface UserProfile {
@@ -44,10 +41,12 @@ export interface UserProfile {
    ACCESS CONTROL HELPERS
    ═══════════════════════════════════ */
 
-/** What each plan tier can access */
+/** What each plan tier can access — all paid plans get all features,
+ *  differentiation is on quotas (contents, credits, models, products) */
 const PLAN_ACCESS = {
-  free:     { hub: true, vault: true, analytics: false, campaignLab: false },
-  pro:      { hub: true, vault: true, analytics: false, campaignLab: false },
+  free:     { hub: true, vault: false, analytics: false, campaignLab: false },
+  starter:  { hub: true, vault: true,  analytics: true,  campaignLab: true },
+  pro:      { hub: true, vault: true,  analytics: true,  campaignLab: true },
   business: { hub: true, vault: true,  analytics: true,  campaignLab: true },
 } as const;
 
@@ -61,6 +60,7 @@ export function canAccess(plan: PlanTier, feature: Feature, isAdmin: boolean): b
 /** Get the minimum plan required for a feature */
 export function requiredPlan(feature: Feature): PlanTier {
   if (PLAN_ACCESS.free[feature]) return "free";
+  if (PLAN_ACCESS.starter[feature]) return "starter";
   if (PLAN_ACCESS.pro[feature]) return "pro";
   return "business";
 }
