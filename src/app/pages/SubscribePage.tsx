@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { PulseIcon } from "../components/PulseMotif";
 import { useAuth } from "../lib/auth-context";
-import { API_BASE, publicAnonKey } from "../lib/supabase";
+import { apiUrl } from "../lib/supabase";
 import { useI18n } from "../lib/i18n";
 
 export function SubscribePage() {
@@ -129,15 +129,13 @@ export function SubscribePage() {
     setError("");
 
     try {
-      // CORS-safe headers: text/plain avoids preflight, _token in body for auth
-      const headers: Record<string, string> = {
-        "Content-Type": "text/plain",
-        Authorization: `Bearer ${publicAnonKey}`,
-      };
+      // CORS-safe: text/plain + no Authorization header = no preflight
+      // apikey goes in URL query string, user token in body as _token
+      const headers = { "Content-Type": "text/plain" };
 
       if (requiresStripe) {
         // Paid plan → Create Stripe Checkout Session
-        const res = await fetch(`${API_BASE}/stripe/create-checkout-session`, {
+        const res = await fetch(apiUrl("/stripe/create-checkout-session"), {
           method: "POST",
           headers,
           body: JSON.stringify({ _token: accessToken, plan: planId }),
@@ -158,7 +156,7 @@ export function SubscribePage() {
         }
       } else {
         // Free plan → Direct activation
-        const res = await fetch(`${API_BASE}/auth/choose-plan`, {
+        const res = await fetch(apiUrl("/auth/choose-plan"), {
           method: "POST",
           headers,
           body: JSON.stringify({ _token: accessToken, plan: planId }),
@@ -187,14 +185,9 @@ export function SubscribePage() {
     setLoading(true);
     setError("");
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "text/plain",
-        Authorization: `Bearer ${publicAnonKey}`,
-      };
-
-      const res = await fetch(`${API_BASE}/stripe/portal`, {
+      const res = await fetch(apiUrl("/stripe/portal"), {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({ _token: accessToken }),
       });
       const data = await res.json();
