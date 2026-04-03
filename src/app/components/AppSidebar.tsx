@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Home, FolderOpen, Calendar, Palette,
-  User, LogOut, Shield, Zap,
+  User, LogOut, Shield, Zap, CreditCard,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
@@ -228,6 +228,16 @@ export function AppSidebar() {
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   <User size={14} /> {t("sidebar.profile")}
+                </Link>
+                <Link
+                  to="/subscribe"
+                  onClick={() => setAvatarOpen(false)}
+                  className="flex items-center gap-2.5 px-4 py-2.5 transition-colors"
+                  style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-primary)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <CreditCard size={14} /> {t("sidebar.subscription")}
                 </Link>
                 {profile?.role === "admin" && (
                   <Link

@@ -3,6 +3,7 @@ import { Check, Minus, ArrowRight, Zap } from "lucide-react";
 import { Link } from "react-router";
 import { FAQ } from "../components/FAQ";
 import { useI18n } from "../lib/i18n";
+import { useAuth } from "../lib/auth-context";
 
 function FeatureCell({ value }: { value: boolean | string }) {
   if (typeof value === "boolean") {
@@ -21,6 +22,8 @@ function FeatureCell({ value }: { value: boolean | string }) {
 
 export function PricingPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  const ctaHref = user ? "/subscribe" : "/login?mode=signup";
 
   const plans = [
     {
@@ -37,7 +40,7 @@ export function PricingPage() {
         t("pricingPage.starterF5"),
       ],
       cta: t("pricingPage.starterCta"),
-      ctaHref: "/login?mode=signup",
+      ctaHref,
       highlighted: false,
     },
     {
@@ -55,7 +58,7 @@ export function PricingPage() {
         t("pricingPage.proF6"),
       ],
       cta: t("pricingPage.proCta"),
-      ctaHref: "/login?mode=signup",
+      ctaHref,
       highlighted: true,
     },
     {
@@ -73,7 +76,7 @@ export function PricingPage() {
         t("pricingPage.businessF6"),
       ],
       cta: t("pricingPage.businessCta"),
-      ctaHref: "/login?mode=signup",
+      ctaHref,
       highlighted: false,
     },
   ];
