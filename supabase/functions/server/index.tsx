@@ -283,11 +283,18 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 }
 
 // ── Credit Helpers ───────────────────────────────────────────
-// Contents per month: Starter=15, Pro=60, Business=unlimited (use -1 as sentinel)
-const PLAN_CONTENTS: Record<string, number> = { free: 5, starter: 15, pro: 60, business: -1 };
-// Legacy credit map (kept for backward compat)
-const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 15, pro: 60, business: 99999, generate: 2000, studio: 7000 };
-// Credit pack sizes
+// ── Plan Quotas ─────────────────────────────────────────────
+// Contents/month = publications (Campaign Lab / Calendar diffusion)
+const PLAN_CONTENTS: Record<string, number> = { free: 0, starter: 15, pro: 60, business: 200 };
+// AI Credits = personal generation (Hub: text, image, video, audio)
+const PLAN_CREDITS: Record<string, number> = { free: 10, starter: 100, pro: 500, business: 2000 };
+// AI Models accessible per plan
+const PLAN_MODELS: Record<string, number> = { free: 3, starter: 10, pro: 25, business: 99 };
+// Products/services per plan
+const PLAN_PRODUCTS: Record<string, number> = { free: 1, starter: 1, pro: 5, business: 20 };
+// Team members per plan
+const PLAN_TEAM: Record<string, number> = { free: 1, starter: 1, pro: 3, business: 10 };
+// Credit pack sizes (AI generation + publishing)
 const CREDIT_PACK_CONTENTS: Record<string, number> = { pack_s: 10, pack_m: 25, pack_l: 60 };
 
 // ── Legacy flat costs (kept for backward compat in edge cases) ──
