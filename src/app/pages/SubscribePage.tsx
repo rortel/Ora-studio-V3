@@ -129,18 +129,18 @@ export function SubscribePage() {
     setError("");
 
     try {
+      // CORS-safe headers: text/plain avoids preflight, _token in body for auth
       const headers: Record<string, string> = {
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
         Authorization: `Bearer ${publicAnonKey}`,
       };
-      if (accessToken) headers["X-User-Token"] = accessToken;
 
       if (requiresStripe) {
         // Paid plan → Create Stripe Checkout Session
         const res = await fetch(`${API_BASE}/stripe/create-checkout-session`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ plan: planId }),
+          body: JSON.stringify({ _token: accessToken, plan: planId }),
         });
         const data = await res.json();
 
@@ -161,7 +161,7 @@ export function SubscribePage() {
         const res = await fetch(`${API_BASE}/auth/choose-plan`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ plan: planId }),
+          body: JSON.stringify({ _token: accessToken, plan: planId }),
         });
         const data = await res.json();
 
@@ -188,15 +188,14 @@ export function SubscribePage() {
     setError("");
     try {
       const headers: Record<string, string> = {
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
         Authorization: `Bearer ${publicAnonKey}`,
       };
-      if (accessToken) headers["X-User-Token"] = accessToken;
 
       const res = await fetch(`${API_BASE}/stripe/portal`, {
         method: "POST",
         headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify({ _token: accessToken }),
       });
       const data = await res.json();
 

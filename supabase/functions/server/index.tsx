@@ -2627,11 +2627,13 @@ async function stripeRequest(endpoint: string, body: Record<string, string>, met
 }
 
 // Create Stripe Checkout Session (subscriptions)
+// CORS-safe: accepts Content-Type: text/plain with JSON body (no preflight)
 app.post("/stripe/create-checkout-session", async (c) => {
   try {
     if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
     const user = await requireAuth(c);
-    const { plan } = await c.req.json();
+    const body = c.get?.("parsedBody") || {};
+    const plan = body.plan;
 
     if (!["starter", "pro", "business"].includes(plan)) {
       return c.json({ error: "Invalid plan. Use 'starter', 'pro', or 'business'" }, 400);
@@ -2690,11 +2692,13 @@ app.post("/stripe/create-checkout-session", async (c) => {
 });
 
 // Buy Credit Pack (one-time payment)
+// CORS-safe: accepts Content-Type: text/plain with JSON body (no preflight)
 app.post("/stripe/buy-pack", async (c) => {
   try {
     if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
     const user = await requireAuth(c);
-    const { pack } = await c.req.json();
+    const body = c.get?.("parsedBody") || {};
+    const pack = body.pack;
 
     if (!["pack_s", "pack_m", "pack_l"].includes(pack)) {
       return c.json({ error: "Invalid pack. Use 'pack_s', 'pack_m', or 'pack_l'" }, 400);
