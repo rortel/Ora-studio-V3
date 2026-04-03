@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   CreditCard,
+  Plus,
 } from "lucide-react";
 import { PulseIcon } from "../components/PulseMotif";
 import { useAuth } from "../lib/auth-context";
@@ -178,6 +179,37 @@ export function SubscribePage() {
       console.error("Choose plan exception:", err);
       setError(t("subscribe.errorActivation"));
       setLoading(false);
+    }
+  };
+
+  const [packLoading, setPackLoading] = useState<string | null>(null);
+
+  const handleBuyPack = async (packId: string) => {
+    setPackLoading(packId);
+    setError("");
+    try {
+      const res = await fetch(apiUrl("/stripe/buy-pack"), {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: accessToken, pack: packId }),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        console.error("Pack checkout error:", data.error);
+        setError(data.error);
+        setPackLoading(null);
+        return;
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+        return;
+      }
+    } catch (err) {
+      console.error("Buy pack exception:", err);
+      setError(t("subscribe.errorActivation"));
+      setPackLoading(null);
     }
   };
 
@@ -496,6 +528,97 @@ export function SubscribePage() {
             );
           })}
         </div>
+
+        {/* Credit Packs Section */}
+        {currentPlan && currentPlan !== "free" && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-16"
+          >
+            <div className="text-center mb-8">
+              <h2
+                className="text-foreground mb-2"
+                style={{
+                  fontSize: "clamp(1.2rem, 2.5vw, 1.5rem)",
+                  fontWeight: 500,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                {t("subscribe.creditPacksTitle")}
+              </h2>
+              <p className="text-muted-foreground" style={{ fontSize: "14px" }}>
+                {t("subscribe.creditPacksSubtitle")}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-[720px] mx-auto">
+              {[
+                { id: "pack_s", name: t("subscribe.packSName"), credits: t("subscribe.packSCredits"), price: "9€", rate: t("subscribe.packSRate") },
+                { id: "pack_m", name: t("subscribe.packMName"), credits: t("subscribe.packMCredits"), price: "19€", rate: t("subscribe.packMRate") },
+                { id: "pack_l", name: t("subscribe.packLName"), credits: t("subscribe.packLCredits"), price: "39€", rate: t("subscribe.packLRate") },
+              ].map((pack, i) => (
+                <motion.div
+                  key={pack.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 + i * 0.06 }}
+                  className="border rounded-xl bg-card p-5 flex flex-col items-center text-center"
+                  style={{
+                    borderColor: "var(--border)",
+                    boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center mb-3"
+                    style={{ background: "linear-gradient(135deg, #7C3AED20, #EC489920)" }}
+                  >
+                    <Plus size={18} style={{ color: "#7C3AED" }} />
+                  </div>
+                  <span style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)" }}>
+                    {pack.name}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
+                    {pack.credits}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "24px",
+                      fontWeight: 500,
+                      color: "var(--foreground)",
+                      letterSpacing: "-0.02em",
+                      margin: "8px 0 2px",
+                    }}
+                  >
+                    {pack.price}
+                  </span>
+                  <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                    {pack.rate}
+                  </span>
+                  <button
+                    onClick={() => handleBuyPack(pack.id)}
+                    disabled={!!packLoading}
+                    className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-lg border border-border-strong text-foreground hover:bg-secondary transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ fontSize: "13px", fontWeight: 500 }}
+                  >
+                    {packLoading === pack.id ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        {t("subscribe.redirecting")}
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={13} />
+                        {t("subscribe.buyPack") || "Buy"}
+                      </>
+                    )}
+                  </button>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Footer note */}
         <motion.p
