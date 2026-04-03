@@ -331,6 +331,7 @@ function VaultPageContent() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [voiceLearning, setVoiceLearning] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [imageBankRefreshKey, setImageBankRefreshKey] = useState(0);
 
   // Brand Book tabs
   const [vaultTab, setVaultTab] = useState<"identity" | "audience" | "voice" | "visuals" | "competitors">("identity");
@@ -353,6 +354,20 @@ function VaultPageContent() {
   useEffect(() => { tokenRef.current = accessToken; }, [accessToken]);
 
   const token = () => tokenRef.current || "";
+
+  // Re-fetch vault from server (used after scan to pick up background-saved logo/images)
+  const refetchVault = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl("/vault"), {
+        method: "POST", headers: vaultHeaders(), body: corsBody(tokenRef.current),
+      });
+      const data = await res.json();
+      if (data.success && data.vault) {
+        setVault((prev) => ({ ...prev, ...data.vault }));
+      }
+    } catch (err) { console.error("[Vault] Refetch error:", err); }
+  }, []);
+
   const hasData = !!(
     vault.company_name || vault.colors.length || vault.fonts.length ||
     vault.mission || vault.vision || vault.values || vault.key_messages.length ||
@@ -438,13 +453,28 @@ function VaultPageContent() {
         method: "POST", headers: vaultHeaders(), body: corsBody(token(), { url, deep: deepScan }),
       });
       const data = await res.json();
-      if (data.success && data.dna) {
-        const updated = { ...vault, ...data.dna, source_url: url, updatedAt: new Date().toISOString() };
+      if (data.success && (data.dna || data.vault)) {
+        // Prefer full merged vault from server over just dna
+        const serverData = data.vault || data.dna;
+        const updated = { ...vault, ...serverData, source_url: url, updatedAt: new Date().toISOString() };
         setVault(updated);
         setAnalyzeProgress("Saving to vault...");
         await saveVault(updated);
         setAnalyzeProgress("Saved!");
         setTimeout(() => setAnalyzeProgress(""), 2000);
+
+        // Logo & brand images are downloaded in background on the server.
+        // Re-fetch vault + image bank after a delay to pick them up.
+        setTimeout(() => {
+          console.log("[Vault] Re-fetching to pick up background-saved logo/images...");
+          refetchVault();
+          setImageBankRefreshKey((k) => k + 1);
+        }, 8000);
+        // Second re-fetch for slower image downloads
+        setTimeout(() => {
+          refetchVault();
+          setImageBankRefreshKey((k) => k + 1);
+        }, 20000);
       } else {
         setAnalyzeError(data.error || `Analysis failed (${res.status})`);
       }
@@ -2089,7 +2119,7 @@ function VaultPageContent() {
 
                 {/* Image Bank */}
                 <div className="md:col-span-2">
-                  <ImageBank accessToken={accessToken} />
+                  <ImageBank accessToken={accessToken} refreshKey={imageBankRefreshKey} />
                 </div>
               </div>
             )}
@@ -2276,7 +2306,7 @@ function VaultPageContent() {
         </motion.div>
       )}
 
-      {!loading && !hasData && accessToken && <ImageBank accessToken={accessToken} />}
+      {!loading && !hasData && accessToken && <ImageBank accessToken={accessToken} refreshKey={imageBankRefreshKey} />}
     </div>
   );
 }

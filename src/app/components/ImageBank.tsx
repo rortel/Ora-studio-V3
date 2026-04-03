@@ -79,6 +79,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 interface ImageBankProps {
   accessToken: string | null;
+  refreshKey?: number; // increment to trigger re-fetch
 }
 
 function corsBody(token: string, data?: Record<string, any>): string {
@@ -103,7 +104,7 @@ const C = {
   amber: "#999999",
 };
 
-export function ImageBank({ accessToken }: ImageBankProps) {
+export function ImageBank({ accessToken, refreshKey }: ImageBankProps) {
   const [images, setImages] = useState<BrandImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -153,7 +154,7 @@ export function ImageBank({ accessToken }: ImageBankProps) {
     setLoading(false);
   }, [accessToken, filterTag, filterCategory]);
 
-  useEffect(() => { loadImages(); }, [loadImages]);
+  useEffect(() => { loadImages(); }, [loadImages, refreshKey]);
 
   // ── Upload ──
   const handleUpload = async (files: FileList | File[]) => {
