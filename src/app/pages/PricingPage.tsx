@@ -53,7 +53,6 @@ export function PricingPage() {
         t("pricingPage.proF4"),
         t("pricingPage.proF5"),
         t("pricingPage.proF6"),
-        t("pricingPage.proF7"),
       ],
       cta: t("pricingPage.proCta"),
       ctaHref: "/login?mode=signup",
@@ -73,7 +72,6 @@ export function PricingPage() {
         t("pricingPage.businessF5"),
         t("pricingPage.businessF6"),
         t("pricingPage.businessF7"),
-        t("pricingPage.businessF8"),
       ],
       cta: t("pricingPage.businessCta"),
       ctaHref: "/login?mode=signup",
@@ -82,27 +80,22 @@ export function PricingPage() {
   ];
 
   const creditPacks = [
-    { name: t("pricingPage.packSName"), price: "\u20AC19", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
-    { name: t("pricingPage.packMName"), price: "\u20AC79", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
-    { name: t("pricingPage.packLName"), price: "\u20AC249", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
+    { name: t("pricingPage.packSName"), price: "\u20AC9", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
+    { name: t("pricingPage.packMName"), price: "\u20AC19", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
+    { name: t("pricingPage.packLName"), price: "\u20AC39", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
   ];
 
   const comparisonFeatures: { name: string; starter: boolean | string; pro: boolean | string; business: boolean | string }[] = [
-    { name: t("pricingPage.compCredits"), starter: t("pricingPage.comp200mo"), pro: t("pricingPage.comp1500mo"), business: t("pricingPage.comp5000mo") },
-    { name: t("pricingPage.compAiModels"), starter: t("pricingPage.comp10models"), pro: t("pricingPage.compAll38"), business: t("pricingPage.compAll38") },
-    { name: t("pricingPage.compTextGen"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compImageGen"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compVideoGen"), starter: false, pro: true, business: true },
-    { name: t("pricingPage.compAudioGen"), starter: false, pro: true, business: true },
-    { name: t("pricingPage.compArena"), starter: t("pricingPage.comp2models"), pro: t("pricingPage.compUnlimited"), business: t("pricingPage.compUnlimited") },
-    { name: t("pricingPage.compBrandVault"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compCampaignLab"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compContentCalendar"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compAutoPublish"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compBrandScore"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compQueue"), starter: t("pricingPage.compStandard"), pro: t("pricingPage.compPriority"), business: t("pricingPage.compPriority") },
-    { name: t("pricingPage.compRollover"), starter: t("pricingPage.compUnlimited"), pro: t("pricingPage.compUnlimited"), business: t("pricingPage.compUnlimited") },
-    { name: t("pricingPage.compCreditPacks"), starter: false, pro: true, business: true },
+    { name: t("pricingPage.compContents"), starter: t("pricingPage.comp15mo"), pro: t("pricingPage.comp60mo"), business: t("pricingPage.compUnlimited") },
+    { name: t("pricingPage.compAiModels"), starter: t("pricingPage.compTextImage"), pro: t("pricingPage.compTextImageVideo"), business: t("pricingPage.compAllModels") },
+    { name: t("pricingPage.compBrandVault"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compProducts"), starter: t("pricingPage.compUnlimited"), pro: t("pricingPage.compUnlimited"), business: t("pricingPage.compUnlimited") },
+    { name: t("pricingPage.compLibrary"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compCampaignLab"), starter: false, pro: true, business: true },
+    { name: t("pricingPage.compAutoSchedule"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compCalendar"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compTeam"), starter: t("pricingPage.comp1member"), pro: t("pricingPage.comp3members"), business: t("pricingPage.comp10members") },
+    { name: t("pricingPage.compCreditPacks"), starter: true, pro: true, business: true },
     { name: t("pricingPage.compSupport"), starter: t("pricingPage.compCommunity"), pro: t("pricingPage.compEmail"), business: t("pricingPage.compPriority") },
   ];
 
