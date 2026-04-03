@@ -283,7 +283,12 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 }
 
 // ── Credit Helpers ───────────────────────────────────────────
-const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 500, generate: 2000, studio: 7000 };
+// Contents per month: Starter=15, Pro=60, Business=unlimited (use -1 as sentinel)
+const PLAN_CONTENTS: Record<string, number> = { free: 5, starter: 15, pro: 60, business: -1 };
+// Legacy credit map (kept for backward compat)
+const PLAN_CREDITS: Record<string, number> = { free: 50, starter: 15, pro: 60, business: 99999, generate: 2000, studio: 7000 };
+// Credit pack sizes
+const CREDIT_PACK_CONTENTS: Record<string, number> = { pack_s: 10, pack_m: 25, pack_l: 60 };
 
 // ── Legacy flat costs (kept for backward compat in edge cases) ──
 const CREDIT_COST = { text: 2, image: 5, video: 30, audio: 5, code: 2 } as const;
@@ -2587,10 +2592,18 @@ const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") || "https://ora-studio.app";
 
-// Stripe Price IDs — set these in env or use defaults
+// Stripe Price IDs — set these in Supabase Edge Function secrets
 const STRIPE_PRICES: Record<string, string> = {
-  generate: Deno.env.get("STRIPE_PRICE_GENERATE") || "", // Pro €39/mo
-  studio: Deno.env.get("STRIPE_PRICE_STUDIO") || "",     // Business €149/mo
+  starter: Deno.env.get("STRIPE_PRICE_STARTER") || "",   // Starter €29/mo
+  pro: Deno.env.get("STRIPE_PRICE_PRO") || "",           // Pro €79/mo
+  business: Deno.env.get("STRIPE_PRICE_BUSINESS") || "", // Business €149/mo
+};
+
+// Credit pack price IDs (one-time payments)
+const STRIPE_PACK_PRICES: Record<string, string> = {
+  pack_s: Deno.env.get("STRIPE_PRICE_PACK_S") || "",     // Pack S €9 — 10 contents
+  pack_m: Deno.env.get("STRIPE_PRICE_PACK_M") || "",     // Pack M €19 — 25 contents
+  pack_l: Deno.env.get("STRIPE_PRICE_PACK_L") || "",     // Pack L €39 — 60 contents
 };
 
 async function stripeRequest(endpoint: string, body: Record<string, string>, method = "POST"): Promise<any> {
@@ -2606,15 +2619,15 @@ async function stripeRequest(endpoint: string, body: Record<string, string>, met
   return res.json();
 }
 
-// Create Stripe Checkout Session
+// Create Stripe Checkout Session (subscriptions)
 app.post("/stripe/create-checkout-session", async (c) => {
   try {
     if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
     const user = await requireAuth(c);
     const { plan } = await c.req.json();
 
-    if (!["generate", "studio"].includes(plan)) {
-      return c.json({ error: "Invalid plan. Use 'generate' or 'studio'" }, 400);
+    if (!["starter", "pro", "business"].includes(plan)) {
+      return c.json({ error: "Invalid plan. Use 'starter', 'pro', or 'business'" }, 400);
     }
 
     const priceId = STRIPE_PRICES[plan];
@@ -2665,6 +2678,59 @@ app.post("/stripe/create-checkout-session", async (c) => {
     return c.json({ success: true, url: session.url, sessionId: session.id });
   } catch (err) {
     console.log("[stripe] create-checkout-session error:", err);
+    return c.json({ error: `Stripe error: ${err}` }, 500);
+  }
+});
+
+// Buy Credit Pack (one-time payment)
+app.post("/stripe/buy-pack", async (c) => {
+  try {
+    if (!STRIPE_SECRET_KEY) return c.json({ error: "Stripe not configured" }, 500);
+    const user = await requireAuth(c);
+    const { pack } = await c.req.json();
+
+    if (!["pack_s", "pack_m", "pack_l"].includes(pack)) {
+      return c.json({ error: "Invalid pack. Use 'pack_s', 'pack_m', or 'pack_l'" }, 400);
+    }
+
+    const priceId = STRIPE_PACK_PRICES[pack];
+    if (!priceId) return c.json({ error: `Stripe price not configured for pack: ${pack}` }, 500);
+
+    const profile = await getOrCreateProfile(user.id, user.email);
+    let customerId = profile.stripeCustomerId;
+
+    if (!customerId) {
+      const customer = await stripeRequest("/customers", {
+        email: user.email,
+        "metadata[userId]": user.id,
+        name: profile.name || user.email.split("@")[0],
+      });
+      if (customer.error) return c.json({ error: "Failed to create Stripe customer" }, 500);
+      customerId = customer.id;
+      profile.stripeCustomerId = customerId;
+      await kv.set(`user:${user.id}`, profile);
+    }
+
+    const session = await stripeRequest("/checkout/sessions", {
+      customer: customerId,
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      mode: "payment",
+      success_url: `${FRONTEND_URL}/subscribe?success=true&pack=${pack}`,
+      cancel_url: `${FRONTEND_URL}/subscribe?canceled=true`,
+      "metadata[userId]": user.id,
+      "metadata[pack]": pack,
+    });
+
+    if (session.error) {
+      console.log("[stripe] pack checkout error:", session.error);
+      return c.json({ error: session.error.message || "Stripe session creation failed" }, 500);
+    }
+
+    console.log(`[stripe] pack checkout created for user=${user.id.slice(0, 8)} pack=${pack} session=${session.id}`);
+    return c.json({ success: true, url: session.url, sessionId: session.id });
+  } catch (err) {
+    console.log("[stripe] buy-pack error:", err);
     return c.json({ error: `Stripe error: ${err}` }, 500);
   }
 });
@@ -2741,9 +2807,22 @@ app.post("/stripe/webhook", async (c) => {
         const session = event.data.object;
         const userId = session.metadata?.userId;
         const plan = session.metadata?.plan;
-        if (userId && plan) {
+        const pack = session.metadata?.pack;
+
+        if (userId && pack) {
+          // Credit pack purchase (one-time)
+          const profile = await getOrCreateProfile(userId, session.customer_email || "");
+          const packContents = CREDIT_PACK_CONTENTS[pack] || 0;
+          profile.credits = (profile.credits || 0) + packContents;
+          profile.stripeCustomerId = session.customer;
+          await kv.set(`user:${userId}`, profile);
+          await logEvent("pack_purchased", { userId, pack, contents: packContents });
+          console.log(`[stripe webhook] pack=${pack} (+${packContents} contents) for user=${userId.slice(0, 8)}`);
+        } else if (userId && plan) {
+          // Subscription plan
           const profile = await getOrCreateProfile(userId, session.customer_email || "");
           profile.plan = plan;
+          profile.contents = PLAN_CONTENTS[plan] || PLAN_CONTENTS.free;
           profile.credits = PLAN_CREDITS[plan] || PLAN_CREDITS.free;
           profile.creditsUsed = 0;
           profile.stripeCustomerId = session.customer;
@@ -2757,7 +2836,7 @@ app.post("/stripe/webhook", async (c) => {
             const { subject, html } = emailPlanConfirmation(name, plan, profile.credits);
             sendEmail(profile.email, subject, html).catch(() => {});
           }
-          console.log(`[stripe webhook] activated plan=${plan} for user=${userId.slice(0, 8)} credits=${profile.credits}`);
+          console.log(`[stripe webhook] activated plan=${plan} for user=${userId.slice(0, 8)} contents=${profile.contents}`);
         }
         break;
       }
