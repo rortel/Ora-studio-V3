@@ -33,7 +33,7 @@ export function Pricing() {
       period: "/mo",
       desc: t("pricing.businessDesc"),
       credits: t("pricing.businessCredits"),
-      features: [t("pricing.businessF1"), t("pricing.businessF2"), t("pricing.businessF3"), t("pricing.businessF4"), t("pricing.businessF5"), t("pricing.businessF6"), t("pricing.businessF7"), t("pricing.businessF8")],
+      features: [t("pricing.businessF1"), t("pricing.businessF2"), t("pricing.businessF3"), t("pricing.businessF4"), t("pricing.businessF5"), t("pricing.businessF6")],
       cta: t("pricing.businessCta"),
       highlighted: false,
     },
