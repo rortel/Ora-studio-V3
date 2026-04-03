@@ -2,9 +2,11 @@ import { Link } from "react-router";
 import { Check, ArrowRight } from "lucide-react";
 import { motion } from "motion/react";
 import { useI18n } from "../lib/i18n";
+import { useAuth } from "../lib/auth-context";
 
 export function Pricing() {
   const { t } = useI18n();
+  const { user } = useAuth();
 
   const plans = [
     {
@@ -184,7 +186,7 @@ export function Pricing() {
               </ul>
 
               <Link
-                to="/login?mode=signup"
+                to={user ? "/subscribe" : "/login?mode=signup"}
                 className="group mt-8 flex items-center justify-center gap-2 py-3 rounded-full transition-all duration-200 hover:shadow-md active:scale-[0.98]"
                 style={{
                   background: p.highlighted ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "transparent",
