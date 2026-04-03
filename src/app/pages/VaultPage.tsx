@@ -779,6 +779,14 @@ function VaultPageContent() {
     setAnalyzeError(null);
     setAnalyzeProgress(`Analyzing ${file.name}...`);
     try {
+      // Block unsupported formats (Keynote, Numbers, Pages — Apple proprietary)
+      const unsupportedExt = file.name.match(/\.(key|numbers|pages)$/i);
+      if (unsupportedExt) {
+        setAnalyzeError(t("vault.unsupportedFormat"));
+        setAnalyzing(false);
+        return;
+      }
+
       const isImage = file.type.startsWith("image/");
       const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
       const isDocument = isPDF || !!file.name.match(/\.(pptx?|docx?)$/i);
@@ -822,14 +830,21 @@ function VaultPageContent() {
           await saveVault(updated);
           dnaOk = true;
         } else if (data.success && data.extractedText) {
-          // Check if extractedText is binary garbage (starts with %PDF or contains lots of non-readable chars)
+          // Check if extractedText is binary garbage or just metadata (no real content)
           let textForAI = data.extractedText;
+          const isMetadataOnly = textForAI.startsWith("[Document uploaded:") || textForAI.startsWith("[File:");
           const isBinaryGarbage = textForAI.startsWith("%PDF") || textForAI.startsWith("\\x") || (textForAI.match(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g)?.length || 0) > textForAI.length * 0.3;
-          if (isBinaryGarbage && isPDF) {
-            console.log("[Vault] Backend returned binary garbage, extracting text client-side with pdf.js...");
+          if ((isBinaryGarbage || isMetadataOnly) && isPDF) {
+            console.log("[Vault] Backend returned binary garbage or metadata only, extracting text client-side with pdf.js...");
             setAnalyzeProgress("Reading PDF text...");
             textForAI = await extractPdfText(file);
             console.log(`[Vault] pdf.js extracted ${textForAI.length} chars`);
+          }
+          if (isMetadataOnly && !isPDF) {
+            // Non-PDF file where server couldn't extract real content
+            setAnalyzeError(t("vault.unsupportedFormat"));
+            setAnalyzing(false);
+            return;
           }
           if (textForAI.length < 50) { setAnalyzeError("Could not extract text from file"); }
           else {
