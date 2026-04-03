@@ -20,7 +20,7 @@ import {
    TYPES
    ═══════════════════════════════════ */
 
-type PlanTier = "free" | "pro" | "business";
+type PlanTier = "free" | "starter" | "pro" | "business";
 type ProfileTab = "overview" | "library" | "team" | "settings";
 
 interface UserProfile {
@@ -109,56 +109,75 @@ const planData: Record<PlanTier, PlanDetails> = {
     price: "0",
     period: "",
     color: "var(--muted-foreground)",
-    agents: 1,
-    maxAgents: 1,
-    contentUsed: 3,
-    contentMax: 50,
+    agents: 3,
+    maxAgents: 3,
+    contentUsed: 0,
+    contentMax: 10,
     vaults: 0,
     maxVaults: 0,
     campaigns: 0,
     maxCampaigns: 0,
-    storageUsed: 0.02,
+    storageUsed: 0,
     storageMax: 0.1,
     renewalDate: "--",
-    features: ["50 credits, no card required", "3 AI models (GPT-4o, Claude, Gemini)", "Text and image generation", "Basic Arena (2 models)", "Credits never expire"],
-    lockedFeatures: ["All AI models (10+)", "Code, audio, video generation", "Full Arena", "Brand Vault", "Campaign Lab", "Canvas editor", "Priority support"],
+    features: ["10 AI credits", "3 AI models", "Text and image generation"],
+    lockedFeatures: ["Brand Vault", "Campaign Lab", "Calendar", "Analytics", "Credit packs"],
   },
-  pro: {
-    name: "Pro",
-    price: "39",
+  starter: {
+    name: "Starter",
+    price: "29",
     period: "/mo",
     color: "var(--ora-signal)",
     agents: 10,
     maxAgents: 10,
-    contentUsed: 187,
-    contentMax: 500,
-    vaults: 0,
-    maxVaults: 0,
+    contentUsed: 0,
+    contentMax: 100,
+    vaults: 1,
+    maxVaults: 1,
     campaigns: 0,
-    maxCampaigns: 0,
-    storageUsed: 2.1,
-    storageMax: 10,
-    renewalDate: "Apr 4, 2026",
-    features: ["500 credits/month included", "All AI models (10+)", "Text, image, code, audio, video", "Full Arena (unlimited models)", "Priority generation queue", "Credit packs available", "Credits roll over indefinitely"],
-    lockedFeatures: ["Brand Vault", "Campaign Lab", "Canvas editor", "Asset Builder", "Brand Score", "Content Calendar", "Priority support"],
+    maxCampaigns: -1,
+    storageUsed: 0,
+    storageMax: 5,
+    renewalDate: "--",
+    features: ["100 AI credits/mo", "15 publications/mo", "10 AI models", "1 product", "All features included"],
+    lockedFeatures: [],
+  },
+  pro: {
+    name: "Pro",
+    price: "79",
+    period: "/mo",
+    color: "var(--ora-signal)",
+    agents: 25,
+    maxAgents: 25,
+    contentUsed: 0,
+    contentMax: 500,
+    vaults: 1,
+    maxVaults: 5,
+    campaigns: 0,
+    maxCampaigns: -1,
+    storageUsed: 0,
+    storageMax: 20,
+    renewalDate: "--",
+    features: ["500 AI credits/mo", "60 publications/mo", "25 AI models", "5 products", "3 team members", "All features included"],
+    lockedFeatures: [],
   },
   business: {
     name: "Business",
     price: "149",
     period: "/mo",
     color: "var(--ora-signal)",
-    agents: 15,
-    maxAgents: 15,
-    contentUsed: 1240,
-    contentMax: 2500,
-    vaults: 3,
-    maxVaults: 5,
-    campaigns: 8,
+    agents: 38,
+    maxAgents: 38,
+    contentUsed: 0,
+    contentMax: 2000,
+    vaults: 1,
+    maxVaults: 20,
+    campaigns: 0,
     maxCampaigns: -1,
-    storageUsed: 12.4,
+    storageUsed: 0,
     storageMax: 50,
-    renewalDate: "Apr 4, 2026",
-    features: ["2,500 credits/month included", "Everything in Pro +", "Brand Vault (brand identity)", "Campaign Lab (multi-platform)", "Canvas editor (Canva-like)", "Complete Asset Builder", "Brand Score & compliance", "Content Calendar", "Priority support"],
+    renewalDate: "--",
+    features: ["2,000 AI credits/mo", "200 publications/mo", "All AI models", "20 products", "10 team members", "Priority support", "All features included"],
     lockedFeatures: [],
   },
 };
@@ -509,6 +528,7 @@ function PlanBadge({ plan }: { plan: PlanTier }) {
   const { t } = useI18n();
   const config = {
     free: { label: t("profile.planFree"), bg: "var(--secondary)", color: "var(--muted-foreground)", icon: null },
+    starter: { label: "Starter", bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
     pro: { label: t("profile.planPro"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
     business: { label: t("profile.planBusiness"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: Crown },
   }[plan];
@@ -546,11 +566,13 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
                 </div>
               </div>
               {!isSubscriber ? (
-                <Link to="/pricing" className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity" style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}>
+                <Link to="/subscribe" className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity" style={{ background: "var(--ora-signal)", fontSize: "13px", fontWeight: 500 }}>
                   <Zap size={14} /> {t("profile.upgrade")}
                 </Link>
               ) : (
-                <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.renews")} {plan.renewalDate}</span>
+                <Link to="/subscribe" className="flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-secondary transition-colors" style={{ fontSize: "12px", fontWeight: 500, color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                  <Settings size={13} /> {t("profile.manageSubscription")}
+                </Link>
               )}
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -565,7 +587,7 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
               <div className="flex items-center gap-3">
                 <Crown size={14} className="text-ora-signal flex-shrink-0" />
                 <p className="flex-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.businessFeatures")}</p>
-                <Link to="/pricing" className="text-ora-signal flex items-center gap-1 flex-shrink-0" style={{ fontSize: "12px", fontWeight: 500 }}>
+                <Link to="/subscribe" className="text-ora-signal flex items-center gap-1 flex-shrink-0" style={{ fontSize: "12px", fontWeight: 500 }}>
                   {t("profile.seePlans")} <ArrowRight size={12} />
                 </Link>
               </div>

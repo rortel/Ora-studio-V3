@@ -132,44 +132,39 @@ export function AppSidebar() {
           })}
         </nav>
 
-        {/* Credit counter */}
+        {/* Upgrade button — prominent gradient for free/starter users */}
         {showCredits && (
-          <div className="relative mb-3 w-full flex justify-center">
+          <div className="relative mb-3 w-full flex justify-center flex-col items-center gap-1.5">
             <button
               onClick={() => navigate("/subscribe")}
-              onMouseEnter={() => setTooltip(t("sidebar.credits"))}
+              onMouseEnter={() => setTooltip(t("sidebar.subscription"))}
               onMouseLeave={() => setTooltip(null)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 hover:bg-secondary cursor-pointer relative"
+              className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-md active:scale-95"
+              style={{
+                background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                boxShadow: "0 2px 8px rgba(124,58,237,0.3)",
+              }}
+              title={t("sidebar.subscription")}
+            >
+              <Zap size={15} style={{ color: "#FFFFFF" }} strokeWidth={2} />
+            </button>
+            {/* Credit count below */}
+            <button
+              onClick={() => navigate("/subscribe")}
+              className="cursor-pointer"
+              style={{
+                fontSize: "9px",
+                fontWeight: 600,
+                color: creditColor,
+                lineHeight: 1,
+                letterSpacing: "0.02em",
+              }}
               title={`${remainingCredits} ${t("sidebar.credits").toLowerCase()}`}
             >
-              <Zap size={16} style={{ color: creditColor }} />
-              {/* Mini progress ring */}
-              <svg
-                className="absolute inset-0"
-                viewBox="0 0 36 36"
-                style={{ width: 36, height: 36 }}
-              >
-                <circle
-                  cx="18" cy="18" r="15"
-                  fill="none"
-                  stroke="var(--border)"
-                  strokeWidth="2"
-                />
-                <circle
-                  cx="18" cy="18" r="15"
-                  fill="none"
-                  stroke={creditColor}
-                  strokeWidth="2"
-                  strokeDasharray={`${creditPercent * 0.94} 94.2`}
-                  strokeDashoffset="0"
-                  strokeLinecap="round"
-                  transform="rotate(-90 18 18)"
-                  style={{ transition: "stroke-dasharray 0.5s ease" }}
-                />
-              </svg>
+              {remainingCredits}
             </button>
             <AnimatePresence>
-              {tooltip === t("sidebar.credits") && (
+              {tooltip === t("sidebar.subscription") && (
                 <motion.div
                   initial={{ opacity: 0, x: -4 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -184,7 +179,7 @@ export function AppSidebar() {
                     boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
                   }}
                 >
-                  {remainingCredits} {t("sidebar.credits").toLowerCase()}
+                  {remainingCredits} {t("sidebar.credits").toLowerCase()} — {t("sidebar.subscription")}
                 </motion.div>
               )}
             </AnimatePresence>
