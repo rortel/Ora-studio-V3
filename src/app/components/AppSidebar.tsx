@@ -18,6 +18,7 @@ import { useState, useRef, useEffect } from "react";
 function isNavActive(href: string, pathname: string): boolean {
   if (href === "/hub/library") return pathname.startsWith("/hub/library");
   if (href === "/hub/vault") return pathname.startsWith("/hub/vault");
+
   if (href === "/hub") return pathname === "/hub";
   return pathname.startsWith(href);
 }
@@ -40,7 +41,6 @@ export function AppSidebar() {
     { icon: Home, label: t("sidebar.home"), href: "/hub" },
     { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
-    { icon: Palette, label: t("sidebar.brand"), href: "/hub/vault" },
   ];
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);

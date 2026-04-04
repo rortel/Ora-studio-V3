@@ -134,6 +134,7 @@ export function StudioPage() {
   const [vault, setVault] = useState<any>(undefined);
   const [products, setProducts] = useState<any[]>([]);
   const [vaultLoading, setVaultLoading] = useState(false);
+  const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
   const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string } | null>(null);
 
@@ -320,6 +321,20 @@ export function StudioPage() {
     setVaultLoading(false);
     return { vault: null, products: [] };
   }, [vault, vaultLoading, serverPost, serverGet]);
+
+  // Fetch connected social accounts (silent, non-blocking)
+  useEffect(() => {
+    if (socialAccounts !== null) return;
+    if (!accessToken) return;
+    fetch(`${API_BASE}/zernio/accounts/list`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ _token: `Bearer ${accessToken}` }),
+    })
+      .then(r => r.json())
+      .then(data => { setSocialAccounts(data.success && Array.isArray(data.accounts) ? data.accounts : []); })
+      .catch(() => setSocialAccounts([]));
+  }, [accessToken]);
 
   // No onboarding redirect — users configure their brand via Brand Vault directly
 
@@ -1210,7 +1225,19 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} />
+              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} socialAccounts={socialAccounts} onAccountConnected={() => {
+                // Refresh social accounts after connection
+                setTimeout(() => {
+                  fetch(`${API_BASE}/zernio/accounts/list`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+                    body: JSON.stringify({ _token: `Bearer ${accessToken}` }),
+                  })
+                    .then(r => r.json())
+                    .then(data => { if (data.success && Array.isArray(data.accounts)) setSocialAccounts(data.accounts); })
+                    .catch(() => {});
+                }, 1500);
+              }} />
             ) : (
               <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
                 {messages.map(msg => (
@@ -1307,46 +1334,9 @@ export function StudioPage() {
                     </span>
                   </div>
                   {!attachedImage.uploading && attachedImage.signedUrl && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: t("studio.pillStudioWhite"), prompt: "Professional studio photoshoot, pure white background, luxury product photography, soft diffused studio lighting, clean minimalist composition, commercial quality", type: "image" as const },
-                        { label: t("studio.pillPackshot"), prompt: "Clean product packshot, neutral gradient background, professional commercial photography, sharp focus, centered composition, studio lighting", type: "image" as const },
-                        { label: t("studio.pillLifestyle"), prompt: "Lifestyle product scene, natural environment, warm golden hour lighting, authentic setting, editorial photography style, depth of field", type: "image" as const },
-                        { label: t("studio.pillFlatLay"), prompt: "Creative flat lay composition, top-down view, artistic arrangement with complementary props, soft shadows, pastel or neutral background, magazine style", type: "image" as const },
-                        { label: t("studio.pillCinematic"), prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
-                        { label: t("studio.pillAnimate"), prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
-                      ].map(s => (
-                        <button key={s.label} onClick={async () => {
-                          const refUrl = attachedImage?.signedUrl;
-                          if (!refUrl) { toast.error(t("studio.photoNotUploaded")); return; }
-                          const msgId = `assist-pill-${Date.now()}`;
-                          const userMsg: ChatMessage = { id: `user-pill-${Date.now()}`, role: "user", content: s.label };
-                          const actionType = s.type === "video" ? "generate-video" : "generate-image";
-                          const actionObj: StudioAction = { type: actionType, params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", models: ["ora-vision"], model: "ora-motion" } };
-                          const assistMsg: ChatMessage = {
-                            id: msgId, role: "assistant",
-                            content: `Je vais utiliser votre photo comme base pour créer : ${s.label.toLowerCase()}.`,
-                            isGenerating: true,
-                            action: actionObj,
-                          };
-                          if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
-                          setMessages(prev => [...prev, userMsg, assistMsg]);
-                          try {
-                            await executeAction(actionObj, msgId);
-                          } catch (err) {
-                            console.error("[studio] pill executeAction error:", err);
-                            toast.error(t("studio.generationError"));
-                            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: false } : m));
-                          }
-                        }}
-                          className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
-                          style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
-                          onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                          onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      {t("studio.photoReadyHint")}
+                    </span>
                   )}
                 </div>
               )}
@@ -1484,97 +1474,138 @@ export function StudioPage() {
   );
 }
 
-/* ── Welcome Screen ── */
-function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; onSetMode: (mode: string) => void }) {
-  const { t } = useI18n();
+/* ── Welcome Screen — 3 bubbles like SMS ── */
+const SOCIAL_PLATFORMS_STUDIO = [
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+  { id: "twitter", label: "X", icon: Twitter },
+];
+
+function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
+  const { t, locale } = useI18n();
+  const { session } = useAuth();
+  const [greeting, setGreeting] = useState<string>("");
+  const [greetingLoaded, setGreetingLoaded] = useState(false);
+  const greetingRequested = useRef(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
+
+  const hasConnectedAccounts = Array.isArray(socialAccounts) && socialAccounts.length > 0;
+  const accountsLoaded = socialAccounts !== null;
+
+  const handleConnect = useCallback(async (platform: string) => {
+    setConnecting(platform);
+    try {
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/hub")}`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const data = await res.json();
+      if (!data.success || !data.authUrl) { setConnecting(null); return; }
+      const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
+      if (!popup) { setConnecting(null); return; }
+      const poll = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(poll);
+          setConnecting(null);
+          onAccountConnected?.();
+        }
+      }, 500);
+      setTimeout(() => { clearInterval(poll); if (!popup.closed) popup.close(); setConnecting(null); }, 300_000);
+    } catch { setConnecting(null); }
+  }, [onAccountConnected]);
+
+  // Fetch personalized greeting from AI
+  useEffect(() => {
+    if (greetingRequested.current) return;
+    greetingRequested.current = true;
+
+    const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
+    const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
+    const productNames = (products || []).filter((p: any) => p.name).map((p: any) => p.name).slice(0, 5);
+
+    fetch(`${API_BASE}/studio/greeting`, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain", Authorization: `Bearer ${session?.access_token || ""}`, apikey: publicAnonKey },
+      body: JSON.stringify({ brandName, sector, products: productNames, locale }),
+    })
+      .then(r => r.json())
+      .then(data => { if (data.greeting) setGreeting(data.greeting); })
+      .catch(() => {})
+      .finally(() => setGreetingLoaded(true));
+  }, [vault, products, session, locale]);
+
+  const bubbleStyle = {
+    background: "var(--card)", border: "1px solid var(--border)",
+    fontSize: "14px", lineHeight: 1.6,
+  };
+
   return (
-    <div className="h-full flex flex-col items-center justify-center px-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="text-center max-w-lg"
-      >
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-6"
-          style={{ background: "var(--foreground)" }}>
-          <Sparkles size={20} style={{ color: "var(--background)" }} />
-        </div>
-        <h1 style={{ fontSize: "26px", fontWeight: 700, lineHeight: 1.2 }}>
-          {t("studio.welcomeTitle")}
-        </h1>
-        <p style={{ fontSize: "14px", color: "var(--muted-foreground)", marginTop: 8 }}>
-          {t("studio.welcomeSubtitle")}
-        </p>
-      </motion.div>
-
-      {/* Two main paths */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.15 }}
-        className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-lg"
-      >
-        <button
-          onClick={() => { onSetMode("create"); onSend("__CREATE_MODE__"); }}
-          className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
-          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-        >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--secondary)" }}>
-            <Wand2 size={16} />
+    <div className="h-full flex flex-col justify-end px-6 pb-4 max-w-2xl mx-auto w-full">
+      <div className="space-y-3">
+        {/* Bubble 1 — Personalized contextual greeting */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4 }} className="flex gap-3 items-start">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1" style={{ background: "var(--foreground)" }}>
+            <Sparkles size={14} style={{ color: "var(--background)" }} />
           </div>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.createMode")}</div>
-            <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              {t("studio.createModeDesc")}
+          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
+            {greeting || t("studio.welcomeGreetingFallback")}
+          </div>
+        </motion.div>
+
+        {/* Bubble 2 — Options */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4, delay: 0.3 }} className="flex gap-3 items-start">
+          <div className="w-8 h-8 flex-shrink-0" />
+          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
+            <div dangerouslySetInnerHTML={{ __html: t("studio.welcomeOptions") }} />
+          </div>
+        </motion.div>
+
+        {/* Bubble 3 — CTA */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4, delay: 0.6 }} className="flex gap-3 items-start">
+          <div className="w-8 h-8 flex-shrink-0" />
+          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
+            {t("studio.welcomeCTA")}
+          </div>
+        </motion.div>
+
+        {/* Bubble 4 — Connect social accounts (only if none connected) */}
+        {accountsLoaded && !hasConnectedAccounts && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.9 }} className="flex gap-3 items-start">
+            <div className="w-8 h-8 flex-shrink-0" />
+            <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={{
+              background: "linear-gradient(135deg, rgba(124,58,237,0.06), rgba(236,72,153,0.06))",
+              border: "1px solid rgba(124,58,237,0.15)",
+              fontSize: "13px", lineHeight: 1.6,
+            }}>
+              <p className="mb-2.5" style={{ color: "var(--foreground)" }}>{t("studio.connectAccountsCTA")}</p>
+              <div className="flex flex-wrap gap-2">
+                {SOCIAL_PLATFORMS_STUDIO.map(p => {
+                  const Icon = p.icon;
+                  const isConnecting = connecting === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handleConnect(p.id)}
+                      disabled={!!connecting}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all hover:shadow-sm active:scale-95"
+                      style={{
+                        background: "#FFFFFF",
+                        border: "1px solid var(--border)",
+                        fontSize: "12px", fontWeight: 500,
+                        color: "var(--foreground)",
+                        opacity: connecting && !isConnecting ? 0.4 : 1,
+                      }}
+                    >
+                      {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />}
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </button>
-
-        <button
-          onClick={() => { onSetMode("campaign"); onSend("__CAMPAIGN_MODE__"); }}
-          className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
-          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-        >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--secondary)" }}>
-            <Rocket size={16} />
-          </div>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.campaignMode")}</div>
-            <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              {t("studio.campaignModeDesc")}
-            </div>
-          </div>
-        </button>
-      </motion.div>
-
-      {/* Quick suggestions */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
-      >
-        {[
-          t("studio.suggestCinematic"),
-          t("studio.suggestMusic"),
-          t("studio.suggestText"),
-          t("studio.suggestVideo"),
-        ].map(s => (
-          <button key={s} onClick={() => { onSetMode("create"); onSend(s); }}
-            className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", color: "var(--muted-foreground)" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
-            {s}
-          </button>
-        ))}
-      </motion.div>
+          </motion.div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1630,20 +1661,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
         <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} logoUrl={msg.result.logoUrl} />
       )}
 
-      {/* Suggestions */}
-      {msg.suggestions && msg.suggestions.length > 0 && !msg.isGenerating && (
-        <div className="flex flex-wrap gap-2">
-          {msg.suggestions.map((s, i) => (
-            <button key={i} onClick={() => onSuggestion(s)}
-              className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
-              style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Suggestions removed — pure conversational, no buttons */}
     </div>
   );
 }

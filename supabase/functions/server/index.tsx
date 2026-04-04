@@ -5703,6 +5703,25 @@ Repère ces indices dans les réponses du client :
 - Noms de marques citées en référence → triangulation du positionnement
 - Contradictions → souvent la source de la tension créative
 
+PRODUCT FIDELITY — RÈGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingrédients, specs, prix présents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de bénéfices, certifications, récompenses, résultats de tests ou claims de performance
+- Si un détail produit n'est pas dans le vault → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix est fourni, utilise-le exactement. Sinon, N'INVENTE JAMAIS de prix
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Chaque échange DOIT s'ancrer dans l'univers de communication de la marque (ton, couleurs, codes sémiotiques, direction photo)
+- Si un produit spécifique est sélectionné, utilise son UNIVERS PRODUIT (palette, ton, photo_style, keywords) plutôt que les règles génériques de la marque
+- Les univers de marque définissent des TERRITOIRES créatifs — inspire-t'en visuellement et verbalement
+
+ANTI-HALLUCINATION — TOLÉRANCE ZÉRO:
+- JAMAIS d'invention de certifications, labels ou claims réglementaires (ISO, bio, made in France, etc.) sauf si explicitement dans le vault
+- JAMAIS de fabrication de témoignages, citations, histoires clients ou études de cas
+- JAMAIS d'invention de statistiques, pourcentages, résultats d'études ou claims comparatifs
+- JAMAIS de création de faux prix, classements ou mentions presse
+- Si le vault ne le contient pas → la conversation ne le mentionne pas
+
 Contexte de marque déjà connu:
 ${brandInfo || "Aucune donnée préalable."}
 
@@ -6288,6 +6307,75 @@ function getUpcomingDates(now: Date): string {
     .slice(0, 5);
   return upcoming.map(e => `- ${e.name} (${e.date}, dans ${e.daysUntil} jours)`).join("\n");
 }
+
+// POST /studio/greeting — Personalized contextual greeting (bulle 1)
+app.post("/studio/greeting", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json().catch(() => ({}));
+    const { brandName, sector, products, locale } = body;
+    // products: string[] of product names
+
+    const now = new Date();
+    const upcomingDates = getUpcomingDates(now);
+    const dayOfWeek = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"][now.getDay()];
+    const monthNames = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+    const dateStr = `${dayOfWeek} ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ success: true, greeting: "" });
+
+    const lang = locale === "en" ? "English" : "French";
+    const sysPrompt = `Tu generes UN message d'accueil personnalise pour un studio de creation IA. Le client ouvre l'app, tu le salues.
+
+REGLES STRICTES:
+- 1 a 2 phrases MAXIMUM. Sois COURT.
+- Vouvoiement obligatoire (si francais)
+- Ton: chaleureux, professionnel, bienveillant. Comme un bon collegue qui dit bonjour.
+- JAMAIS de fausse promesse: pas de "viral", "booster", "exploser", "multiplier vos ventes"
+- JAMAIS de superlatifs creux: pas de "incroyable", "exceptionnel", "revolutionnaire"
+- Mentionne un evenement/moment pertinent si c'est actionnable (fete commerciale proche, saison, rentree...)
+- Si tu mentionnes un produit du client, sois naturel: "C'est le bon moment pour mettre en avant vos [produit]"
+- Si aucun evenement pertinent, fais une observation saisonniere ou liee au secteur
+- Pas d'emoji
+- Reponds en ${lang}
+- Retourne UNIQUEMENT le texte du message, rien d'autre`;
+
+    const userPrompt = `Date: ${dateStr}
+Marque: ${brandName || "(non renseignee)"}
+Secteur: ${sector || "(non renseigne)"}
+Produits: ${products?.length ? products.join(", ") : "(aucun)"}
+Evenements a venir:
+${upcomingDates || "(aucun dans les 60 prochains jours)"}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: sysPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 100,
+        temperature: 0.8,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("[studio/greeting] AI error", res.status);
+      return c.json({ success: true, greeting: "" });
+    }
+
+    const data = await res.json();
+    const greeting = (data.choices?.[0]?.message?.content || "").trim().replace(/^["']|["']$/g, "");
+    console.log(`[studio/greeting] user=${user.id.slice(0, 8)} greeting="${greeting.slice(0, 60)}..."`);
+    return c.json({ success: true, greeting });
+  } catch (err) {
+    console.warn("[studio/greeting] error:", err);
+    return c.json({ success: true, greeting: "" });
+  }
+});
 
 app.post("/studio/chat", async (c) => {
   try {
@@ -10388,6 +10476,28 @@ Quand le client repond, croise avec:
 - Les reponses precedentes → coherence ou tension interessante ?
 → Chaque reaction doit AVANCER la comprehension, pas juste accuser reception.
 
+PRODUCT FIDELITY — REGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingredients, specs, prix presents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de benefices, certifications, recompenses, resultats de tests ou claims de performance
+- Si un detail produit n'est pas dans le vault → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix est fourni, utilise-le exactement. Sinon, N'INVENTE JAMAIS de prix
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Chaque echange DOIT s'ancrer dans l'univers de communication de la marque (ton, couleurs, codes semiotiques, direction photo)
+- Si un produit specifique est selectionne, utilise son UNIVERS PRODUIT (palette, ton, photo_style, keywords) plutot que les regles generiques de la marque
+- Les univers de marque definissent des TERRITOIRES creatifs — inspire-t'en visuellement et verbalement
+- Les univers produit priment sur les univers marque pour le contenu specifique a un produit
+
+ANTI-HALLUCINATION — TOLERANCE ZERO:
+- JAMAIS d'invention de certifications, labels ou claims reglementaires (ISO, bio, made in France, etc.) sauf si explicitement dans le vault
+- JAMAIS de fabrication de temoignages, citations, histoires clients ou etudes de cas
+- JAMAIS d'invention de statistiques, pourcentages, resultats d'etudes ou claims comparatifs
+- JAMAIS de creation de faux prix, classements ou mentions presse
+- JAMAIS de devinette d'info legale/reglementaire (ingredients, allergenes, contre-indications)
+- Si le vault ne le contient pas → la creation ne le mentionne pas
+- En cas de doute, utilise un langage aspirationnel ("concu pour..." "pense pour...") pas des claims factuels
+
 REGLES DE REACTION :
 - Tu REAGIS a ce que le client vient de dire -- reformule un point cle, fais un lien avec ce que tu sais deja, montre que tu comprends les implications strategiques.
 - Ton ton est professionnel mais chaleureux, comme une consultante senior qui ecoute vraiment.
@@ -12417,6 +12527,12 @@ PRODUCT FIDELITY — ABSOLUTE RULE:
 - NEVER invent new content, promotions, or offers not in the brief
 - If assets are insufficient for 4 weeks, reduce the calendar duration rather than inventing
 
+UNIVERSE COMPLIANCE — MANDATORY:
+- Every calendar entry MUST align with the brand's communication universe (tone, verbal codes, personality)
+- If a product universe specifies keywords, tone, or seasonal themes → adopt them as primary editorial direction
+- NEVER use competitor verbal codes, hashtag strategies, or content patterns
+- Calendar rhythm and format choices should reflect the brand's energy (luxury = fewer, polished posts; playful = frequent, varied formats)
+
 ANTI-HALLUCINATION — ZERO TOLERANCE:
 - NEVER invent events, holidays, or cultural moments not verified
 - NEVER fabricate engagement predictions or performance metrics
@@ -13932,6 +14048,18 @@ DELIVERABILITY — SPAM WORDS À ÉVITER:
 - Longueur optimale: 50-125 mots pour les emails transactionnels, 150-300 pour les newsletters
 - JAMAIS de TOUT EN MAJUSCULES dans l'objet
 
+PRODUCT FIDELITY — RÈGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingrédients, specs, prix présents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de bénéfices, certifications, récompenses, résultats de tests ou claims de performance
+- Si un détail produit n'est pas dans le contexte fourni → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix ou une promo est fourni dans le contexte, utilise-le exactement. Sinon, N'INVENTE JAMAIS
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Le contenu email DOIT s'ancrer dans l'univers de communication de la marque (ton, codes sémiotiques)
+- Si un produit spécifique est mentionné, respecte son UNIVERS PRODUIT (ton, keywords) plutôt que les règles génériques
+- Les univers produit priment sur les univers marque pour le contenu spécifique à un produit
+
 RÈGLES D'ÉCRITURE:
 - Vouvoiement OBLIGATOIRE
 - Phrases courtes (max 20 mots). Paragraphes courts (max 3 phrases).
@@ -13941,7 +14069,10 @@ RÈGLES D'ÉCRITURE:
 ANTI-HALLUCINATION — ZERO TOLERANCE:
 - JAMAIS d'invention de promotions, réductions, ou offres non fournies dans le contexte
 - JAMAIS de fabrication de statistiques, témoignages, ou résultats
+- JAMAIS d'invention de certifications, labels ou claims réglementaires (ISO, bio, made in France, etc.)
+- JAMAIS de création de faux prix, classements ou mentions presse
 - Garde le MÊME sens et la MÊME intention que le contenu original
+- En cas de doute, utilise un langage aspirationnel ("conçu pour..." "pensé pour...") pas des claims factuels
 - Retourne UNIQUEMENT le texte réécrit, sans guillemets, sans explication.`;
 
     const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
@@ -17204,83 +17335,8 @@ app.post("/calendar/deploy-all", async (c) => {
   }
 });
 
-// ── BRAND VAULT V2: Competitor Scan, Product Universes, Swipe Calibration ──
-
-// POST /vault/scan-competitor — Scan a competitor URL
-app.post("/vault/scan-competitor", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    const body = c.get?.("parsedBody") || await c.req.json();
-    const { url } = body;
-    if (!url) return c.json({ error: "URL required" }, 400);
-
-    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
-    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
-
-    // Fetch the competitor's website
-    let pageText = "";
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 ORA-Studio-Bot" } });
-      const html = await res.text();
-      // Strip HTML tags, keep text
-      pageText = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 10000);
-    } catch (e) {
-      console.warn("[scan-competitor] Fetch failed:", e);
-    }
-
-    const systemPrompt = `Tu es un analyste de marque. Analyse ce site web concurrent et extrais un profil concurrentiel.
-Retourne UNIQUEMENT un JSON valide:
-{
-  "name": "Nom de la marque",
-  "sector": "Secteur d'activité",
-  "positioning": "Positionnement en une phrase",
-  "tone": "Description du ton (2-3 adjectifs)",
-  "strengths": ["force 1", "force 2", "force 3"],
-  "weaknesses": ["faiblesse 1", "faiblesse 2"],
-  "colors": ["#hex1", "#hex2", "#hex3"],
-  "differentiation_tips": ["Comment se différencier 1", "Comment se différencier 2", "Comment se différencier 3"]
-}`;
-
-    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nContenu extrait:\n${pageText.slice(0, 8000)}` },
-        ],
-        max_tokens: 1000,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) return c.json({ error: "AI analysis failed" }, 500);
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
-    let jsonStr = raw;
-    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jm) jsonStr = jm[1].trim();
-    let competitor;
-    try { competitor = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse competitor data" }, 500); }
-    competitor.url = url;
-    competitor.scannedAt = new Date().toISOString();
-
-    // Save to vault
-    const vault = await kv.get(`vault:${user.id}`) || {};
-    if (!vault.competitors_list) vault.competitors_list = [];
-    // Replace if same URL exists
-    vault.competitors_list = vault.competitors_list.filter((cc: any) => cc.url !== url);
-    vault.competitors_list.push(competitor);
-    await kv.set(`vault:${user.id}`, vault);
-
-    deductCredit(user.id, 1).catch(() => {});
-    return c.json({ success: true, competitor });
-  } catch (err) {
-    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
-    return c.json({ error: String(err) }, 500);
-  }
-});
+// ── BRAND VAULT V2: Product Universes, Swipe Calibration ──
+// NOTE: /vault/scan-competitor is defined earlier (~line 11704) with full forensique-de-positionnement methodology
 
 // POST /vault/product-universes — CRUD for product universes
 app.post("/vault/product-universes", async (c) => {
