@@ -25,6 +25,8 @@ app.use("*", async (c, next) => {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
   await next();
+  // Skip if response already has CORS headers (e.g. htmlResponse helper)
+  if (c.res.headers.has("Access-Control-Allow-Origin")) return;
   // Inject CORS headers into every non-OPTIONS response
   try {
     for (const [k, v] of Object.entries(CORS_HEADERS)) {
