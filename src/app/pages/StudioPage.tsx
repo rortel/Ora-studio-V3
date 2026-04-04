@@ -1500,7 +1500,7 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
       const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: JSON.stringify({ _token: token, redirectUrl: window.location.origin + "/hub" }),
+        body: JSON.stringify({ _token: token, redirectUrl: `${API_BASE}/zernio/callback` }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) { setConnecting(null); return; }
