@@ -824,8 +824,10 @@ function SocialAccountsSection() {
     setConnecting(platform);
     try {
       const token = auth.getAuthHeader();
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/profile")}&_token=${encodeURIComponent(token)}`, {
-        headers: makeHeaders(),
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
+        method: "POST",
+        headers: { ...makeHeaders(), "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, redirectUrl: window.location.origin + "/profile" }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) {

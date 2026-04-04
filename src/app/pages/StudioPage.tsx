@@ -1497,8 +1497,10 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
     setConnecting(platform);
     try {
       const token = accessToken || "";
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/hub")}&_token=${encodeURIComponent(token)}`, {
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, redirectUrl: window.location.origin + "/hub" }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) { setConnecting(null); return; }

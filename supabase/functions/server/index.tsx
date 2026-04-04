@@ -12819,12 +12819,13 @@ app.post("/zernio/profiles", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
-// GET /zernio/connect/:platform — Get OAuth URL (uses user-scoped profile)
-app.get("/zernio/connect/:platform", async (c) => {
+// POST /zernio/connect/:platform — Get OAuth URL (uses user-scoped profile)
+app.post("/zernio/connect/:platform", async (c) => {
   try {
     const user = await requireAuth(c);
     const platform = c.req.param("platform");
-    const redirectUrl = c.req.query("redirectUrl") || "";
+    const pb = c.get?.("parsedBody") || {};
+    const redirectUrl = pb.redirectUrl || c.req.query("redirectUrl") || "";
     // Always use user-scoped profile (creates one if needed)
     const profileId = await getOrCreateZernioProfile(user.id, user.email);
     const qs = `profileId=${encodeURIComponent(profileId)}${redirectUrl ? `&redirect_url=${encodeURIComponent(redirectUrl)}` : ""}`;
