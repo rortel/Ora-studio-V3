@@ -1484,7 +1484,7 @@ const SOCIAL_PLATFORMS_STUDIO = [
 
 function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
   const { t, locale } = useI18n();
-  const { session } = useAuth();
+  const { session, accessToken } = useAuth();
   const [greeting, setGreeting] = useState<string>("");
   const [greetingLoaded, setGreetingLoaded] = useState(false);
   const greetingRequested = useRef(false);
@@ -1496,7 +1496,8 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
   const handleConnect = useCallback(async (platform: string) => {
     setConnecting(platform);
     try {
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/hub")}`, {
+      const token = accessToken || "";
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/hub")}&_token=${encodeURIComponent(token)}`, {
         headers: { Authorization: `Bearer ${publicAnonKey}` },
       });
       const data = await res.json();

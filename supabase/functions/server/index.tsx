@@ -217,6 +217,8 @@ async function getUser(c: any): Promise<AuthUser | null> {
   // 4. Fallback: read body directly (if body-parser middleware failed)
   // 5. Authorization header (may be anon key → returns null)
   let token = c.get?.("userToken") || c.req.query("_token") || c.req.header("X-User-Token");
+  // Strip "Bearer " prefix if present (clients sometimes prepend it)
+  if (token?.startsWith("Bearer ")) token = token.slice(7);
 
   // Fallback: try parsed body from middleware context
   if (!token) {

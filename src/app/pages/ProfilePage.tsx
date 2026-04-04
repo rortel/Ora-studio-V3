@@ -823,7 +823,8 @@ function SocialAccountsSection() {
   const handleConnect = useCallback(async (platform: string) => {
     setConnecting(platform);
     try {
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/profile")}`, {
+      const token = auth.getAuthHeader();
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/profile")}&_token=${encodeURIComponent(token)}`, {
         headers: makeHeaders(),
       });
       const data = await res.json();
