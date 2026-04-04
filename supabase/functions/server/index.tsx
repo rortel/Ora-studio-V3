@@ -12837,6 +12837,13 @@ app.post("/zernio/connect/:platform", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// Helper: return HTML with mutable headers so CORS middleware doesn't lose Content-Type
+function htmlResponse(html: string): Response {
+  const headers = new Headers(CORS_HEADERS);
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  return new Response(html, { status: 200, headers });
+}
+
 // GET /zernio/callback — OAuth callback landing page (popup auto-closes, headless selection)
 app.get("/zernio/callback", async (c) => {
   const ORA_SERVER_BASE = "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
@@ -12960,7 +12967,7 @@ h2{font-size:17px;font-weight:600;margin-bottom:4px}
   };
 })();
 </script></body></html>`;
-      return c.html(html);
+      return htmlResponse(html);
     }
 
     // Headless mode: Facebook page selection
@@ -13063,7 +13070,7 @@ h2{font-size:17px;font-weight:600;margin-bottom:4px}
   };
 })();
 </script></body></html>`;
-      return c.html(html);
+      return htmlResponse(html);
     }
 
     // Default: auto-connected platform or standard callback (no selection needed)
@@ -13072,10 +13079,10 @@ h2{font-size:17px;font-weight:600;margin-bottom:4px}
     }
     console.log(`[zernio/callback] platform=${platform}, status=${status}, user=${user?.id?.slice(0, 8) || "anon"}`);
     const html = `<!DOCTYPE html><html><head><title>Connected</title><style>body{font-family:Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1918;color:#E8E4DF}.card{text-align:center;padding:40px;border-radius:12px;background:#2a2928;border:1px solid rgba(255,255,255,0.06)}.check{font-size:48px;margin-bottom:12px;color:#5E6AD2}h2{font-size:18px;font-weight:500;margin:0 0 8px}p{font-size:14px;color:#7A7572;margin:0}</style></head><body><div class="card"><div class="check">&#10003;</div><h2>Account Connected</h2><p>You can close this window.</p></div><script>try{window.opener?.postMessage({type:"zernio-oauth-complete",platform:"${platform}",status:"${status}"},"*")}catch(e){}setTimeout(()=>window.close(),2000)</script></body></html>`;
-    return c.html(html);
+    return htmlResponse(html);
   } catch (err) {
     console.log(`[zernio/callback] Error: ${err}`);
-    return c.html(`<html><body style="background:#1a1918;color:#E8E4DF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>Connection error</h2><p>${err}</p></div><script>setTimeout(()=>window.close(),3000)</script></body></html>`);
+    return htmlResponse(`<html><body style="background:#1a1918;color:#E8E4DF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>Connection error</h2><p>${err}</p></div><script>setTimeout(()=>window.close(),3000)</script></body></html>`);
   }
 });
 
