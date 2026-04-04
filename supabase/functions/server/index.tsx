@@ -12828,7 +12828,7 @@ app.post("/zernio/connect/:platform", async (c) => {
     const redirectUrl = pb.redirectUrl || c.req.query("redirectUrl") || "";
     // Always use user-scoped profile (creates one if needed)
     const profileId = await getOrCreateZernioProfile(user.id, user.email);
-    const qs = `profileId=${encodeURIComponent(profileId)}${redirectUrl ? `&redirect_url=${encodeURIComponent(redirectUrl)}` : ""}`;
+    const qs = `profileId=${encodeURIComponent(profileId)}&headless=true${redirectUrl ? `&redirect_url=${encodeURIComponent(redirectUrl)}` : ""}`;
     const res = await fetch(`${ZERNIO_BASE}/connect/${platform}?${qs}`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
     const data = await res.json();
     if (!res.ok) return c.json({ success: false, error: data.error || `HTTP ${res.status}` }, res.status);
@@ -12837,12 +12837,236 @@ app.post("/zernio/connect/:platform", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
-// GET /zernio/callback — OAuth callback landing page (popup auto-closes)
+// GET /zernio/callback — OAuth callback landing page (popup auto-closes, headless selection)
 app.get("/zernio/callback", async (c) => {
+  const ORA_SERVER_BASE = "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
   try {
     const user = await getUser(c);
-    const platform = c.req.query("platform") || "unknown";
+    const platform = c.req.query("platform") || c.req.query("connected") || "unknown";
     const status = c.req.query("status") || "success";
+    const step = c.req.query("step") || "";
+    const tempToken = c.req.query("tempToken") || "";
+    const userProfileRaw = c.req.query("userProfile") || "{}";
+    const connectToken = c.req.query("connect_token") || "";
+    const profileId = c.req.query("profileId") || "";
+
+    // Headless mode: LinkedIn organization selection
+    if (step === "select_organization" && platform === "linkedin") {
+      const organizationsRaw = c.req.query("organizations") || "[]";
+      console.log(`[zernio/callback] headless linkedin org selection, profile=${profileId}`);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ORA — Connect LinkedIn</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#1a1918;color:#E8E4DF;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.container{width:100%;max-width:420px}
+.logo{text-align:center;margin-bottom:24px;font-size:22px;font-weight:700;letter-spacing:2px;color:#C8A97E}
+.card{background:#2a2928;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:32px 28px;text-align:center}
+h2{font-size:17px;font-weight:600;margin-bottom:4px}
+.subtitle{font-size:13px;color:#7A7572;margin-bottom:24px}
+.option{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:10px;text-align:left}
+.option:hover{background:rgba(255,255,255,0.03)}
+.option.selected{border-color:#C8A97E;background:rgba(200,169,126,0.06)}
+.option-radio{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.option.selected .option-radio{border-color:#C8A97E}
+.option.selected .option-radio::after{content:'';width:8px;height:8px;border-radius:50%;background:#C8A97E}
+.option-label{font-size:14px;font-weight:500}
+.option-desc{font-size:12px;color:#7A7572;margin-top:2px}
+.btn{display:block;width:100%;padding:12px;margin-top:20px;border:none;border-radius:8px;background:#C8A97E;color:#1a1918;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.success-icon{font-size:48px;color:#5E6AD2;margin-bottom:12px}
+.hidden{display:none}
+.error-msg{color:#E5534B;font-size:13px;margin-top:12px}
+</style></head><body>
+<div class="container">
+<div class="logo">ORA</div>
+<div class="card" id="selectionCard">
+<h2>Connect LinkedIn</h2>
+<p class="subtitle">Choose how you want to post</p>
+<div id="options"></div>
+<button class="btn" id="connectBtn" disabled>Connect</button>
+<div class="error-msg hidden" id="errorMsg"></div>
+</div>
+<div class="card hidden" id="successCard">
+<div class="success-icon">&#10003;</div>
+<h2>Account Connected</h2>
+<p class="subtitle">You can close this window.</p>
+</div>
+</div>
+<script>
+(function(){
+  const profileId = ${JSON.stringify(profileId)};
+  const tempToken = ${JSON.stringify(tempToken)};
+  const userProfile = ${userProfileRaw};
+  const organizations = ${organizationsRaw};
+  const SERVER = ${JSON.stringify(ORA_SERVER_BASE)};
+
+  let selectedType = null;
+  let selectedOrg = null;
+  const optionsEl = document.getElementById("options");
+  const connectBtn = document.getElementById("connectBtn");
+  const errorMsg = document.getElementById("errorMsg");
+
+  // Personal option
+  const personalDiv = document.createElement("div");
+  personalDiv.className = "option";
+  personalDiv.innerHTML = '<div class="option-radio"></div><div><div class="option-label">Post as yourself</div><div class="option-desc">Personal profile</div></div>';
+  personalDiv.onclick = () => { select("personal", null, personalDiv); };
+  optionsEl.appendChild(personalDiv);
+
+  // Organization options
+  if (Array.isArray(organizations)) {
+    organizations.forEach((org) => {
+      const div = document.createElement("div");
+      div.className = "option";
+      div.innerHTML = '<div class="option-radio"></div><div><div class="option-label">' + (org.name || org.localizedName || "Organization") + '</div><div class="option-desc">Organization</div></div>';
+      div.onclick = () => { select("organization", org, div); };
+      optionsEl.appendChild(div);
+    });
+  }
+
+  function select(type, org, el) {
+    document.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
+    el.classList.add("selected");
+    selectedType = type;
+    selectedOrg = org;
+    connectBtn.disabled = false;
+  }
+
+  connectBtn.onclick = async () => {
+    connectBtn.disabled = true;
+    connectBtn.textContent = "Connecting...";
+    errorMsg.classList.add("hidden");
+    try {
+      const payload = { profileId, tempToken, userProfile, accountType: selectedType };
+      if (selectedType === "organization" && selectedOrg) payload.selectedOrganization = selectedOrg;
+      const res = await fetch(SERVER + "/zernio/linkedin/select-organization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+      document.getElementById("selectionCard").classList.add("hidden");
+      document.getElementById("successCard").classList.remove("hidden");
+      try { window.opener?.postMessage({ type: "zernio-oauth-complete", platform: "linkedin", status: "success" }, "*"); } catch(e){}
+      setTimeout(() => window.close(), 2000);
+    } catch(e) {
+      errorMsg.textContent = e.message || "Connection failed";
+      errorMsg.classList.remove("hidden");
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
+    }
+  };
+})();
+</script></body></html>`;
+      return new Response(html, { headers: { "Content-Type": "text/html", ...CORS_HEADERS } });
+    }
+
+    // Headless mode: Facebook page selection
+    if (step === "select_page" && platform === "facebook") {
+      const pagesRaw = c.req.query("pages") || "[]";
+      console.log(`[zernio/callback] headless facebook page selection, profile=${profileId}`);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ORA — Connect Facebook</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#1a1918;color:#E8E4DF;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.container{width:100%;max-width:420px}
+.logo{text-align:center;margin-bottom:24px;font-size:22px;font-weight:700;letter-spacing:2px;color:#C8A97E}
+.card{background:#2a2928;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:32px 28px;text-align:center}
+h2{font-size:17px;font-weight:600;margin-bottom:4px}
+.subtitle{font-size:13px;color:#7A7572;margin-bottom:24px}
+.option{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:10px;text-align:left}
+.option:hover{background:rgba(255,255,255,0.03)}
+.option.selected{border-color:#C8A97E;background:rgba(200,169,126,0.06)}
+.option-radio{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.option.selected .option-radio{border-color:#C8A97E}
+.option.selected .option-radio::after{content:'';width:8px;height:8px;border-radius:50%;background:#C8A97E}
+.option-label{font-size:14px;font-weight:500}
+.option-desc{font-size:12px;color:#7A7572;margin-top:2px}
+.btn{display:block;width:100%;padding:12px;margin-top:20px;border:none;border-radius:8px;background:#C8A97E;color:#1a1918;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.success-icon{font-size:48px;color:#5E6AD2;margin-bottom:12px}
+.hidden{display:none}
+.error-msg{color:#E5534B;font-size:13px;margin-top:12px}
+.empty{font-size:13px;color:#7A7572;padding:20px 0}
+</style></head><body>
+<div class="container">
+<div class="logo">ORA</div>
+<div class="card" id="selectionCard">
+<h2>Connect Facebook</h2>
+<p class="subtitle">Select a page to connect</p>
+<div id="options"></div>
+<button class="btn" id="connectBtn" disabled>Connect</button>
+<div class="error-msg hidden" id="errorMsg"></div>
+</div>
+<div class="card hidden" id="successCard">
+<div class="success-icon">&#10003;</div>
+<h2>Account Connected</h2>
+<p class="subtitle">You can close this window.</p>
+</div>
+</div>
+<script>
+(function(){
+  const profileId = ${JSON.stringify(profileId)};
+  const tempToken = ${JSON.stringify(tempToken)};
+  const userProfile = ${userProfileRaw};
+  const pages = ${pagesRaw};
+  const SERVER = ${JSON.stringify(ORA_SERVER_BASE)};
+
+  let selectedPage = null;
+  const optionsEl = document.getElementById("options");
+  const connectBtn = document.getElementById("connectBtn");
+  const errorMsg = document.getElementById("errorMsg");
+
+  if (!Array.isArray(pages) || pages.length === 0) {
+    optionsEl.innerHTML = '<div class="empty">No pages found. Make sure you have admin access to at least one Facebook page.</div>';
+  } else {
+    pages.forEach((page) => {
+      const div = document.createElement("div");
+      div.className = "option";
+      div.innerHTML = '<div class="option-radio"></div><div><div class="option-label">' + (page.name || "Facebook Page") + '</div><div class="option-desc">' + (page.category || "Page") + '</div></div>';
+      div.onclick = () => {
+        document.querySelectorAll(".option").forEach(o => o.classList.remove("selected"));
+        div.classList.add("selected");
+        selectedPage = page;
+        connectBtn.disabled = false;
+      };
+      optionsEl.appendChild(div);
+    });
+  }
+
+  connectBtn.onclick = async () => {
+    if (!selectedPage) return;
+    connectBtn.disabled = true;
+    connectBtn.textContent = "Connecting...";
+    errorMsg.classList.add("hidden");
+    try {
+      const res = await fetch(SERVER + "/zernio/facebook/select-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, pageId: selectedPage.id || selectedPage._id, tempToken, userProfile }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Connection failed");
+      document.getElementById("selectionCard").classList.add("hidden");
+      document.getElementById("successCard").classList.remove("hidden");
+      try { window.opener?.postMessage({ type: "zernio-oauth-complete", platform: "facebook", status: "success" }, "*"); } catch(e){}
+      setTimeout(() => window.close(), 2000);
+    } catch(e) {
+      errorMsg.textContent = e.message || "Connection failed";
+      errorMsg.classList.remove("hidden");
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
+    }
+  };
+})();
+</script></body></html>`;
+      return new Response(html, { headers: { "Content-Type": "text/html", ...CORS_HEADERS } });
+    }
+
+    // Default: auto-connected platform or standard callback (no selection needed)
     if (user) {
       try { await listZernioAccountsForUser(user.id, user.email); } catch (e) { console.log(`[zernio/callback] refresh failed: ${e}`); }
     }
@@ -12853,6 +13077,38 @@ app.get("/zernio/callback", async (c) => {
     console.log(`[zernio/callback] Error: ${err}`);
     return new Response(`<html><body style="background:#1a1918;color:#E8E4DF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>Connection error</h2><p>${err}</p></div><script>setTimeout(()=>window.close(),3000)</script></body></html>`, { headers: { "Content-Type": "text/html", ...CORS_HEADERS } });
   }
+});
+
+// POST /zernio/linkedin/select-organization — Proxy headless LinkedIn org selection to Zernio
+app.post("/zernio/linkedin/select-organization", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { profileId, tempToken, userProfile, accountType, selectedOrganization } = body;
+    const res = await fetch(`${ZERNIO_BASE}/connect/linkedin/select-organization`, {
+      method: "POST",
+      headers: zernioHeaders(),
+      body: JSON.stringify({ profileId, tempToken, userProfile, accountType, selectedOrganization }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json();
+    return c.json(data, res.status);
+  } catch (err) { return c.json({ error: String(err) }, 500); }
+});
+
+// POST /zernio/facebook/select-page — Proxy headless Facebook page selection to Zernio
+app.post("/zernio/facebook/select-page", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { profileId, pageId, tempToken, userProfile } = body;
+    const res = await fetch(`${ZERNIO_BASE}/connect/facebook/select-page`, {
+      method: "POST",
+      headers: zernioHeaders(),
+      body: JSON.stringify({ profileId, pageId, tempToken, userProfile }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json();
+    return c.json(data, res.status);
+  } catch (err) { return c.json({ error: String(err) }, 500); }
 });
 
 // POST /zernio/disconnect — Disconnect a social account (scoped to user)
