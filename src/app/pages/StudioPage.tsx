@@ -1489,6 +1489,7 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
   const [greetingLoaded, setGreetingLoaded] = useState(false);
   const greetingRequested = useRef(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [briefText, setBriefText] = useState("");
 
   const hasConnectedAccounts = Array.isArray(socialAccounts) && socialAccounts.length > 0;
   const accountsLoaded = socialAccounts !== null;
@@ -1537,78 +1538,197 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
       .finally(() => setGreetingLoaded(true));
   }, [vault, products, session, locale]);
 
-  const bubbleStyle = {
-    background: "var(--card)", border: "1px solid var(--border)",
-    fontSize: "14px", lineHeight: 1.6,
+  // Build example campaigns — tailored if brand/products exist
+  const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
+  const productNames = (products || []).filter((p: any) => p.name).map((p: any) => p.name).slice(0, 3);
+  const exampleCampaigns = brandName || productNames.length > 0
+    ? [
+        productNames.length > 0
+          ? (locale === "fr" ? `Lancer ${productNames[0]} sur Instagram et LinkedIn avec des visuels lifestyle` : `Launch ${productNames[0]} on Instagram and LinkedIn with lifestyle visuals`)
+          : t("studio.exampleCampaign1"),
+        brandName
+          ? (locale === "fr" ? `Animer la communauté ${brandName} cette semaine` : `Engage the ${brandName} community this week`)
+          : t("studio.exampleCampaign2"),
+        t("studio.exampleCampaign3"),
+      ]
+    : [t("studio.exampleCampaign1"), t("studio.exampleCampaign2"), t("studio.exampleCampaign3")];
+
+  const handleSubmit = () => {
+    const text = briefText.trim();
+    if (!text) return;
+    onSend(text);
   };
 
+  const placeholderText = locale === "fr"
+    ? "Ex : Lancer notre nouveau produit sur Instagram et LinkedIn avec des visuels lifestyle et un code promo -20%..."
+    : "E.g.: Launch our new product on Instagram and LinkedIn with lifestyle visuals and a -20% promo code...";
+
   return (
-    <div className="h-full flex flex-col justify-end px-6 pb-4 max-w-2xl mx-auto w-full">
-      <div className="space-y-3">
-        {/* Bubble 1 — Personalized contextual greeting */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4 }} className="flex gap-3 items-start">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1" style={{ background: "var(--foreground)" }}>
-            <Sparkles size={14} style={{ color: "var(--background)" }} />
-          </div>
-          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
-            {greeting || t("studio.welcomeGreetingFallback")}
-          </div>
-        </motion.div>
+    <div className="h-full flex flex-col justify-center px-6 pb-4 max-w-2xl mx-auto w-full">
+      {/* Greeting — small text */}
+      <motion.p
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 8 }}
+        transition={{ duration: 0.4 }}
+        className="mb-6 flex items-center gap-2"
+        style={{ fontSize: "13px", color: "var(--muted-foreground)" }}
+      >
+        <Sparkles size={13} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
+        {greeting || t("studio.welcomeGreetingFallback")}
+      </motion.p>
 
-        {/* Bubble 2 — Options */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4, delay: 0.3 }} className="flex gap-3 items-start">
-          <div className="w-8 h-8 flex-shrink-0" />
-          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
-            <div dangerouslySetInnerHTML={{ __html: t("studio.welcomeOptions") }} />
-          </div>
-        </motion.div>
+      {/* Hero headline */}
+      <motion.h1
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="mb-2"
+        style={{ fontSize: "28px", fontWeight: 700, color: "var(--foreground)", lineHeight: 1.2 }}
+      >
+        {t("studio.welcomeHeadline")}
+      </motion.h1>
 
-        {/* Bubble 3 — CTA */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 10 }} transition={{ duration: 0.4, delay: 0.6 }} className="flex gap-3 items-start">
-          <div className="w-8 h-8 flex-shrink-0" />
-          <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={bubbleStyle}>
-            {t("studio.welcomeCTA")}
-          </div>
-        </motion.div>
+      {/* Subtitle */}
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        className="mb-6"
+        style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.5 }}
+      >
+        {t("studio.welcomeSubtitle")}
+      </motion.p>
 
-        {/* Bubble 4 — Connect social accounts (only if none connected) */}
-        {accountsLoaded && !hasConnectedAccounts && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.9 }} className="flex gap-3 items-start">
-            <div className="w-8 h-8 flex-shrink-0" />
-            <div className="px-4 py-3 rounded-2xl rounded-bl-md" style={{
-              background: "linear-gradient(135deg, rgba(124,58,237,0.06), rgba(236,72,153,0.06))",
-              border: "1px solid rgba(124,58,237,0.15)",
-              fontSize: "13px", lineHeight: 1.6,
-            }}>
-              <p className="mb-2.5" style={{ color: "var(--foreground)" }}>{t("studio.connectAccountsCTA")}</p>
-              <div className="flex flex-wrap gap-2">
-                {SOCIAL_PLATFORMS_STUDIO.map(p => {
-                  const Icon = p.icon;
-                  const isConnecting = connecting === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => handleConnect(p.id)}
-                      disabled={!!connecting}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all hover:shadow-sm active:scale-95"
-                      style={{
-                        background: "#FFFFFF",
-                        border: "1px solid var(--border)",
-                        fontSize: "12px", fontWeight: 500,
-                        color: "var(--foreground)",
-                        opacity: connecting && !isConnecting ? 0.4 : 1,
-                      }}
-                    >
-                      {isConnecting ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />}
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </div>
+      {/* Brief textarea */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+        className="mb-4"
+      >
+        <textarea
+          value={briefText}
+          onChange={e => setBriefText(e.target.value)}
+          placeholder={placeholderText}
+          className="w-full rounded-xl px-4 py-3.5 outline-none resize-none transition-all"
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            fontSize: "14px",
+            lineHeight: 1.6,
+            minHeight: 120,
+            color: "var(--foreground)",
+          }}
+          onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
+        />
+      </motion.div>
+
+      {/* Example campaign cards */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.4 }}
+        className="flex flex-wrap gap-2 mb-6"
+      >
+        {exampleCampaigns.map((example, i) => (
+          <button
+            key={i}
+            onClick={() => setBriefText(example)}
+            className="px-3 py-1.5 rounded-lg cursor-pointer transition-all hover:shadow-sm active:scale-[0.98]"
+            style={{
+              background: "var(--secondary)",
+              border: "1px solid var(--border)",
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "var(--muted-foreground)",
+              lineHeight: 1.4,
+            }}
+          >
+            {example}
+          </button>
+        ))}
+      </motion.div>
+
+      {/* Submit button */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.45 }}
+        className="mb-6"
+      >
+        <button
+          onClick={handleSubmit}
+          disabled={!briefText.trim()}
+          className="flex items-center gap-2 px-6 py-2.5 rounded-xl cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{
+            background: "var(--foreground)",
+            color: "var(--background)",
+            fontSize: "14px",
+            fontWeight: 600,
+          }}
+        >
+          <Rocket size={15} />
+          {t("studio.launchCampaign")}
+        </button>
+      </motion.div>
+
+      {/* Social accounts bar */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.55 }}
+        className="flex items-center gap-2 flex-wrap"
+      >
+        {accountsLoaded && hasConnectedAccounts ? (
+          <>
+            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
+              {locale === "fr" ? "Comptes connectés :" : "Connected accounts:"}
+            </span>
+            {socialAccounts!.map((acc: any, i: number) => {
+              const plat = SOCIAL_PLATFORMS_STUDIO.find(p => p.id === acc.platform);
+              const Icon = plat?.icon;
+              return (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}>
+                  {Icon && <Icon size={11} />}
+                  {acc.username || acc.name || plat?.label || acc.platform}
+                </span>
+              );
+            })}
+          </>
+        ) : accountsLoaded && !hasConnectedAccounts ? (
+          <>
+            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
+              {t("studio.connectAccountsCTA")}
+            </span>
+            {SOCIAL_PLATFORMS_STUDIO.map(p => {
+              const Icon = p.icon;
+              const isConnecting = connecting === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => handleConnect(p.id)}
+                  disabled={!!connecting}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer transition-all hover:shadow-sm active:scale-95"
+                  style={{
+                    background: "var(--secondary)",
+                    border: "1px solid var(--border)",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: "var(--muted-foreground)",
+                    opacity: connecting && !isConnecting ? 0.4 : 1,
+                  }}
+                >
+                  {isConnecting ? <Loader2 size={11} className="animate-spin" /> : <Icon size={11} />}
+                  {p.label}
+                </button>
+              );
+            })}
+          </>
+        ) : null}
+      </motion.div>
     </div>
   );
 }
@@ -2889,7 +3009,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
   const [videoModels, setVideoModels] = useState<string[]>(["ora-motion"]);
   const [inspiring, setInspiring] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // showAdvanced removed — all fields always visible
 
   // Visual scene presets
   const SCENE_PRESETS = [
@@ -3201,23 +3321,8 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* ═══ NIVEAU 3 — Dépliable "Affiner" ═══ */}
-        <button onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-2 cursor-pointer transition-all w-full"
-          style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground)" }}>
-          <ChevronDown size={13} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
-          Affiner (audience, ton, CTA, moment, modèles IA...)
-        </button>
-
-        <AnimatePresence>
-          {showAdvanced && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4 overflow-hidden"
-            >
+        {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
+        <div className="space-y-4">
               {/* Audience */}
               <div>
                 <SectionLabel>Audience cible</SectionLabel>
@@ -3380,9 +3485,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        </div>
       </div>
 
       {/* Footer — Generate button */}
