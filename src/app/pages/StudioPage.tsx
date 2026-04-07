@@ -1802,223 +1802,129 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 /* ── Campaign Carousel — fullscreen feel ── */
 function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?: string }) {
   const { t } = useI18n();
-  const [current, setCurrent] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const [variantIdx, setVariantIdx] = useState<Record<number, number>>({});
-
-  const post = posts[current];
-  const activeVariantIdx = variantIdx[current] || 0;
-  const activeVariant = post?.variants?.[activeVariantIdx];
-
-  // Use variant data if available, else fall back to post data
-  const displayText = activeVariant?.text || post?.text;
-  const displayHeadline = activeVariant?.headline || post?.headline;
-  const displayHashtags = activeVariant?.hashtags || post?.hashtags;
-  const displayCta = activeVariant?.cta || post?.cta;
-  const displayImageUrl = activeVariant?.imageUrl || post?.imageUrl;
-  const displayVideoUrl = post?.videoUrl;
-  const hasVisual = !!displayImageUrl || !!displayVideoUrl;
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   const prev = () => setCurrent(i => Math.max(0, i - 1));
   const next = () => setCurrent(i => Math.min(posts.length - 1, i + 1));
 
-  const switchVariant = (vi: number) => {
-    setVariantIdx(prev => ({ ...prev, [current]: vi }));
+  // Platform colors
+  const platformColor: Record<string, string> = {
+    linkedin: "#0A66C2", instagram: "#E4405F", facebook: "#1877F2",
+    twitter: "#1DA1F2", tiktok: "#000000", youtube: "#FF0000",
+    pinterest: "#E60023", email: "#6B7280", press: "#374151",
+    blog: "#059669", landing: "#7C3AED",
   };
 
   return (
-    <>
-      {/* Inline carousel */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "#000" }}>
-        {/* Visual area — large */}
-        {hasVisual && (
-          <div className="relative cursor-pointer" onClick={() => setExpanded(true)}>
-            {displayVideoUrl ? (
-              <video src={displayVideoUrl} controls className="w-full" style={{ maxHeight: 420, objectFit: "cover" }} />
-            ) : (
-              <img src={displayImageUrl} className="w-full" style={{ maxHeight: 420, objectFit: "cover" }} alt="" />
-            )}
-            {/* Logo overlay */}
-            {logoUrl && (
-              <div className="absolute bottom-3 right-3 rounded-lg overflow-hidden"
-                style={{ width: 36, height: 36, background: "rgba(255,255,255,0.9)", padding: 4 }}>
-                <img src={logoUrl} className="w-full h-full object-contain" alt="logo" />
-              </div>
-            )}
-            {/* Download */}
-            <a href={displayImageUrl || displayVideoUrl} download target="_blank" rel="noreferrer"
-              className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}
-              onClick={e => e.stopPropagation()}>
-              <Download size={14} style={{ color: "#fff" }} />
-            </a>
-            {/* Platform badge */}
-            <div className="absolute top-3 left-3 flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", color: "#fff", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {post.platform}
-              </span>
-              <span className="px-2 py-1 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", color: "rgba(255,255,255,0.8)", fontSize: "11px" }}>
-                {post.format.replace(post.platform + "-", "")}
-              </span>
-            </div>
-            {/* Image model badge */}
-            {activeVariant?.imageModel && (
-              <div className="absolute bottom-3 left-3 px-2 py-1 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", color: "rgba(255,255,255,0.8)", fontSize: "10px", fontWeight: 500 }}>
-                {activeVariant.imageModel}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Variant tabs — shown when multiple models */}
-        {post?.variants && post.variants.length > 1 && (
-          <div className="flex items-center gap-1 px-4 py-2.5"
-            style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-            <Columns2 size={12} style={{ color: "var(--muted-foreground)", marginRight: 4 }} />
-            {post.variants.map((v, vi) => (
-              <button
-                key={vi}
-                onClick={() => switchVariant(vi)}
-                className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                style={{
-                  background: vi === activeVariantIdx ? "var(--foreground)" : "var(--secondary)",
-                  color: vi === activeVariantIdx ? "var(--background)" : "var(--text-primary)",
-                  fontSize: "10px", fontWeight: 600,
-                  border: "1px solid",
-                  borderColor: vi === activeVariantIdx ? "var(--foreground)" : "var(--border)",
-                }}>
-                {v.imageModel || v.model}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Text content */}
-        <div className="p-5 space-y-3" style={{ background: "var(--card)" }}>
-          {!hasVisual && (
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-1 rounded-lg"
-                style={{ background: "var(--secondary)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                {post.platform}
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                {post.format.replace(post.platform + "-", "")}
-              </span>
-            </div>
-          )}
-          {displayHeadline && (
-            <div style={{ fontSize: "15px", fontWeight: 700, lineHeight: 1.3 }}>{displayHeadline}</div>
-          )}
-          <div style={{ fontSize: "13.5px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-            {displayText}
-          </div>
-          {displayHashtags && (
-            <div style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 500 }}>{displayHashtags}</div>
-          )}
-          {displayCta && (
-            <div className="flex items-center gap-1.5 pt-1">
-              <ArrowRight size={12} />
-              <span style={{ fontSize: "13px", fontWeight: 600 }}>{displayCta}</span>
-            </div>
-          )}
-          {/* Model label for text variant */}
-          {activeVariant && (
-            <div style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", paddingTop: 4 }}>
-              {t("studio.textLabel")} : {activeVariant.model}
-            </div>
-          )}
-        </div>
-
-        {/* Navigation bar */}
-        {posts.length > 1 && (
-          <div className="flex items-center justify-between px-4 py-3"
-            style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
-            <button onClick={prev} disabled={current === 0}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:opacity-20"
-              style={{ background: "var(--secondary)" }}>
-              <ChevronLeft size={16} />
-            </button>
-            <div className="flex items-center gap-1.5">
-              {posts.map((_, i) => (
-                <button key={i} onClick={() => setCurrent(i)}
-                  className="transition-all cursor-pointer rounded-full"
-                  style={{
-                    width: i === current ? 20 : 6, height: 6,
-                    background: i === current ? "var(--foreground)" : "var(--border)",
-                  }} />
-              ))}
-            </div>
-            <button onClick={next} disabled={current === posts.length - 1}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:opacity-20"
-              style={{ background: "var(--secondary)" }}>
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        )}
+    <div className="space-y-3">
+      {/* Summary header */}
+      <div className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: "var(--secondary)" }}>
+        <Sparkles size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: "13px", fontWeight: 600 }}>{posts.length} contenus</span>
+        <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+          {[...new Set(posts.map(p => p.platform))].length} plateformes
+        </span>
+        <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+          {posts.filter(p => p.imageUrl || p.videoUrl).length} visuels
+        </span>
       </div>
 
-      {/* Fullscreen overlay */}
-      <AnimatePresence>
-        {expanded && hasVisual && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.92)" }}
-            onClick={() => setExpanded(false)}>
-            <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-10"
-              style={{ background: "rgba(255,255,255,0.1)" }}
-              onClick={() => setExpanded(false)}>
-              <X size={20} style={{ color: "#fff" }} />
-            </button>
-            {/* Navigation */}
-            {posts.length > 1 && (
-              <>
-                <button onClick={(e) => { e.stopPropagation(); prev(); }}
-                  disabled={current === 0}
-                  className="absolute left-4 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-20 z-10"
-                  style={{ background: "rgba(255,255,255,0.1)" }}>
-                  <ChevronLeft size={24} style={{ color: "#fff" }} />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); next(); }}
-                  disabled={current === posts.length - 1}
-                  className="absolute right-4 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-20 z-10"
-                  style={{ background: "rgba(255,255,255,0.1)" }}>
-                  <ChevronRight size={24} style={{ color: "#fff" }} />
-                </button>
-              </>
-            )}
-            <motion.div
-              key={current}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="relative max-w-4xl max-h-[85vh]"
-              onClick={e => e.stopPropagation()}>
-              {displayVideoUrl ? (
-                <video src={displayVideoUrl} controls autoPlay className="max-w-full max-h-[85vh] rounded-xl" />
-              ) : (
-                <img src={displayImageUrl} className="max-w-full max-h-[85vh] rounded-xl" alt="" />
-              )}
-              {logoUrl && (
-                <div className="absolute bottom-4 right-4 rounded-xl overflow-hidden"
-                  style={{ width: 48, height: 48, background: "rgba(255,255,255,0.9)", padding: 6 }}>
-                  <img src={logoUrl} className="w-full h-full object-contain" alt="logo" />
+      {/* Grid of all posts */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+        {posts.map((post, idx) => {
+          const hasVisual = !!post.imageUrl || !!post.videoUrl;
+          const color = platformColor[post.platform.toLowerCase()] || "#6B7280";
+          const isExpanded = expandedIdx === idx;
+
+          return (
+            <div
+              key={idx}
+              onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+              className="rounded-xl overflow-hidden cursor-pointer transition-all"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                ...(isExpanded ? { gridColumn: "1 / -1" } : {}),
+              }}>
+              {/* Visual thumbnail or text-only */}
+              {hasVisual && !isExpanded && (
+                <div className="relative" style={{ height: 120 }}>
+                  {post.videoUrl ? (
+                    <video src={post.videoUrl} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={post.imageUrl} className="w-full h-full object-cover" alt="" />
+                  )}
+                  {post.videoUrl && (
+                    <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
+                      <Film size={10} style={{ color: "#fff" }} />
+                    </div>
+                  )}
                 </div>
               )}
-              {/* Counter */}
-              <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: "12px", fontWeight: 500 }}>
-                {current + 1} / {posts.length}
+
+              {/* Platform badge + format */}
+              <div className="px-2.5 py-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded"
+                    style={{ background: color, color: "#fff", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {post.platform}
+                  </span>
+                  <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                    {post.format.replace(post.platform.toLowerCase() + "-", "")}
+                  </span>
+                  {post.variants && post.variants.length > 1 && (
+                    <span style={{ fontSize: "9px", color: "var(--muted-foreground)", marginLeft: "auto" }}>
+                      {post.variants.length} var.
+                    </span>
+                  )}
+                </div>
+
+                {/* Headline or truncated text */}
+                {!isExpanded && (
+                  <div style={{ fontSize: "11px", lineHeight: 1.4, color: "var(--text-primary)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {post.headline || post.text?.slice(0, 80)}
+                  </div>
+                )}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+
+              {/* Expanded detail view */}
+              {isExpanded && (
+                <div className="px-3 pb-3 space-y-3">
+                  {hasVisual && (
+                    <div className="relative rounded-lg overflow-hidden">
+                      {post.videoUrl ? (
+                        <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
+                      ) : (
+                        <img src={post.imageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
+                      )}
+                      {logoUrl && (
+                        <div className="absolute bottom-2 right-2 rounded-md overflow-hidden"
+                          style={{ width: 28, height: 28, background: "rgba(255,255,255,0.9)", padding: 3 }}>
+                          <img src={logoUrl} className="w-full h-full object-contain" alt="" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {post.headline && (
+                    <div style={{ fontSize: "14px", fontWeight: 700, lineHeight: 1.3 }}>{post.headline}</div>
+                  )}
+                  <div style={{ fontSize: "13px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{post.text}</div>
+                  {post.hashtags && (
+                    <div style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 500 }}>{post.hashtags}</div>
+                  )}
+                  {post.cta && (
+                    <div className="flex items-center gap-1.5">
+                      <ArrowRight size={11} />
+                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
