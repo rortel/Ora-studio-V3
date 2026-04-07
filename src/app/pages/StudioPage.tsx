@@ -16,6 +16,7 @@ import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { useI18n } from "../lib/i18n";
 import { TemplateEditor } from "../components/TemplateEditor";
+import { TemplateSelectorGrid } from "../components/TemplateSelectorGrid";
 import { registerTemplate, getTemplateById, getTemplatesForFormat } from "../components/templates";
 import type { TemplateDefinition } from "../components/templates/types";
 import { compositeAdCreative, selectTemplateForFormat } from "../lib/compositeAdCreative";
@@ -145,6 +146,7 @@ export function StudioPage() {
   const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
   const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string; editIdx?: number } | null>(null);
+  const [templateSelector, setTemplateSelector] = useState<{ action: StudioAction; msgId: string } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -471,7 +473,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory, templateSelections } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -992,7 +994,8 @@ export function StudioPage() {
             await Promise.all(
               postsWithImages.map(async (post) => {
                 try {
-                  const template = selectTemplateForFormat(post.format, tplCategory);
+                  const userSelectedId = templateSelections?.[post.format];
+                  const template = userSelectedId ? getTemplateById(userSelectedId) : selectTemplateForFormat(post.format, tplCategory);
                   if (!template) { console.log(`[studio] No template for format ${post.format}, skipping composite`); return; }
                   const compositeUrl = await compositeAdCreative({
                     imageUrl: post.imageUrl!,
@@ -1433,12 +1436,39 @@ export function StudioPage() {
                     onGenerate={(finalParams) => {
                       const action = { ...pendingCampaign.action, params: finalParams };
                       const msgId = pendingCampaign.msgId;
+                      const formats: string[] = finalParams.formats || ["linkedin-post"];
+                      // Check if any format has templates available
+                      const hasTemplates = formats.some(f => getTemplatesForFormat(f).length > 0);
                       setPendingCampaign(null);
-                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
-                      executeAction(action, msgId);
+                      if (hasTemplates) {
+                        setTemplateSelector({ action, msgId });
+                      } else {
+                        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
+                        executeAction(action, msgId);
+                      }
                     }}
                     onCancel={() => setPendingCampaign(null)}
                     serverPost={serverPost}
+                  />
+                )}
+
+                {/* Template selector interstitial */}
+                {templateSelector && (
+                  <TemplateSelectorGrid
+                    formatIds={templateSelector.action.params.formats || ["linkedin-post"]}
+                    onConfirm={(selections) => {
+                      const action = { ...templateSelector.action, params: { ...templateSelector.action.params, templateSelections: selections } };
+                      const msgId = templateSelector.msgId;
+                      setTemplateSelector(null);
+                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
+                      executeAction(action, msgId);
+                    }}
+                    onSkip={() => {
+                      const { action, msgId } = templateSelector;
+                      setTemplateSelector(null);
+                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
+                      executeAction(action, msgId);
+                    }}
                   />
                 )}
 

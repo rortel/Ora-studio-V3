@@ -1,4 +1,5 @@
 import type { TemplateDefinition, TemplateLayer } from "./types";
+import { figmaInstagramPostTemplates, figmaProductPostTemplates, figmaInstagramStoryTemplates, figmaBundleTemplates, figmaSkincareTemplates, figmaFlyerTemplates, figmaFashionAdTemplates, figmaFashionPostTemplates, figmaProPackTemplates, figmaLinkedInTemplates, figmaB2BLinkedInTemplates } from "./figma-templates";
 
 // ── Shared layer helpers ──
 
@@ -762,6 +763,18 @@ const ALL_TEMPLATES: TemplateDefinition[] = [
   ...adReadyInstagramStory,
   ...adReadyLinkedinPost,
   ...adReadyFacebookAd,
+  // Figma-sourced templates
+  ...figmaInstagramPostTemplates,
+  ...figmaProductPostTemplates,
+  ...figmaInstagramStoryTemplates,
+  ...figmaBundleTemplates,
+  ...figmaSkincareTemplates,
+  ...figmaFlyerTemplates,
+  ...figmaFashionAdTemplates,
+  ...figmaFashionPostTemplates,
+  ...figmaProPackTemplates,
+  ...figmaLinkedInTemplates,
+  ...figmaB2BLinkedInTemplates,
 ];
 
 const TEMPLATE_BY_FORMAT: Record<string, TemplateDefinition[]> = {};
