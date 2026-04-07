@@ -11,6 +11,7 @@ import {
   ChevronUp, ChevronDown, Undo2, Redo2, ZoomIn, ZoomOut,
   AlignLeft, AlignCenter, AlignRight, Bold,
   Circle, Minus, ImagePlus, Layers, GripVertical, Pipette,
+  Wand2, Scissors, Loader2, Sun, Paintbrush, Maximize, RefreshCw,
 } from "lucide-react";
 import type { TemplateDefinition, TemplateLayer } from "./templates/types";
 import { registerTemplate } from "./templates";
@@ -556,6 +557,296 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
     setSelectedId(newLayer.id);
   }, [layers, pushHistory]);
+
+  // ── AI ACTIONS STATE ──
+  const [aiProcessing, setAiProcessing] = useState<string | null>(null); // layerId being processed
+
+  // ── Ideogram tool states ──
+  const [ideogramMode, setIdeogramMode] = useState<"idle" | "mask-draw" | "remix" | "reframe" | "replace-bg">("idle");
+  const [maskLines, setMaskLines] = useState<{ points: number[]; strokeWidth: number }[]>([]);
+  const [isDrawingMask, setIsDrawingMask] = useState(false);
+  const [ideogramPrompt, setIdeogramPrompt] = useState("");
+  const [ideogramRemixWeight, setIdeogramRemixWeight] = useState(50);
+  const [ideogramReframeRes, setIdeogramReframeRes] = useState("1280x768");
+
+  // Remove background from selected image/logo layer via Photoroom
+  const removeBackground = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_BASE}/images/remove-bg`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        // Load the new transparent image
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          // Update the layer binding to the new URL
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Remove BG failed:", err); }
+    setAiProcessing(null);
+  }, [layers, resolveBinding, getAuthToken, pushHistory]);
+
+  // AI harmonize: relight image to match scene (Photoroom)
+  const harmonizeImage = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      // Use Photoroom to harmonize with soft shadow + preserve colors
+      const res = await fetch(`${API_BASE}/images/harmonize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, scene: "photoshoot", shadow: "ai.soft", _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Harmonize failed:", err); }
+    setAiProcessing(null);
+  }, [layers, resolveBinding, getAuthToken, pushHistory]);
+
+  // ── Ideogram: Inpaint (edit with mask) ──
+  const ideogramEdit = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer || !ideogramPrompt.trim() || maskLines.length === 0) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      // Export mask from Konva: create offscreen canvas, draw white lines on black background
+      const maskCanvas = document.createElement("canvas");
+      maskCanvas.width = cw;
+      maskCanvas.height = ch;
+      const ctx = maskCanvas.getContext("2d")!;
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (const line of maskLines) {
+        ctx.lineWidth = line.strokeWidth;
+        ctx.beginPath();
+        for (let i = 0; i < line.points.length; i += 2) {
+          if (i === 0) ctx.moveTo(line.points[i], line.points[i + 1]);
+          else ctx.lineTo(line.points[i], line.points[i + 1]);
+        }
+        ctx.stroke();
+      }
+      const maskDataUrl = maskCanvas.toDataURL("image/png");
+
+      const res = await fetch(`${API_BASE}/ideogram/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, maskDataUrl, prompt: ideogramPrompt, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Ideogram edit failed:", err); }
+    setAiProcessing(null);
+    setIdeogramMode("idle");
+    setMaskLines([]);
+    setIdeogramPrompt("");
+  }, [layers, resolveBinding, getAuthToken, pushHistory, maskLines, ideogramPrompt, cw, ch]);
+
+  // ── Ideogram: Remix (iterate with different prompt) ──
+  const ideogramRemix = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer || !ideogramPrompt.trim()) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      // Extract brand colors from vault for color_palette
+      const vaultColors = (vault?.colors as { hex: string; role: string }[])?.slice(0, 4);
+      const colorPalette = vaultColors?.map((c, i) => ({ color_hex: c.hex, color_weight: i === 0 ? 0.5 : 0.2 }));
+
+      const res = await fetch(`${API_BASE}/ideogram/remix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, prompt: ideogramPrompt, imageWeight: ideogramRemixWeight, colorPalette, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Ideogram remix failed:", err); }
+    setAiProcessing(null);
+    setIdeogramMode("idle");
+    setIdeogramPrompt("");
+  }, [layers, resolveBinding, getAuthToken, pushHistory, ideogramPrompt, ideogramRemixWeight, vault]);
+
+  // ── Ideogram: Reframe (extend to different resolution) ──
+  const ideogramReframe = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_BASE}/ideogram/reframe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, resolution: ideogramReframeRes, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Ideogram reframe failed:", err); }
+    setAiProcessing(null);
+    setIdeogramMode("idle");
+  }, [layers, resolveBinding, getAuthToken, pushHistory, ideogramReframeRes]);
+
+  // ── Ideogram: Replace Background ──
+  const ideogramReplaceBg = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_BASE}/ideogram/replace-background`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, prompt: ideogramPrompt || undefined, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Ideogram replace-bg failed:", err); }
+    setAiProcessing(null);
+    setIdeogramMode("idle");
+    setIdeogramPrompt("");
+  }, [layers, resolveBinding, getAuthToken, pushHistory, ideogramPrompt]);
+
+  // ── Ideogram: Upscale (enhance resolution) ──
+  const ideogramUpscale = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_BASE}/ideogram/upscale`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, resemblance: 55, detail: 90, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Ideogram upscale failed:", err); }
+    setAiProcessing(null);
+  }, [layers, resolveBinding, getAuthToken, pushHistory]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     WEB FONT LOADING — load vault brand fonts via Google Fonts or @font-face
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!open || !vault?.fonts) return;
+    const fonts = vault.fonts as string[];
+    if (!fonts.length) return;
+    // Try loading each font from Google Fonts
+    const families = fonts.map(f => f.replace(/\s+/g, '+')).join('&family=');
+    const linkId = 'vault-fonts-loader';
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${families}:wght@400;600;700&display=swap`;
+      document.head.appendChild(link);
+    }
+  }, [open, vault?.fonts]);
 
   /* ───────────────────────────────────────────────────────────────────────
      INLINE TEXT EDITING (must be before keyboard shortcuts that reference these)
@@ -1348,15 +1639,62 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                 height={ch * stageScale}
                 scaleX={stageScale}
                 scaleY={stageScale}
+                style={{ cursor: ideogramMode === "mask-draw" ? "crosshair" : "default" }}
                 onClick={(e: any) => {
+                  if (ideogramMode === "mask-draw") return;
                   if (e.target === e.target.getStage()) {
                     setSelectedId(null);
                     if (editingTextId) finishTextEdit();
                   }
                 }}
+                onMouseDown={(e: any) => {
+                  if (ideogramMode === "mask-draw") {
+                    setIsDrawingMask(true);
+                    const pos = e.target.getStage()?.getPointerPosition();
+                    if (pos) {
+                      const x = pos.x / stageScale;
+                      const y = pos.y / stageScale;
+                      setMaskLines(prev => [...prev, { points: [x, y], strokeWidth: 30 }]);
+                    }
+                    return;
+                  }
+                }}
+                onMouseMove={(e: any) => {
+                  if (ideogramMode === "mask-draw" && isDrawingMask) {
+                    const pos = e.target.getStage()?.getPointerPosition();
+                    if (pos) {
+                      const x = pos.x / stageScale;
+                      const y = pos.y / stageScale;
+                      setMaskLines(prev => {
+                        const updated = [...prev];
+                        const last = { ...updated[updated.length - 1] };
+                        last.points = [...last.points, x, y];
+                        updated[updated.length - 1] = last;
+                        return updated;
+                      });
+                    }
+                  }
+                }}
+                onMouseUp={() => {
+                  if (ideogramMode === "mask-draw") {
+                    setIsDrawingMask(false);
+                  }
+                }}
               >
                 <Layer>
                   {layers.map(renderLayer)}
+                  {/* Mask drawing overlay for Ideogram inpaint */}
+                  {ideogramMode === "mask-draw" && maskLines.map((line, i) => (
+                    <KonvaLine
+                      key={`mask-${i}`}
+                      points={line.points}
+                      stroke="rgba(255, 0, 0, 0.5)"
+                      strokeWidth={line.strokeWidth}
+                      lineCap="round"
+                      lineJoin="round"
+                      globalCompositeOperation="source-over"
+                    />
+                  ))}
                   <Transformer
                     ref={trRef}
                     boundBoxFunc={(_oldBox: any, newBox: any) => newBox}
@@ -1758,6 +2096,206 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button onClick={() => duplicateLayer(selectedLayer.id)} style={{ ...smallBtnStyle, width: "100%", justifyContent: "center" }}>
                       <Copy size={12} /> Duplicate Layer
                     </button>
+
+                    {/* ── AI Actions for image/logo layers ── */}
+                    {(selectedLayer.type === "image" || selectedLayer.type === "logo" || selectedLayer.type === "background-image") && (
+                      <div className="space-y-1.5 pb-2">
+                        <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>IA Actions</p>
+                        <button
+                          onClick={() => removeBackground(selectedLayer.id)}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: "rgba(139,92,246,0.08)",
+                            color: "#8B5CF6",
+                            borderColor: "rgba(139,92,246,0.2)",
+                          }}
+                        >
+                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
+                          Détourer le fond
+                        </button>
+                        <button
+                          onClick={() => harmonizeImage(selectedLayer.id)}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: "rgba(245,158,11,0.08)",
+                            color: "#F59E0B",
+                            borderColor: "rgba(245,158,11,0.2)",
+                          }}
+                        >
+                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Sun size={12} />}
+                          Harmoniser (lumière & ombre)
+                        </button>
+
+                        {/* Ideogram AI Tools separator */}
+                        <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 8 }}>Ideogram IA</p>
+
+                        {/* Inpaint / Edit button */}
+                        <button
+                          onClick={() => { setIdeogramMode(ideogramMode === "mask-draw" ? "idle" : "mask-draw"); setMaskLines([]); }}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: ideogramMode === "mask-draw" ? "rgba(59,130,246,0.15)" : "rgba(59,130,246,0.08)",
+                            color: "#3B82F6",
+                            borderColor: ideogramMode === "mask-draw" ? "rgba(59,130,246,0.4)" : "rgba(59,130,246,0.2)",
+                          }}
+                        >
+                          <Paintbrush size={12} />
+                          {ideogramMode === "mask-draw" ? "Drawing mask..." : "Inpaint (draw mask)"}
+                        </button>
+
+                        {/* Remix button */}
+                        <button
+                          onClick={() => setIdeogramMode(ideogramMode === "remix" ? "idle" : "remix")}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: ideogramMode === "remix" ? "rgba(16,185,129,0.15)" : "rgba(16,185,129,0.08)",
+                            color: "#10B981",
+                            borderColor: ideogramMode === "remix" ? "rgba(16,185,129,0.4)" : "rgba(16,185,129,0.2)",
+                          }}
+                        >
+                          <RefreshCw size={12} />
+                          Remix (varier le design)
+                        </button>
+
+                        {/* Reframe button */}
+                        <button
+                          onClick={() => setIdeogramMode(ideogramMode === "reframe" ? "idle" : "reframe")}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: ideogramMode === "reframe" ? "rgba(168,85,247,0.15)" : "rgba(168,85,247,0.08)",
+                            color: "#A855F7",
+                            borderColor: ideogramMode === "reframe" ? "rgba(168,85,247,0.4)" : "rgba(168,85,247,0.2)",
+                          }}
+                        >
+                          <Maximize size={12} />
+                          Reframe (adapter le format)
+                        </button>
+
+                        {/* Replace Background button */}
+                        <button
+                          onClick={() => setIdeogramMode(ideogramMode === "replace-bg" ? "idle" : "replace-bg")}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: ideogramMode === "replace-bg" ? "rgba(236,72,153,0.15)" : "rgba(236,72,153,0.08)",
+                            color: "#EC4899",
+                            borderColor: ideogramMode === "replace-bg" ? "rgba(236,72,153,0.4)" : "rgba(236,72,153,0.2)",
+                          }}
+                        >
+                          <Wand2 size={12} />
+                          Changer le fond (IA)
+                        </button>
+
+                        {/* Upscale button */}
+                        <button
+                          onClick={() => ideogramUpscale(selectedLayer.id)}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: "rgba(234,179,8,0.08)",
+                            color: "#EAB308",
+                            borderColor: "rgba(234,179,8,0.2)",
+                          }}
+                        >
+                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <ZoomIn size={12} />}
+                          Upscale (haute résolution)
+                        </button>
+
+                        {/* Ideogram tool config panel */}
+                        {(ideogramMode === "mask-draw" || ideogramMode === "remix" || ideogramMode === "replace-bg") && (
+                          <div style={{ background: "rgba(0,0,0,0.03)", borderRadius: 6, padding: 8, marginTop: 4 }}>
+                            <input
+                              type="text"
+                              value={ideogramPrompt}
+                              onChange={e => setIdeogramPrompt(e.target.value)}
+                              placeholder={ideogramMode === "mask-draw" ? "Décrivez la modification..." : ideogramMode === "remix" ? "Nouveau prompt pour le remix..." : "Décrivez le nouveau fond..."}
+                              style={{ width: "100%", fontSize: 11, padding: "6px 8px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", background: "var(--bg-primary)", color: "var(--text-primary)", marginBottom: 6 }}
+                            />
+                            {ideogramMode === "remix" && (
+                              <div style={{ marginBottom: 6 }}>
+                                <label style={{ fontSize: 9, color: "var(--text-secondary)" }}>Fidélité à l&apos;original: {ideogramRemixWeight}%</label>
+                                <input type="range" min={10} max={90} value={ideogramRemixWeight} onChange={e => setIdeogramRemixWeight(Number(e.target.value))} style={{ width: "100%" }} />
+                              </div>
+                            )}
+                            <button
+                              onClick={() => {
+                                if (ideogramMode === "mask-draw") ideogramEdit(selectedLayer.id);
+                                else if (ideogramMode === "remix") ideogramRemix(selectedLayer.id);
+                                else if (ideogramMode === "replace-bg") ideogramReplaceBg(selectedLayer.id);
+                              }}
+                              disabled={aiProcessing === selectedLayer.id || !ideogramPrompt.trim()}
+                              style={{
+                                ...smallBtnStyle,
+                                width: "100%",
+                                justifyContent: "center",
+                                background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
+                                color: "#fff",
+                                border: "none",
+                                opacity: (aiProcessing === selectedLayer.id || !ideogramPrompt.trim()) ? 0.5 : 1,
+                              }}
+                            >
+                              {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                              Appliquer
+                            </button>
+                          </div>
+                        )}
+
+                        {ideogramMode === "reframe" && (
+                          <div style={{ background: "rgba(0,0,0,0.03)", borderRadius: 6, padding: 8, marginTop: 4 }}>
+                            <label style={{ fontSize: 9, color: "var(--text-secondary)" }}>Format cible:</label>
+                            <select
+                              value={ideogramReframeRes}
+                              onChange={e => setIdeogramReframeRes(e.target.value)}
+                              style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", marginBottom: 6, background: "var(--bg-primary)", color: "var(--text-primary)" }}
+                            >
+                              <option value="1024x1024">1:1 (1024x1024)</option>
+                              <option value="1280x768">16:9 (1280x768)</option>
+                              <option value="768x1280">9:16 (768x1280)</option>
+                              <option value="1152x896">4:3 (1152x896)</option>
+                              <option value="896x1152">3:4 (896x1152)</option>
+                              <option value="1280x800">16:10 (1280x800)</option>
+                              <option value="1344x768">Bannière (1344x768)</option>
+                              <option value="1536x640">Ultra-wide (1536x640)</option>
+                            </select>
+                            <button
+                              onClick={() => ideogramReframe(selectedLayer.id)}
+                              disabled={aiProcessing === selectedLayer.id}
+                              style={{
+                                ...smallBtnStyle,
+                                width: "100%",
+                                justifyContent: "center",
+                                background: "linear-gradient(135deg, #A855F7, #EC4899)",
+                                color: "#fff",
+                                border: "none",
+                                opacity: aiProcessing === selectedLayer.id ? 0.5 : 1,
+                              }}
+                            >
+                              {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Maximize size={12} />}
+                              Reframe
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Delete */}
                     {selectedLayer.type !== "background-image" && (

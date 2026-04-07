@@ -47,6 +47,8 @@ interface GeneratedResult {
   refImageUrl?: string;
   campaignPosts?: CampaignPost[];
   logoUrl?: string;
+  campaignStartDate?: string;
+  campaignDuration?: string;
 }
 
 interface CampaignPostVariant {
@@ -134,8 +136,9 @@ export function StudioPage() {
   const [vault, setVault] = useState<any>(undefined);
   const [products, setProducts] = useState<any[]>([]);
   const [vaultLoading, setVaultLoading] = useState(false);
+  const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
-  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string } | null>(null);
+  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string; editIdx?: number } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -321,6 +324,20 @@ export function StudioPage() {
     return { vault: null, products: [] };
   }, [vault, vaultLoading, serverPost, serverGet]);
 
+  // Fetch connected social accounts (silent, non-blocking)
+  useEffect(() => {
+    if (socialAccounts !== null) return;
+    if (!accessToken) return;
+    fetch(`${API_BASE}/zernio/accounts/list`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ _token: `Bearer ${accessToken}` }),
+    })
+      .then(r => r.json())
+      .then(data => { setSocialAccounts(data.success && Array.isArray(data.accounts) ? data.accounts : []); })
+      .catch(() => setSocialAccounts([]));
+  }, [accessToken]);
+
   // No onboarding redirect — users configure their brand via Brand Vault directly
 
   // ── Execute generation action ──
@@ -448,7 +465,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -613,6 +630,9 @@ export function StudioPage() {
             keyMessages: keyMessages || "",
             callToAction: callToAction || "",
             language,
+            ...(campaignStartDate ? { campaignStartDate } : {}),
+            ...(campaignDuration ? { campaignDuration } : {}),
+            ...(campaignTheme ? { campaignTheme } : {}),
           };
 
           const textResults = await Promise.all(
@@ -885,6 +905,8 @@ export function StudioPage() {
               items: [],
               campaignPosts: posts,
               logoUrl: vault?.logo_url || vault?.logoUrl || undefined,
+              campaignStartDate: campaignStartDate as string | undefined,
+              campaignDuration: campaignDuration as string | undefined,
             };
           }
           break;
@@ -953,64 +975,66 @@ export function StudioPage() {
     if (!msg || isThinking) return;
     if (!text) setInput("");
 
-    // ── CREATE MODE shortcut: skip AI, show welcome locally ──
-    if (msg === "__CREATE_MODE__") {
-      setContext(prev => ({ ...prev, mode: "create" }));
-      setMessages([{
-        id: `assist-welcome-${Date.now()}`,
-        role: "assistant",
-        content: t("studio.welcomeCreateMode"),
-        suggestions: [t("studio.suggestImage"), t("studio.suggestVideoShort"), t("studio.suggestMusicShort"), t("studio.suggestTextShort")],
-      }]);
-      loadVault();
+    // ── INSPIRE → CAMPAIGN: idea from welcome screen, switch to campaign mode and send ──
+    if (msg.startsWith("__INSPIRE__:")) {
+      const idea = msg.slice("__INSPIRE__:".length).trim();
+      setContext(prev => ({ ...prev, mode: "campaign" }));
+      // Small delay to let mode update, then re-send as campaign message
+      await new Promise(r => setTimeout(r, 50));
+      const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: idea };
+      setMessages(prev => [...prev, userMsg]);
+      setIsThinking(true);
+      try {
+        let vaultData = vault;
+        let productsData = products;
+        if (!vaultData) {
+          const loaded = await loadVault(true);
+          vaultData = loaded.vault;
+          productsData = loaded.products;
+        }
+        const res = await serverPost("/studio/chat", {
+          message: idea,
+          history: [],
+          context: {
+            mode: "campaign",
+            ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
+            ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
+            ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
+            ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
+            ...((vaultData || vault)?.voice_profile ? { voice_profile: (vaultData || vault).voice_profile } : {}),
+            ...((vaultData || vault)?.universes?.length ? { universes: (vaultData || vault).universes } : {}),
+            ...((vaultData || vault)?.product_universes?.length ? { product_universes: (vaultData || vault).product_universes } : {}),
+            ...((vaultData || vault)?.competitors_list?.length ? { competitors_list: (vaultData || vault).competitors_list } : {}),
+            ...((vaultData || vault)?.text_calibration ? { text_calibration: (vaultData || vault).text_calibration } : {}),
+            ...((vaultData || vault)?.tagline ? { tagline: (vaultData || vault).tagline } : {}),
+            ...((vaultData || vault)?.mission ? { mission: (vaultData || vault).mission } : {}),
+            ...((vaultData || vault)?.values ? { values: (vaultData || vault).values } : {}),
+            ...((vaultData || vault)?.target_audiences?.length ? { target_audiences: (vaultData || vault).target_audiences } : {}),
+            ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category, tagline: p.tagline, features: p.features, url: p.url })).slice(0, 20) } : {}),
+          },
+        });
+        if (res.success) {
+          const assistMsg: ChatMessage = {
+            id: `assist-${Date.now()}`,
+            role: "assistant",
+            content: res.reply || "",
+            action: res.action || null,
+            suggestions: res.suggestions || [],
+            isGenerating: false,
+          };
+          setMessages(prev => [...prev, assistMsg]);
+          if (res.action?.type === "generate-campaign") {
+            setPendingCampaign({ action: res.action, msgId: assistMsg.id });
+          } else if (res.action?.type === "start-campaign") {
+            setContext(prev => ({ ...prev, mode: "campaign", campaignBrief: res.action.params }));
+          }
+        }
+      } catch { /* silent */ }
+      setIsThinking(false);
       return;
     }
 
     // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
-    if (msg === "__CAMPAIGN_MODE__") {
-      setContext(prev => ({ ...prev, mode: "campaign" }));
-      // Wait for auth token if not ready yet (max 5s)
-      let token = getAuthHeader();
-      if (!token) {
-        console.log("[studio] Campaign: waiting for auth token...");
-        for (let i = 0; i < 50 && !token; i++) {
-          await new Promise(r => setTimeout(r, 100));
-          token = getAuthHeader();
-        }
-        console.log(`[studio] Campaign: token after wait = ${token ? "OK" : "STILL EMPTY"}`);
-      }
-      const loaded = await loadVault(true);
-      console.log("[studio] Campaign vault loaded:", JSON.stringify(loaded.vault ? Object.keys(loaded.vault) : null), "products:", loaded.products?.length);
-      const brandName = loaded.vault?.brandName || loaded.vault?.company_name || loaded.vault?.brand_platform?.brand_name;
-      const allProducts = loaded.products?.map((p: any) => p.name).filter(Boolean) || [];
-      const hasBrand = !!brandName;
-      const hasProducts = allProducts.length > 0;
-
-      let welcomeContent = "";
-      let suggestions: string[] = [];
-
-      if (hasBrand && hasProducts) {
-        welcomeContent = t("studio.campaignWelcomeWithProducts").replace("{brand}", brandName).replace("{products}", allProducts.join(", "));
-        // Show ALL products as suggestion chips (max 8 for UI readability)
-        suggestions = allProducts.slice(0, 8).map((n: string) => `${t("studio.campaignPrefix")} ${n}`);
-        suggestions.push(t("studio.campaignAwareness"));
-      } else if (hasBrand) {
-        welcomeContent = t("studio.campaignWelcomeWithBrand").replace("{brand}", brandName);
-        suggestions = [t("studio.productLaunch"), t("studio.seasonalPromotion"), t("studio.campaignAwareness")];
-      } else {
-        welcomeContent = t("studio.campaignWelcomeNoBrand");
-        suggestions = [t("studio.completeBrandVault"), t("studio.launchWithoutBrand"), t("studio.genericCampaign")];
-      }
-
-      setMessages([{
-        id: `assist-campaign-welcome-${Date.now()}`,
-        role: "assistant",
-        content: welcomeContent,
-        suggestions,
-      }]);
-      return;
-    }
-
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -1020,9 +1044,9 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
-      // Default to "create" mode if not explicitly set to "campaign"
-      if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
-      const isCampaignMode = context.mode === "campaign";
+      // Always campaign mode — Studio = agence
+      if (!context.mode) setContext(prev => ({ ...prev, mode: "campaign" }));
+      const isCampaignMode = true;
 
       // Load vault + products (always — brand context enriches all generations)
       let vaultData = vault;
@@ -1033,11 +1057,11 @@ export function StudioPage() {
         productsData = loaded.products;
       }
 
-      // Count campaign exchanges to force generation after 3 user messages
+      // Count campaign exchanges to force generation after enough brief questions
       const userMsgCount = isCampaignMode
         ? messages.filter(m => m.role === "user").length + 1
         : 0;
-      const forceGenerate = isCampaignMode && userMsgCount >= 3;
+      const forceGenerate = isCampaignMode && userMsgCount >= 8;
 
       const res = await serverPost("/studio/chat", {
         message: forceGenerate
@@ -1046,12 +1070,21 @@ export function StudioPage() {
         history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         context: {
           ...context,
-          mode: context.mode || "create",
+          mode: "campaign",
           ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
           ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
           ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
           ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
-          ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category })).slice(0, 20) } : {}),
+          ...((vaultData || vault)?.voice_profile ? { voice_profile: (vaultData || vault).voice_profile } : {}),
+          ...((vaultData || vault)?.universes?.length ? { universes: (vaultData || vault).universes } : {}),
+          ...((vaultData || vault)?.product_universes?.length ? { product_universes: (vaultData || vault).product_universes } : {}),
+          ...((vaultData || vault)?.competitors_list?.length ? { competitors_list: (vaultData || vault).competitors_list } : {}),
+          ...((vaultData || vault)?.text_calibration ? { text_calibration: (vaultData || vault).text_calibration } : {}),
+          ...((vaultData || vault)?.tagline ? { tagline: (vaultData || vault).tagline } : {}),
+          ...((vaultData || vault)?.mission ? { mission: (vaultData || vault).mission } : {}),
+          ...((vaultData || vault)?.values ? { values: (vaultData || vault).values } : {}),
+          ...((vaultData || vault)?.target_audiences?.length ? { target_audiences: (vaultData || vault).target_audiences } : {}),
+          ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category, tagline: p.tagline, features: p.features, url: p.url })).slice(0, 20) } : {}),
           ...(forceGenerate ? { force_generate: true } : {}),
           ...(attachedImage?.signedUrl ? { hasReferenceImage: true, referenceImageUrl: attachedImage.signedUrl } : {}),
         },
@@ -1210,7 +1243,19 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} />
+              <WelcomeScreen onSend={handleSend} onFillInput={(text: string) => { setInput(text); setTimeout(() => inputRef.current?.focus(), 50); }} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} socialAccounts={socialAccounts} onAccountConnected={() => {
+                // Refresh social accounts after connection
+                setTimeout(() => {
+                  fetch(`${API_BASE}/zernio/accounts/list`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+                    body: JSON.stringify({ _token: `Bearer ${accessToken}` }),
+                  })
+                    .then(r => r.json())
+                    .then(data => { if (data.success && Array.isArray(data.accounts)) setSocialAccounts(data.accounts); })
+                    .catch(() => {});
+                }, 1500);
+              }} />
             ) : (
               <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
                 {messages.map(msg => (
@@ -1222,7 +1267,7 @@ export function StudioPage() {
                         msg={msg}
                         onSuggestion={handleSend}
                         onCompare={handleCompare}
-                        onFinalize={(posts, logoUrl, brief) => setFinalizingCampaign({ posts, logoUrl, brief })}
+                        onFinalize={(posts, logoUrl, brief, startDate, duration, editIdx) => setFinalizingCampaign({ posts, logoUrl, brief, campaignStartDate: startDate, campaignDuration: duration, editIdx })}
                         onEdit={(item, type, prompt) => {
                           if (type === "image" && item.url) {
                             handleSend(`Édite cette image : garde le même sujet mais propose une variante différente. Image originale: ${item.url}`);
@@ -1256,6 +1301,9 @@ export function StudioPage() {
                     serverGet={serverGet}
                     onClose={() => setFinalizingCampaign(null)}
                     onSaved={() => { setFinalizingCampaign(null); toast.success(t("studio.campaignSaved")); }}
+                    campaignStartDate={finalizingCampaign.campaignStartDate}
+                    campaignDuration={finalizingCampaign.campaignDuration}
+                    initialEditIdx={finalizingCampaign.editIdx}
                   />
                 )}
 
@@ -1307,46 +1355,9 @@ export function StudioPage() {
                     </span>
                   </div>
                   {!attachedImage.uploading && attachedImage.signedUrl && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: t("studio.pillStudioWhite"), prompt: "Professional studio photoshoot, pure white background, luxury product photography, soft diffused studio lighting, clean minimalist composition, commercial quality", type: "image" as const },
-                        { label: t("studio.pillPackshot"), prompt: "Clean product packshot, neutral gradient background, professional commercial photography, sharp focus, centered composition, studio lighting", type: "image" as const },
-                        { label: t("studio.pillLifestyle"), prompt: "Lifestyle product scene, natural environment, warm golden hour lighting, authentic setting, editorial photography style, depth of field", type: "image" as const },
-                        { label: t("studio.pillFlatLay"), prompt: "Creative flat lay composition, top-down view, artistic arrangement with complementary props, soft shadows, pastel or neutral background, magazine style", type: "image" as const },
-                        { label: t("studio.pillCinematic"), prompt: "Cinematic product shot, dramatic moody lighting, anamorphic lens flare, film grain, deep shadows, rich color grading, widescreen composition", type: "image" as const },
-                        { label: t("studio.pillAnimate"), prompt: "Smooth cinematic animation, gentle camera dolly movement, professional product reveal, elegant motion, studio lighting", type: "video" as const },
-                      ].map(s => (
-                        <button key={s.label} onClick={async () => {
-                          const refUrl = attachedImage?.signedUrl;
-                          if (!refUrl) { toast.error(t("studio.photoNotUploaded")); return; }
-                          const msgId = `assist-pill-${Date.now()}`;
-                          const userMsg: ChatMessage = { id: `user-pill-${Date.now()}`, role: "user", content: s.label };
-                          const actionType = s.type === "video" ? "generate-video" : "generate-image";
-                          const actionObj: StudioAction = { type: actionType, params: { prompt: s.prompt, imageUrl: refUrl, aspectRatio: "1:1", models: ["ora-vision"], model: "ora-motion" } };
-                          const assistMsg: ChatMessage = {
-                            id: msgId, role: "assistant",
-                            content: `Je vais utiliser votre photo comme base pour créer : ${s.label.toLowerCase()}.`,
-                            isGenerating: true,
-                            action: actionObj,
-                          };
-                          if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
-                          setMessages(prev => [...prev, userMsg, assistMsg]);
-                          try {
-                            await executeAction(actionObj, msgId);
-                          } catch (err) {
-                            console.error("[studio] pill executeAction error:", err);
-                            toast.error(t("studio.generationError"));
-                            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: false } : m));
-                          }
-                        }}
-                          className="px-2.5 py-1 rounded-full transition-all cursor-pointer"
-                          style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}
-                          onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                          onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
+                    <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                      {t("studio.photoReadyHint")}
+                    </span>
                   )}
                 </div>
               )}
@@ -1484,96 +1495,250 @@ export function StudioPage() {
   );
 }
 
-/* ── Welcome Screen ── */
-function WelcomeScreen({ onSend, onSetMode }: { onSend: (text: string) => void; onSetMode: (mode: string) => void }) {
-  const { t } = useI18n();
+/* ── Welcome Screen — 3 bubbles like SMS ── */
+const SOCIAL_PLATFORMS_STUDIO = [
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "facebook", label: "Facebook", icon: Facebook },
+  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
+  { id: "twitter", label: "X", icon: Twitter },
+];
+
+function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onFillInput: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
+  const { t, locale } = useI18n();
+  const { session, accessToken } = useAuth();
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [inspiring, setInspiring] = useState(false);
+  const [ideas, setIdeas] = useState<string[]>([]);
+
+  const hasConnectedAccounts = Array.isArray(socialAccounts) && socialAccounts.length > 0;
+  const accountsLoaded = socialAccounts !== null;
+
+  const handleConnect = useCallback(async (platform: string) => {
+    setConnecting(platform);
+    try {
+      const token = accessToken || "";
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, redirectUrl: `${API_BASE}/zernio/callback` }),
+      });
+      const data = await res.json();
+      if (!data.success || !data.authUrl) { setConnecting(null); return; }
+      const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
+      if (!popup) { setConnecting(null); return; }
+      const poll = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(poll);
+          setConnecting(null);
+          onAccountConnected?.();
+        }
+      }, 500);
+      setTimeout(() => { clearInterval(poll); if (!popup.closed) popup.close(); setConnecting(null); }, 300_000);
+    } catch { setConnecting(null); }
+  }, [onAccountConnected]);
+
+  const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
+
+  const handleInspire = async () => {
+    setInspiring(true);
+    try {
+      // Build rich brand context from vault
+      const ctx: string[] = [];
+      if (brandName) ctx.push(`Brand: ${brandName}`);
+      const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
+      if (sector) ctx.push(`Sector: ${sector}`);
+      if (vault?.tagline) ctx.push(`Tagline: "${vault.tagline}"`);
+      if (vault?.mission) ctx.push(`Mission: ${vault.mission}`);
+      if (vault?.values) ctx.push(`Values: ${Array.isArray(vault.values) ? vault.values.join(", ") : vault.values}`);
+      // Tone
+      const tone = vault?.tone;
+      if (tone) {
+        const parts = [];
+        if (tone.primary_tone) parts.push(tone.primary_tone);
+        if (tone.adjectives?.length) parts.push(tone.adjectives.join(", "));
+        if (parts.length) ctx.push(`Tone: ${parts.join(" — ")}`);
+      }
+      // Brand platform
+      const bp = vault?.brand_platform;
+      if (bp?.promise) ctx.push(`Promise: ${bp.promise}`);
+      if (bp?.narrative_register) ctx.push(`Register: ${bp.narrative_register}`);
+      if (bp?.creative_tension) ctx.push(`Creative tension: ${bp.creative_tension}`);
+      // Target audiences
+      const audiences = vault?.target_audiences || vault?.targetAudiences || [];
+      if (Array.isArray(audiences) && audiences.length > 0) {
+        ctx.push(`Target audiences: ${audiences.map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 3).join(", ")}`);
+      }
+      // Products
+      const prods = (products || []).filter((p: any) => p.name).slice(0, 5);
+      if (prods.length > 0) {
+        ctx.push(`Products: ${prods.map((p: any) => `${p.name}${p.tagline ? ` — ${p.tagline}` : ""}${p.price ? ` (${p.price})` : ""}`).join("; ")}`);
+      }
+      // Connected platforms
+      const connectedPlatforms = (socialAccounts || []).map((a: any) => a.platform).filter(Boolean);
+      if (connectedPlatforms.length) ctx.push(`Connected platforms: ${connectedPlatforms.join(", ")}`);
+
+      const brandContext = ctx.length > 0 ? ctx.join("\n") : "No brand context available.";
+
+      const systemPrompt = `You are a senior social media strategist working for a creative agency. You have deep knowledge of this brand:\n\n${brandContext}\n\nGenerate exactly 3 different campaign ideas. Each idea = 1 short sentence (max 15 words), specific and actionable. Each must reference a concrete angle (product, event, value, audience). Format: one idea per line, numbered 1. 2. 3. — nothing else. Reply in ${locale === "fr" ? "French" : "English"}.`;
+
+      const res = await fetch(`${API_BASE}/generate/text-multi-get?prompt=${encodeURIComponent("Generate 3 campaign ideas for this brand.")}&models=gpt-5&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=200`, {
+        headers: { Authorization: `Bearer ${session?.access_token || ""}`, apikey: publicAnonKey },
+      });
+      const data = await res.json();
+      if (data.success && data.results?.[0]?.result?.text) {
+        const raw = data.results[0].result.text.trim();
+        const parsed = raw.split(/\n/).map((l: string) => l.replace(/^\d+[\.\)\-]\s*/, "").trim()).filter((l: string) => l.length > 5);
+        setIdeas(parsed.slice(0, 3));
+      }
+    } catch { /* silent */ }
+    setInspiring(false);
+  };
+
   return (
-    <div className="h-full flex flex-col items-center justify-center px-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
+    <div className="h-full flex flex-col justify-center items-center px-6 pb-4 max-w-xl mx-auto w-full">
+      {/* Headline — personalized with brand name */}
+      <motion.h1
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="text-center max-w-lg"
+        transition={{ duration: 0.4 }}
+        className="mb-3 text-center"
+        style={{ fontSize: "26px", fontWeight: 700, color: "var(--foreground)", lineHeight: 1.3 }}
       >
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-6"
-          style={{ background: "var(--foreground)" }}>
-          <Sparkles size={20} style={{ color: "var(--background)" }} />
-        </div>
-        <h1 style={{ fontSize: "26px", fontWeight: 700, lineHeight: 1.2 }}>
-          {t("studio.welcomeTitle")}
-        </h1>
-        <p style={{ fontSize: "14px", color: "var(--muted-foreground)", marginTop: 8 }}>
-          {t("studio.welcomeSubtitle")}
-        </p>
-      </motion.div>
+        {brandName
+          ? (locale === "fr" ? `${brandName}, engagez votre communauté` : `${brandName}, engage your community`)
+          : (locale === "fr" ? "Engagez votre communauté" : "Engage your community")}
+      </motion.h1>
 
-      {/* Two main paths */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
+      {/* Subtitle — short, no brand repetition */}
+      <motion.p
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.15 }}
-        className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full max-w-lg"
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="mb-8 text-center"
+        style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.5 }}
+      >
+        {locale === "fr"
+          ? "Décrivez votre prochaine campagne ou laissez ORA vous inspirer"
+          : "Describe your next campaign or let ORA inspire you"}
+      </motion.p>
+
+      {/* Inspire me button + idea bubbles */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+        className="flex flex-col items-center gap-4 mb-8 w-full"
       >
         <button
-          onClick={() => { onSetMode("create"); onSend("__CREATE_MODE__"); }}
-          className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
-          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+          onClick={handleInspire}
+          disabled={inspiring}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all hover:shadow-md active:scale-[0.97] disabled:opacity-60 disabled:cursor-wait"
+          style={{
+            background: "var(--foreground)",
+            color: "var(--background)",
+            fontSize: "13px",
+            fontWeight: 600,
+          }}
         >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--secondary)" }}>
-            <Wand2 size={16} />
-          </div>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.createMode")}</div>
-            <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              {t("studio.createModeDesc")}
-            </div>
-          </div>
+          {inspiring ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+          {inspiring
+            ? (locale === "fr" ? "Réflexion en cours..." : "Thinking...")
+            : (locale === "fr" ? "Inspirez-moi" : "Inspire me")}
         </button>
 
-        <button
-          onClick={() => { onSetMode("campaign"); onSend("__CAMPAIGN_MODE__"); }}
-          className="flex items-start gap-3 p-4 rounded-xl text-left transition-all cursor-pointer group"
-          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-        >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--secondary)" }}>
-            <Rocket size={16} />
-          </div>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: 600 }}>{t("studio.campaignMode")}</div>
-            <div style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
-              {t("studio.campaignModeDesc")}
-            </div>
-          </div>
-        </button>
+        {/* Idea bubbles — appear after inspire */}
+        <AnimatePresence>
+          {ideas.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col gap-2 w-full max-w-md"
+            >
+              {ideas.map((idea, i) => (
+                <motion.button
+                  key={i}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  onClick={() => onSend(`__INSPIRE__:${idea}`)}
+                  className="text-left px-4 py-3 rounded-2xl rounded-bl-md cursor-pointer transition-all hover:shadow-md active:scale-[0.98] group"
+                  style={{
+                    background: "var(--secondary)",
+                    border: "1px solid var(--border)",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                    color: "var(--foreground)",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                >
+                  <div className="flex items-start gap-3">
+                    <Lightbulb size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--muted-foreground)" }} />
+                    <span>{idea}</span>
+                    <ArrowRight size={13} className="flex-shrink-0 mt-0.5 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </div>
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
-      {/* Quick suggestions */}
+      {/* Social accounts bar */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="flex flex-wrap gap-2 mt-6 justify-center max-w-lg"
+        transition={{ duration: 0.4, delay: 0.5 }}
+        className="flex items-center justify-center gap-2 flex-wrap"
       >
-        {[
-          t("studio.suggestCinematic"),
-          t("studio.suggestMusic"),
-          t("studio.suggestText"),
-          t("studio.suggestVideo"),
-        ].map(s => (
-          <button key={s} onClick={() => { onSetMode("create"); onSend(s); }}
-            className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
-            style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "12px", color: "var(--muted-foreground)" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; e.currentTarget.style.borderColor = "var(--foreground)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; e.currentTarget.style.borderColor = "var(--border)"; }}>
-            {s}
-          </button>
-        ))}
+        {accountsLoaded && hasConnectedAccounts ? (
+          <>
+            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
+              {locale === "fr" ? "Comptes connectés :" : "Connected accounts:"}
+            </span>
+            {socialAccounts!.map((acc: any, i: number) => {
+              const plat = SOCIAL_PLATFORMS_STUDIO.find(p => p.id === acc.platform);
+              const Icon = plat?.icon;
+              return (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}>
+                  {Icon && <Icon size={11} />}
+                  {acc.username || acc.name || plat?.label || acc.platform}
+                </span>
+              );
+            })}
+          </>
+        ) : accountsLoaded && !hasConnectedAccounts ? (
+          <>
+            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
+              {t("studio.connectAccountsCTA")}
+            </span>
+            {SOCIAL_PLATFORMS_STUDIO.map(p => {
+              const Icon = p.icon;
+              const isConnecting = connecting === p.id;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => handleConnect(p.id)}
+                  disabled={!!connecting}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer transition-all hover:shadow-sm active:scale-95"
+                  style={{
+                    background: "var(--secondary)",
+                    border: "1px solid var(--border)",
+                    fontSize: "11px",
+                    fontWeight: 500,
+                    color: "var(--muted-foreground)",
+                    opacity: connecting && !isConnecting ? 0.4 : 1,
+                  }}
+                >
+                  {isConnecting ? <Loader2 size={11} className="animate-spin" /> : <Icon size={11} />}
+                  {p.label}
+                </button>
+              );
+            })}
+          </>
+        ) : null}
       </motion.div>
     </div>
   );
@@ -1596,7 +1761,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
 }) {
   const { t } = useI18n();
@@ -1630,244 +1795,186 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
         <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} logoUrl={msg.result.logoUrl} />
       )}
 
-      {/* Suggestions */}
-      {msg.suggestions && msg.suggestions.length > 0 && !msg.isGenerating && (
-        <div className="flex flex-wrap gap-2">
-          {msg.suggestions.map((s, i) => (
-            <button key={i} onClick={() => onSuggestion(s)}
-              className="px-3 py-1.5 rounded-full transition-all cursor-pointer"
-              style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "12px" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Suggestions removed — pure conversational, no buttons */}
     </div>
   );
 }
 
 /* ── Campaign Carousel — fullscreen feel ── */
-function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?: string }) {
+function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void }) {
   const { t } = useI18n();
-  const [current, setCurrent] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const [variantIdx, setVariantIdx] = useState<Record<number, number>>({});
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
-  const post = posts[current];
-  const activeVariantIdx = variantIdx[current] || 0;
-  const activeVariant = post?.variants?.[activeVariantIdx];
-
-  // Use variant data if available, else fall back to post data
-  const displayText = activeVariant?.text || post?.text;
-  const displayHeadline = activeVariant?.headline || post?.headline;
-  const displayHashtags = activeVariant?.hashtags || post?.hashtags;
-  const displayCta = activeVariant?.cta || post?.cta;
-  const displayImageUrl = activeVariant?.imageUrl || post?.imageUrl;
-  const displayVideoUrl = post?.videoUrl;
-  const hasVisual = !!displayImageUrl || !!displayVideoUrl;
-
-  const prev = () => setCurrent(i => Math.max(0, i - 1));
-  const next = () => setCurrent(i => Math.min(posts.length - 1, i + 1));
-
-  const switchVariant = (vi: number) => {
-    setVariantIdx(prev => ({ ...prev, [current]: vi }));
+  // Platform colors
+  const platformColor: Record<string, string> = {
+    linkedin: "#0A66C2", instagram: "#E4405F", facebook: "#1877F2",
+    twitter: "#1DA1F2", tiktok: "#000000", youtube: "#FF0000",
+    pinterest: "#E60023", email: "#6B7280", press: "#374151",
+    blog: "#059669", landing: "#7C3AED",
   };
 
   return (
-    <>
-      {/* Inline carousel */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "#000" }}>
-        {/* Visual area — large */}
-        {hasVisual && (
-          <div className="relative cursor-pointer" onClick={() => setExpanded(true)}>
-            {displayVideoUrl ? (
-              <video src={displayVideoUrl} controls className="w-full" style={{ maxHeight: 420, objectFit: "cover" }} />
-            ) : (
-              <img src={displayImageUrl} className="w-full" style={{ maxHeight: 420, objectFit: "cover" }} alt="" />
-            )}
-            {/* Logo overlay */}
-            {logoUrl && (
-              <div className="absolute bottom-3 right-3 rounded-lg overflow-hidden"
-                style={{ width: 36, height: 36, background: "rgba(255,255,255,0.9)", padding: 4 }}>
-                <img src={logoUrl} className="w-full h-full object-contain" alt="logo" />
-              </div>
-            )}
-            {/* Download */}
-            <a href={displayImageUrl || displayVideoUrl} download target="_blank" rel="noreferrer"
-              className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)" }}
-              onClick={e => e.stopPropagation()}>
-              <Download size={14} style={{ color: "#fff" }} />
-            </a>
-            {/* Platform badge */}
-            <div className="absolute top-3 left-3 flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", color: "#fff", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {post.platform}
-              </span>
-              <span className="px-2 py-1 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", color: "rgba(255,255,255,0.8)", fontSize: "11px" }}>
-                {post.format.replace(post.platform + "-", "")}
-              </span>
-            </div>
-            {/* Image model badge */}
-            {activeVariant?.imageModel && (
-              <div className="absolute bottom-3 left-3 px-2 py-1 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", color: "rgba(255,255,255,0.8)", fontSize: "10px", fontWeight: 500 }}>
-                {activeVariant.imageModel}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Variant tabs — shown when multiple models */}
-        {post?.variants && post.variants.length > 1 && (
-          <div className="flex items-center gap-1 px-4 py-2.5"
-            style={{ background: "var(--card)", borderBottom: "1px solid var(--border)" }}>
-            <Columns2 size={12} style={{ color: "var(--muted-foreground)", marginRight: 4 }} />
-            {post.variants.map((v, vi) => (
-              <button
-                key={vi}
-                onClick={() => switchVariant(vi)}
-                className="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                style={{
-                  background: vi === activeVariantIdx ? "var(--foreground)" : "var(--secondary)",
-                  color: vi === activeVariantIdx ? "var(--background)" : "var(--text-primary)",
-                  fontSize: "10px", fontWeight: 600,
-                  border: "1px solid",
-                  borderColor: vi === activeVariantIdx ? "var(--foreground)" : "var(--border)",
-                }}>
-                {v.imageModel || v.model}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Text content */}
-        <div className="p-5 space-y-3" style={{ background: "var(--card)" }}>
-          {!hasVisual && (
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-1 rounded-lg"
-                style={{ background: "var(--secondary)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase" }}>
-                {post.platform}
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                {post.format.replace(post.platform + "-", "")}
-              </span>
-            </div>
-          )}
-          {displayHeadline && (
-            <div style={{ fontSize: "15px", fontWeight: 700, lineHeight: 1.3 }}>{displayHeadline}</div>
-          )}
-          <div style={{ fontSize: "13.5px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-            {displayText}
-          </div>
-          {displayHashtags && (
-            <div style={{ fontSize: "12px", color: "var(--accent)", fontWeight: 500 }}>{displayHashtags}</div>
-          )}
-          {displayCta && (
-            <div className="flex items-center gap-1.5 pt-1">
-              <ArrowRight size={12} />
-              <span style={{ fontSize: "13px", fontWeight: 600 }}>{displayCta}</span>
-            </div>
-          )}
-          {/* Model label for text variant */}
-          {activeVariant && (
-            <div style={{ fontSize: "10px", color: "var(--muted-foreground)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", paddingTop: 4 }}>
-              {t("studio.textLabel")} : {activeVariant.model}
-            </div>
-          )}
-        </div>
-
-        {/* Navigation bar */}
-        {posts.length > 1 && (
-          <div className="flex items-center justify-between px-4 py-3"
-            style={{ background: "var(--card)", borderTop: "1px solid var(--border)" }}>
-            <button onClick={prev} disabled={current === 0}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:opacity-20"
-              style={{ background: "var(--secondary)" }}>
-              <ChevronLeft size={16} />
-            </button>
-            <div className="flex items-center gap-1.5">
-              {posts.map((_, i) => (
-                <button key={i} onClick={() => setCurrent(i)}
-                  className="transition-all cursor-pointer rounded-full"
-                  style={{
-                    width: i === current ? 20 : 6, height: 6,
-                    background: i === current ? "var(--foreground)" : "var(--border)",
-                  }} />
-              ))}
-            </div>
-            <button onClick={next} disabled={current === posts.length - 1}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:opacity-20"
-              style={{ background: "var(--secondary)" }}>
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        )}
+    <div className="space-y-3">
+      {/* Summary header */}
+      <div className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: "var(--secondary)" }}>
+        <Sparkles size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: "13px", fontWeight: 600 }}>{posts.length} contenus</span>
+        <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+          {[...new Set(posts.map(p => p.platform))].length} plateformes
+        </span>
+        <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+          {posts.filter(p => p.imageUrl || p.videoUrl).length} visuels
+        </span>
       </div>
 
-      {/* Fullscreen overlay */}
-      <AnimatePresence>
-        {expanded && hasVisual && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.92)" }}
-            onClick={() => setExpanded(false)}>
-            <button className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer z-10"
-              style={{ background: "rgba(255,255,255,0.1)" }}
-              onClick={() => setExpanded(false)}>
-              <X size={20} style={{ color: "#fff" }} />
-            </button>
-            {/* Navigation */}
-            {posts.length > 1 && (
-              <>
-                <button onClick={(e) => { e.stopPropagation(); prev(); }}
-                  disabled={current === 0}
-                  className="absolute left-4 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-20 z-10"
-                  style={{ background: "rgba(255,255,255,0.1)" }}>
-                  <ChevronLeft size={24} style={{ color: "#fff" }} />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); next(); }}
-                  disabled={current === posts.length - 1}
-                  className="absolute right-4 w-12 h-12 rounded-full flex items-center justify-center cursor-pointer disabled:opacity-20 z-10"
-                  style={{ background: "rgba(255,255,255,0.1)" }}>
-                  <ChevronRight size={24} style={{ color: "#fff" }} />
-                </button>
-              </>
-            )}
-            <motion.div
-              key={current}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="relative max-w-4xl max-h-[85vh]"
-              onClick={e => e.stopPropagation()}>
-              {displayVideoUrl ? (
-                <video src={displayVideoUrl} controls autoPlay className="max-w-full max-h-[85vh] rounded-xl" />
-              ) : (
-                <img src={displayImageUrl} className="max-w-full max-h-[85vh] rounded-xl" alt="" />
-              )}
-              {logoUrl && (
-                <div className="absolute bottom-4 right-4 rounded-xl overflow-hidden"
-                  style={{ width: 48, height: 48, background: "rgba(255,255,255,0.9)", padding: 6 }}>
-                  <img src={logoUrl} className="w-full h-full object-contain" alt="logo" />
+      {/* Grid of all posts */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
+        {posts.map((post, idx) => {
+          const hasVisual = !!post.imageUrl || !!post.videoUrl;
+          const color = platformColor[post.platform.toLowerCase()] || "#6B7280";
+          const isExpanded = expandedIdx === idx;
+
+          return (
+            <div
+              key={idx}
+              onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+              className="rounded-xl overflow-hidden cursor-pointer transition-all"
+              style={{
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                ...(isExpanded ? { gridColumn: "1 / -1" } : {}),
+              }}>
+              {/* Visual thumbnail or text-only */}
+              {hasVisual && !isExpanded && (
+                <div className="relative group/thumb" style={{ height: 120 }}>
+                  {post.videoUrl ? (
+                    <video src={post.videoUrl} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <img src={post.imageUrl} className="w-full h-full object-cover" alt="" />
+                  )}
+                  {post.videoUrl && (
+                    <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
+                      <Film size={10} style={{ color: "#fff" }} />
+                    </div>
+                  )}
+                  {/* Edit overlay on hover */}
+                  {onEditVisual && post.imageUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                      style={{ background: "rgba(0,0,0,0.5)" }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); onEditVisual(idx); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                        style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600 }}>
+                        <Pencil size={11} />
+                        Éditer
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-              {/* Counter */}
-              <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-lg"
-                style={{ background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: "12px", fontWeight: 500 }}>
-                {current + 1} / {posts.length}
+
+              {/* Platform badge + format */}
+              <div className="px-2.5 py-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded"
+                    style={{ background: color, color: "#fff", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {post.platform}
+                  </span>
+                  <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                    {post.format.replace(post.platform.toLowerCase() + "-", "")}
+                  </span>
+                  {post.variants && post.variants.length > 1 && (
+                    <span style={{ fontSize: "9px", color: "var(--muted-foreground)", marginLeft: "auto" }}>
+                      {post.variants.length} var.
+                    </span>
+                  )}
+                </div>
+
+                {/* Headline or truncated text */}
+                {!isExpanded && (
+                  <div style={{ fontSize: "11px", lineHeight: 1.4, color: "var(--text-primary)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {post.headline || post.text?.slice(0, 80)}
+                  </div>
+                )}
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
+
+              {/* Expanded detail view */}
+              {isExpanded && (
+                <div className="px-3 pb-3 space-y-3">
+                  {hasVisual && (
+                    <div className="relative rounded-lg overflow-hidden group/expanded">
+                      {post.videoUrl ? (
+                        <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
+                      ) : (
+                        <img src={post.imageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
+                      )}
+                      {logoUrl && (
+                        <div className="absolute bottom-2 right-2 rounded-md overflow-hidden"
+                          style={{ width: 28, height: 28, background: "rgba(255,255,255,0.9)", padding: 3 }}>
+                          <img src={logoUrl} className="w-full h-full object-contain" alt="" />
+                        </div>
+                      )}
+                      {/* Edit + Download buttons */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                        {onEditVisual && post.imageUrl && (
+                          <button
+                            onClick={e => { e.stopPropagation(); onEditVisual(idx); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
+                            style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+                            <Pencil size={11} />
+                            Éditer le visuel
+                          </button>
+                        )}
+                        <a href={post.imageUrl || post.videoUrl} download target="_blank" rel="noreferrer"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center"
+                          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+                          onClick={e => e.stopPropagation()}>
+                          <Download size={12} style={{ color: "#fff" }} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {post.headline && (
+                    <div style={{ fontSize: "14px", fontWeight: 700, lineHeight: 1.3 }}>{post.headline}</div>
+                  )}
+                  <div style={{ fontSize: "13px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{post.text}</div>
+                  {post.hashtags && (
+                    <div style={{ fontSize: "11px", color: "var(--accent)", fontWeight: 500 }}>{post.hashtags}</div>
+                  )}
+                  {post.cta && (
+                    <div className="flex items-center gap-1.5">
+                      <ArrowRight size={11} />
+                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
+                    </div>
+                  )}
+                  {/* Edit buttons */}
+                  <div className="flex items-center gap-2 pt-1">
+                    {onEdit && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit({ text: post.text, model: post.variants?.[0]?.model || "unknown" }, "text", post.text || ""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
+                        <RefreshCw size={10} />
+                        Réécrire le texte
+                      </button>
+                    )}
+                    {onEdit && (post.imageUrl || post.videoUrl) && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, "image", post.text || ""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
+                        <RefreshCw size={10} />
+                        Régénérer le visuel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1875,7 +1982,7 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
 function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
   logoUrl?: string;
 }) {
@@ -1980,39 +2087,158 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   }
 
   if (result.type === "text") {
-    return (
-      <div className="space-y-2">
-        {result.items.map((item, i) => (
-          <div key={i} className="rounded-xl p-4 relative"
-            style={{
-              background: "var(--card)",
-              border: selected.has(i) ? "2px solid var(--foreground)" : "1px solid var(--border)",
-              cursor: result.items.length > 1 ? "pointer" : "default",
-            }}
-            onClick={() => result.items.length > 1 && toggleSelect(i)}>
-            {result.items.length > 1 && (
-              <div className="flex items-center gap-2 mb-2">
+    // --- Platform detection: parse text into platform sections ---
+    const PLATFORM_META: Record<string, { icon: typeof Instagram; color: string; label: string }> = {
+      instagram: { icon: Instagram, color: "#E1306C", label: "Instagram" },
+      linkedin: { icon: Linkedin, color: "#0A66C2", label: "LinkedIn" },
+      facebook: { icon: Facebook, color: "#1877F2", label: "Facebook" },
+      twitter: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
+      x: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
+    };
+
+    const parsePlatformSections = (text: string): { platform: string | null; content: string }[] => {
+      const platformRegex = /^(Instagram|LinkedIn|Facebook|Twitter|X)\s*[:\-–—]/gim;
+      const matches: { index: number; platform: string }[] = [];
+      let m;
+      while ((m = platformRegex.exec(text)) !== null) {
+        matches.push({ index: m.index, platform: m[1].toLowerCase() === "x" ? "twitter" : m[1].toLowerCase() });
+      }
+      if (matches.length === 0) return [{ platform: null, content: text }];
+      const sections: { platform: string | null; content: string }[] = [];
+      if (matches[0].index > 0) {
+        const pre = text.slice(0, matches[0].index).trim();
+        if (pre) sections.push({ platform: null, content: pre });
+      }
+      matches.forEach((match, idx) => {
+        const start = match.index;
+        const end = idx < matches.length - 1 ? matches[idx + 1].index : text.length;
+        sections.push({ platform: match.platform, content: text.slice(start, end).trim() });
+      });
+      return sections;
+    };
+
+    // --- Expandable card sub-component ---
+    const TEXT_TRUNCATE_LENGTH = 280;
+    const TextCard = ({ item, index, isGrid }: { item: typeof result.items[0]; index: number; isGrid: boolean }) => {
+      const [expanded, setExpanded] = useState(false);
+      const sections = parsePlatformSections(item.text || "");
+      const fullText = item.text || "";
+      const needsTruncation = fullText.length > TEXT_TRUNCATE_LENGTH;
+
+      return (
+        <div className="rounded-xl overflow-hidden relative group"
+          style={{
+            background: "var(--card)",
+            border: selected.has(index) ? "2px solid var(--foreground)" : "1px solid var(--border)",
+            cursor: result.items.length > 1 ? "pointer" : "default",
+          }}
+          onClick={() => result.items.length > 1 && toggleSelect(index)}>
+          {/* Model header */}
+          <div className="flex items-center justify-between px-4 py-2.5"
+            style={{ borderBottom: "1px solid var(--border)", background: "var(--secondary)" }}>
+            <div className="flex items-center gap-2">
+              {result.items.length > 1 && (
                 <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: selected.has(i) ? "var(--foreground)" : "var(--secondary)", border: "1.5px solid var(--border)" }}>
-                  {selected.has(i) && <Check size={10} style={{ color: "var(--background)" }} />}
+                  style={{ background: selected.has(index) ? "var(--foreground)" : "transparent", border: "1.5px solid var(--border)" }}>
+                  {selected.has(index) && <Check size={10} style={{ color: "var(--background)" }} />}
                 </div>
-                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase" }}>
-                  {item.model}
+              )}
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {item.model}
+              </span>
+              {item.latencyMs && (
+                <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                  {(item.latencyMs / 1000).toFixed(1)}s
                 </span>
-              </div>
-            )}
-            <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-              {item.text}
+              )}
             </div>
-            {/* Copy button */}
             <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success(t("studio.textCopied")); }}
-              className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
+              className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-opacity opacity-60 hover:opacity-100"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
               title={t("studio.copy")}>
-              <BookOpen size={12} />
+              <BookOpen size={11} />
             </button>
           </div>
-        ))}
+
+          {/* Content with platform sections */}
+          <div className="px-4 py-3 space-y-3">
+            {sections.length > 1 ? (
+              // Multiple platform sections — render as separate mini-cards
+              sections.map((section, si) => {
+                const meta = section.platform ? PLATFORM_META[section.platform] : null;
+                const PlatformIcon = meta?.icon;
+                const displayText = !expanded && needsTruncation && si === 0
+                  ? section.content.slice(0, TEXT_TRUNCATE_LENGTH)
+                  : section.content;
+                return (
+                  <div key={si} className="rounded-lg p-3" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
+                    {meta && PlatformIcon && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: meta.color + "18" }}>
+                          <PlatformIcon size={11} style={{ color: meta.color }} />
+                        </div>
+                        <span style={{ fontSize: "11px", fontWeight: 600, color: meta.color }}>{meta.label}</span>
+                      </div>
+                    )}
+                    <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--foreground)" }}>
+                      {!expanded && needsTruncation && si > 0 ? null : displayText}
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)
+            ) : (
+              // Single block — no platform sections detected
+              <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {!expanded && needsTruncation ? fullText.slice(0, TEXT_TRUNCATE_LENGTH) + "…" : fullText}
+              </div>
+            )}
+          </div>
+
+          {/* Expand/collapse toggle */}
+          {needsTruncation && (
+            <button
+              onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 cursor-pointer transition-all"
+              style={{ borderTop: "1px solid var(--border)", fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", background: "var(--secondary)" }}
+              onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; }}
+              onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; }}>
+              <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
+              {expanded ? "Réduire" : "Voir plus"}
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    const isMultiModel = result.items.length > 1;
+
+    return (
+      <div className="space-y-3">
+        {/* Selection bar for multi-model */}
+        {isMultiModel && (
+          <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            <button onClick={selected.size === result.items.length ? clearSelection : selectAll}
+              className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
+              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
+              {selected.size === result.items.length ? t("studio.deselectAll") : t("studio.selectAll")}
+            </button>
+            {selected.size > 0 && (
+              <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
+                {selected.size}/{result.items.length} {selected.size > 1 ? t("studio.selectedPlural") : t("studio.selected")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Model comparison grid (side-by-side when multiple models) */}
+        <div className={isMultiModel ? "grid grid-cols-1 md:grid-cols-2 gap-3" : ""}>
+          {result.items.map((item, i) => (
+            <TextCard key={i} item={item} index={i} isGrid={isMultiModel} />
+          ))}
+        </div>
+
+        {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => onCompare(result)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
@@ -2047,11 +2273,15 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   }
 
   if (result.type === "campaign" && result.campaignPosts) {
+    const openKonvaForPost = (postIdx: number) => {
+      // Open Finalizer with Konva editor on the specific post
+      onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration, postIdx);
+    };
     return (
       <div className="space-y-3">
-        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} />
+        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost} />
         <button
-          onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt)}
+          onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration)}
           className="flex items-center gap-2.5 w-full px-5 py-3 rounded-xl cursor-pointer transition-all group"
           style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}
           onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; }}
@@ -2263,7 +2493,7 @@ const CHANNEL_OPTIONS = [
   { id: "youtube", label: "YouTube", icon: Youtube },
 ];
 
-function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved }: {
+function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved, campaignStartDate, campaignDuration, initialEditIdx }: {
   posts: CampaignPost[];
   logoUrl?: string;
   brief: string;
@@ -2272,6 +2502,9 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   serverGet: (path: string) => Promise<any>;
   onClose: () => void;
   onSaved: () => void;
+  campaignStartDate?: string;
+  campaignDuration?: string;
+  initialEditIdx?: number;
 }) {
   const { t } = useI18n();
   const [step, setStep] = useState<FinalizerStep>("review");
@@ -2320,12 +2553,20 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   const [saving, setSaving] = useState(false);
   const [scheduledDates, setScheduledDates] = useState<Record<number, { date: string; time: string }>>({});
   const [aiScheduling, setAiScheduling] = useState(false);
+  const [autoScheduled, setAutoScheduled] = useState(false);
 
   const steps: { key: FinalizerStep; label: string; icon: any }[] = [
     { key: "review", label: t("studio.reviewAndEdit"), icon: Pencil },
     { key: "schedule", label: t("studio.calendarLabel"), icon: Calendar },
     { key: "save", label: t("studio.saveLabel"), icon: Save },
   ];
+
+  // Auto-open Konva editor if initialEditIdx provided
+  React.useEffect(() => {
+    if (initialEditIdx !== undefined && initialEditIdx >= 0 && initialEditIdx < posts.length) {
+      openKonvaEditor(initialEditIdx);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Step 1: Review ---
   const updatePost = (idx: number, updates: Partial<CampaignPost>) => {
@@ -2349,7 +2590,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
         imageUrl: p.imageUrl || "",
         videoUrl: p.videoUrl || "",
       }));
-      const res = await serverPost("/calendar/generate", { assets, brief, campaignTheme: campaignName });
+      const res = await serverPost("/calendar/generate", { assets, brief, campaignTheme: campaignName, ...(campaignStartDate ? { campaignStartDate } : {}), ...(campaignDuration ? { campaignDuration } : {}) });
       if (res.success && res.events) {
         const newDates: Record<number, { date: string; time: string }> = {};
         (res.events as any[]).forEach((evt: any, i: number) => {
@@ -2364,6 +2605,14 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
     } catch { toast.error(t("studio.aiScheduleError")); }
     setAiScheduling(false);
   };
+
+  // --- Auto-schedule when entering Calendar step ---
+  React.useEffect(() => {
+    if (step === "schedule" && !autoScheduled && Object.keys(scheduledDates).length === 0 && !aiScheduling) {
+      setAutoScheduled(true);
+      handleAiSchedule();
+    }
+  }, [step]);
 
   // --- Step 3: Save ---
   const handleSave = async () => {
@@ -2850,25 +3099,40 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [brief, setBrief] = useState(params.brief || "");
   const [selectedProduct, setSelectedProduct] = useState<string>(params.productId || "");
   const [objective, setObjective] = useState(params.objective || "awareness");
-  const [selectedNetworks, setSelectedNetworks] = useState<string[]>(["LinkedIn", "Instagram", "Facebook"]);
-  const [selectedFormats, setSelectedFormats] = useState<string[]>(
-    params.formats || ["linkedin-post", "instagram-post", "facebook-post"]
-  );
-  const [visualStyle, setVisualStyle] = useState("");
+  // Deduce networks from formats passed by chat
+  const initialFormats = params.formats || ["linkedin-post", "instagram-post", "facebook-post"];
+  const deduceNetworks = (fmts: string[]) => {
+    const nets = new Set<string>();
+    for (const f of fmts) {
+      if (f.startsWith("linkedin")) nets.add("LinkedIn");
+      else if (f.startsWith("instagram")) nets.add("Instagram");
+      else if (f.startsWith("facebook")) nets.add("Facebook");
+      else if (f.startsWith("twitter")) nets.add("Twitter");
+      else if (f.startsWith("tiktok")) nets.add("TikTok");
+      else if (f.startsWith("youtube")) nets.add("YouTube");
+      else if (f.startsWith("pinterest")) nets.add("Pinterest");
+    }
+    return nets.size > 0 ? Array.from(nets) : ["LinkedIn", "Instagram", "Facebook"];
+  };
+  const [selectedNetworks, setSelectedNetworks] = useState<string[]>(deduceNetworks(initialFormats));
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(initialFormats);
+  const [visualStyle, setVisualStyle] = useState(params.visualStyle || "");
   const [tone, setTone] = useState(params.toneOfVoice || "");
   const [targetAudience, setTargetAudience] = useState(params.targetAudience || "");
   const [callToAction, setCallToAction] = useState(params.callToAction || "");
-  const [moment, setMoment] = useState("");
+  const [moment, setMoment] = useState(params.theme || "");
   const [isSponsored, setIsSponsored] = useState(false);
   const [postCount, setPostCount] = useState("3");
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
-  const [textModels, setTextModels] = useState<string[]>(["gpt-4o"]);
-  const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
-  const [videoModels, setVideoModels] = useState<string[]>(["ora-motion"]);
+  const [textModels, setTextModels] = useState<string[]>(params.textModels || ["gpt-4o"]);
+  const [imageModels, setImageModels] = useState<string[]>(params.imageModels || ["photon-1"]);
+  const [videoModels, setVideoModels] = useState<string[]>(params.videoModels || ["ora-motion"]);
+  const [startDate, setStartDate] = useState(params.startDate || "");
+  const [duration, setDuration] = useState(params.duration || "");
   const [inspiring, setInspiring] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  // showAdvanced removed — all fields always visible
 
   // Visual scene presets
   const SCENE_PRESETS = [
@@ -2962,6 +3226,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       imageModels,
       videoModels,
       visualStyle,
+      ...(startDate ? { startDate } : {}),
+      ...(duration ? { duration } : {}),
+      ...(moment ? { theme: moment } : {}),
     });
   };
 
@@ -3180,23 +3447,8 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* ═══ NIVEAU 3 — Dépliable "Affiner" ═══ */}
-        <button onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-2 cursor-pointer transition-all w-full"
-          style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground)" }}>
-          <ChevronDown size={13} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
-          Affiner (audience, ton, CTA, moment, modèles IA...)
-        </button>
-
-        <AnimatePresence>
-          {showAdvanced && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4 overflow-hidden"
-            >
+        {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
+        <div className="space-y-4">
               {/* Audience */}
               <div>
                 <SectionLabel>Audience cible</SectionLabel>
@@ -3359,9 +3611,38 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
+              {/* Planning — Start date + Duration */}
+              <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
+                  <Calendar size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Planning
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Date de début</label>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                      className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--foreground)" }}
+                      onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Durée</label>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { id: "1 week", label: "1 sem." },
+                        { id: "2 weeks", label: "2 sem." },
+                        { id: "1 month", label: "1 mois" },
+                        { id: "3 months", label: "3 mois" },
+                      ].map(d => (
+                        <Chip key={d.id} size="sm" selected={duration === d.id} onClick={() => setDuration(duration === d.id ? "" : d.id)}>{d.label}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+        </div>
       </div>
 
       {/* Footer — Generate button */}

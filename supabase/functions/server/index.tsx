@@ -25,6 +25,8 @@ app.use("*", async (c, next) => {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
   await next();
+  // Skip if response already has CORS headers (e.g. htmlResponse helper)
+  if (c.res.headers.has("Access-Control-Allow-Origin")) return;
   // Inject CORS headers into every non-OPTIONS response
   try {
     for (const [k, v] of Object.entries(CORS_HEADERS)) {
@@ -217,6 +219,8 @@ async function getUser(c: any): Promise<AuthUser | null> {
   // 4. Fallback: read body directly (if body-parser middleware failed)
   // 5. Authorization header (may be anon key → returns null)
   let token = c.get?.("userToken") || c.req.query("_token") || c.req.header("X-User-Token");
+  // Strip "Bearer " prefix if present (clients sometimes prepend it)
+  if (token?.startsWith("Bearer ")) token = token.slice(7);
 
   // Fallback: try parsed body from middleware context
   if (!token) {
@@ -948,6 +952,8 @@ const PROVIDER_COSTS: Record<string, number> = {
   "replicate/flux-schnell": 0.005,
   // Image — Luma Photon
   "luma/photon-1": 0.030, "luma/photon-flash-1": 0.015,
+  // Image — Ideogram
+  "ideogram/v3": 0.080, "ideogram/v3-turbo": 0.040,
   // Image — Higgsfield
   "higgsfield/seedream-v4": 0.030,
   // Video — FAL
@@ -1724,6 +1730,70 @@ async function generateImageLeonardoV2(req: { prompt: string; model: string; asp
     }
   }
   throw new Error(`Leonardo v2 timeout (120s)`);
+}
+
+// ── IDEOGRAM V3 IMAGE GENERATION ──
+async function generateImageIdeogram(req: {
+  prompt: string; model: string; aspectRatio?: string;
+  colorPalette?: { color_hex: string; color_weight?: number }[];
+  styleType?: string; negativePrompt?: string;
+  renderingSpeed?: string;
+}): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number }> {
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+  if (!ideogramKey) throw new Error("IDEOGRAM_API_KEY not configured");
+  const start = Date.now();
+
+  const arMap: Record<string, string> = {
+    "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3",
+    "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3",
+  };
+  const aspectRatio = arMap[req.aspectRatio || "1:1"] || "1x1";
+  const renderingSpeed = req.renderingSpeed || "TURBO";
+  const styleType = req.styleType || "REALISTIC";
+
+  console.log(`[image-ideogram] model=${req.model}, aspect=${aspectRatio}, speed=${renderingSpeed}, style=${styleType}`);
+
+  const fd = new FormData();
+  fd.append("prompt", req.prompt);
+  fd.append("aspect_ratio", aspectRatio);
+  fd.append("magic_prompt", "ON");
+  fd.append("rendering_speed", renderingSpeed);
+  fd.append("style_type", styleType);
+  if (req.negativePrompt) fd.append("negative_prompt", req.negativePrompt);
+  if (req.colorPalette?.length) {
+    fd.append("color_palette", JSON.stringify({ members: req.colorPalette }));
+  }
+
+  const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/generate", {
+    method: "POST",
+    headers: { "Api-Key": ideogramKey },
+    body: fd,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Ideogram API ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const resultUrl = data?.data?.[0]?.url;
+  if (!resultUrl) throw new Error(`Ideogram: no image URL in response: ${JSON.stringify(data).slice(0, 300)}`);
+
+  // Ideogram URLs expire — download and re-upload to Supabase storage
+  const dlRes = await fetch(resultUrl);
+  if (!dlRes.ok) throw new Error(`Failed to download Ideogram image: ${dlRes.status}`);
+  const dlBlob = await dlRes.blob();
+  const fileName = `ideogram-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+  const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+  if (upErr) throw new Error(`Supabase upload failed: ${upErr.message}`);
+  const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+  const providerKey = renderingSpeed === "TURBO" ? "ideogram/v3-turbo" : "ideogram/v3";
+  const latencyMs = Date.now() - start;
+  logCost({ type: "image", model: req.model, provider: providerKey, costUsd: getProviderCost(providerKey, "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: "system", success: true }).catch(() => {});
+
+  console.log(`[image-ideogram] OK in ${latencyMs}ms — ${pubData.publicUrl.slice(0, 80)}`);
+  return { model: req.model, provider: providerKey, imageUrl: pubData.publicUrl, latencyMs };
 }
 
 // ── UPLOAD IMAGE TO LEONARDO (for editing/guidance) ──
@@ -3497,6 +3567,42 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
       if (tc.anti_patterns?.length) brandBlock += `\nAnti-patterns to AVOID: ${tc.anti_patterns.join(' | ')}`;
     }
 
+    // ── BRAND PLATFORM — VISUAL IDENTITY (semiotic codes + photo direction) ──
+    const bp = brandVault?.brand_platform;
+    if (bp) {
+      brandBlock += `\n\n══════ BRAND PLATFORM — VISUAL & SEMIOTIC IDENTITY ══════`;
+      if (bp.promise) brandBlock += `\nBrand Promise: ${bp.promise}`;
+      if (bp.narrative_register) brandBlock += `\nNarrative register: ${bp.narrative_register}`;
+      if (bp.creative_tension) brandBlock += `\nCreative tension: ${bp.creative_tension}`;
+      if (bp.semiotic_codes) {
+        if (bp.semiotic_codes.adopt?.length) brandBlock += `\nSemiotic codes to ADOPT in visuals: ${bp.semiotic_codes.adopt.join(", ")}`;
+        if (bp.semiotic_codes.avoid?.length) brandBlock += `\nSemiotic codes to AVOID in visuals: ${bp.semiotic_codes.avoid.join(", ")}`;
+        if (bp.semiotic_codes.subvert?.length) brandBlock += `\nSemiotic codes to SUBVERT: ${bp.semiotic_codes.subvert.join(", ")}`;
+      }
+      if (bp.photo_direction) {
+        const pd = bp.photo_direction;
+        brandBlock += `\nPHOTO DIRECTION (MANDATORY for all imagePrompts):`;
+        if (pd.framing) brandBlock += `\n  Framing: ${pd.framing}`;
+        if (pd.lighting) brandBlock += `\n  Lighting: ${pd.lighting}`;
+        if (pd.composition) brandBlock += `\n  Composition: ${pd.composition}`;
+        if (pd.human_presence) brandBlock += `\n  Human presence: ${pd.human_presence}`;
+        if (pd.textures) brandBlock += `\n  Textures: ${pd.textures}`;
+        if (pd.color_palette) brandBlock += `\n  Color palette: ${pd.color_palette}`;
+      }
+      if (bp.reference_prompts) {
+        if (bp.reference_prompts.positive?.length) brandBlock += `\nPositive visual references: ${bp.reference_prompts.positive.join(" | ")}`;
+        if (bp.reference_prompts.negative?.length) brandBlock += `\nNegative visual references (NEVER): ${bp.reference_prompts.negative.join(" | ")}`;
+      }
+    }
+
+    // ── TARGET AUDIENCES (detailed personas) ──
+    if (brandVault?.target_audiences?.length > 0) {
+      const audCtx = brandVault.target_audiences.map((a: any) =>
+        `- ${a.name}: ${a.description || ''}${a.age_range ? ` (${a.age_range})` : ''}${a.interests?.length ? ` — intérêts: ${a.interests.join(', ')}` : ''}`
+      ).join('\n');
+      brandBlock += `\n\nTARGET AUDIENCES (detailed personas):\n${audCtx}`;
+    }
+
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
       // LinkedIn
       "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
@@ -3561,9 +3667,9 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     if (productUrls) directives.push(`PRODUCT URLs: ${productUrls}`);
     const directivesBlock = directives.length > 0 ? directives.join("\n") : "";
     const sysPrompt =
-      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 3000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY — EVERY FIELD BELOW MUST BE RESPECTED IN EVERY FORMAT) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently — it is the campaign's central theme, not just background info.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM as the call-to-action in every format. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context — never reduce it to just the product alone.
-12. IMAGE PROMPTS — PRODUCT IDENTITY + BRAND-NEW SCENE: Each imagePrompt MUST NAME the exact brand and product model (e.g. \"a MAN eTGX electric truck\", \"a Nike Air Max 90\") so the AI generates the CORRECT product, never a competitor. Then add key VISUAL characteristics (color, shape, distinctive design features). Then describe a COMPLETELY NEW SCENE derived from the campaign brief, event context, target audience, and key messages. The ref photo ONLY preserves the product via img2img — the SCENE must be 100% new. Combine: (a) exact brand+model name, (b) visual features, (c) NEW environment/location from the brief, (d) TARGET AUDIENCE interacting with product, (e) MOOD/ATMOSPHERE. Always MODERN, CURRENT-GENERATION for vehicles. Every imagePrompt must be unique per format. Always end with: No visible text, no logos, no letters, no watermarks anywhere in the image.
-13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, describe visual characteristics, then describe a NEW motion scene from the brief with target audience. Always MODERN vehicles. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- press-release: FULL PRESS RELEASE (communiqué de presse). Structure: headline (factual, 60-100 chars, newsworthy), caption (COMPLETE PRESS RELEASE 400-800 words. Start with city + date + company name. Lead paragraph answering Who/What/When/Where/Why in 2-3 sentences. Body: 3-5 paragraphs with quotes from leadership, product details, market context, availability info. Boilerplate company description at the end. ### Contact section placeholder). Tone = factual, journalistic, third person. NO marketing fluff — press-ready.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n- blog-article: ⚠️ THIS IS A FULL SEO ARTICLE — NOT A SUMMARY. The "caption" field MUST contain the COMPLETE article body of MINIMUM 800 words (aim for 1200-1500 words). Structure: headline (H1, 60 chars max, includes primary keyword), metaDescription (155 chars, compelling + keyword), introduction (hook paragraph 60-100 words), caption (COMPLETE ARTICLE BODY — 800 TO 1500 WORDS MANDATORY. Use H2/H3 markdown headings, short paragraphs 2-4 sentences, bullet points, internal linking suggestions as [anchor text](URL placeholder), conclusion with CTA. Add a ## FAQ section with 3-5 Q&A at the end). MUST include: primary keyword in H1 + first 100 words + 2-3 times naturally in body, secondary keywords. Tone = authoritative yet accessible. Write for HUMANS first, SEO second. IF THE ARTICLE IS UNDER 800 WORDS YOU HAVE FAILED.\n- linkedin-article: LONG-FORM LINKEDIN ARTICLE. Structure: headline (compelling, 40-80 chars, NOT clickbait), caption (FULL ARTICLE 600-1200 words). Format: strong opening hook (personal story, surprising stat, or bold statement), 3-5 sections with clear H2 headers, short paragraphs (1-3 sentences — LinkedIn readers scan), use line breaks generously, include 1-2 personal insights or lessons learned, end with a question to drive comments + CTA. hashtags: 3-5 relevant. Tone = thought leadership, personal yet professional.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email / 800w blog-article / 600w linkedin-article. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","metaDescription":"SEO meta description for blog-article (155 chars max)","features":[],"imagePrompt":"MANDATORY: a vivid 40-80 word scene. START with exact brand+model name (e.g. MAN eTGX, Nike Air Max). Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). Always MODERN vehicles. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-50 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Always MODERN vehicles. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
+      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 8000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY — EVERY FIELD BELOW MUST BE RESPECTED IN EVERY FORMAT) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently — it is the campaign's central theme, not just background info.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM as the call-to-action in every format. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context — never reduce it to just the product alone.
+12. IMAGE PROMPTS — BRAND VISUAL IDENTITY + PRODUCT + NEW SCENE: Each imagePrompt MUST: (a) NAME exact brand+product model. (b) Apply PHOTO DIRECTION from Brand Platform: use the exact framing, lighting, composition, human_presence, textures, color palette specified. (c) Integrate SEMIOTIC CODES TO ADOPT (e.g. if \"artisanal\", \"chaleur humaine\" → show real textures, warm tones, handcrafted details). (d) AVOID all semiotic codes listed in avoid (e.g. if \"corporate froid\" in avoid → never show sterile offices). (e) Match brand UNIVERSE aesthetic: use the universe's colors, mood keywords, photo style. (f) Show the TARGET AUDIENCE persona interacting naturally with the product. (g) Describe a COMPLETELY NEW SCENE from the brief context. (h) Use POSITIVE VISUAL REFERENCES as inspiration. (i) The goal is AUTHENTIC, brand-aligned imagery — NOT generic stock AI photos. Show real textures, real light, real environments matching the brand world. Always end with: No visible text, no logos, no letters, no watermarks.
+13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, apply brand PHOTO DIRECTION (framing, lighting, composition), integrate semiotic codes to ADOPT, match brand universe aesthetic, show target audience persona. Describe a NEW motion scene from the brief. Goal = authentic brand-aligned video, not generic AI. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- press-release: FULL PRESS RELEASE (communiqué de presse). Structure: headline (factual, 60-100 chars, newsworthy), caption (COMPLETE PRESS RELEASE 400-800 words. Start with city + date + company name. Lead paragraph answering Who/What/When/Where/Why in 2-3 sentences. Body: 3-5 paragraphs with quotes from leadership, product details, market context, availability info. Boilerplate company description at the end. ### Contact section placeholder). Tone = factual, journalistic, third person. NO marketing fluff — press-ready.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n- blog-article: ⚠️ THIS IS A FULL SEO ARTICLE — NOT A SUMMARY. The "caption" field MUST contain the COMPLETE article body of MINIMUM 800 words (aim for 1200-1500 words). Structure: headline (H1, 60 chars max, includes primary keyword), metaDescription (155 chars, compelling + keyword), introduction (hook paragraph 60-100 words), caption (COMPLETE ARTICLE BODY — 800 TO 1500 WORDS MANDATORY. Use H2/H3 markdown headings, short paragraphs 2-4 sentences, bullet points, internal linking suggestions as [anchor text](URL placeholder), conclusion with CTA. Add a ## FAQ section with 3-5 Q&A at the end). MUST include: primary keyword in H1 + first 100 words + 2-3 times naturally in body, secondary keywords. Tone = authoritative yet accessible. Write for HUMANS first, SEO second. IF THE ARTICLE IS UNDER 800 WORDS YOU HAVE FAILED.\n- linkedin-article: LONG-FORM LINKEDIN ARTICLE. Structure: headline (compelling, 40-80 chars, NOT clickbait), caption (FULL ARTICLE 600-1200 words). Format: strong opening hook (personal story, surprising stat, or bold statement), 3-5 sections with clear H2 headers, short paragraphs (1-3 sentences — LinkedIn readers scan), use line breaks generously, include 1-2 personal insights or lessons learned, end with a question to drive comments + CTA. hashtags: 3-5 relevant. Tone = thought leadership, personal yet professional.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email / 800w blog-article / 600w linkedin-article. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","metaDescription":"SEO meta description for blog-article (155 chars max)","features":[],"imagePrompt":"MANDATORY: a vivid 40-100 word scene. START with exact brand+model name. Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). CRITICAL: Apply the PHOTO DIRECTION from Brand Platform (framing, lighting, composition, textures, color palette). Integrate SEMIOTIC CODES TO ADOPT. AVOID all codes listed in semiotic_codes.avoid. Match the brand universe aesthetic (colors, mood, keywords). Target the specific AUDIENCE PERSONA. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-60 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Apply brand PHOTO DIRECTION (framing, lighting, composition). Use SEMIOTIC CODES TO ADOPT. Match brand universe aesthetic. Target the specific AUDIENCE PERSONA. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
 
     const userPrompt = brief || `Create campaign for: ${productUrls}`;
 
@@ -3618,7 +3724,6 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     let brandScore: number | null = null;
     let brandVerdict: string | null = null;
     let wasRegenerated = false;
-    const bp = brandVault?.brand_platform;
     if (bp && Object.keys(copyMap).length > 0) {
       try {
         // Score the first format as a representative sample
@@ -4532,6 +4637,525 @@ async function isolateProductFromImage(imageUrl: string): Promise<string | null>
     return null;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMAGE EDITOR AI ACTIONS — Background removal & harmonization
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Remove background from an image (logo detourage, product isolation)
+app.post("/images/remove-bg", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (!photoroomKey) return c.json({ success: false, error: "Photoroom not configured" }, 500);
+
+    console.log(`[remove-bg] user=${user.id.slice(0, 8)}, url=${(imageUrl as string).slice(0, 60)}`);
+
+    const params = new URLSearchParams();
+    params.set("imageUrl", imageUrl);
+    params.set("removeBackground", "true");
+    params.set("outputSize", "1024x1024");
+    params.set("padding", "0.01");
+    params.set("format", "png"); // PNG for transparency
+
+    const prRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+    });
+
+    if (prRes.ok) {
+      const blob = await prRes.blob();
+      const fileName = `rmbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+      const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/png" });
+      if (!error && data?.path) {
+        const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
+        console.log(`[remove-bg] OK in ${Date.now() - t0}ms`);
+        return c.json({ success: true, imageUrl: pubData.publicUrl });
+      }
+    }
+    console.log(`[remove-bg] Photoroom returned ${prRes.status}`);
+    return c.json({ success: false, error: "Background removal failed" });
+  } catch (err) {
+    console.error(`[remove-bg] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Harmonize image in scene (AI relighting, shadow, color matching)
+app.post("/images/harmonize", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, scene = "photoshoot", shadow = "ai.soft" } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (!photoroomKey) return c.json({ success: false, error: "Photoroom not configured" }, 500);
+
+    console.log(`[harmonize] user=${user.id.slice(0, 8)}, scene=${scene}, shadow=${shadow}`);
+
+    const scenePrompts: Record<string, string> = {
+      photoshoot: "Professional photo studio, white background, soft studio lighting, clean commercial product photography",
+      lifestyle: "Beautiful lifestyle setting, natural daylight, warm tones, authentic interior",
+      editorial: "High-fashion editorial studio, dramatic lighting, magazine-quality",
+      cinematic: "Cinematic scene, dramatic lighting, moody atmosphere, anamorphic feel",
+      outdoor: "Outdoor natural setting, golden hour sunlight, beautiful landscape",
+      minimal: "Clean minimal background, soft gradient, elegant simplicity",
+    };
+
+    const params = new URLSearchParams();
+    params.set("imageUrl", imageUrl);
+    params.set("removeBackground", "true");
+    params.set("background.prompt", scenePrompts[scene] || scenePrompts.photoshoot);
+    params.set("lighting", "ai.preserve-hue-and-saturation");
+    params.set("shadow", shadow);
+    params.set("outputSize", "1024x1024");
+    params.set("padding", "0.02");
+    params.set("format", "webp");
+
+    const prRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+    });
+
+    if (prRes.ok) {
+      const blob = await prRes.blob();
+      const fileName = `harmonize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/webp" });
+      if (!error && data?.path) {
+        const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
+        console.log(`[harmonize] OK in ${Date.now() - t0}ms`);
+        return c.json({ success: true, imageUrl: pubData.publicUrl });
+      }
+    }
+    console.log(`[harmonize] Photoroom returned ${prRes.status}`);
+    return c.json({ success: false, error: "Harmonization failed" });
+  } catch (err) {
+    console.error(`[harmonize] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── IDEOGRAM V3 ENDPOINTS (TemplateEditor AI actions) ──
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Generate branded image with text ──
+app.post("/ideogram/generate", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { prompt, aspectRatio, colorPalette, styleType, negativePrompt, renderingSpeed } = body;
+    if (!prompt) return c.json({ success: false, error: "No prompt" }, 400);
+
+    // Auto-inject brand vault colors if no explicit palette provided
+    let finalPalette = colorPalette;
+    if (!finalPalette?.length) {
+      try {
+        const brandCtx = await buildBrandContext(user.id);
+        if (brandCtx?.colorPalette?.length) {
+          finalPalette = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+            color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+            color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+          }));
+          console.log(`[ideogram/generate] Auto-injected ${finalPalette.length} brand vault colors`);
+        }
+      } catch { /* continue without */ }
+    }
+
+    const result = await generateImageIdeogram({
+      prompt, model: "ideogram-v3", aspectRatio, colorPalette: finalPalette, styleType, negativePrompt, renderingSpeed
+    });
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider });
+  } catch (err) {
+    console.error("[ideogram/generate] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Inpainting with mask ──
+app.post("/ideogram/edit", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, maskDataUrl, prompt, styleType } = body;
+    if (!imageUrl || !maskDataUrl || !prompt) return c.json({ success: false, error: "imageUrl, maskDataUrl, and prompt required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/edit] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}"`);
+
+    // Fetch brand vault colors for color_palette compliance
+    let brandColors: { color_hex: string; color_weight: number }[] | undefined;
+    try {
+      const brandCtx = await buildBrandContext(user.id);
+      if (brandCtx?.colorPalette?.length) {
+        brandColors = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+          color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+          color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+        }));
+      }
+    } catch { /* continue without brand colors */ }
+
+    // Download source image
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    // Convert base64 data URL mask to blob
+    const base64Data = maskDataUrl.split(",")[1];
+    const binaryStr = atob(base64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const maskBlob = new Blob([bytes], { type: "image/png" });
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("mask", maskBlob, "mask.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (styleType) fd.append("style_type", styleType);
+    if (brandColors?.length) fd.append("color_palette", JSON.stringify({ members: brandColors }));
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/edit] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram edit failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Download and re-upload to Supabase (Ideogram URLs expire)
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/edit] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/edit] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Remix: iterate on existing image with different prompt/strength ──
+app.post("/ideogram/remix", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, prompt, imageWeight, aspectRatio, styleType, colorPalette } = body;
+    if (!imageUrl || !prompt) return c.json({ success: false, error: "imageUrl and prompt required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/remix] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}", weight=${imageWeight}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (imageWeight !== undefined) fd.append("image_weight", String(imageWeight));
+    if (styleType) fd.append("style_type", styleType);
+    if (aspectRatio) {
+      const arMap: Record<string, string> = { "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3", "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3" };
+      fd.append("aspect_ratio", arMap[aspectRatio] || "1x1");
+    }
+    if (colorPalette?.length) {
+      fd.append("color_palette", JSON.stringify({ members: colorPalette }));
+    }
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/remix] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram remix failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Re-upload
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/remix] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/remix] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Reframe: extend image to different resolution ──
+app.post("/ideogram/reframe", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, resolution } = body;
+    if (!imageUrl || !resolution) return c.json({ success: false, error: "imageUrl and resolution required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/reframe] user=${user.id.slice(0, 8)}, resolution=${resolution}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("resolution", resolution);
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/reframe", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/reframe] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram reframe failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-reframe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/reframe] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/reframe] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Replace background ──
+app.post("/ideogram/replace-background", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, prompt } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/replace-bg] user=${user.id.slice(0, 8)}, prompt="${(prompt || "").slice(0, 60)}"`);
+
+    // Fetch brand vault colors for color_palette compliance
+    let brandColors: { color_hex: string; color_weight: number }[] | undefined;
+    try {
+      const brandCtx = await buildBrandContext(user.id);
+      if (brandCtx?.colorPalette?.length) {
+        brandColors = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+          color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+          color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+        }));
+      }
+    } catch { /* continue without brand colors */ }
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    if (prompt) fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (brandColors?.length) fd.append("color_palette", JSON.stringify({ members: brandColors }));
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/replace-background", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/replace-bg] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram replace-background failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-replbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/replace-bg] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/replace-bg] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Ideogram Upscale — enhance image resolution (2x or 4x) ──
+app.post("/ideogram/upscale", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, resemblance = 55, detail = 90, prompt } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/upscale] user=${user.id.slice(0, 8)}, resemblance=${resemblance}, detail=${detail}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const imageRequest: any = { resemblance, detail };
+    if (prompt) imageRequest.prompt = prompt;
+
+    const fd = new FormData();
+    fd.append("image_request", JSON.stringify(imageRequest));
+    fd.append("image_file", imgBlob, "image.png");
+
+    const res = await fetch("https://api.ideogram.ai/upscale", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/upscale] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram upscale failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Re-upload (Ideogram URLs expire)
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-upscale-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/upscale] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/upscale] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Ideogram Describe — get AI description of an image ──
+app.post("/ideogram/describe", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/describe] user=${user.id.slice(0, 8)}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image_file", imgBlob, "image.png");
+    fd.append("describe_model_version", "V_3");
+
+    const res = await fetch("https://api.ideogram.ai/describe", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/describe] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram describe failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const description = data?.descriptions?.[0]?.text || "";
+    console.log(`[ideogram/describe] OK in ${Date.now() - t0}ms, desc="${description.slice(0, 60)}..."`);
+    return c.json({ success: true, description });
+  } catch (err) {
+    console.error("[ideogram/describe] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
 
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
 // PRIMARY: Photoroom API — removes bg, replaces with studio scene, preserves product 100%
@@ -5703,6 +6327,25 @@ Repère ces indices dans les réponses du client :
 - Noms de marques citées en référence → triangulation du positionnement
 - Contradictions → souvent la source de la tension créative
 
+PRODUCT FIDELITY — RÈGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingrédients, specs, prix présents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de bénéfices, certifications, récompenses, résultats de tests ou claims de performance
+- Si un détail produit n'est pas dans le vault → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix est fourni, utilise-le exactement. Sinon, N'INVENTE JAMAIS de prix
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Chaque échange DOIT s'ancrer dans l'univers de communication de la marque (ton, couleurs, codes sémiotiques, direction photo)
+- Si un produit spécifique est sélectionné, utilise son UNIVERS PRODUIT (palette, ton, photo_style, keywords) plutôt que les règles génériques de la marque
+- Les univers de marque définissent des TERRITOIRES créatifs — inspire-t'en visuellement et verbalement
+
+ANTI-HALLUCINATION — TOLÉRANCE ZÉRO:
+- JAMAIS d'invention de certifications, labels ou claims réglementaires (ISO, bio, made in France, etc.) sauf si explicitement dans le vault
+- JAMAIS de fabrication de témoignages, citations, histoires clients ou études de cas
+- JAMAIS d'invention de statistiques, pourcentages, résultats d'études ou claims comparatifs
+- JAMAIS de création de faux prix, classements ou mentions presse
+- Si le vault ne le contient pas → la conversation ne le mentionne pas
+
 Contexte de marque déjà connu:
 ${brandInfo || "Aucune donnée préalable."}
 
@@ -6289,6 +6932,75 @@ function getUpcomingDates(now: Date): string {
   return upcoming.map(e => `- ${e.name} (${e.date}, dans ${e.daysUntil} jours)`).join("\n");
 }
 
+// POST /studio/greeting — Personalized contextual greeting (bulle 1)
+app.post("/studio/greeting", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json().catch(() => ({}));
+    const { brandName, sector, products, locale } = body;
+    // products: string[] of product names
+
+    const now = new Date();
+    const upcomingDates = getUpcomingDates(now);
+    const dayOfWeek = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"][now.getDay()];
+    const monthNames = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+    const dateStr = `${dayOfWeek} ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+
+    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
+    if (!APIPOD_KEY) return c.json({ success: true, greeting: "" });
+
+    const lang = locale === "en" ? "English" : "French";
+    const sysPrompt = `Tu generes UN message d'accueil personnalise pour un studio de creation IA. Le client ouvre l'app, tu le salues.
+
+REGLES STRICTES:
+- 1 a 2 phrases MAXIMUM. Sois COURT.
+- Vouvoiement obligatoire (si francais)
+- Ton: chaleureux, professionnel, bienveillant. Comme un bon collegue qui dit bonjour.
+- JAMAIS de fausse promesse: pas de "viral", "booster", "exploser", "multiplier vos ventes"
+- JAMAIS de superlatifs creux: pas de "incroyable", "exceptionnel", "revolutionnaire"
+- Mentionne un evenement/moment pertinent si c'est actionnable (fete commerciale proche, saison, rentree...)
+- Si tu mentionnes un produit du client, sois naturel: "C'est le bon moment pour mettre en avant vos [produit]"
+- Si aucun evenement pertinent, fais une observation saisonniere ou liee au secteur
+- Pas d'emoji
+- Reponds en ${lang}
+- Retourne UNIQUEMENT le texte du message, rien d'autre`;
+
+    const userPrompt = `Date: ${dateStr}
+Marque: ${brandName || "(non renseignee)"}
+Secteur: ${sector || "(non renseigne)"}
+Produits: ${products?.length ? products.join(", ") : "(aucun)"}
+Evenements a venir:
+${upcomingDates || "(aucun dans les 60 prochains jours)"}`;
+
+    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: sysPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        max_tokens: 100,
+        temperature: 0.8,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn("[studio/greeting] AI error", res.status);
+      return c.json({ success: true, greeting: "" });
+    }
+
+    const data = await res.json();
+    const greeting = (data.choices?.[0]?.message?.content || "").trim().replace(/^["']|["']$/g, "");
+    console.log(`[studio/greeting] user=${user.id.slice(0, 8)} greeting="${greeting.slice(0, 60)}..."`);
+    return c.json({ success: true, greeting });
+  } catch (err) {
+    console.warn("[studio/greeting] error:", err);
+    return c.json({ success: true, greeting: "" });
+  }
+});
+
 app.post("/studio/chat", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -6307,19 +7019,76 @@ app.post("/studio/chat", async (c) => {
 
     // Build brand context from vault if available
     const bp = context.brand_platform;
-    const brandSection = bp ? `
+    let brandSection = "";
+    if (bp) {
+      brandSection = `
 MARQUE DE L'UTILISATEUR :
 - Nom : ${bp.brand_name || "inconnu"}
 - Promesse : ${bp.promise || ""}
 - Registre narratif : ${bp.narrative_register || ""}
 - Tension créative : ${bp.creative_tension || ""}
 - Direction photo : ${bp.photo_direction || ""}
-- Codes à adopter : ${bp.semiotic_codes?.adopt?.join(", ") || ""}
-- Codes à éviter : ${bp.semiotic_codes?.avoid?.join(", ") || ""}
+- Codes sémiotiques à ADOPTER : ${bp.semiotic_codes?.adopt?.join(", ") || "aucun"}
+- Codes sémiotiques à ÉVITER : ${bp.semiotic_codes?.avoid?.join(", ") || "aucun"}
 - Ton : ${context.tone || bp.tone || "professionnel"}
-${context.gammes ? `- Gammes/produits : ${JSON.stringify(context.gammes).slice(0, 500)}` : ""}
-${context.products?.length ? `\nPRODUITS DU CATALOGUE (utilisez l'ID dans productId de generate-campaign) :\n${context.products.map((p: any) => `- [ID:${p.id}] ${p.name}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? ` : ${p.description.slice(0, 100)}` : ""}`).join("\n")}` : ""}
-IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir TOUTES les créations (libre ET campagne). En création libre, intègre subtilement l'univers de marque (couleurs, ton, direction photo). En campagne, reste brand-compliant et propose des campagnes autour des vrais produits.` : "";
+${context.tagline ? `- Tagline : "${context.tagline}"` : ""}
+${context.mission ? `- Mission : ${context.mission}` : ""}
+${context.values ? `- Valeurs : ${Array.isArray(context.values) ? context.values.join(", ") : context.values}` : ""}`;
+
+      // Target audiences
+      if (context.target_audiences?.length) {
+        brandSection += `\n\nAUDIENCES CIBLES :\n${context.target_audiences.map((a: any) => typeof a === "string" ? `- ${a}` : `- ${a.name || a.label || ""}${a.description ? ` : ${a.description}` : ""}`).join("\n")}`;
+      }
+
+      // Products with full details
+      if (context.products?.length) {
+        brandSection += `\n\nPRODUITS DU CATALOGUE (utilisez l'ID dans productId de generate-campaign) :\n${context.products.map((p: any) => `- [ID:${p.id}] ${p.name}${p.tagline ? ` — "${p.tagline}"` : ""}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? `\n  ${p.description.slice(0, 300)}` : ""}${p.features?.length ? `\n  Features: ${(Array.isArray(p.features) ? p.features : []).slice(0, 5).join(", ")}` : ""}${p.url ? `\n  URL: ${p.url}` : ""}`).join("\n")}`;
+      }
+
+      // Gammes
+      if (context.gammes) {
+        brandSection += `\n\nGAMMES : ${JSON.stringify(context.gammes).slice(0, 500)}`;
+      }
+
+      // Voice profile
+      if (context.voice_profile) {
+        const vp = context.voice_profile;
+        brandSection += `\n\nPROFIL DE VOIX APPRIS :
+- Style : ${vp.sentence_style?.structure || "mixte"}, longueur moyenne ${vp.sentence_style?.avg_length || "moyen"}
+- Registre : ${vp.vocabulary?.register || "professionnel"}
+- Termes récurrents : ${vp.vocabulary?.recurring_terms?.join(", ") || "N/A"}
+- Ton : ${vp.tone_markers?.primary_tone || "professionnel"} (formalité: ${vp.tone_markers?.formality}/10, chaleur: ${vp.tone_markers?.warmth}/10)
+- Procédés rhétoriques : ${vp.rhetorical_devices?.join(", ") || "N/A"}
+- Expressions signature : ${vp.key_phrases?.join(" | ") || "N/A"}`;
+      }
+
+      // Brand universes (creative territories)
+      if (context.universes?.length) {
+        brandSection += `\n\nUNIVERS DE MARQUE (territoires créatifs) :\n${context.universes.map((u: any) => `- ${u.name}: ${u.description || ""}${u.tone ? ` (ton: ${u.tone})` : ""}${u.photo_style ? ` (photo: ${u.photo_style})` : ""}${u.colors?.length ? ` (couleurs: ${u.colors.join(", ")})` : ""}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(", ")})` : ""}`).join("\n")}`;
+      }
+
+      // Product universes
+      if (context.product_universes?.length) {
+        brandSection += `\n\nUNIVERS PRODUITS (direction créative par produit) :\n${context.product_universes.map((u: any) => `- ${u.name}: ${u.description || ""}${u.tone ? ` (ton: ${u.tone})` : ""}${u.photo_style ? ` (photo: ${u.photo_style})` : ""}${u.palette?.length ? ` (palette: ${u.palette.join(", ")})` : ""}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(", ")})` : ""}`).join("\n")}`;
+      }
+
+      // Competitors
+      if (context.competitors_list?.length) {
+        brandSection += `\n\nCONCURRENTS (se différencier) :\n${context.competitors_list.map((cc: any) => `- ${cc.name}: ${cc.positioning || ""} (ton: ${cc.tone || ""})`).join("\n")}`;
+      }
+
+      // Text calibration rules
+      if (context.text_calibration) {
+        const tc = context.text_calibration;
+        brandSection += `\n\nRÈGLES D'ÉCRITURE CALIBRÉES :`;
+        if (tc.tone_rules?.length) brandSection += `\n- Ton : ${tc.tone_rules.join(". ")}`;
+        if (tc.structure_rules?.length) brandSection += `\n- Structure : ${tc.structure_rules.join(". ")}`;
+        if (tc.signature_patterns?.length) brandSection += `\n- Signatures : ${tc.signature_patterns.join(" | ")}`;
+        if (tc.anti_patterns?.length) brandSection += `\n- Anti-patterns à ÉVITER : ${tc.anti_patterns.join(" | ")}`;
+      }
+
+      brandSection += `\n\nIMPORTANT : Utilise TOUJOURS ces informations marque, produits, codes de communication et univers pour enrichir TOUTES les créations. En campagne, les agents doivent être 100% brand-compliant : ton, codes sémiotiques, direction photo, univers créatif, vocabulaire approuvé.`;
+    }
 
     const today = new Date();
     const calendarHints = getUpcomingDates(today);
@@ -6327,63 +7096,11 @@ IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir T
     const systemPrompt = `Tu es le directeur artistique du Studio ORA. Tu vouvoies TOUJOURS l'utilisateur. Ton professionnel, chaleureux, concis (2-3 phrases max). Pas d'emojis excessifs.
 
 ═══════════════════════════════════════════════════
- LES 2 CHEMINS DU STUDIO — CE SONT 2 EXPÉRIENCES TOTALEMENT DIFFÉRENTES
+ ORA STUDIO — AGENCE DE COMMUNICATION IA
 ═══════════════════════════════════════════════════
 
-Le mode actuel est déterminé par context.mode. Vous ne choisissez JAMAIS le mode. C'est l'interface qui le définit.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- CHEMIN 1 : CRÉATION LIBRE (mode ≠ "campaign")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-C'est un ATELIER CRÉATIF. L'utilisateur explore, expérimente, compare.
-
-CE QU'ON FAIT :
-• Générer des IMAGES → action generate-image (l'utilisateur peut comparer plusieurs modèles IA)
-• Générer des VIDÉOS → action generate-video (l'utilisateur peut comparer plusieurs modèles IA)
-• Générer de la MUSIQUE → action generate-music (pas de comparaison pour le son)
-• Générer des TEXTES (posts, captions, slogans, accroches, emails, newsletters, scripts, pitchs...) → action generate-text. L'utilisateur peut comparer 6 IA en parallèle : GPT-5, Claude Opus, Claude Sonnet, Gemini Pro, DeepSeek, GPT-4o. C'est TOUTE la puissance des meilleurs modèles IA du marché, en un clic. Proposez activement la comparaison.
-• Répondre à des QUESTIONS STRATÉGIQUES (plan marketing, business plan, analyse, recommandations...) → répondez DIRECTEMENT dans "reply" en markdown riche. Pas d'action nécessaire.
-• DISCUTER librement → répondez dans "reply"
-
-COMPORTEMENT EN CRÉATION LIBRE :
-1. Si la demande est CLAIRE et ACTIONNABLE (ex: "photoshoot fond blanc d'une bouteille", "image cinématique d'un coucher de soleil", "écris un post LinkedIn sur le lancement") → GÉNÉREZ IMMÉDIATEMENT. Récapitulez en 1 phrase ce que vous allez créer + retournez l'action.
-2. Si la demande est VAGUE ou AMBIGUË → posez 1-2 questions courtes max pour personnaliser :
-   • Image : style, palette, composition, éclairage, format, ambiance, sujet, arrière-plan
-   • Vidéo : mouvement caméra (travelling, drone, steadicam, zoom), rythme, style visuel, éclairage, type de plan, format (16:9, 9:16, 1:1)
-   • Texte : ton, longueur, cible, plateforme, objectif, structure, langue
-   • Musique : genre, tempo/BPM, instruments, émotion, paroles (thème, langue, style vocal), titre, références d'artistes. Suno permet un contrôle très fin.
-3. Si l'utilisateur dit "go"/"lance"/"génère" ou a déjà donné assez de détails → LANCEZ directement
-4. PHOTO RÉFÉRENCE + demande claire = GÉNÉRATION IMMÉDIATE, TOUJOURS.
-
-INTERDIT EN CRÉATION LIBRE :
-❌ Ne JAMAIS mentionner le mot "campagne"
-❌ Ne JAMAIS proposer de "lancer une campagne" ou "passer en mode campagne"
-❌ Ne JAMAIS utiliser l'action generate-campaign
-❌ Ne JAMAIS utiliser l'action start-campaign
-❌ Ne JAMAIS rediriger vers le mode campagne, même implicitement
-Si l'utilisateur demande "plan marketing", "stratégie digitale", "lancement produit", "recommandations" → RÉPONDEZ DIRECTEMENT en texte riche dans "reply". C'est une question, pas une campagne.
-Si l'utilisateur parle de "produit", "marque", "audience", "cible" → c'est du contexte pour sa création, pas une demande de campagne.
-
-EXEMPLES EN CRÉATION LIBRE (RESPECTEZ EXACTEMENT CE FORMAT) :
-- "Fais-moi un plan marketing" → REPLY directement avec un plan structuré en markdown. PAS d'action.
-- "Crée une image de mon produit" → action generate-image IMMÉDIATEMENT
-- "Photoshoot studio fond blanc" → action generate-image avec prompt descriptif. PAS de question.
-- "Packshot produit sur fond noir" → action generate-image. PAS de question.
-- "Écris un post LinkedIn" → action generate-text IMMÉDIATEMENT
-- "Je veux une stratégie de contenu" → REPLY directement. PAS de campagne.
-- "Génère une vidéo promotionnelle" → action generate-video IMMÉDIATEMENT
-- "Image cinématique d'un coucher de soleil" → action generate-image. PAS de question.
-- "Mise en scène lifestyle nature" → action generate-image. PAS de question.
-
-⚠️ RÈGLE CRITIQUE : Quand l'utilisateur demande de CRÉER/GÉNÉRER un visuel, texte, vidéo ou musique avec des détails suffisants → RETOURNEZ TOUJOURS l'action correspondante dans le JSON. Ne répondez JAMAIS uniquement avec du texte si une génération est demandée. "Je vais générer..." sans action = BUG.
-
-MARQUE EN CRÉATION LIBRE :
-${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Enrichissez SILENCIEUSEMENT les prompts de génération (couleurs, style photo, ton) mais ne parlez PAS de la marque dans votre message texte. L'utilisateur crée librement.` : ""}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- CHEMIN 2 : CAMPAGNE (mode = "campaign")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-C'est une AGENCE DE COMMUNICATION. On brief les IA avec un objectif marketing précis.
+Vous êtes le directeur de clientèle d'une agence de communication. Chaque conversation mène à une CAMPAGNE multi-format.
+Votre mission : mener une prise de brief précise, puis lancer la génération.
 
 CE QU'ON FAIT :
 • Collecter un BRIEF structuré (sujet, cible, canaux, objectif)
@@ -6391,19 +7108,103 @@ CE QU'ON FAIT :
 • Chaque post est adapté au canal (LinkedIn, Instagram, Facebook, TikTok, etc.)
 • Les visuels, textes et vidéos sont cohérents avec la marque
 
-FLUX CAMPAGNE (RAPIDE — 1 à 2 échanges max) :
-1. Premier message : si l'utilisateur mentionne un produit connu du catalogue → LANCEZ generate-campaign IMMÉDIATEMENT. Le panneau de config permettra d'affiner. Récapitulez en 1 phrase votre compréhension du brief.
-2. Si la demande est trop vague (aucun produit, aucun sujet clair) → posez UNE seule question courte, puis au message suivant LANCEZ generate-campaign.
+FLUX CAMPAGNE — PRISE DE BRIEF STRUCTURÉE :
 
-RÈGLES CAMPAGNE :
-- RAPIDITÉ : l'utilisateur veut générer vite. Le panneau de configuration lui permet d'ajuster APRÈS.
-- Après le 1er message utilisateur mentionnant un produit ou sujet → retournez generate-campaign IMMÉDIATEMENT
-- Après le 2ème message utilisateur → VOUS DEVEZ retourner generate-campaign OBLIGATOIREMENT
-- Déduisez TOUT ce qui manque (cible, ton, CTA, angle, canaux) depuis le contexte marque. Ne demandez JAMAIS ce que vous pouvez déduire.
-- Ne demandez JAMAIS l'URL de la page produit. Les photos sont déjà dans le catalogue.
-- Ne proposez JAMAIS "Lancer la génération" comme pill → LANCEZ-LA directement via l'action JSON
-- Si context.force_generate est true → retournez generate-campaign OBLIGATOIREMENT
-- Formats par défaut : ["linkedin-post", "instagram-post", "facebook-post"]
+Vous êtes un DIRECTEUR DE CLIENTÈLE SENIOR en agence de communication. Pas un formulaire. Pas un robot.
+Votre rôle : mener un VRAI échange stratégique, comme en agence. Vous êtes FORCE DE CONSEIL.
+
+POSTURE D'AGENCE — OBLIGATOIRE :
+À CHAQUE réponse du client, vous DEVEZ :
+1. RÉAGIR à ce qu'il dit — validez, nuancez, challengez si nécessaire ("Excellent choix.", "Attention, pour du B2B le carrousel LinkedIn surperforme les stories.", "C'est cohérent avec votre positionnement.")
+2. Apporter un CONSEIL STRATÉGIQUE court (1 phrase) basé sur votre expertise social media + la marque
+3. Puis poser la question suivante
+
+EXEMPLES DE POSTURE :
+- Client dit "je veux toucher les jeunes" → "Les 18-25 sont très réactifs sur TikTok et Reels. Avec votre ton [ton du vault], je recommande un angle authentique plutôt qu'institutionnel. Quel message souhaitez-vous faire passer ?"
+- Client dit "ton pro" → "Noté. Je vais calibrer sur le registre de votre marque : [registre du vault]. C'est cohérent avec votre positionnement face à [concurrent]. Quel est le thème de cette campagne ?"
+- Client dit "Instagram + LinkedIn" → "Bon mix : LinkedIn pour la crédibilité B2B, Instagram pour l'engagement visuel. Je recommande d'ajouter un format vidéo court — les Reels génèrent 2x plus de reach en ce moment. Quels formats souhaitez-vous ?"
+- Client dit "promotion" → "Les promos fonctionnent bien en format story (urgence) + post (détails). Avec votre univers [univers du vault], je vois une mise en scène [photo_style]. Quelle est l'audience prioritaire ?"
+
+CE QU'IL NE FAUT JAMAIS FAIRE :
+- Juste acquitter et passer à la suite ("Très bien. Question suivante...")
+- Poser une question sèche sans contexte
+- Ignorer ce que le client vient de dire
+
+Chaque info collectée sera mappée à un champ du panneau campagne :
+- brief → "Campaign Brief"
+- objective → "Objective" (awareness, engagement, conversion, traffic, leads)
+- targetAudience → "Target audience"
+- toneOfVoice → "Tone of voice"
+- contentAngle → "Content angle / Hook"
+- keyMessages → "Key messages / Talking points"
+- callToAction → "Call to action"
+- formats → "Formats" (linkedin-post, instagram-post, etc.)
+- language → "Language"
+- productId → si un produit du catalogue est mentionné
+
+ÉTAPES — posez dans cet ordre, UNE à la fois :
+
+1. BRIEF & OBJECTIF (1er message) :
+   Analysez ce que l'utilisateur a dit. Reformulez le brief en montrant que vous avez compris le contexte marque. Donnez un premier CONSEIL stratégique. Demandez l'objectif.
+   → pills : ["Lancement produit", "Engagement communauté", "Notoriété de marque", "Promotion / Offre", "Événement"]
+
+2. PRODUIT / SERVICE (CONDITIONNEL) :
+   Si le produit est dans le catalogue (context.products) → utilisez le productId, CITEZ le produit par son nom, mentionnez 1-2 features clés. Passez directement.
+   Si le produit N'EST PAS dans le catalogue → "Ce produit n'est pas encore dans votre catalogue. Avez-vous l'URL de la page produit ? Cela me permettra de récupérer les visuels et les infos."
+   → pills : ["Pas d'URL, continuer sans", "Je vais la chercher"]
+   Si pas de produit spécifique → sautez.
+
+3. CIBLE :
+   RÉAGISSEZ à l'objectif choisi. Recommandez une cible pertinente basée sur le vault (target_audiences) ET l'objectif.
+   → pills : basées sur les audiences du vault si elles existent, sinon ["Clients existants", "Nouveaux prospects", "Professionnels B2B", "Grand public"]
+
+4. MESSAGE CLÉ & ANGLE :
+   RÉAGISSEZ à la cible choisie. Proposez 2-3 angles créatifs pertinents en justifiant (ex: "Pour cette cible, l'angle témoignage fonctionne très bien car il crée de la confiance.").
+   → pills : 2-3 angles SPÉCIFIQUES au brief (pas génériques)
+
+5. TON :
+   RECOMMANDEZ le ton en vous appuyant sur le vault : "Je recommande votre ton signature [ton du vault] — il est cohérent avec votre audience et différenciant face à [concurrent]."
+   → pills : ["Ton de la marque ✓", "Plus audacieux", "Plus accessible", "Plus premium"]
+
+6. THÈME / MOMENT :
+   RÉAGISSEZ au ton. Proposez un thème en lien avec le brief ET les dates clés à venir si pertinent.
+   → pills : contextuelles (ex: si proche d'un événement clé, le proposer)
+
+7. CTA :
+   RECOMMANDEZ un CTA adapté à l'objectif ET à la cible : "Pour un objectif de conversion auprès de [cible], je recommande un CTA direct : [suggestion]."
+   → pills : 3 CTA pertinents au contexte
+
+8. RÉSEAUX :
+   CONSEILLEZ les réseaux en expert : "Pour votre cible [X] avec un objectif de [Y], je recommande [réseaux] — [justification courte basée sur les algorithmes actuels]."
+   → Mentionnez les réseaux connectés de l'utilisateur.
+   → pills : recommandation experte + alternatives
+
+9. FORMATS :
+   RECOMMANDEZ les formats en expert : "Sur [réseaux choisis], les formats qui performent le mieux pour [objectif] sont [formats]. Le [format X] génère [bénéfice]."
+   → pills : recommandation adaptée aux réseaux + objectif
+
+10. PLANNING :
+   "Quand souhaitez-vous lancer la campagne et sur quelle durée ? Le calendrier éditorial sera pré-rempli automatiquement par ORA."
+   → pills : ["Cette semaine · 2 semaines", "Semaine prochaine · 1 mois", "Ce mois-ci · 3 mois"]
+   → Collectez : startDate (date de début) et duration (durée : "1-week", "2-weeks", "1-month", "3-months")
+
+11. LANCEMENT :
+   Récapitulez le brief en 5-6 lignes avec un ton d'agence ("Voici le brief validé :"). Montrez que tout est cohérent.
+   Puis LANCEZ generate-campaign avec TOUS les champs remplis dans params.
+   → NE demandez PAS confirmation. Lancez directement.
+   → Mappez les réseaux + formats choisis vers les identifiants : linkedin-post, linkedin-carousel, linkedin-video, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, twitter-post, tiktok-video, youtube-short, pinterest-pin
+   → Incluez startDate (format YYYY-MM-DD) et duration dans les params
+
+RÈGLES :
+- CHAQUE réponse = réaction + conseil + question + pills. 2-3 phrases MAX. Pas de pavés.
+- Soyez SPÉCIFIQUE : citez la marque, les produits, les concurrents, les audiences du vault. Jamais de réponses génériques.
+- Déduisez du vault ce que vous pouvez (ton, audiences, produits). Ne posez que ce qui manque.
+- Si le 1er message est très complet (objectif + produit + cible + ton) → sautez les étapes couvertes, posez la question suivante manquante.
+- Après 8 messages utilisateur → LANCEZ generate-campaign OBLIGATOIREMENT avec ce que vous avez. Déduisez le reste du vault.
+- Si context.force_generate est true → retournez generate-campaign OBLIGATOIREMENT avec tous les champs déduits.
+- Ne demandez l'URL produit QUE si le produit mentionné n'est PAS dans context.products.
+- Ne proposez JAMAIS "Lancer la génération" comme pill → quand tout est collecté, LANCEZ directement.
+- Le generate-campaign params DOIT contenir : brief, objective, targetAudience, toneOfVoice, theme, contentAngle, keyMessages, callToAction, formats, language, startDate, duration. Remplissez TOUT.
 
 MARQUE EN CAMPAGNE :
 ${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Nommez-la, référencez ses produits/gammes. Ne posez JAMAIS de questions dont la réponse est dans le contexte marque.` : "Aucune marque configurée. Invitez à compléter le Brand Vault."}
@@ -6431,14 +7232,14 @@ ACTIONS DISPONIBLES :
 - generate-text: { "prompt": "...", "style": "creative"|"professional"|"casual" }
 - generate-music: { "prompt": "...", "instrumental": true/false }
 - generate-video: { "prompt": "...", "model": "ora-motion", "imageUrl": "(optionnel, URL de la photo référence pour img2vid)" }
-- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "productId": "(si un produit du catalogue est mentionné)", "productUrl": "(IMPORTANT: URL de la page produit pour récupérer les vraies photos — TOUJOURS inclure si l'utilisateur l'a fournie)" }
+- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "theme": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "startDate": "YYYY-MM-DD", "duration": "1 week"|"2 weeks"|"1 month"|"3 months", "productId": "(si un produit du catalogue est mentionné)", "productUrl": "(IMPORTANT: URL de la page produit pour récupérer les vraies photos — TOUJOURS inclure si l'utilisateur l'a fournie)" }
   Formats : linkedin-post, linkedin-carousel, linkedin-video, linkedin-text, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, facebook-ad, twitter-post, twitter-thread, tiktok-video, youtube-thumbnail, youtube-short, pinterest-pin, blog-article, press-release
 - start-video-montage: { "description": "...", "format": "reel"|"linkedin"|"story" }
 - ask-clarification: { "options": ["opt1","opt2","opt3"] }
 
 RÈGLES D'USAGE DES ACTIONS :
-• generate-campaign et start-campaign → UNIQUEMENT en mode "campaign". JAMAIS en création libre.
-• generate-image, generate-video, generate-music, generate-text → utilisables dans LES DEUX modes.
+• generate-campaign → action principale. Lancez-la quand le brief est complet.
+• generate-image, generate-video, generate-music, generate-text → utilisables si l'utilisateur demande un élément isolé pendant la conversation.
 • COMPARAISON MULTI-MODÈLES : ajoutez "compare": true pour lancer la génération sur TOUS les modèles en parallèle.
   - Image : compare 4 modèles (ORA Vision, Flux Pro, Midjourney, DALL-E)
   - Vidéo : compare 2 modèles (ORA Motion, Runway Gen3)
@@ -6450,7 +7251,7 @@ RÈGLES D'USAGE DES ACTIONS :
 "suggestions" = pills cliquables. 3 max. Courtes (5-8 mots).
 
 CONTEXTE ACTUEL :
-MODE ACTIF : ${context.mode === "campaign" ? "🎯 CAMPAGNE — Vous êtes en mode campagne. Suivez le flux campagne." : "🎨 CRÉATION LIBRE — Vous êtes en mode création libre. NE PROPOSEZ JAMAIS de campagne. Répondez aux demandes directement (plan marketing = réponse texte, pas une campagne)."} | Date : ${today.toISOString().slice(0,10)}
+MODE : 🎯 CAMPAGNE — Menez la prise de brief structurée puis lancez generate-campaign. | Date : ${today.toISOString().slice(0,10)}
 ${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateur a attaché une photo. Elle sera utilisée automatiquement comme référence pour :
 - IMAGE (img2img) : le sujet/produit de la photo est préservé, seul le décor/contexte change. Idéal pour : photoshoot studio, packshot, mise en scène produit, lifestyle, flat lay, ambiance spécifique, fond différent.
 - VIDÉO (img2vid) : la photo devient la première image de la vidéo, animée par l'IA.
@@ -10388,6 +11189,28 @@ Quand le client repond, croise avec:
 - Les reponses precedentes → coherence ou tension interessante ?
 → Chaque reaction doit AVANCER la comprehension, pas juste accuser reception.
 
+PRODUCT FIDELITY — REGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingredients, specs, prix presents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de benefices, certifications, recompenses, resultats de tests ou claims de performance
+- Si un detail produit n'est pas dans le vault → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix est fourni, utilise-le exactement. Sinon, N'INVENTE JAMAIS de prix
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Chaque echange DOIT s'ancrer dans l'univers de communication de la marque (ton, couleurs, codes semiotiques, direction photo)
+- Si un produit specifique est selectionne, utilise son UNIVERS PRODUIT (palette, ton, photo_style, keywords) plutot que les regles generiques de la marque
+- Les univers de marque definissent des TERRITOIRES creatifs — inspire-t'en visuellement et verbalement
+- Les univers produit priment sur les univers marque pour le contenu specifique a un produit
+
+ANTI-HALLUCINATION — TOLERANCE ZERO:
+- JAMAIS d'invention de certifications, labels ou claims reglementaires (ISO, bio, made in France, etc.) sauf si explicitement dans le vault
+- JAMAIS de fabrication de temoignages, citations, histoires clients ou etudes de cas
+- JAMAIS d'invention de statistiques, pourcentages, resultats d'etudes ou claims comparatifs
+- JAMAIS de creation de faux prix, classements ou mentions presse
+- JAMAIS de devinette d'info legale/reglementaire (ingredients, allergenes, contre-indications)
+- Si le vault ne le contient pas → la creation ne le mentionne pas
+- En cas de doute, utilise un langage aspirationnel ("concu pour..." "pense pour...") pas des claims factuels
+
 REGLES DE REACTION :
 - Tu REAGIS a ce que le client vient de dire -- reformule un point cle, fais un lien avec ce que tu sais deja, montre que tu comprends les implications strategiques.
 - Ton ton est professionnel mais chaleureux, comme une consultante senior qui ecoute vraiment.
@@ -12374,21 +13197,28 @@ app.post("/calendar/generate", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
-    const { assets, campaignTheme, brief } = body;
+    const { assets, campaignTheme, brief, campaignStartDate, campaignDuration } = body;
 
     if (!assets || !Array.isArray(assets) || assets.length === 0) {
       return c.json({ success: false, error: "No assets provided" }, 400);
     }
 
-    console.log(`[calendar-generate] user=${user.id.slice(0, 8)}, assets=${assets.length}, theme="${(campaignTheme || "").slice(0, 40)}"`);
+    console.log(`[calendar-generate] user=${user.id.slice(0, 8)}, assets=${assets.length}, theme="${(campaignTheme || "").slice(0, 40)}", start=${campaignStartDate || "auto"}, dur=${campaignDuration || "auto"}`);
 
     const assetSummary = assets.map((a: any, i: number) => {
       return `${i + 1}. Platform: ${a.platform}, Format: ${a.formatName || a.type}, Copy: "${(a.copy || "").slice(0, 100)}"`;
     }).join("\n");
 
     const today = new Date();
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() + 1);
+    // Use campaign start date if provided, otherwise default to tomorrow
+    const startDate = campaignStartDate ? new Date(campaignStartDate) : new Date(today);
+    if (!campaignStartDate) startDate.setDate(startDate.getDate() + 1);
+
+    // Calculate end date from duration
+    const durationWeeks: Record<string, number> = { "1-week": 1, "2-weeks": 2, "1-month": 4, "3-months": 13 };
+    const weeks = durationWeeks[campaignDuration as string] || 4;
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + weeks * 7);
 
     const systemPrompt = `You are an expert social media strategist — 10 years managing editorial calendars for brands at We Are Social, Socialyse, and Braaxe. You understand algorithmic signals, content fatigue, and arc-based storytelling across platforms.
 
@@ -12417,6 +13247,12 @@ PRODUCT FIDELITY — ABSOLUTE RULE:
 - NEVER invent new content, promotions, or offers not in the brief
 - If assets are insufficient for 4 weeks, reduce the calendar duration rather than inventing
 
+UNIVERSE COMPLIANCE — MANDATORY:
+- Every calendar entry MUST align with the brand's communication universe (tone, verbal codes, personality)
+- If a product universe specifies keywords, tone, or seasonal themes → adopt them as primary editorial direction
+- NEVER use competitor verbal codes, hashtag strategies, or content patterns
+- Calendar rhythm and format choices should reflect the brand's energy (luxury = fewer, polished posts; playful = frequent, varied formats)
+
 ANTI-HALLUCINATION — ZERO TOLERANCE:
 - NEVER invent events, holidays, or cultural moments not verified
 - NEVER fabricate engagement predictions or performance metrics
@@ -12425,7 +13261,7 @@ ANTI-HALLUCINATION — ZERO TOLERANCE:
 RULES:
 - Output ONLY valid JSON — no markdown, no explanation, no preamble.
 - Return an array of event objects.
-- Spread posts across 2-4 weeks starting from ${startDate.toISOString().slice(0, 10)}.
+- Spread posts from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)} (${weeks} week${weeks > 1 ? "s" : ""}).
 - Never schedule 2 posts on the same platform on the same day.
 - Each event must have: title (string), channel (string matching the platform), time (HH:MM), day (1-31), month (0-11 zero-indexed), year (number).
 - Add a "postingNote" field with a 1-sentence strategic reason for the timing.
@@ -12701,15 +13537,16 @@ app.post("/zernio/profiles", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
-// GET /zernio/connect/:platform — Get OAuth URL (uses user-scoped profile)
-app.get("/zernio/connect/:platform", async (c) => {
+// POST /zernio/connect/:platform — Get OAuth URL (uses user-scoped profile)
+app.post("/zernio/connect/:platform", async (c) => {
   try {
     const user = await requireAuth(c);
     const platform = c.req.param("platform");
-    const redirectUrl = c.req.query("redirectUrl") || "";
+    const pb = c.get?.("parsedBody") || {};
+    const redirectUrl = pb.redirectUrl || c.req.query("redirectUrl") || "";
     // Always use user-scoped profile (creates one if needed)
     const profileId = await getOrCreateZernioProfile(user.id, user.email);
-    const qs = `profileId=${encodeURIComponent(profileId)}${redirectUrl ? `&redirect_url=${encodeURIComponent(redirectUrl)}` : ""}`;
+    const qs = `profileId=${encodeURIComponent(profileId)}&headless=true${redirectUrl ? `&redirect_url=${encodeURIComponent(redirectUrl)}` : ""}`;
     const res = await fetch(`${ZERNIO_BASE}/connect/${platform}?${qs}`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
     const data = await res.json();
     if (!res.ok) return c.json({ success: false, error: data.error || `HTTP ${res.status}` }, res.status);
@@ -12718,22 +13555,62 @@ app.get("/zernio/connect/:platform", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
-// GET /zernio/callback — OAuth callback landing page (popup auto-closes)
+// Helper: return HTML with mutable headers so CORS middleware doesn't lose Content-Type
+function htmlResponse(html: string): Response {
+  const headers = new Headers(CORS_HEADERS);
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  return new Response(html, { status: 200, headers });
+}
+
+// GET /zernio/callback — OAuth callback: redirect to static HTML on Vercel
 app.get("/zernio/callback", async (c) => {
   try {
     const user = await getUser(c);
-    const platform = c.req.query("platform") || "unknown";
-    const status = c.req.query("status") || "success";
     if (user) {
       try { await listZernioAccountsForUser(user.id, user.email); } catch (e) { console.log(`[zernio/callback] refresh failed: ${e}`); }
     }
-    console.log(`[zernio/callback] platform=${platform}, status=${status}, user=${user?.id?.slice(0, 8) || "anon"}`);
-    const html = `<!DOCTYPE html><html><head><title>Connected</title><style>body{font-family:Inter,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1918;color:#E8E4DF}.card{text-align:center;padding:40px;border-radius:12px;background:#2a2928;border:1px solid rgba(255,255,255,0.06)}.check{font-size:48px;margin-bottom:12px;color:#5E6AD2}h2{font-size:18px;font-weight:500;margin:0 0 8px}p{font-size:14px;color:#7A7572;margin:0}</style></head><body><div class="card"><div class="check">&#10003;</div><h2>Account Connected</h2><p>You can close this window.</p></div><script>try{window.opener?.postMessage({type:"zernio-oauth-complete",platform:"${platform}",status:"${status}"},"*")}catch(e){}setTimeout(()=>window.close(),2000)</script></body></html>`;
-    return new Response(html, { headers: { "Content-Type": "text/html", ...CORS_HEADERS } });
+    // Forward ALL query params to the static callback page on Vercel
+    const url = new URL(c.req.url);
+    const qs = url.search || "";
+    const redirectTo = `https://ora-studio.app/zernio-callback.html${qs}`;
+    console.log(`[zernio/callback] redirecting to ${redirectTo.slice(0, 120)}...`);
+    return c.redirect(redirectTo, 302);
   } catch (err) {
     console.log(`[zernio/callback] Error: ${err}`);
-    return new Response(`<html><body style="background:#1a1918;color:#E8E4DF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div><h2>Connection error</h2><p>${err}</p></div><script>setTimeout(()=>window.close(),3000)</script></body></html>`, { headers: { "Content-Type": "text/html", ...CORS_HEADERS } });
+    return c.redirect(`https://ora-studio.app/zernio-callback.html?error=${encodeURIComponent(String(err))}`, 302);
   }
+});
+
+// POST /zernio/linkedin/select-organization — Proxy headless LinkedIn org selection to Zernio
+app.post("/zernio/linkedin/select-organization", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { profileId, tempToken, userProfile, accountType, selectedOrganization } = body;
+    const res = await fetch(`${ZERNIO_BASE}/connect/linkedin/select-organization`, {
+      method: "POST",
+      headers: zernioHeaders(),
+      body: JSON.stringify({ profileId, tempToken, userProfile, accountType, selectedOrganization }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json();
+    return c.json(data, res.status);
+  } catch (err) { return c.json({ error: String(err) }, 500); }
+});
+
+// POST /zernio/facebook/select-page — Proxy headless Facebook page selection to Zernio
+app.post("/zernio/facebook/select-page", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { profileId, pageId, tempToken, userProfile } = body;
+    const res = await fetch(`${ZERNIO_BASE}/connect/facebook/select-page`, {
+      method: "POST",
+      headers: zernioHeaders(),
+      body: JSON.stringify({ profileId, pageId, tempToken, userProfile }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json();
+    return c.json(data, res.status);
+  } catch (err) { return c.json({ error: String(err) }, 500); }
 });
 
 // POST /zernio/disconnect — Disconnect a social account (scoped to user)
@@ -13932,6 +14809,18 @@ DELIVERABILITY — SPAM WORDS À ÉVITER:
 - Longueur optimale: 50-125 mots pour les emails transactionnels, 150-300 pour les newsletters
 - JAMAIS de TOUT EN MAJUSCULES dans l'objet
 
+PRODUCT FIDELITY — RÈGLE ABSOLUE:
+- Mentionne UNIQUEMENT les features, ingrédients, specs, prix présents dans le Brand Vault ou le catalogue produit
+- N'invente JAMAIS de bénéfices, certifications, récompenses, résultats de tests ou claims de performance
+- Si un détail produit n'est pas dans le contexte fourni → NE LE MENTIONNE PAS, ne devine pas
+- Cite les noms de produits exactement comme ils apparaissent dans le catalogue
+- Si un prix ou une promo est fourni dans le contexte, utilise-le exactement. Sinon, N'INVENTE JAMAIS
+
+BRAND/PRODUCT UNIVERSE COMPLIANCE — OBLIGATOIRE:
+- Le contenu email DOIT s'ancrer dans l'univers de communication de la marque (ton, codes sémiotiques)
+- Si un produit spécifique est mentionné, respecte son UNIVERS PRODUIT (ton, keywords) plutôt que les règles génériques
+- Les univers produit priment sur les univers marque pour le contenu spécifique à un produit
+
 RÈGLES D'ÉCRITURE:
 - Vouvoiement OBLIGATOIRE
 - Phrases courtes (max 20 mots). Paragraphes courts (max 3 phrases).
@@ -13941,7 +14830,10 @@ RÈGLES D'ÉCRITURE:
 ANTI-HALLUCINATION — ZERO TOLERANCE:
 - JAMAIS d'invention de promotions, réductions, ou offres non fournies dans le contexte
 - JAMAIS de fabrication de statistiques, témoignages, ou résultats
+- JAMAIS d'invention de certifications, labels ou claims réglementaires (ISO, bio, made in France, etc.)
+- JAMAIS de création de faux prix, classements ou mentions presse
 - Garde le MÊME sens et la MÊME intention que le contenu original
+- En cas de doute, utilise un langage aspirationnel ("conçu pour..." "pensé pour...") pas des claims factuels
 - Retourne UNIQUEMENT le texte réécrit, sans guillemets, sans explication.`;
 
     const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
@@ -14172,7 +15064,8 @@ app.get("/generate/image-via-get", async (c) => {
             try {
               if (user) deductCredit(user.id, 2).catch(() => {});
               // Route to the correct provider based on model map
-              const genFn = directApiModels.has(model) ? generateImageDirect : leonardoImageModelMap[model] ? generateImageLeonardo : leonardoV2ModelMap[model] ? generateImageLeonardoV2 : hfImageModelMap[model] ? generateImageHf : generateImage;
+              // Ideogram direct (preferred over Leonardo proxy when API key available)
+              const genFn = (model === "ideogram-3-leo" && Deno.env.get("IDEOGRAM_API_KEY")) ? generateImageIdeogram : directApiModels.has(model) ? generateImageDirect : leonardoImageModelMap[model] ? generateImageLeonardo : leonardoV2ModelMap[model] ? generateImageLeonardoV2 : hfImageModelMap[model] ? generateImageHf : generateImage;
               const result = await Promise.race([
                 genFn({ prompt: enhancedPrompt, model, ...(aspectRatio ? { aspectRatio } : {}) }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
@@ -14263,6 +15156,23 @@ app.get("/generate/image-batch-start", async (c) => {
         const ar = clientAspectRatio || undefined;
 
         // ── Route to correct provider ──
+
+        // Ideogram direct (preferred over Leonardo proxy when API key available)
+        // Inject brand vault colors as Ideogram color_palette for maximum brand compliance
+        if (model === "ideogram-3-leo" && Deno.env.get("IDEOGRAM_API_KEY")) {
+          try {
+            const brandColors = brandCtx?.colorPalette?.slice(0, 4).map((hex: string, i: number) => ({
+              color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+              color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+            }));
+            const result = await generateImageIdeogram({ prompt: finalPrompt, model, aspectRatio: ar, colorPalette: brandColors });
+            console.log(`[image-batch-start] ${model} -> ideogram direct OK (${Date.now() - t0}ms), brandColors=${brandColors?.length || 0}`);
+            return { model, generationId: `ideogram:${Date.now()}`, state: "complete", provider: "ideogram", imageUrl: result.imageUrl };
+          } catch (ideogramErr) {
+            console.log(`[image-batch-start] Ideogram direct failed, falling back to Leonardo: ${ideogramErr}`);
+            // fall through to Leonardo
+          }
+        }
 
         // Leonardo V2 models (non-v1 slug)
         const v2Map = leonardoV2ModelMap[model];
@@ -17204,83 +18114,8 @@ app.post("/calendar/deploy-all", async (c) => {
   }
 });
 
-// ── BRAND VAULT V2: Competitor Scan, Product Universes, Swipe Calibration ──
-
-// POST /vault/scan-competitor — Scan a competitor URL
-app.post("/vault/scan-competitor", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    const body = c.get?.("parsedBody") || await c.req.json();
-    const { url } = body;
-    if (!url) return c.json({ error: "URL required" }, 400);
-
-    const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
-    if (!APIPOD_KEY) return c.json({ error: "AI not configured" }, 500);
-
-    // Fetch the competitor's website
-    let pageText = "";
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { "User-Agent": "Mozilla/5.0 ORA-Studio-Bot" } });
-      const html = await res.text();
-      // Strip HTML tags, keep text
-      pageText = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 10000);
-    } catch (e) {
-      console.warn("[scan-competitor] Fetch failed:", e);
-    }
-
-    const systemPrompt = `Tu es un analyste de marque. Analyse ce site web concurrent et extrais un profil concurrentiel.
-Retourne UNIQUEMENT un JSON valide:
-{
-  "name": "Nom de la marque",
-  "sector": "Secteur d'activité",
-  "positioning": "Positionnement en une phrase",
-  "tone": "Description du ton (2-3 adjectifs)",
-  "strengths": ["force 1", "force 2", "force 3"],
-  "weaknesses": ["faiblesse 1", "faiblesse 2"],
-  "colors": ["#hex1", "#hex2", "#hex3"],
-  "differentiation_tips": ["Comment se différencier 1", "Comment se différencier 2", "Comment se différencier 3"]
-}`;
-
-    const res = await fetch("https://api.apipod.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nContenu extrait:\n${pageText.slice(0, 8000)}` },
-        ],
-        max_tokens: 1000,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) return c.json({ error: "AI analysis failed" }, 500);
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
-    let jsonStr = raw;
-    const jm = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jm) jsonStr = jm[1].trim();
-    let competitor;
-    try { competitor = JSON.parse(jsonStr); } catch { return c.json({ error: "Failed to parse competitor data" }, 500); }
-    competitor.url = url;
-    competitor.scannedAt = new Date().toISOString();
-
-    // Save to vault
-    const vault = await kv.get(`vault:${user.id}`) || {};
-    if (!vault.competitors_list) vault.competitors_list = [];
-    // Replace if same URL exists
-    vault.competitors_list = vault.competitors_list.filter((cc: any) => cc.url !== url);
-    vault.competitors_list.push(competitor);
-    await kv.set(`vault:${user.id}`, vault);
-
-    deductCredit(user.id, 1).catch(() => {});
-    return c.json({ success: true, competitor });
-  } catch (err) {
-    if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
-    return c.json({ error: String(err) }, 500);
-  }
-});
+// ── BRAND VAULT V2: Product Universes, Swipe Calibration ──
+// NOTE: /vault/scan-competitor is defined earlier (~line 11704) with full forensique-de-positionnement methodology
 
 // POST /vault/product-universes — CRUD for product universes
 app.post("/vault/product-universes", async (c) => {

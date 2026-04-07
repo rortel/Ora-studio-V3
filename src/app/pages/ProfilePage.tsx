@@ -343,15 +343,16 @@ function ProfilePageContent() {
   const mappedPlan: PlanTier = authPlan as PlanTier;
 
   const baseUser = isSubscriber ? agencyUser : freeUser;
+  const realName = profile?.name || profile?.displayName || authCtxUser?.name || authCtxUser?.email?.split("@")[0] || "";
   const user: UserProfile = authCtxUser ? {
     ...baseUser,
-    name: profile?.name || authCtxUser.name || authCtxUser.email.split("@")[0],
+    name: realName,
     email: authCtxUser.email,
-    initials: (profile?.name || authCtxUser.name || authCtxUser.email.split("@")[0]).split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+    initials: realName ? realName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : authCtxUser.email[0].toUpperCase(),
     plan: mappedPlan,
-    joinedDate: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Mar 2026",
-    company: profile?.company || baseUser.company,
-    role: profile?.jobTitle || baseUser.role,
+    joinedDate: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "",
+    company: profile?.company || "",
+    role: profile?.jobTitle || "",
   } : baseUser;
   const plan = planData[user.plan];
 
@@ -428,16 +429,20 @@ function ProfilePageContent() {
                 </h1>
                 <PlanBadge plan={user.plan} />
               </div>
-              <p style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
-                {user.role} {t("profile.roleAt")} {user.company}
-              </p>
+              {(user.role || user.company) && (
+                <p style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
+                  {user.role && user.company ? `${user.role} ${t("profile.roleAt")} ${user.company}` : user.role || user.company}
+                </p>
+              )}
               <div className="flex items-center gap-4 mt-1">
                 <span className="flex items-center gap-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
                   <Mail size={10} /> {user.email}
                 </span>
-                <span className="flex items-center gap-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-                  <Calendar size={10} /> {t("profile.joinedPrefix")} {user.joinedDate}
-                </span>
+                {user.joinedDate && (
+                  <span className="flex items-center gap-1" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+                    <Calendar size={10} /> {t("profile.joinedPrefix")} {user.joinedDate}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -511,7 +516,7 @@ function ProfilePageContent() {
           )}
           {activeTab === "settings" && (
             <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <SettingsTab isSubscriber={isSubscriber} authEmail={authCtxUser?.email} />
+              <SettingsTab isSubscriber={isSubscriber} authEmail={authCtxUser?.email} userName={user.name} userCompany={user.company} />
             </motion.div>
           )}
         </AnimatePresence>
@@ -818,8 +823,11 @@ function SocialAccountsSection() {
   const handleConnect = useCallback(async (platform: string) => {
     setConnecting(platform);
     try {
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?redirectUrl=${encodeURIComponent(window.location.origin + "/profile")}`, {
-        headers: makeHeaders(),
+      const token = auth.getAuthHeader();
+      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
+        method: "POST",
+        headers: { ...makeHeaders(), "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, redirectUrl: `${API_BASE}/zernio/callback` }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) {
@@ -924,15 +932,15 @@ function SocialAccountsSection() {
    SETTINGS TAB
    ═══════════════════════════════════ */
 
-function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authEmail?: string }) {
+function SettingsTab({ isSubscriber, authEmail, userName, userCompany }: { isSubscriber: boolean; authEmail?: string; userName?: string; userCompany?: string }) {
   const { t } = useI18n();
   const sections = [
     {
       title: t("profile.settingsProfile"),
       items: [
-        { label: t("profile.displayName"), value: isSubscriber ? "Alex Martin" : "Alex Martin", editable: true },
-        { label: t("profile.email"), value: authEmail || (isSubscriber ? "alex@acmecorp.com" : "alex@martin-studio.com"), editable: true },
-        { label: t("profile.company"), value: isSubscriber ? "Acme Corp" : "Martin Studio", editable: true },
+        { label: t("profile.displayName"), value: userName || "—", editable: true },
+        { label: t("profile.email"), value: authEmail || "—", editable: true },
+        { label: t("profile.company"), value: userCompany || "—", editable: true },
       ],
     },
     {
@@ -940,13 +948,6 @@ function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authE
       items: [
         { label: t("profile.campaignAlerts"), value: isSubscriber ? t("profile.enabled") : t("profile.disabled"), editable: true },
         { label: t("profile.weeklyDigest"), value: isSubscriber ? t("profile.enabled") : t("profile.disabled"), editable: true },
-      ],
-    },
-    {
-      title: t("profile.integrations"),
-      items: [
-        { label: t("profile.apiKey"), value: isSubscriber ? "sk-ora-...7f3a" : t("profile.upgradeRequired"), editable: isSubscriber },
-        { label: t("profile.figmaConnect"), value: isSubscriber ? t("profile.connected") : t("profile.upgradeRequired"), editable: isSubscriber },
       ],
     },
   ];
@@ -972,6 +973,9 @@ function SettingsTab({ isSubscriber, authEmail }: { isSubscriber: boolean; authE
           </div>
         </div>
       ))}
+      {/* Social Accounts */}
+      <SocialAccountsSection />
+
       <div>
         <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 500, color: "var(--destructive)" }}>{t("profile.dangerZone")}</h3>
         <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "rgba(212,24,61,0.15)" }}>
