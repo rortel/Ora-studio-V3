@@ -18,6 +18,7 @@ import { useI18n } from "../lib/i18n";
 import { TemplateEditor } from "../components/TemplateEditor";
 import { registerTemplate, getTemplateById, getTemplatesForFormat } from "../components/templates";
 import type { TemplateDefinition } from "../components/templates/types";
+import { compositeAdCreative, selectTemplateForFormat } from "../lib/compositeAdCreative";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ORA STUDIO — Unified conversational creation
@@ -66,6 +67,7 @@ interface CampaignPost {
   platform: string;
   text: string;
   imageUrl?: string;
+  compositeImageUrl?: string; // Ad-ready creative (image + headline + CTA + logo composited)
   videoUrl?: string;
   hashtags?: string;
   headline?: string;
@@ -898,13 +900,41 @@ export function StudioPage() {
             await Promise.all(videoPromises);
           }
 
+          // ── 4. COMPOSITE AD CREATIVES — overlay text + logo on generated images ──
+          const compositeLogoUrl = vault?.logo_url || vault?.logoUrl || "";
+          const postsWithImages = posts.filter(p => p.imageUrl && (p.headline || p.cta));
+          if (postsWithImages.length > 0) {
+            console.log(`[studio] Compositing ${postsWithImages.length} ad creatives...`);
+            await Promise.all(
+              postsWithImages.map(async (post) => {
+                try {
+                  const template = selectTemplateForFormat(post.format);
+                  if (!template) { console.log(`[studio] No template for format ${post.format}, skipping composite`); return; }
+                  const compositeUrl = await compositeAdCreative({
+                    imageUrl: post.imageUrl!,
+                    headline: post.headline,
+                    ctaText: post.cta,
+                    caption: post.text?.slice(0, 80),
+                    vault: vault,
+                    logoUrl: compositeLogoUrl,
+                    template,
+                  });
+                  post.compositeImageUrl = compositeUrl;
+                  console.log(`[studio] Composite OK [${post.format}]: ${compositeUrl.slice(0, 60)}...`);
+                } catch (err: any) {
+                  console.warn(`[studio] Composite failed [${post.format}]:`, err?.message);
+                }
+              })
+            );
+          }
+
           if (posts.length > 0) {
             result = {
               type: "campaign",
               prompt: brief || "",
               items: [],
               campaignPosts: posts,
-              logoUrl: vault?.logo_url || vault?.logoUrl || undefined,
+              logoUrl: compositeLogoUrl || undefined,
               campaignStartDate: campaignStartDate as string | undefined,
               campaignDuration: campaignDuration as string | undefined,
             };
@@ -1901,13 +1931,13 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: Cam
                 border: "1px solid var(--border)",
                 ...(isExpanded ? { gridColumn: "1 / -1" } : {}),
               }}>
-              {/* Visual thumbnail or text-only */}
+              {/* Visual thumbnail — show composite ad creative if available */}
               {hasVisual && !isExpanded && (
                 <div className="relative group/thumb" style={{ height: 120 }}>
                   {post.videoUrl ? (
                     <video src={post.videoUrl} className="w-full h-full object-cover" muted />
                   ) : (
-                    <img src={post.imageUrl} className="w-full h-full object-cover" alt="" />
+                    <img src={post.compositeImageUrl || post.imageUrl} className="w-full h-full object-cover" alt="" />
                   )}
                   {post.videoUrl && (
                     <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
@@ -1963,7 +1993,7 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: Cam
                       {post.videoUrl ? (
                         <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
                       ) : (
-                        <img src={post.imageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
+                        <img src={post.compositeImageUrl || post.imageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
                       )}
                       {logoUrl && (
                         <div className="absolute bottom-2 right-2 rounded-md overflow-hidden"
