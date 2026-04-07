@@ -1787,7 +1787,8 @@ async function generateImageIdeogram(req: {
   if (!dlRes.ok) throw new Error(`Failed to download Ideogram image: ${dlRes.status}`);
   const dlBlob = await dlRes.blob();
   const fileName = `ideogram-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
-  const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+  await ensureGenerationsBucket();
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
   if (upErr) throw new Error(`Supabase upload failed: ${upErr.message}`);
   const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
 
@@ -4689,6 +4690,7 @@ app.post("/images/remove-bg", async (c) => {
     if (prRes.ok) {
       const blob = await prRes.blob();
       const fileName = `rmbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+      await ensureGenerationsBucket();
       const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/png" });
       if (!error && data?.path) {
         const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
@@ -4744,6 +4746,7 @@ app.post("/images/harmonize", async (c) => {
     if (prRes.ok) {
       const blob = await prRes.blob();
       const fileName = `harmonize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      await ensureGenerationsBucket();
       const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/webp" });
       if (!error && data?.path) {
         const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
@@ -4867,6 +4870,7 @@ app.post("/ideogram/edit", async (c) => {
     const dlRes = await fetch(resultUrl);
     const dlBlob = await dlRes.blob();
     const fileName = `ideogram-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    await ensureGenerationsBucket();
     const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
     if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
     const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
@@ -4946,6 +4950,7 @@ app.post("/ideogram/remix", async (c) => {
     console.log(`[ideogram/remix] Result image downloaded: ${dlBlob.size} bytes, type=${contentType}`);
     const ext = contentType.includes("png") ? "png" : contentType.includes("jpeg") ? "jpg" : "webp";
     const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    await ensureGenerationsBucket();
     const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType, upsert: true });
     if (upErr) {
       console.error(`[ideogram/remix] Upload failed:`, upErr.message, upErr);
@@ -5004,6 +5009,7 @@ app.post("/ideogram/reframe", async (c) => {
     const dlRes = await fetch(resultUrl);
     const dlBlob = await dlRes.blob();
     const fileName = `ideogram-reframe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    await ensureGenerationsBucket();
     const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp", upsert: true });
     if (upErr) { console.error(`[ideogram/reframe] Upload failed:`, upErr.message); return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500); }
     const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
@@ -5083,6 +5089,7 @@ app.post("/ideogram/replace-background", async (c) => {
     console.log(`[ideogram/replace-bg] Result downloaded: ${dlBlob.size} bytes, type=${bgContentType}`);
     const bgExt = bgContentType.includes("png") ? "png" : bgContentType.includes("jpeg") ? "jpg" : "webp";
     const fileName = `ideogram-replbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${bgExt}`;
+    await ensureGenerationsBucket();
     const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: bgContentType, upsert: true });
     if (upErr) { console.error(`[ideogram/replace-bg] Upload failed:`, upErr.message); return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500); }
     const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
@@ -5142,6 +5149,7 @@ app.post("/ideogram/upscale", async (c) => {
     const dlRes = await fetch(resultUrl);
     const dlBlob = await dlRes.blob();
     const fileName = `ideogram-upscale-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    await ensureGenerationsBucket();
     const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp", upsert: true });
     if (upErr) { console.error(`[ideogram/upscale] Upload failed:`, upErr.message); return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500); }
     const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
@@ -19746,6 +19754,31 @@ app.delete("/products/:id/images/:imageId", async (c) => {
 
 // Ensure campaign ref bucket exists at startup (for direct client uploads)
 ensureCampaignRefBucket().catch(() => {});
+
+// ── Generations bucket (public, used by Ideogram and other image generation endpoints) ──
+const GENERATIONS_BUCKET = "generations";
+let generationsBucketInitialized = false;
+
+async function ensureGenerationsBucket() {
+  if (generationsBucketInitialized) return;
+  try {
+    const sb = supabaseAdmin();
+    const { data: buckets, error: listErr } = await sb.storage.listBuckets();
+    if (listErr) { console.log(`[generations] listBuckets error: ${listErr.message}`); return; }
+    const exists = buckets?.some((b: any) => b.name === GENERATIONS_BUCKET);
+    if (!exists) {
+      const { error: createErr } = await sb.storage.createBucket(GENERATIONS_BUCKET, { public: true });
+      if (createErr) { console.log(`[generations] createBucket error: ${createErr.message}`); return; }
+      console.log(`[generations] Created PUBLIC bucket: ${GENERATIONS_BUCKET}`);
+    } else {
+      try { await sb.storage.updateBucket(GENERATIONS_BUCKET, { public: true }); } catch {}
+    }
+    generationsBucketInitialized = true;
+  } catch (e) { console.log("[generations] ensureGenerationsBucket exception:", e); }
+}
+
+// Create the bucket at startup
+ensureGenerationsBucket().catch(() => {});
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
