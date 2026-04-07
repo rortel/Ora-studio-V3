@@ -120,9 +120,11 @@ function CalendarPageContent() {
   const loadEvents = useCallback(async () => {
     try {
       const token = await getAuthHeader();
-      const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
-      if (token) headers["X-User-Token"] = token;
-      const res = await fetch(`${API_BASE}/calendar`, { headers });
+      const res = await fetch(`${API_BASE}/calendar/list`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ _token: token }),
+      });
       const data = await res.json();
       if (data.success && data.events && data.events.length > 0) {
         setEvents(data.events);
@@ -219,9 +221,11 @@ function CalendarPageContent() {
   const handleDelete = async (id: string) => {
     try {
       const token = await getAuthHeader();
-      const headers: Record<string, string> = { Authorization: `Bearer ${publicAnonKey}` };
-      if (token) headers["X-User-Token"] = token;
-      await fetch(`${API_BASE}/calendar/${id}`, { method: "DELETE", headers });
+      await fetch(`${API_BASE}/calendar/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ _token: token, eventId: id }),
+      });
       setEvents((prev) => prev.filter((e) => e.id !== id));
       if (expandedEvent === id) setExpandedEvent(null);
     } catch (err) {
