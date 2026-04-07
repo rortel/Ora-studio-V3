@@ -4572,6 +4572,108 @@ async function isolateProductFromImage(imageUrl: string): Promise<string | null>
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMAGE EDITOR AI ACTIONS — Background removal & harmonization
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// Remove background from an image (logo detourage, product isolation)
+app.post("/images/remove-bg", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (!photoroomKey) return c.json({ success: false, error: "Photoroom not configured" }, 500);
+
+    console.log(`[remove-bg] user=${user.id.slice(0, 8)}, url=${(imageUrl as string).slice(0, 60)}`);
+
+    const params = new URLSearchParams();
+    params.set("imageUrl", imageUrl);
+    params.set("removeBackground", "true");
+    params.set("outputSize", "1024x1024");
+    params.set("padding", "0.01");
+    params.set("format", "png"); // PNG for transparency
+
+    const prRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+    });
+
+    if (prRes.ok) {
+      const blob = await prRes.blob();
+      const fileName = `rmbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+      const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/png" });
+      if (!error && data?.path) {
+        const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
+        console.log(`[remove-bg] OK in ${Date.now() - t0}ms`);
+        return c.json({ success: true, imageUrl: pubData.publicUrl });
+      }
+    }
+    console.log(`[remove-bg] Photoroom returned ${prRes.status}`);
+    return c.json({ success: false, error: "Background removal failed" });
+  } catch (err) {
+    console.error(`[remove-bg] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Harmonize image in scene (AI relighting, shadow, color matching)
+app.post("/images/harmonize", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, scene = "photoshoot", shadow = "ai.soft" } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (!photoroomKey) return c.json({ success: false, error: "Photoroom not configured" }, 500);
+
+    console.log(`[harmonize] user=${user.id.slice(0, 8)}, scene=${scene}, shadow=${shadow}`);
+
+    const scenePrompts: Record<string, string> = {
+      photoshoot: "Professional photo studio, white background, soft studio lighting, clean commercial product photography",
+      lifestyle: "Beautiful lifestyle setting, natural daylight, warm tones, authentic interior",
+      editorial: "High-fashion editorial studio, dramatic lighting, magazine-quality",
+      cinematic: "Cinematic scene, dramatic lighting, moody atmosphere, anamorphic feel",
+      outdoor: "Outdoor natural setting, golden hour sunlight, beautiful landscape",
+      minimal: "Clean minimal background, soft gradient, elegant simplicity",
+    };
+
+    const params = new URLSearchParams();
+    params.set("imageUrl", imageUrl);
+    params.set("removeBackground", "true");
+    params.set("background.prompt", scenePrompts[scene] || scenePrompts.photoshoot);
+    params.set("lighting", "ai.preserve-hue-and-saturation");
+    params.set("shadow", shadow);
+    params.set("outputSize", "1024x1024");
+    params.set("padding", "0.02");
+    params.set("format", "webp");
+
+    const prRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+    });
+
+    if (prRes.ok) {
+      const blob = await prRes.blob();
+      const fileName = `harmonize-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+      const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/webp" });
+      if (!error && data?.path) {
+        const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
+        console.log(`[harmonize] OK in ${Date.now() - t0}ms`);
+        return c.json({ success: true, imageUrl: pubData.publicUrl });
+      }
+    }
+    console.log(`[harmonize] Photoroom returned ${prRes.status}`);
+    return c.json({ success: false, error: "Harmonization failed" });
+  } catch (err) {
+    console.error(`[harmonize] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
 // PRIMARY: Photoroom API — removes bg, replaces with studio scene, preserves product 100%
 // FALLBACK: Luma Photon modify_image_ref

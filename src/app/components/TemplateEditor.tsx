@@ -11,6 +11,7 @@ import {
   ChevronUp, ChevronDown, Undo2, Redo2, ZoomIn, ZoomOut,
   AlignLeft, AlignCenter, AlignRight, Bold,
   Circle, Minus, ImagePlus, Layers, GripVertical, Pipette,
+  Wand2, Scissors, Loader2, Sun,
 } from "lucide-react";
 import type { TemplateDefinition, TemplateLayer } from "./templates/types";
 import { registerTemplate } from "./templates";
@@ -556,6 +557,95 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     setLayers(prev => { const next = [...prev, newLayer]; pushHistory(next); return next; });
     setSelectedId(newLayer.id);
   }, [layers, pushHistory]);
+
+  // ── AI ACTIONS STATE ──
+  const [aiProcessing, setAiProcessing] = useState<string | null>(null); // layerId being processed
+
+  // Remove background from selected image/logo layer via Photoroom
+  const removeBackground = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`${API_BASE}/images/remove-bg`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        // Load the new transparent image
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          // Update the layer binding to the new URL
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Remove BG failed:", err); }
+    setAiProcessing(null);
+  }, [layers, resolveBinding, getAuthToken, pushHistory]);
+
+  // AI harmonize: relight image to match scene (Photoroom)
+  const harmonizeImage = useCallback(async (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    if (!layer) return;
+    const imgUrl = resolveBinding(layer.dataBinding) || (layer.dataBinding?.source === "static" ? layer.dataBinding.field : "");
+    if (!imgUrl) return;
+    setAiProcessing(layerId);
+    try {
+      const token = getAuthToken();
+      // Use Photoroom to harmonize with soft shadow + preserve colors
+      const res = await fetch(`${API_BASE}/images/harmonize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+        body: JSON.stringify({ imageUrl: imgUrl, scene: "photoshoot", shadow: "ai.soft", _token: token }),
+      });
+      const data = await res.json();
+      if (data.success && data.imageUrl) {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          setLoadedImages(prev => ({ ...prev, [layerId]: img }));
+          setLayers(prev => {
+            const next = prev.map(l => l.id === layerId ? { ...l, dataBinding: { source: "static" as const, field: data.imageUrl } } : l);
+            pushHistory(next);
+            return next;
+          });
+        };
+        fetch(data.imageUrl, { mode: "cors" }).then(r => r.blob()).then(blob => { img.src = URL.createObjectURL(blob); }).catch(() => { img.src = data.imageUrl; });
+      }
+    } catch (err) { console.error("Harmonize failed:", err); }
+    setAiProcessing(null);
+  }, [layers, resolveBinding, getAuthToken, pushHistory]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     WEB FONT LOADING — load vault brand fonts via Google Fonts or @font-face
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!open || !vault?.fonts) return;
+    const fonts = vault.fonts as string[];
+    if (!fonts.length) return;
+    // Try loading each font from Google Fonts
+    const families = fonts.map(f => f.replace(/\s+/g, '+')).join('&family=');
+    const linkId = 'vault-fonts-loader';
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${families}:wght@400;600;700&display=swap`;
+      document.head.appendChild(link);
+    }
+  }, [open, vault?.fonts]);
 
   /* ───────────────────────────────────────────────────────────────────────
      INLINE TEXT EDITING (must be before keyboard shortcuts that reference these)
@@ -1758,6 +1848,43 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button onClick={() => duplicateLayer(selectedLayer.id)} style={{ ...smallBtnStyle, width: "100%", justifyContent: "center" }}>
                       <Copy size={12} /> Duplicate Layer
                     </button>
+
+                    {/* ── AI Actions for image/logo layers ── */}
+                    {(selectedLayer.type === "image" || selectedLayer.type === "logo" || selectedLayer.type === "background-image") && (
+                      <div className="space-y-1.5 pb-2">
+                        <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>IA Actions</p>
+                        <button
+                          onClick={() => removeBackground(selectedLayer.id)}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: "rgba(139,92,246,0.08)",
+                            color: "#8B5CF6",
+                            borderColor: "rgba(139,92,246,0.2)",
+                          }}
+                        >
+                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Scissors size={12} />}
+                          Détourer le fond
+                        </button>
+                        <button
+                          onClick={() => harmonizeImage(selectedLayer.id)}
+                          disabled={aiProcessing === selectedLayer.id}
+                          style={{
+                            ...smallBtnStyle,
+                            width: "100%",
+                            justifyContent: "center",
+                            background: "rgba(245,158,11,0.08)",
+                            color: "#F59E0B",
+                            borderColor: "rgba(245,158,11,0.2)",
+                          }}
+                        >
+                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Sun size={12} />}
+                          Harmoniser (lumière & ombre)
+                        </button>
+                      </div>
+                    )}
 
                     {/* Delete */}
                     {selectedLayer.type !== "background-image" && (
