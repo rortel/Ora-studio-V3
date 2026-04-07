@@ -952,6 +952,8 @@ const PROVIDER_COSTS: Record<string, number> = {
   "replicate/flux-schnell": 0.005,
   // Image — Luma Photon
   "luma/photon-1": 0.030, "luma/photon-flash-1": 0.015,
+  // Image — Ideogram
+  "ideogram/v3": 0.080, "ideogram/v3-turbo": 0.040,
   // Image — Higgsfield
   "higgsfield/seedream-v4": 0.030,
   // Video — FAL
@@ -1728,6 +1730,70 @@ async function generateImageLeonardoV2(req: { prompt: string; model: string; asp
     }
   }
   throw new Error(`Leonardo v2 timeout (120s)`);
+}
+
+// ── IDEOGRAM V3 IMAGE GENERATION ──
+async function generateImageIdeogram(req: {
+  prompt: string; model: string; aspectRatio?: string;
+  colorPalette?: { color_hex: string; color_weight?: number }[];
+  styleType?: string; negativePrompt?: string;
+  renderingSpeed?: string;
+}): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number }> {
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+  if (!ideogramKey) throw new Error("IDEOGRAM_API_KEY not configured");
+  const start = Date.now();
+
+  const arMap: Record<string, string> = {
+    "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3",
+    "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3",
+  };
+  const aspectRatio = arMap[req.aspectRatio || "1:1"] || "1x1";
+  const renderingSpeed = req.renderingSpeed || "TURBO";
+  const styleType = req.styleType || "REALISTIC";
+
+  console.log(`[image-ideogram] model=${req.model}, aspect=${aspectRatio}, speed=${renderingSpeed}, style=${styleType}`);
+
+  const fd = new FormData();
+  fd.append("prompt", req.prompt);
+  fd.append("aspect_ratio", aspectRatio);
+  fd.append("magic_prompt", "ON");
+  fd.append("rendering_speed", renderingSpeed);
+  fd.append("style_type", styleType);
+  if (req.negativePrompt) fd.append("negative_prompt", req.negativePrompt);
+  if (req.colorPalette?.length) {
+    fd.append("color_palette", JSON.stringify({ members: req.colorPalette }));
+  }
+
+  const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/generate", {
+    method: "POST",
+    headers: { "Api-Key": ideogramKey },
+    body: fd,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Ideogram API ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const resultUrl = data?.data?.[0]?.url;
+  if (!resultUrl) throw new Error(`Ideogram: no image URL in response: ${JSON.stringify(data).slice(0, 300)}`);
+
+  // Ideogram URLs expire — download and re-upload to Supabase storage
+  const dlRes = await fetch(resultUrl);
+  if (!dlRes.ok) throw new Error(`Failed to download Ideogram image: ${dlRes.status}`);
+  const dlBlob = await dlRes.blob();
+  const fileName = `ideogram-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+  const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+  if (upErr) throw new Error(`Supabase upload failed: ${upErr.message}`);
+  const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+  const providerKey = renderingSpeed === "TURBO" ? "ideogram/v3-turbo" : "ideogram/v3";
+  const latencyMs = Date.now() - start;
+  logCost({ type: "image", model: req.model, provider: providerKey, costUsd: getProviderCost(providerKey, "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: "system", success: true }).catch(() => {});
+
+  console.log(`[image-ideogram] OK in ${latencyMs}ms — ${pubData.publicUrl.slice(0, 80)}`);
+  return { model: req.model, provider: providerKey, imageUrl: pubData.publicUrl, latencyMs };
 }
 
 // ── UPLOAD IMAGE TO LEONARDO (for editing/guidance) ──
@@ -4670,6 +4736,423 @@ app.post("/images/harmonize", async (c) => {
     return c.json({ success: false, error: "Harmonization failed" });
   } catch (err) {
     console.error(`[harmonize] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── IDEOGRAM V3 ENDPOINTS (TemplateEditor AI actions) ──
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Generate branded image with text ──
+app.post("/ideogram/generate", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { prompt, aspectRatio, colorPalette, styleType, negativePrompt, renderingSpeed } = body;
+    if (!prompt) return c.json({ success: false, error: "No prompt" }, 400);
+
+    // Auto-inject brand vault colors if no explicit palette provided
+    let finalPalette = colorPalette;
+    if (!finalPalette?.length) {
+      try {
+        const brandCtx = await buildBrandContext(user.id);
+        if (brandCtx?.colorPalette?.length) {
+          finalPalette = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+            color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+            color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+          }));
+          console.log(`[ideogram/generate] Auto-injected ${finalPalette.length} brand vault colors`);
+        }
+      } catch { /* continue without */ }
+    }
+
+    const result = await generateImageIdeogram({
+      prompt, model: "ideogram-v3", aspectRatio, colorPalette: finalPalette, styleType, negativePrompt, renderingSpeed
+    });
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider });
+  } catch (err) {
+    console.error("[ideogram/generate] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Inpainting with mask ──
+app.post("/ideogram/edit", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, maskDataUrl, prompt, styleType } = body;
+    if (!imageUrl || !maskDataUrl || !prompt) return c.json({ success: false, error: "imageUrl, maskDataUrl, and prompt required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/edit] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}"`);
+
+    // Fetch brand vault colors for color_palette compliance
+    let brandColors: { color_hex: string; color_weight: number }[] | undefined;
+    try {
+      const brandCtx = await buildBrandContext(user.id);
+      if (brandCtx?.colorPalette?.length) {
+        brandColors = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+          color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+          color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+        }));
+      }
+    } catch { /* continue without brand colors */ }
+
+    // Download source image
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    // Convert base64 data URL mask to blob
+    const base64Data = maskDataUrl.split(",")[1];
+    const binaryStr = atob(base64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const maskBlob = new Blob([bytes], { type: "image/png" });
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("mask", maskBlob, "mask.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (styleType) fd.append("style_type", styleType);
+    if (brandColors?.length) fd.append("color_palette", JSON.stringify({ members: brandColors }));
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/edit] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram edit failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Download and re-upload to Supabase (Ideogram URLs expire)
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/edit] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/edit] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Remix: iterate on existing image with different prompt/strength ──
+app.post("/ideogram/remix", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, prompt, imageWeight, aspectRatio, styleType, colorPalette } = body;
+    if (!imageUrl || !prompt) return c.json({ success: false, error: "imageUrl and prompt required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/remix] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}", weight=${imageWeight}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (imageWeight !== undefined) fd.append("image_weight", String(imageWeight));
+    if (styleType) fd.append("style_type", styleType);
+    if (aspectRatio) {
+      const arMap: Record<string, string> = { "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3", "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3" };
+      fd.append("aspect_ratio", arMap[aspectRatio] || "1x1");
+    }
+    if (colorPalette?.length) {
+      fd.append("color_palette", JSON.stringify({ members: colorPalette }));
+    }
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/remix] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram remix failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Re-upload
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/remix] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/remix] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Reframe: extend image to different resolution ──
+app.post("/ideogram/reframe", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, resolution } = body;
+    if (!imageUrl || !resolution) return c.json({ success: false, error: "imageUrl and resolution required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/reframe] user=${user.id.slice(0, 8)}, resolution=${resolution}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("resolution", resolution);
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/reframe", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/reframe] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram reframe failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-reframe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/reframe] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/reframe] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Replace background ──
+app.post("/ideogram/replace-background", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, prompt } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/replace-bg] user=${user.id.slice(0, 8)}, prompt="${(prompt || "").slice(0, 60)}"`);
+
+    // Fetch brand vault colors for color_palette compliance
+    let brandColors: { color_hex: string; color_weight: number }[] | undefined;
+    try {
+      const brandCtx = await buildBrandContext(user.id);
+      if (brandCtx?.colorPalette?.length) {
+        brandColors = brandCtx.colorPalette.slice(0, 4).map((hex: string, i: number) => ({
+          color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+          color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+        }));
+      }
+    } catch { /* continue without brand colors */ }
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    if (prompt) fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+    if (brandColors?.length) fd.append("color_palette", JSON.stringify({ members: brandColors }));
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/replace-background", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/replace-bg] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram replace-background failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-replbg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/replace-bg] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/replace-bg] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Ideogram Upscale — enhance image resolution (2x or 4x) ──
+app.post("/ideogram/upscale", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, resemblance = 55, detail = 90, prompt } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/upscale] user=${user.id.slice(0, 8)}, resemblance=${resemblance}, detail=${detail}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const imageRequest: any = { resemblance, detail };
+    if (prompt) imageRequest.prompt = prompt;
+
+    const fd = new FormData();
+    fd.append("image_request", JSON.stringify(imageRequest));
+    fd.append("image_file", imgBlob, "image.png");
+
+    const res = await fetch("https://api.ideogram.ai/upscale", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/upscale] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram upscale failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    // Re-upload (Ideogram URLs expire)
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `ideogram-upscale-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp" });
+    if (upErr) return c.json({ success: false, error: "Upload failed" }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    const credits = getModelCreditCost("image", "ideogram-3-leo");
+    deductCredit(user.id, credits).catch(() => {});
+
+    console.log(`[ideogram/upscale] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: pubData.publicUrl });
+  } catch (err) {
+    console.error("[ideogram/upscale] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Ideogram Describe — get AI description of an image ──
+app.post("/ideogram/describe", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[ideogram/describe] user=${user.id.slice(0, 8)}`);
+
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    const fd = new FormData();
+    fd.append("image_file", imgBlob, "image.png");
+    fd.append("describe_model_version", "V_3");
+
+    const res = await fetch("https://api.ideogram.ai/describe", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[ideogram/describe] API error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Ideogram describe failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const description = data?.descriptions?.[0]?.text || "";
+    console.log(`[ideogram/describe] OK in ${Date.now() - t0}ms, desc="${description.slice(0, 60)}..."`);
+    return c.json({ success: true, description });
+  } catch (err) {
+    console.error("[ideogram/describe] Error:", err);
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
@@ -14581,7 +15064,8 @@ app.get("/generate/image-via-get", async (c) => {
             try {
               if (user) deductCredit(user.id, 2).catch(() => {});
               // Route to the correct provider based on model map
-              const genFn = directApiModels.has(model) ? generateImageDirect : leonardoImageModelMap[model] ? generateImageLeonardo : leonardoV2ModelMap[model] ? generateImageLeonardoV2 : hfImageModelMap[model] ? generateImageHf : generateImage;
+              // Ideogram direct (preferred over Leonardo proxy when API key available)
+              const genFn = (model === "ideogram-3-leo" && Deno.env.get("IDEOGRAM_API_KEY")) ? generateImageIdeogram : directApiModels.has(model) ? generateImageDirect : leonardoImageModelMap[model] ? generateImageLeonardo : leonardoV2ModelMap[model] ? generateImageLeonardoV2 : hfImageModelMap[model] ? generateImageHf : generateImage;
               const result = await Promise.race([
                 genFn({ prompt: enhancedPrompt, model, ...(aspectRatio ? { aspectRatio } : {}) }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${model} >${MODEL_TIMEOUT}ms`)), MODEL_TIMEOUT)),
@@ -14672,6 +15156,23 @@ app.get("/generate/image-batch-start", async (c) => {
         const ar = clientAspectRatio || undefined;
 
         // ── Route to correct provider ──
+
+        // Ideogram direct (preferred over Leonardo proxy when API key available)
+        // Inject brand vault colors as Ideogram color_palette for maximum brand compliance
+        if (model === "ideogram-3-leo" && Deno.env.get("IDEOGRAM_API_KEY")) {
+          try {
+            const brandColors = brandCtx?.colorPalette?.slice(0, 4).map((hex: string, i: number) => ({
+              color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+              color_weight: i === 0 ? 0.5 : i === 1 ? 0.3 : 0.1,
+            }));
+            const result = await generateImageIdeogram({ prompt: finalPrompt, model, aspectRatio: ar, colorPalette: brandColors });
+            console.log(`[image-batch-start] ${model} -> ideogram direct OK (${Date.now() - t0}ms), brandColors=${brandColors?.length || 0}`);
+            return { model, generationId: `ideogram:${Date.now()}`, state: "complete", provider: "ideogram", imageUrl: result.imageUrl };
+          } catch (ideogramErr) {
+            console.log(`[image-batch-start] Ideogram direct failed, falling back to Leonardo: ${ideogramErr}`);
+            // fall through to Leonardo
+          }
+        }
 
         // Leonardo V2 models (non-v1 slug)
         const v2Map = leonardoV2ModelMap[model];
