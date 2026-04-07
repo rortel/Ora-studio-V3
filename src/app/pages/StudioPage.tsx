@@ -2592,6 +2592,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   const [saving, setSaving] = useState(false);
   const [scheduledDates, setScheduledDates] = useState<Record<number, { date: string; time: string }>>({});
   const [aiScheduling, setAiScheduling] = useState(false);
+  const [autoScheduled, setAutoScheduled] = useState(false);
 
   const steps: { key: FinalizerStep; label: string; icon: any }[] = [
     { key: "review", label: t("studio.reviewAndEdit"), icon: Pencil },
@@ -2636,6 +2637,14 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
     } catch { toast.error(t("studio.aiScheduleError")); }
     setAiScheduling(false);
   };
+
+  // --- Auto-schedule when entering Calendar step ---
+  React.useEffect(() => {
+    if (step === "schedule" && !autoScheduled && Object.keys(scheduledDates).length === 0 && !aiScheduling) {
+      setAutoScheduled(true);
+      handleAiSchedule();
+    }
+  }, [step]);
 
   // --- Step 3: Save ---
   const handleSave = async () => {

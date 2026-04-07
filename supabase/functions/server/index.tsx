@@ -3501,6 +3501,42 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
       if (tc.anti_patterns?.length) brandBlock += `\nAnti-patterns to AVOID: ${tc.anti_patterns.join(' | ')}`;
     }
 
+    // ── BRAND PLATFORM — VISUAL IDENTITY (semiotic codes + photo direction) ──
+    const bp = brandVault?.brand_platform;
+    if (bp) {
+      brandBlock += `\n\n══════ BRAND PLATFORM — VISUAL & SEMIOTIC IDENTITY ══════`;
+      if (bp.promise) brandBlock += `\nBrand Promise: ${bp.promise}`;
+      if (bp.narrative_register) brandBlock += `\nNarrative register: ${bp.narrative_register}`;
+      if (bp.creative_tension) brandBlock += `\nCreative tension: ${bp.creative_tension}`;
+      if (bp.semiotic_codes) {
+        if (bp.semiotic_codes.adopt?.length) brandBlock += `\nSemiotic codes to ADOPT in visuals: ${bp.semiotic_codes.adopt.join(", ")}`;
+        if (bp.semiotic_codes.avoid?.length) brandBlock += `\nSemiotic codes to AVOID in visuals: ${bp.semiotic_codes.avoid.join(", ")}`;
+        if (bp.semiotic_codes.subvert?.length) brandBlock += `\nSemiotic codes to SUBVERT: ${bp.semiotic_codes.subvert.join(", ")}`;
+      }
+      if (bp.photo_direction) {
+        const pd = bp.photo_direction;
+        brandBlock += `\nPHOTO DIRECTION (MANDATORY for all imagePrompts):`;
+        if (pd.framing) brandBlock += `\n  Framing: ${pd.framing}`;
+        if (pd.lighting) brandBlock += `\n  Lighting: ${pd.lighting}`;
+        if (pd.composition) brandBlock += `\n  Composition: ${pd.composition}`;
+        if (pd.human_presence) brandBlock += `\n  Human presence: ${pd.human_presence}`;
+        if (pd.textures) brandBlock += `\n  Textures: ${pd.textures}`;
+        if (pd.color_palette) brandBlock += `\n  Color palette: ${pd.color_palette}`;
+      }
+      if (bp.reference_prompts) {
+        if (bp.reference_prompts.positive?.length) brandBlock += `\nPositive visual references: ${bp.reference_prompts.positive.join(" | ")}`;
+        if (bp.reference_prompts.negative?.length) brandBlock += `\nNegative visual references (NEVER): ${bp.reference_prompts.negative.join(" | ")}`;
+      }
+    }
+
+    // ── TARGET AUDIENCES (detailed personas) ──
+    if (brandVault?.target_audiences?.length > 0) {
+      const audCtx = brandVault.target_audiences.map((a: any) =>
+        `- ${a.name}: ${a.description || ''}${a.age_range ? ` (${a.age_range})` : ''}${a.interests?.length ? ` — intérêts: ${a.interests.join(', ')}` : ''}`
+      ).join('\n');
+      brandBlock += `\n\nTARGET AUDIENCES (detailed personas):\n${audCtx}`;
+    }
+
     const FORMAT_META: Record<string, { label: string; platform: string; type: string }> = {
       // LinkedIn
       "linkedin-post": { label: "LinkedIn Post", platform: "LinkedIn", type: "image" },
@@ -3565,9 +3601,9 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     if (productUrls) directives.push(`PRODUCT URLs: ${productUrls}`);
     const directivesBlock = directives.length > 0 ? directives.join("\n") : "";
     const sysPrompt =
-      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 3000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY — EVERY FIELD BELOW MUST BE RESPECTED IN EVERY FORMAT) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently — it is the campaign's central theme, not just background info.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM as the call-to-action in every format. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context — never reduce it to just the product alone.
-12. IMAGE PROMPTS — PRODUCT IDENTITY + BRAND-NEW SCENE: Each imagePrompt MUST NAME the exact brand and product model (e.g. \"a MAN eTGX electric truck\", \"a Nike Air Max 90\") so the AI generates the CORRECT product, never a competitor. Then add key VISUAL characteristics (color, shape, distinctive design features). Then describe a COMPLETELY NEW SCENE derived from the campaign brief, event context, target audience, and key messages. The ref photo ONLY preserves the product via img2img — the SCENE must be 100% new. Combine: (a) exact brand+model name, (b) visual features, (c) NEW environment/location from the brief, (d) TARGET AUDIENCE interacting with product, (e) MOOD/ATMOSPHERE. Always MODERN, CURRENT-GENERATION for vehicles. Every imagePrompt must be unique per format. Always end with: No visible text, no logos, no letters, no watermarks anywhere in the image.
-13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, describe visual characteristics, then describe a NEW motion scene from the brief with target audience. Always MODERN vehicles. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- press-release: FULL PRESS RELEASE (communiqué de presse). Structure: headline (factual, 60-100 chars, newsworthy), caption (COMPLETE PRESS RELEASE 400-800 words. Start with city + date + company name. Lead paragraph answering Who/What/When/Where/Why in 2-3 sentences. Body: 3-5 paragraphs with quotes from leadership, product details, market context, availability info. Boilerplate company description at the end. ### Contact section placeholder). Tone = factual, journalistic, third person. NO marketing fluff — press-ready.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n- blog-article: ⚠️ THIS IS A FULL SEO ARTICLE — NOT A SUMMARY. The "caption" field MUST contain the COMPLETE article body of MINIMUM 800 words (aim for 1200-1500 words). Structure: headline (H1, 60 chars max, includes primary keyword), metaDescription (155 chars, compelling + keyword), introduction (hook paragraph 60-100 words), caption (COMPLETE ARTICLE BODY — 800 TO 1500 WORDS MANDATORY. Use H2/H3 markdown headings, short paragraphs 2-4 sentences, bullet points, internal linking suggestions as [anchor text](URL placeholder), conclusion with CTA. Add a ## FAQ section with 3-5 Q&A at the end). MUST include: primary keyword in H1 + first 100 words + 2-3 times naturally in body, secondary keywords. Tone = authoritative yet accessible. Write for HUMANS first, SEO second. IF THE ARTICLE IS UNDER 800 WORDS YOU HAVE FAILED.\n- linkedin-article: LONG-FORM LINKEDIN ARTICLE. Structure: headline (compelling, 40-80 chars, NOT clickbait), caption (FULL ARTICLE 600-1200 words). Format: strong opening hook (personal story, surprising stat, or bold statement), 3-5 sections with clear H2 headers, short paragraphs (1-3 sentences — LinkedIn readers scan), use line breaks generously, include 1-2 personal insights or lessons learned, end with a question to drive comments + CTA. hashtags: 3-5 relevant. Tone = thought leadership, personal yet professional.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email / 800w blog-article / 600w linkedin-article. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","metaDescription":"SEO meta description for blog-article (155 chars max)","features":[],"imagePrompt":"MANDATORY: a vivid 40-80 word scene. START with exact brand+model name (e.g. MAN eTGX, Nike Air Max). Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). Always MODERN vehicles. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-50 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Always MODERN vehicles. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
+      `You are the senior content director of a brand-obsessed agency. Write REAL, PUBLISHABLE marketing copy 100% faithful to the brand and the campaign brief.\n\nBRAND VAULT (ABSOLUTE AUTHORITY):\n${brandBlock.slice(0, 8000)}\n\n${directivesBlock ? `══════ CAMPAIGN DIRECTIVES (MANDATORY — EVERY FIELD BELOW MUST BE RESPECTED IN EVERY FORMAT) ══════\n${directivesBlock}\n\n` : ""}STRICT COMPLIANCE RULES:\n1. Match exact tone, personality, vocabulary from Brand Vault.\n2. Use approved vocabulary naturally.\n3. NEVER use forbidden terms.\n4. Use EXACT product name/features/claims from the brief.\n5. Each format = UNIQUE angle, but ALL must reference the CONTENT ANGLE / EVENT CONTEXT if provided.\n6. ALL copy MUST be written in ${langLabel}. No exceptions.\n7. If a CONTENT ANGLE or EVENT CONTEXT is provided, EVERY post MUST mention it prominently — it is the campaign's central theme, not just background info.\n8. If KEY MESSAGES are provided, each post MUST integrate at least one key message.\n9. If an EXACT CTA is provided, use it VERBATIM as the call-to-action in every format. Do NOT invent a different CTA.\n10. If a TARGET AUDIENCE is specified, adapt tone, vocabulary, and hooks to speak directly to that audience.\n11. The campaign is about BOTH the product AND the event/context — never reduce it to just the product alone.
+12. IMAGE PROMPTS — BRAND VISUAL IDENTITY + PRODUCT + NEW SCENE: Each imagePrompt MUST: (a) NAME exact brand+product model. (b) Apply PHOTO DIRECTION from Brand Platform: use the exact framing, lighting, composition, human_presence, textures, color palette specified. (c) Integrate SEMIOTIC CODES TO ADOPT (e.g. if \"artisanal\", \"chaleur humaine\" → show real textures, warm tones, handcrafted details). (d) AVOID all semiotic codes listed in avoid (e.g. if \"corporate froid\" in avoid → never show sterile offices). (e) Match brand UNIVERSE aesthetic: use the universe's colors, mood keywords, photo style. (f) Show the TARGET AUDIENCE persona interacting naturally with the product. (g) Describe a COMPLETELY NEW SCENE from the brief context. (h) Use POSITIVE VISUAL REFERENCES as inspiration. (i) The goal is AUTHENTIC, brand-aligned imagery — NOT generic stock AI photos. Show real textures, real light, real environments matching the brand world. Always end with: No visible text, no logos, no letters, no watermarks.
+13. VIDEO PROMPTS: videoPrompt MUST name the exact brand/product model, apply brand PHOTO DIRECTION (framing, lighting, composition), integrate semiotic codes to ADOPT, match brand universe aesthetic, show target audience persona. Describe a NEW motion scene from the brief. Goal = authentic brand-aligned video, not generic AI. End with: No visible text, no logos, no letters, no brand names anywhere in the video.\n\nFORMAT REQUIREMENTS:\n- linkedin-post: Professional hook. 150-300 words. 3-5 hashtags. CTA.\n- linkedin-carousel: 5-8 slide captions, each 20-40 words. Hook slide + value slides + CTA slide.\n- linkedin-video: Professional. 50-100 words script/caption.\n- linkedin-text: Thought leadership. 200-400 words. No image needed. 3-5 hashtags.\n- instagram-post: 80-150 words. 10-15 hashtags.\n- instagram-carousel: 5-10 slide captions, each 15-30 words. Swipeable storytelling.\n- instagram-story: 15-30 words hook. Swipe CTA.\n- instagram-reel: Hook + voiceover. 20-40 words.\n- facebook-post: Conversational. 100-200 words.\n- facebook-story: 15-25 words. Tap-through CTA.\n- facebook-video: Engaging. 50-120 words caption.\n- facebook-ad: Headline(40c) + primary text(125c) + description(30c) + CTA button text.\n- tiktok-video: Viral hook 5-10 words. Script 30-60 words. Trending tone.\n- tiktok-image: Punchy caption 30-80 words. 5-8 hashtags.\n- twitter-post: Max 280 chars. Punchy. 2-3 hashtags.\n- twitter-text: Thread of 3-7 tweets, each max 280 chars. Numbered.\n- youtube-thumbnail: Title overlay text 3-6 words. Click-bait hook.\n- youtube-short: Hook + script 30-60 words. CTA subscribe.\n- pinterest-pin: Title(100c) + description(200-500c). SEO keywords.\n- email-campaign: Subject(50c) + preheader(90c) + headline + body(250-400w) + CTA.\n- newsletter: Subject + 3-5 sections with headers + body(600-1000w).\n- landing-hero: H1(8-12 words) + H2(15-25 words) + CTA button text.\n- press-release: FULL PRESS RELEASE (communiqué de presse). Structure: headline (factual, 60-100 chars, newsworthy), caption (COMPLETE PRESS RELEASE 400-800 words. Start with city + date + company name. Lead paragraph answering Who/What/When/Where/Why in 2-3 sentences. Body: 3-5 paragraphs with quotes from leadership, product details, market context, availability info. Boilerplate company description at the end. ### Contact section placeholder). Tone = factual, journalistic, third person. NO marketing fluff — press-ready.\n- blog-header: SEO title(60c) + meta description(155c) + intro paragraph.\n- ad-banner: Headline(30c) + subline(60c) + CTA(15c).\n- google-ad-text: 3 headlines(30c each) + 2 descriptions(90c each) + display URL path.\n- blog-article: ⚠️ THIS IS A FULL SEO ARTICLE — NOT A SUMMARY. The "caption" field MUST contain the COMPLETE article body of MINIMUM 800 words (aim for 1200-1500 words). Structure: headline (H1, 60 chars max, includes primary keyword), metaDescription (155 chars, compelling + keyword), introduction (hook paragraph 60-100 words), caption (COMPLETE ARTICLE BODY — 800 TO 1500 WORDS MANDATORY. Use H2/H3 markdown headings, short paragraphs 2-4 sentences, bullet points, internal linking suggestions as [anchor text](URL placeholder), conclusion with CTA. Add a ## FAQ section with 3-5 Q&A at the end). MUST include: primary keyword in H1 + first 100 words + 2-3 times naturally in body, secondary keywords. Tone = authoritative yet accessible. Write for HUMANS first, SEO second. IF THE ARTICLE IS UNDER 800 WORDS YOU HAVE FAILED.\n- linkedin-article: LONG-FORM LINKEDIN ARTICLE. Structure: headline (compelling, 40-80 chars, NOT clickbait), caption (FULL ARTICLE 600-1200 words). Format: strong opening hook (personal story, surprising stat, or bold statement), 3-5 sections with clear H2 headers, short paragraphs (1-3 sentences — LinkedIn readers scan), use line breaks generously, include 1-2 personal insights or lessons learned, end with a question to drive comments + CTA. hashtags: 3-5 relevant. Tone = thought leadership, personal yet professional.\n\nOUTPUT: ONLY valid JSON. No markdown. No backticks. Keys = format IDs. Each value:\n{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email / 800w blog-article / 600w linkedin-article. NEVER EMPTY.","hashtags":"","ctaText":"USE THE EXACT CTA FROM DIRECTIVES","metaDescription":"SEO meta description for blog-article (155 chars max)","features":[],"imagePrompt":"MANDATORY: a vivid 40-100 word scene. START with exact brand+model name. Add visual characteristics. Then describe a COMPLETELY NEW scene from the brief (event, audience, key messages). CRITICAL: Apply the PHOTO DIRECTION from Brand Platform (framing, lighting, composition, textures, color palette). Integrate SEMIOTIC CODES TO ADOPT. AVOID all codes listed in semiotic_codes.avoid. Match the brand universe aesthetic (colors, mood, keywords). Target the specific AUDIENCE PERSONA. Each format = DIFFERENT scene. End with: No visible text, no logos, no letters, no watermarks.","videoPrompt":"MANDATORY: a 30-60 word motion scene. START with exact brand+model name. Add visual features. Describe NEW motion scene from the brief. Apply brand PHOTO DIRECTION (framing, lighting, composition). Use SEMIOTIC CODES TO ADOPT. Match brand universe aesthetic. Target the specific AUDIENCE PERSONA. End with: No visible text, no logos."}\n\nFORMATS:\n${fmtDesc}`;
 
     const userPrompt = brief || `Create campaign for: ${productUrls}`;
 
@@ -3622,7 +3658,6 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     let brandScore: number | null = null;
     let brandVerdict: string | null = null;
     let wasRegenerated = false;
-    const bp = brandVault?.brand_platform;
     if (bp && Object.keys(copyMap).length > 0) {
       try {
         // Score the first format as a representative sample
@@ -6490,8 +6525,25 @@ CE QU'ON FAIT :
 
 FLUX CAMPAGNE — PRISE DE BRIEF STRUCTURÉE :
 
-Vous êtes un directeur de clientèle en agence. Votre rôle : collecter un brief COMPLET pour pré-remplir le panneau de configuration campagne.
-Posez UNE question à la fois. Soyez concis (1 phrase). Proposez des pills pour accélérer.
+Vous êtes un DIRECTEUR DE CLIENTÈLE SENIOR en agence de communication. Pas un formulaire. Pas un robot.
+Votre rôle : mener un VRAI échange stratégique, comme en agence. Vous êtes FORCE DE CONSEIL.
+
+POSTURE D'AGENCE — OBLIGATOIRE :
+À CHAQUE réponse du client, vous DEVEZ :
+1. RÉAGIR à ce qu'il dit — validez, nuancez, challengez si nécessaire ("Excellent choix.", "Attention, pour du B2B le carrousel LinkedIn surperforme les stories.", "C'est cohérent avec votre positionnement.")
+2. Apporter un CONSEIL STRATÉGIQUE court (1 phrase) basé sur votre expertise social media + la marque
+3. Puis poser la question suivante
+
+EXEMPLES DE POSTURE :
+- Client dit "je veux toucher les jeunes" → "Les 18-25 sont très réactifs sur TikTok et Reels. Avec votre ton [ton du vault], je recommande un angle authentique plutôt qu'institutionnel. Quel message souhaitez-vous faire passer ?"
+- Client dit "ton pro" → "Noté. Je vais calibrer sur le registre de votre marque : [registre du vault]. C'est cohérent avec votre positionnement face à [concurrent]. Quel est le thème de cette campagne ?"
+- Client dit "Instagram + LinkedIn" → "Bon mix : LinkedIn pour la crédibilité B2B, Instagram pour l'engagement visuel. Je recommande d'ajouter un format vidéo court — les Reels génèrent 2x plus de reach en ce moment. Quels formats souhaitez-vous ?"
+- Client dit "promotion" → "Les promos fonctionnent bien en format story (urgence) + post (détails). Avec votre univers [univers du vault], je vois une mise en scène [photo_style]. Quelle est l'audience prioritaire ?"
+
+CE QU'IL NE FAUT JAMAIS FAIRE :
+- Juste acquitter et passer à la suite ("Très bien. Question suivante...")
+- Poser une question sèche sans contexte
+- Ignorer ce que le client vient de dire
 
 Chaque info collectée sera mappée à un champ du panneau campagne :
 - brief → "Campaign Brief"
@@ -6508,67 +6560,64 @@ Chaque info collectée sera mappée à un champ du panneau campagne :
 ÉTAPES — posez dans cet ordre, UNE à la fois :
 
 1. BRIEF & OBJECTIF (1er message) :
-   Analysez ce que l'utilisateur a dit. Reformulez le brief en 1 phrase. Demandez l'objectif.
+   Analysez ce que l'utilisateur a dit. Reformulez le brief en montrant que vous avez compris le contexte marque. Donnez un premier CONSEIL stratégique. Demandez l'objectif.
    → pills : ["Lancement produit", "Engagement communauté", "Notoriété de marque", "Promotion / Offre", "Événement"]
 
 2. PRODUIT / SERVICE (CONDITIONNEL) :
-   Si l'utilisateur mentionne un produit/service ET qu'il est dans le catalogue (context.products) → utilisez le productId. Passez à l'étape suivante sans poser de question.
-   Si l'utilisateur mentionne un produit/service qui N'EST PAS dans le catalogue → demandez :
-   "Ce produit n'est pas encore dans votre catalogue. Avez-vous l'URL de la page produit ? Cela me permettra de récupérer les visuels et les infos."
+   Si le produit est dans le catalogue (context.products) → utilisez le productId, CITEZ le produit par son nom, mentionnez 1-2 features clés. Passez directement.
+   Si le produit N'EST PAS dans le catalogue → "Ce produit n'est pas encore dans votre catalogue. Avez-vous l'URL de la page produit ? Cela me permettra de récupérer les visuels et les infos."
    → pills : ["Pas d'URL, continuer sans", "Je vais la chercher"]
-   Si la campagne ne porte pas sur un produit spécifique (ex: notoriété, engagement) → sautez cette étape.
+   Si pas de produit spécifique → sautez.
 
 3. CIBLE :
-   "À qui s'adresse cette campagne ?"
-   → Déduisez du vault (target_audiences) si possible et proposez. Sinon :
-   → pills : ["Clients existants", "Nouveaux prospects", "Professionnels B2B", "Grand public"]
+   RÉAGISSEZ à l'objectif choisi. Recommandez une cible pertinente basée sur le vault (target_audiences) ET l'objectif.
+   → pills : basées sur les audiences du vault si elles existent, sinon ["Clients existants", "Nouveaux prospects", "Professionnels B2B", "Grand public"]
 
 4. MESSAGE CLÉ & ANGLE :
-   "Quel est le message principal ? L'angle créatif ?"
-   → pills : proposez 2-3 angles basés sur le brief (ex: ["Témoignage client", "Avant/Après", "Les coulisses"])
+   RÉAGISSEZ à la cible choisie. Proposez 2-3 angles créatifs pertinents en justifiant (ex: "Pour cette cible, l'angle témoignage fonctionne très bien car il crée de la confiance.").
+   → pills : 2-3 angles SPÉCIFIQUES au brief (pas génériques)
 
 5. TON :
-   "Quel ton souhaitez-vous ?"
-   → Si vault a un tone → proposez-le par défaut : "Je recommande le ton de votre marque."
-   → pills : ["Ton de la marque", "Professionnel", "Casual & friendly", "Bold & audacieux", "Inspirant"]
+   RECOMMANDEZ le ton en vous appuyant sur le vault : "Je recommande votre ton signature [ton du vault] — il est cohérent avec votre audience et différenciant face à [concurrent]."
+   → pills : ["Ton de la marque ✓", "Plus audacieux", "Plus accessible", "Plus premium"]
 
 6. THÈME / MOMENT :
-   "Quel est le thème ou le moment fort de cette campagne ?"
-   → pills : ["Promotion / Soldes", "Nouveauté produit", "Saison / Fêtes", "Événement", "Marronnier", "Temps fort marque"]
+   RÉAGISSEZ au ton. Proposez un thème en lien avec le brief ET les dates clés à venir si pertinent.
+   → pills : contextuelles (ex: si proche d'un événement clé, le proposer)
 
 7. CTA :
-   "Quelle action attendue de votre audience ?"
-   → pills : ["Découvrir le produit", "Acheter / Réserver", "En savoir plus", "Nous contacter", "S'inscrire"]
+   RECOMMANDEZ un CTA adapté à l'objectif ET à la cible : "Pour un objectif de conversion auprès de [cible], je recommande un CTA direct : [suggestion]."
+   → pills : 3 CTA pertinents au contexte
 
 8. RÉSEAUX :
-   "Sur quels réseaux souhaitez-vous diffuser ?"
-   → Mentionnez les réseaux connectés de l'utilisateur s'il y en a.
-   → pills : ["Instagram + LinkedIn", "Tous les réseaux", "Instagram", "LinkedIn", "Facebook", "Twitter/X"]
+   CONSEILLEZ les réseaux en expert : "Pour votre cible [X] avec un objectif de [Y], je recommande [réseaux] — [justification courte basée sur les algorithmes actuels]."
+   → Mentionnez les réseaux connectés de l'utilisateur.
+   → pills : recommandation experte + alternatives
 
 9. FORMATS :
-   "Quels formats de contenu ?"
-   → Proposez des formats adaptés à l'objectif et aux réseaux choisis.
-   → pills : ["Posts + Carrousels", "Posts + Stories + Reels", "Posts uniquement", "Vidéo + Posts"]
+   RECOMMANDEZ les formats en expert : "Sur [réseaux choisis], les formats qui performent le mieux pour [objectif] sont [formats]. Le [format X] génère [bénéfice]."
+   → pills : recommandation adaptée aux réseaux + objectif
 
 10. PLANNING :
-   "Quand souhaitez-vous démarrer et sur quelle durée ?"
-   → pills : ["Cette semaine", "Semaine prochaine", "Ce mois-ci", "Sur 2 semaines", "Sur 1 mois"]
-   → Collectez : startDate (date de début) et duration (durée : "1 week", "2 weeks", "1 month", "3 months")
+   "Quand souhaitez-vous lancer la campagne et sur quelle durée ? Le calendrier éditorial sera pré-rempli automatiquement par ORA."
+   → pills : ["Cette semaine · 2 semaines", "Semaine prochaine · 1 mois", "Ce mois-ci · 3 mois"]
+   → Collectez : startDate (date de début) et duration (durée : "1-week", "2-weeks", "1-month", "3-months")
 
 11. LANCEMENT :
-   Récapitulez le brief complet (brief, objectif, cible, ton, angle, message, CTA, réseaux, formats, planning) en 5-6 lignes.
+   Récapitulez le brief en 5-6 lignes avec un ton d'agence ("Voici le brief validé :"). Montrez que tout est cohérent.
    Puis LANCEZ generate-campaign avec TOUS les champs remplis dans params.
    → NE demandez PAS confirmation. Lancez directement.
    → Mappez les réseaux + formats choisis vers les identifiants : linkedin-post, linkedin-carousel, linkedin-video, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, twitter-post, tiktok-video, youtube-short, pinterest-pin
    → Incluez startDate (format YYYY-MM-DD) et duration dans les params
 
 RÈGLES :
-- CHAQUE question = 1 phrase + pills. Pas de pavés.
+- CHAQUE réponse = réaction + conseil + question + pills. 2-3 phrases MAX. Pas de pavés.
+- Soyez SPÉCIFIQUE : citez la marque, les produits, les concurrents, les audiences du vault. Jamais de réponses génériques.
 - Déduisez du vault ce que vous pouvez (ton, audiences, produits). Ne posez que ce qui manque.
 - Si le 1er message est très complet (objectif + produit + cible + ton) → sautez les étapes couvertes, posez la question suivante manquante.
 - Après 8 messages utilisateur → LANCEZ generate-campaign OBLIGATOIREMENT avec ce que vous avez. Déduisez le reste du vault.
 - Si context.force_generate est true → retournez generate-campaign OBLIGATOIREMENT avec tous les champs déduits.
-- Ne demandez l'URL produit QUE si le produit mentionné n'est PAS dans context.products. Si le produit est dans le catalogue, utilisez son productId directement.
+- Ne demandez l'URL produit QUE si le produit mentionné n'est PAS dans context.products.
 - Ne proposez JAMAIS "Lancer la génération" comme pill → quand tout est collecté, LANCEZ directement.
 - Le generate-campaign params DOIT contenir : brief, objective, targetAudience, toneOfVoice, theme, contentAngle, keyMessages, callToAction, formats, language, startDate, duration. Remplissez TOUT.
 
