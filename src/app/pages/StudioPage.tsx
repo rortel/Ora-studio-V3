@@ -843,28 +843,22 @@ export function StudioPage() {
                 (async () => {
                   try {
                     console.log(`[studio] Ideogram Remix [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}, weight=70`);
-                    const remixRes = await fetch(`${API_BASE}/ideogram/remix`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
-                      body: JSON.stringify({
-                        imageUrl: refUrl,
-                        prompt: remixScenePrompt,
-                        imageWeight: 70,
-                        aspectRatio,
-                        styleType: "REALISTIC",
-                        colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
-                        _token: getAuthHeader(),
-                      }),
-                      signal: AbortSignal.timeout(90_000),
-                    });
-                    const remixData = await remixRes.json();
+                    const remixData = await serverPost("/ideogram/remix", {
+                      imageUrl: refUrl,
+                      prompt: remixScenePrompt,
+                      imageWeight: 70,
+                      aspectRatio,
+                      styleType: "REALISTIC",
+                      colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
+                    }, 90_000);
                     if (remixData.success && remixData.imageUrl) {
                       console.log(`[studio] Ideogram Remix OK: ${remixData.imageUrl.slice(0, 60)}`);
                       return { model: "ideogram", imageUrl: remixData.imageUrl, imageModel: "Ideogram Remix" };
                     }
+                    console.warn(`[studio] Ideogram Remix failed:`, JSON.stringify(remixData));
                     return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
                   } catch (e: any) {
-                    console.warn(`[studio] Ideogram Remix failed:`, e?.message);
+                    console.warn(`[studio] Ideogram Remix error:`, e?.message);
                     return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
                   }
                 })(),
@@ -873,24 +867,18 @@ export function StudioPage() {
                 (async () => {
                   try {
                     console.log(`[studio] Ideogram Replace-BG [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}`);
-                    const bgRes = await fetch(`${API_BASE}/ideogram/replace-background`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
-                      body: JSON.stringify({
-                        imageUrl: refUrl,
-                        prompt: replaceBgPrompt,
-                        _token: getAuthHeader(),
-                      }),
-                      signal: AbortSignal.timeout(90_000),
-                    });
-                    const bgData = await bgRes.json();
+                    const bgData = await serverPost("/ideogram/replace-background", {
+                      imageUrl: refUrl,
+                      prompt: replaceBgPrompt,
+                    }, 90_000);
                     if (bgData.success && bgData.imageUrl) {
                       console.log(`[studio] Ideogram Replace-BG OK: ${bgData.imageUrl.slice(0, 60)}`);
                       return { model: "ideogram", imageUrl: bgData.imageUrl, imageModel: "Ideogram Replace-BG" };
                     }
+                    console.warn(`[studio] Ideogram Replace-BG failed:`, JSON.stringify(bgData));
                     return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
                   } catch (e: any) {
-                    console.warn(`[studio] Ideogram Replace-BG failed:`, e?.message);
+                    console.warn(`[studio] Ideogram Replace-BG error:`, e?.message);
                     return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
                   }
                 })(),
