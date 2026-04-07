@@ -29,8 +29,9 @@ export function selectTemplateForFormat(formatId: string): TemplateDefinition | 
   const templateFormat = FORMAT_TO_TEMPLATE[formatId] || formatId;
   const templates = getTemplatesForFormat(templateFormat);
   if (templates.length === 0) return null;
-  // Prefer "bold" or "editorial" category (most ad-like)
-  const preferred = templates.find(t => t.category === "bold") ||
+  // Prefer "ad-ready" templates first (Omneky-style with subtitle, price, features)
+  const preferred = templates.find(t => t.category === "ad-ready") ||
+    templates.find(t => t.category === "bold") ||
     templates.find(t => t.category === "editorial") ||
     templates[0];
   return preferred;
@@ -113,6 +114,8 @@ interface CompositeOptions {
   ctaText?: string;
   caption?: string;
   subtitle?: string;
+  price?: string;
+  featuresText?: string;
   vault: Record<string, any> | null;
   logoUrl: string;
   template: TemplateDefinition;
@@ -123,7 +126,7 @@ interface CompositeOptions {
  * Returns a PNG data URL.
  */
 export async function compositeAdCreative(opts: CompositeOptions): Promise<string> {
-  const { imageUrl, headline, ctaText, caption, subtitle, vault, logoUrl, template } = opts;
+  const { imageUrl, headline, ctaText, caption, subtitle, price, featuresText, vault, logoUrl, template } = opts;
 
   const asset: Record<string, any> = {
     imageUrl,
@@ -131,6 +134,8 @@ export async function compositeAdCreative(opts: CompositeOptions): Promise<strin
     ctaText: ctaText || "",
     caption: caption || "",
     subtitle: subtitle || "",
+    price: price || "",
+    featuresText: featuresText || "",
   };
 
   const cw = template.canvasWidth;
