@@ -769,24 +769,42 @@ export function StudioPage() {
                 : "16:9";
 
             if (productRefUrls.length > 0) {
-              // ── PRODUCT MODE: Photoroom generates multiple scene variants (pixel-perfect product) ──
+              // ── PRODUCT MODE: Photoroom + Ideogram Remix + Ideogram Replace-BG ──
               const refUrl = productRefUrls[i % productRefUrls.length];
 
               // Primary scene: use the campaign prompt or visual style
               const primaryScenePrompt = campaignVisualStyle || enrichedPrompt;
 
-              // Build scene list: primary prompt first, then alternate scenes
+              // Extract vault color palette for Ideogram (hex → { color_hex, color_weight })
+              const ideogramColorPalette: { color_hex: string; color_weight: number }[] = (() => {
+                const rawColors = vault?.colors || [];
+                if (!Array.isArray(rawColors)) return [];
+                const hexes = rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || c?.color_hex || "").filter(Boolean).slice(0, 4);
+                return hexes.map((hex: string, idx: number) => ({
+                  color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+                  color_weight: idx === 0 ? 0.5 : idx === 1 ? 0.3 : 0.1,
+                }));
+              })();
+
+              // Build Photoroom scene list
               const scenePrompts = [
                 { prompt: primaryScenePrompt.slice(0, 500), label: "Photoroom" },
                 ...PHOTOROOM_SCENE_VARIANTS
                   .filter(s => !primaryScenePrompt.toLowerCase().includes(s.id))
-                  .slice(0, 2)
+                  .slice(0, 1)
                   .map(s => ({ prompt: s.prompt, label: `Photoroom (${s.label})` })),
               ];
 
-              // Generate all Photoroom variants in parallel
-              const prResults = await Promise.all(
-                scenePrompts.map(async (scene) => {
+              // Build Ideogram scene prompts (lifestyle remix + clean replace-bg)
+              const remixScenePrompt = `Professional product photography, ${primaryScenePrompt.slice(0, 300)}, premium quality, studio lighting, editorial`;
+              const replaceBgPrompt = campaignVisualStyle
+                ? `${campaignVisualStyle}, elegant background, professional product staging`
+                : `Beautiful lifestyle environment, warm soft lighting, premium product staging, editorial photography, elegant background`;
+
+              // Launch ALL variants in parallel: Photoroom + Ideogram Remix + Ideogram Replace-BG
+              const allProductResults = await Promise.all([
+                // Photoroom variants
+                ...scenePrompts.map(async (scene) => {
                   try {
                     console.log(`[studio] Photoroom [${imageOnlyFormats[i].format}/${scene.label}]: ref=${refUrl.slice(0, 60)}`);
                     const prRes = await fetch(`${API_BASE}/generate/image-start`, {
@@ -808,21 +826,83 @@ export function StudioPage() {
                       console.log(`[studio] Photoroom OK [${scene.label}]: ${url.slice(0, 60)}`);
                       return { model: "photoroom", imageUrl: url, imageModel: scene.label };
                     }
-                    return { model: "photoroom", imageUrl: null, imageModel: scene.label };
+                    return { model: "photoroom", imageUrl: null as string | null, imageModel: scene.label };
                   } catch (e: any) {
                     console.warn(`[studio] Photoroom [${scene.label}] failed:`, e?.message);
-                    return { model: "photoroom", imageUrl: null, imageModel: scene.label };
+                    return { model: "photoroom", imageUrl: null as string | null, imageModel: scene.label };
                   }
-                })
-              );
+                }),
 
-              const successfulPr = prResults.filter(r => r.imageUrl);
-              if (successfulPr.length > 0) {
-                imageOnlyFormats[i].imageUrl = successfulPr[0].imageUrl!;
+                // Ideogram Remix — high imageWeight (70) keeps product recognizable, adds lifestyle staging
+                (async () => {
+                  try {
+                    console.log(`[studio] Ideogram Remix [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}, weight=70`);
+                    const remixRes = await fetch(`${API_BASE}/ideogram/remix`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+                      body: JSON.stringify({
+                        imageUrl: refUrl,
+                        prompt: remixScenePrompt,
+                        imageWeight: 70,
+                        aspectRatio,
+                        styleType: "REALISTIC",
+                        colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
+                        _token: getAuthHeader(),
+                      }),
+                      signal: AbortSignal.timeout(90_000),
+                    });
+                    const remixData = await remixRes.json();
+                    if (remixData.success && remixData.imageUrl) {
+                      console.log(`[studio] Ideogram Remix OK: ${remixData.imageUrl.slice(0, 60)}`);
+                      return { model: "ideogram", imageUrl: remixData.imageUrl, imageModel: "Ideogram Remix" };
+                    }
+                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
+                  } catch (e: any) {
+                    console.warn(`[studio] Ideogram Remix failed:`, e?.message);
+                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
+                  }
+                })(),
+
+                // Ideogram Replace-BG — keeps product pixel-perfect, swaps background to lifestyle scene
+                (async () => {
+                  try {
+                    console.log(`[studio] Ideogram Replace-BG [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}`);
+                    const bgRes = await fetch(`${API_BASE}/ideogram/replace-background`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
+                      body: JSON.stringify({
+                        imageUrl: refUrl,
+                        prompt: replaceBgPrompt,
+                        _token: getAuthHeader(),
+                      }),
+                      signal: AbortSignal.timeout(90_000),
+                    });
+                    const bgData = await bgRes.json();
+                    if (bgData.success && bgData.imageUrl) {
+                      console.log(`[studio] Ideogram Replace-BG OK: ${bgData.imageUrl.slice(0, 60)}`);
+                      return { model: "ideogram", imageUrl: bgData.imageUrl, imageModel: "Ideogram Replace-BG" };
+                    }
+                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
+                  } catch (e: any) {
+                    console.warn(`[studio] Ideogram Replace-BG failed:`, e?.message);
+                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
+                  }
+                })(),
+              ]);
+
+              const successfulResults = allProductResults.filter(r => r.imageUrl);
+              // Prefer Ideogram results first (higher quality staging), then Photoroom
+              const sortedResults = [
+                ...successfulResults.filter(r => r.imageModel === "Ideogram Replace-BG"),
+                ...successfulResults.filter(r => r.imageModel === "Ideogram Remix"),
+                ...successfulResults.filter(r => r.model === "photoroom"),
+              ];
+              if (sortedResults.length > 0) {
+                imageOnlyFormats[i].imageUrl = sortedResults[0].imageUrl!;
               }
-              // Add scene variants
-              if (successfulPr.length > 1) {
-                imageOnlyFormats[i].variants = successfulPr.map(r => ({
+              // Add all as selectable variants
+              if (sortedResults.length > 1) {
+                imageOnlyFormats[i].variants = sortedResults.map(r => ({
                   model: r.model,
                   text: imageOnlyFormats[i].text,
                   imageUrl: r.imageUrl!,
