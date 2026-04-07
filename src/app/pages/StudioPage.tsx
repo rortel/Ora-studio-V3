@@ -19,6 +19,7 @@ import { TemplateEditor } from "../components/TemplateEditor";
 import { registerTemplate, getTemplateById, getTemplatesForFormat } from "../components/templates";
 import type { TemplateDefinition } from "../components/templates/types";
 import { compositeAdCreative, selectTemplateForFormat } from "../lib/compositeAdCreative";
+import { AMBIANCE_PRESETS, LAYOUT_PRESETS, getModelsForAmbiances, getPromptDirective, getPreferredTemplateCategory } from "../lib/ambianceConfig";
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    ORA STUDIO — Unified conversational creation
@@ -470,7 +471,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -991,7 +992,7 @@ export function StudioPage() {
             await Promise.all(
               postsWithImages.map(async (post) => {
                 try {
-                  const template = selectTemplateForFormat(post.format);
+                  const template = selectTemplateForFormat(post.format, tplCategory);
                   if (!template) { console.log(`[studio] No template for format ${post.format}, skipping composite`); return; }
                   const compositeUrl = await compositeAdCreative({
                     imageUrl: post.imageUrl!,
@@ -3330,9 +3331,8 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
-  const [textModels, setTextModels] = useState<string[]>(params.textModels || ["gpt-4o"]);
-  const [imageModels, setImageModels] = useState<string[]>(params.imageModels || ["ideogram-3-leo"]);
-  const [videoModels, setVideoModels] = useState<string[]>(params.videoModels || ["ora-motion"]);
+  const [selectedAmbiances, setSelectedAmbiances] = useState<string[]>(["lifestyle-dore"]);
+  const [selectedLayout, setSelectedLayout] = useState<string>("ad-ready");
   const [startDate, setStartDate] = useState(params.startDate || "");
   const [duration, setDuration] = useState(params.duration || "");
   const [videoDuration, setVideoDuration] = useState(params.videoDuration || "5");
@@ -3379,14 +3379,10 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     );
   };
 
-  const toggleTextModel = (id: string) => {
-    setTextModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
-  };
-  const toggleImageModel = (id: string) => {
-    setImageModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
-  };
-  const toggleVideoModel = (id: string) => {
-    setVideoModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]);
+  const toggleAmbiance = (id: string) => {
+    setSelectedAmbiances(prev =>
+      prev.includes(id) ? (prev.length > 1 ? prev.filter(a => a !== id) : prev) : [...prev, id]
+    );
   };
 
   const handleInspireMe = async () => {
@@ -3416,6 +3412,10 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
   const handleGenerate = () => {
     if (!selectedFormats.length) { toast.error(t("studio.selectAtLeastOneFormat")); return; }
+    // Resolve ambiances to models and visual direction
+    const resolvedModels = getModelsForAmbiances(selectedAmbiances);
+    const promptDirective = getPromptDirective(selectedAmbiances);
+    const templateCategory = getPreferredTemplateCategory(selectedAmbiances, selectedLayout);
     onGenerate({
       brief: `${brief}${moment ? `\nMoment: ${moment}` : ""}${isSponsored ? "\nContenu sponsorisé — CTA direct" : ""}${postCount !== "3" ? `\nNombre de posts souhaité: ${postCount}` : ""}`,
       formats: selectedFormats,
@@ -3427,10 +3427,11 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       contentAngle,
       keyMessages,
       language,
-      textModels,
-      imageModels,
-      videoModels,
-      visualStyle,
+      textModels: resolvedModels.textModels,
+      imageModels: resolvedModels.imageModels,
+      videoModels: resolvedModels.videoModels,
+      visualStyle: promptDirective,
+      templateCategory,
       videoDuration,
       ...(startDate ? { startDate } : {}),
       ...(duration ? { duration } : {}),
@@ -3769,29 +3770,61 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* Mise en situation */}
+        {/* Ambiance visuelle */}
         <div>
           <SectionLabel icon={Camera}>
-            Mise en situation
-            {visualStyle && (
-              <span className="ml-2 px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, color: "var(--background)", background: "var(--foreground)", textTransform: "none", letterSpacing: "normal" }}>
-                {SCENE_PRESETS.find(s => s.id === visualStyle)?.label || visualStyle}
-              </span>
-            )}
+            Ambiance visuelle
+            <span className="ml-1" style={{ fontSize: "9px", fontWeight: 500, color: "var(--muted-foreground)", textTransform: "none", letterSpacing: "normal" }}>
+              (multi-sélection)
+            </span>
           </SectionLabel>
-          <div className="grid grid-cols-3 gap-1.5">
-            {SCENE_PRESETS.map(scene => {
-              const isSelected = visualStyle === scene.id;
+          <div className="grid grid-cols-3 gap-2">
+            {AMBIANCE_PRESETS.map(amb => {
+              const isSelected = selectedAmbiances.includes(amb.id);
               return (
-                <button key={scene.id} onClick={() => setVisualStyle(scene.id)}
+                <button key={amb.id} onClick={() => toggleAmbiance(amb.id)}
+                  className="flex flex-col items-start gap-1 p-2 rounded-xl transition-all cursor-pointer text-left relative overflow-hidden"
+                  style={{
+                    background: isSelected ? "var(--foreground)" : "var(--secondary)",
+                    color: isSelected ? "var(--background)" : "var(--text-primary)",
+                    border: `2px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
+                    minHeight: 72,
+                  }}>
+                  {/* Gradient preview */}
+                  <div className="absolute inset-0 opacity-20 rounded-xl" style={{ background: amb.gradient }} />
+                  <div className="relative z-10">
+                    <span style={{ fontSize: "18px", lineHeight: 1 }}>{amb.emoji}</span>
+                    <div style={{ fontSize: "10px", fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>{amb.label}</div>
+                    <div style={{ fontSize: "8px", opacity: 0.7, lineHeight: 1.2, marginTop: 2 }}>{amb.description}</div>
+                  </div>
+                  {isSelected && (
+                    <div className="absolute top-1.5 right-1.5 z-10">
+                      <Check size={10} strokeWidth={3} />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Mise en page */}
+        <div>
+          <SectionLabel>Mise en page</SectionLabel>
+          <div className="grid grid-cols-3 gap-1.5">
+            {LAYOUT_PRESETS.map(layout => {
+              const isSelected = selectedLayout === layout.id;
+              return (
+                <button key={layout.id} onClick={() => setSelectedLayout(layout.id)}
                   className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-all cursor-pointer text-center"
                   style={{
                     background: isSelected ? "var(--foreground)" : "var(--secondary)",
                     color: isSelected ? "var(--background)" : "var(--text-primary)",
                     border: `1.5px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
                   }}>
-                  <span style={{ fontSize: "16px" }}>{scene.icon}</span>
-                  <span style={{ fontSize: "10px", fontWeight: 600, lineHeight: 1.2 }}>{scene.label}</span>
+                  <span style={{ fontSize: "16px" }}>{layout.emoji}</span>
+                  <span style={{ fontSize: "10px", fontWeight: 600, lineHeight: 1.2 }}>{layout.label}</span>
+                  <span style={{ fontSize: "8px", opacity: 0.6, lineHeight: 1.1 }}>{layout.description}</span>
                 </button>
               );
             })}
@@ -3903,62 +3936,6 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                 />
               </div>
 
-              {/* AI Models */}
-              <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
-                  <Columns2 size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Modèles IA
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Texte</label>
-                    <div className="space-y-0.5">
-                      {CONFIG_TEXT_MODELS.map(m => {
-                        const sel = textModels.includes(m.id);
-                        return (
-                          <button key={m.id} onClick={() => toggleTextModel(m.id)}
-                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
-                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
-                            {sel && <Check size={9} />}
-                            <span>{m.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Image</label>
-                    <div className="space-y-0.5">
-                      {CONFIG_IMAGE_MODELS.map(m => {
-                        const sel = imageModels.includes(m.id);
-                        return (
-                          <button key={m.id} onClick={() => toggleImageModel(m.id)}
-                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
-                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
-                            {sel && <Check size={9} />}
-                            <span>{m.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Vidéo</label>
-                    <div className="space-y-0.5">
-                      {CONFIG_VIDEO_MODELS.map(m => {
-                        const sel = videoModels.includes(m.id);
-                        return (
-                          <button key={m.id} onClick={() => toggleVideoModel(m.id)}
-                            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg transition-all cursor-pointer"
-                            style={{ background: sel ? "var(--foreground)" : "transparent", color: sel ? "var(--background)" : "var(--text-primary)", fontSize: "10px", fontWeight: 500 }}>
-                            {sel && <Check size={9} />}
-                            <span>{m.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* Video duration */}
               <div>
