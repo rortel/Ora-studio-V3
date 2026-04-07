@@ -71,7 +71,10 @@ interface CampaignPost {
   videoUrl?: string;
   hashtags?: string;
   headline?: string;
+  subtitle?: string;
   cta?: string;
+  price?: string;
+  features?: string[];
   aspectRatio?: string;
   variants?: CampaignPostVariant[];
   selectedVariant?: number;
@@ -657,6 +660,9 @@ export function StudioPage() {
               const extractHashtags = (c: any) => Array.isArray(c.hashtags) ? c.hashtags.join(" ") : c.hashtags || "";
               const extractHeadline = (c: any) => c.headline || c.subject || "";
               const extractCta = (c: any) => c.ctaText || c.cta || "";
+              const extractSubtitle = (c: any) => c.subtitle || "";
+              const extractPrice = (c: any) => c.price || "";
+              const extractFeatures = (c: any): string[] => Array.isArray(c.features) ? c.features.filter(Boolean) : [];
 
               // Build variants from other models
               const variants: CampaignPostVariant[] = [];
@@ -690,7 +696,10 @@ export function StudioPage() {
                 text: extractText(copy),
                 hashtags: extractHashtags(copy),
                 headline: extractHeadline(copy),
+                subtitle: extractSubtitle(copy),
                 cta: extractCta(copy),
+                price: extractPrice(copy),
+                features: extractFeatures(copy),
                 variants: variants.length > 1 ? variants : undefined,
                 selectedVariant: 0,
               });
@@ -914,7 +923,10 @@ export function StudioPage() {
                     imageUrl: post.imageUrl!,
                     headline: post.headline,
                     ctaText: post.cta,
+                    subtitle: post.subtitle,
                     caption: post.text?.slice(0, 80),
+                    price: post.price,
+                    featuresText: post.features?.length ? post.features.map(f => `✓ ${f}`).join("\n") : undefined,
                     vault: vault,
                     logoUrl: compositeLogoUrl,
                     template,

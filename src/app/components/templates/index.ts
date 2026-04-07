@@ -44,6 +44,40 @@ const shape = (id: string, x: number, y: number, w: number, h: number, fill: str
   style: { fill, opacity, ...extra }, zIndex: 2,
 });
 
+// ── NEW: Ad-ready layer helpers (subtitle, price badge, CTA button, features) ──
+
+const subtitle = (x: number, y: number, w: number, h: number, fontSize: number, opts: Partial<TemplateLayer["style"]> = {}): TemplateLayer => ({
+  id: "subtitle", type: "text", x, y, width: w, height: h,
+  dataBinding: { source: "asset", field: "subtitle" },
+  style: { fontSize, fontWeight: 400, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.3, opacity: 0.9, ...opts },
+  visible: { when: "asset.subtitle", notEmpty: true }, zIndex: 3,
+});
+
+const priceBadge = (x: number, y: number, w: number, h: number, fontSize: number): TemplateLayer[] => [
+  { id: "price-bg", type: "shape", x, y, width: w, height: h,
+    style: { fill: "vault:primary", opacity: 0.95, cornerRadius: 8 }, zIndex: 4 },
+  { id: "price", type: "text", x, y, width: w, height: h,
+    dataBinding: { source: "asset", field: "price" },
+    style: { fontSize, fontWeight: 700, color: "#FFFFFF", textAlign: "center", lineHeight: 1.2 },
+    visible: { when: "asset.price", notEmpty: true }, zIndex: 5 },
+];
+
+const ctaButton = (x: number, y: number, w: number, h: number, fontSize: number, fill = "vault:primary"): TemplateLayer[] => [
+  { id: "cta-bg", type: "shape", x, y, width: w, height: h,
+    style: { fill, opacity: 0.95, cornerRadius: 12 }, zIndex: 4 },
+  { id: "cta", type: "text", x: x + 1, y, width: w - 2, height: h,
+    dataBinding: { source: "asset", field: "ctaText" },
+    style: { fontSize, fontWeight: 700, color: "#FFFFFF", textAlign: "center", textTransform: "uppercase", letterSpacing: 1 },
+    visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 5 },
+];
+
+const features = (x: number, y: number, w: number, h: number, fontSize: number, opts: Partial<TemplateLayer["style"]> = {}): TemplateLayer => ({
+  id: "features", type: "text", x, y, width: w, height: h,
+  dataBinding: { source: "asset", field: "featuresText" },
+  style: { fontSize, fontWeight: 400, color: "#FFFFFF", textAlign: "left", lineHeight: 1.6, opacity: 0.9, ...opts },
+  visible: { when: "asset.featuresText", notEmpty: true }, zIndex: 3,
+});
+
 // ══════════════════════════════════════════════════════════════
 // 1) LINKEDIN POST — 1.91:1 (1200×628)
 // ══════════════════════════════════════════════════════════════
@@ -560,6 +594,158 @@ const facebookAdTemplates: TemplateDefinition[] = [
   },
 ];
 
+// ══════════════════════════════════════════════════════════════
+// 9) AD-READY TEMPLATES — Rich creatives (Omneky-style)
+//    With subtitle, price badge, CTA button, features
+// ══════════════════════════════════════════════════════════════
+
+const adReadyInstagramPost: TemplateDefinition[] = [
+  // ── Product Card — split with features ──
+  {
+    id: "ad-ig-product", name: "Product Card", formatId: "instagram-post", aspectRatio: "1:1",
+    canvasWidth: 1080, canvasHeight: 1080, category: "ad-ready",
+    layers: [
+      bg,
+      // Left panel with brand color
+      bar("panel", 0, 0, 45, 100, "vault:primary", 0.95),
+      logo(3, 3, 10),
+      headline(3, 18, 40, 20, 4.5, { lineHeight: 1.1 }),
+      subtitle(3, 40, 40, 12, 2.2),
+      features(3, 56, 40, 22, 1.8, { lineHeight: 1.8 }),
+      ...ctaButton(3, 82, 28, 6, 1.8),
+      ...priceBadge(34, 3, 10, 5, 2.2),
+    ],
+  },
+  // ── Bold Centered — headline dominant ──
+  {
+    id: "ad-ig-bold", name: "Bold Ad", formatId: "instagram-post", aspectRatio: "1:1",
+    canvasWidth: 1080, canvasHeight: 1080, category: "ad-ready",
+    layers: [
+      bg,
+      grad("grad", 20, "bottom", 0.9),
+      logo(4, 4, 12),
+      ...priceBadge(82, 4, 15, 6, 2.5),
+      headline(5, 50, 90, 20, 6, { textAlign: "center", lineHeight: 1.05 }),
+      subtitle(10, 72, 80, 8, 2.5, { textAlign: "center" }),
+      ...ctaButton(25, 85, 50, 7, 2.2),
+    ],
+  },
+  // ── Testimonial / Social proof ──
+  {
+    id: "ad-ig-proof", name: "Social Proof", formatId: "instagram-post", aspectRatio: "1:1",
+    canvasWidth: 1080, canvasHeight: 1080, category: "ad-ready",
+    layers: [
+      bg,
+      shape("overlay", 0, 55, 100, 45, "#000000", 0.85),
+      logo(4, 60, 8),
+      headline(4, 62, 92, 14, 3.8, { lineHeight: 1.15, fontWeight: 700 }),
+      subtitle(4, 78, 92, 8, 2, { fontWeight: 400 }),
+      ...ctaButton(4, 89, 30, 5.5, 1.8),
+      ...priceBadge(80, 89, 16, 5.5, 2),
+    ],
+  },
+];
+
+const adReadyInstagramStory: TemplateDefinition[] = [
+  // ── Full bleed product story ──
+  {
+    id: "ad-is-product", name: "Product Story", formatId: "instagram-story", aspectRatio: "9:16",
+    canvasWidth: 1080, canvasHeight: 1920, category: "ad-ready",
+    layers: [
+      bg,
+      grad("topgrad", 30, "top", 0.6),
+      grad("bottomgrad", 50, "bottom", 0.85),
+      logo(5, 3, 15),
+      ...priceBadge(75, 3, 20, 4, 2.5),
+      headline(5, 60, 90, 12, 5, { textAlign: "center", lineHeight: 1.1 }),
+      subtitle(8, 73, 84, 6, 2.5, { textAlign: "center" }),
+      features(15, 80, 70, 10, 2, { textAlign: "center", lineHeight: 1.7 }),
+      ...ctaButton(20, 92, 60, 4, 2.2),
+    ],
+  },
+  // ── Split story — top image, bottom info ──
+  {
+    id: "ad-is-split", name: "Split Story", formatId: "instagram-story", aspectRatio: "9:16",
+    canvasWidth: 1080, canvasHeight: 1920, category: "ad-ready",
+    layers: [
+      bg,
+      bar("infoPanel", 0, 55, 100, 45, "vault:primary", 0.96),
+      logo(5, 58, 12),
+      headline(5, 62, 90, 10, 4, { lineHeight: 1.1 }),
+      subtitle(5, 73, 90, 6, 2.2),
+      features(5, 80, 60, 10, 1.8, { lineHeight: 1.7 }),
+      ...ctaButton(5, 92, 50, 4, 2),
+      ...priceBadge(72, 92, 22, 4, 2.2),
+    ],
+  },
+];
+
+const adReadyLinkedinPost: TemplateDefinition[] = [
+  // ── Corporate product ad ──
+  {
+    id: "ad-lp-corporate", name: "Corporate Ad", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    canvasWidth: 1200, canvasHeight: 628, category: "ad-ready",
+    layers: [
+      bg,
+      bar("leftPanel", 0, 0, 48, 100, "vault:primary", 0.95),
+      logo(3, 5, 10),
+      headline(3, 22, 43, 25, 4.8, { lineHeight: 1.1 }),
+      subtitle(3, 50, 43, 12, 2),
+      features(3, 64, 43, 18, 1.6, { lineHeight: 1.8 }),
+      ...ctaButton(3, 86, 25, 7, 1.8),
+      ...priceBadge(30, 5, 14, 7, 2.5),
+    ],
+  },
+  // ── Wide banner ──
+  {
+    id: "ad-lp-banner", name: "Wide Banner", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    canvasWidth: 1200, canvasHeight: 628, category: "ad-ready",
+    layers: [
+      bg,
+      grad("grad", 30, "bottom", 0.88),
+      bar("topStrip", 0, 0, 100, 12, "vault:primary", 0.9),
+      logo(2, 1.5, 8),
+      ...priceBadge(85, 1.5, 13, 8, 2.8),
+      headline(4, 55, 60, 20, 5.5, { lineHeight: 1.05 }),
+      subtitle(4, 78, 55, 8, 2.2),
+      ...ctaButton(4, 90, 22, 6, 2),
+    ],
+  },
+];
+
+const adReadyFacebookAd: TemplateDefinition[] = [
+  // ── Conversion ad — CTA dominant ──
+  {
+    id: "ad-fa-convert", name: "Conversion Ad", formatId: "facebook-ad", aspectRatio: "1.91:1",
+    canvasWidth: 1200, canvasHeight: 628, category: "ad-ready",
+    layers: [
+      bg,
+      grad("grad", 25, "bottom", 0.85),
+      logo(3, 4, 9),
+      ...priceBadge(84, 4, 14, 8, 3),
+      headline(4, 45, 65, 22, 5.5, { lineHeight: 1.05 }),
+      subtitle(4, 70, 60, 10, 2.2),
+      ...ctaButton(4, 85, 30, 8, 2.2),
+      features(55, 85, 42, 8, 1.5, { textAlign: "right" }),
+    ],
+  },
+  // ── Product showcase — right panel ──
+  {
+    id: "ad-fa-showcase", name: "Product Showcase", formatId: "facebook-ad", aspectRatio: "1.91:1",
+    canvasWidth: 1200, canvasHeight: 628, category: "ad-ready",
+    layers: [
+      bg,
+      bar("rightPanel", 55, 0, 45, 100, "#000000", 0.88),
+      logo(58, 5, 8),
+      headline(58, 20, 40, 22, 4.2, { lineHeight: 1.15 }),
+      subtitle(58, 45, 40, 10, 2),
+      features(58, 58, 40, 20, 1.6, { lineHeight: 1.8 }),
+      ...ctaButton(58, 82, 28, 7, 1.8),
+      ...priceBadge(86, 82, 12, 7, 2.2),
+    ],
+  },
+];
+
 // ── Template Registry ──
 
 const ALL_TEMPLATES: TemplateDefinition[] = [
@@ -571,6 +757,11 @@ const ALL_TEMPLATES: TemplateDefinition[] = [
   ...pinterestPinTemplates,
   ...xPostTemplates,
   ...facebookAdTemplates,
+  // Ad-ready (Omneky-style)
+  ...adReadyInstagramPost,
+  ...adReadyInstagramStory,
+  ...adReadyLinkedinPost,
+  ...adReadyFacebookAd,
 ];
 
 const TEMPLATE_BY_FORMAT: Record<string, TemplateDefinition[]> = {};
