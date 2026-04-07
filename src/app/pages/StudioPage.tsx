@@ -2490,6 +2490,8 @@ const CONFIG_TEXT_MODELS = [
 ];
 
 const CONFIG_IMAGE_MODELS = [
+  // Ideogram — brand-compliant text rendering
+  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text" },
   // Luma
   { id: "photon-1", label: "Luma Photon", badge: "Quality" },
   { id: "photon-flash-1", label: "Photon Flash", badge: "Fast" },
@@ -3184,7 +3186,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
   const [textModels, setTextModels] = useState<string[]>(params.textModels || ["gpt-4o"]);
-  const [imageModels, setImageModels] = useState<string[]>(params.imageModels || ["photon-1"]);
+  const [imageModels, setImageModels] = useState<string[]>(params.imageModels || ["ideogram-3-leo"]);
   const [videoModels, setVideoModels] = useState<string[]>(params.videoModels || ["ora-motion"]);
   const [startDate, setStartDate] = useState(params.startDate || "");
   const [duration, setDuration] = useState(params.duration || "");
