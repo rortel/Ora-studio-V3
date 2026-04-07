@@ -25,12 +25,15 @@ const FORMAT_TO_TEMPLATE: Record<string, string> = {
 };
 
 // ── Pick best template for a given format ──
-export function selectTemplateForFormat(formatId: string): TemplateDefinition | null {
+export function selectTemplateForFormat(formatId: string, preferredCategory?: string): TemplateDefinition | null {
   const templateFormat = FORMAT_TO_TEMPLATE[formatId] || formatId;
   const templates = getTemplatesForFormat(templateFormat);
   if (templates.length === 0) return null;
-  // Prefer "ad-ready" templates first (Omneky-style with subtitle, price, features)
-  const preferred = templates.find(t => t.category === "ad-ready") ||
+  // Prefer user-chosen category first, then "ad-ready" templates (Omneky-style with subtitle, price, features)
+  const preferred = (preferredCategory
+    ? templates.find(t => t.category === preferredCategory)
+    : null) ||
+    templates.find(t => t.category === "ad-ready") ||
     templates.find(t => t.category === "bold") ||
     templates.find(t => t.category === "editorial") ||
     templates[0];
