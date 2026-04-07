@@ -467,7 +467,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -867,7 +867,7 @@ export function StudioPage() {
                 console.log(`[studio] Video START [${vf.format}]: prompt="${fullVideoPrompt.slice(0, 80)}...", imageRef=${imageUrlForVideo ? "yes" : "no"}`);
                 const videoModel = Array.isArray(vidModels) && vidModels.length > 0 ? vidModels[0] : "ora-motion";
                 const startRes = await serverGet(
-                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=${videoModel}${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}`
+                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=${videoModel}${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}&duration=${vidDuration}`
                 );
                 if (startRes.success && startRes.generationId) {
                   console.log(`[studio] Video POLLING [${vf.format}]: genId=${startRes.generationId}`);
@@ -3220,6 +3220,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [videoModels, setVideoModels] = useState<string[]>(params.videoModels || ["ora-motion"]);
   const [startDate, setStartDate] = useState(params.startDate || "");
   const [duration, setDuration] = useState(params.duration || "");
+  const [videoDuration, setVideoDuration] = useState(params.videoDuration || "5");
   const [inspiring, setInspiring] = useState(false);
   // showAdvanced removed — all fields always visible
 
@@ -3315,6 +3316,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       imageModels,
       videoModels,
       visualStyle,
+      videoDuration,
       ...(startDate ? { startDate } : {}),
       ...(duration ? { duration } : {}),
       ...(moment ? { theme: moment } : {}),
@@ -3840,6 +3842,22 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                       })}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Video duration */}
+              <div>
+                <SectionLabel icon={Film}>Durée vidéo</SectionLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: "2", label: "2s" },
+                    { id: "5", label: "5s" },
+                    { id: "10", label: "10s" },
+                    { id: "15", label: "15s" },
+                    { id: "30", label: "30s" },
+                  ].map(d => (
+                    <Chip key={d.id} size="sm" selected={videoDuration === d.id} onClick={() => setVideoDuration(d.id)}>{d.label}</Chip>
+                  ))}
                 </div>
               </div>
 

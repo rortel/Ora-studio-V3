@@ -3258,10 +3258,12 @@ app.get("/generate/video-start", async (c) => {
     const model = c.req.query("model") || "ora-motion";
     const imageUrl = c.req.query("imageUrl") || undefined;
     const clientAspectRatio = c.req.query("aspectRatio") || undefined;
+    const clientDuration = parseInt(c.req.query("duration") || "5", 10) || 5;
+    const videoDuration = Math.min(Math.max(clientDuration, 2), 30); // clamp 2-30s
     // Legacy query param (kept for backward compat but we now prefer server-side fetch)
     const brandVisualPrefix = c.req.query("brandVisual") || "";
 
-    console.log(`[video-start] raw prompt="${rawPrompt?.slice(0, 60)}", model=${model}, img2vid=${!!imageUrl}, aspectRatio=${clientAspectRatio || "default"}, user=${user?.id?.slice(0, 8) || "anon"}`);
+    console.log(`[video-start] raw prompt="${rawPrompt?.slice(0, 60)}", model=${model}, img2vid=${!!imageUrl}, aspectRatio=${clientAspectRatio || "default"}, duration=${videoDuration}s, user=${user?.id?.slice(0, 8) || "anon"}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     // ── SERVER-SIDE BRAND CONTEXT for video prompts ──
@@ -3329,7 +3331,7 @@ app.get("/generate/video-start", async (c) => {
     const hfMapping = hfVideoModelMap[model];
     if (hfMapping) {
       const aspectRatio = clientAspectRatio || hfMapping.aspectRatio;
-      const hfBody: any = { prompt: finalVideoPrompt, duration: 5 };
+      const hfBody: any = { prompt: finalVideoPrompt, duration: videoDuration };
       if (resolvedImageUrl) hfBody.image_url = resolvedImageUrl;
       if (clientAspectRatio) hfBody.aspect_ratio = clientAspectRatio;
 
@@ -3359,6 +3361,7 @@ app.get("/generate/video-start", async (c) => {
       prompt: finalVideoPrompt,
       model: mapping.lumaModel,
       aspect_ratio: aspectRatio,
+      duration: `${videoDuration}s`,
     };
 
     if (resolvedImageUrl) {
