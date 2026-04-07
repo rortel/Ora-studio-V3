@@ -1609,18 +1609,65 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
           : (locale === "fr" ? "Engagez votre communauté" : "Engage your community")}
       </motion.h1>
 
-      {/* Subtitle — short, no brand repetition */}
+      {/* Subtitle — contextual brand insight */}
       <motion.p
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
-        className="mb-8 text-center"
+        className="mb-4 text-center"
         style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.5 }}
       >
         {locale === "fr"
           ? "Décrivez votre prochaine campagne ou laissez ORA vous inspirer"
           : "Describe your next campaign or let ORA inspire you"}
       </motion.p>
+
+      {/* Brand insight strip — shows we know the brand */}
+      {brandName && (vault?.sector || vault?.industry || vault?.tone || vault?.brand_platform?.promise) && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="mb-6 flex flex-col items-center gap-2"
+        >
+          {/* Color palette strip */}
+          {(() => {
+            const colors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+            return Array.isArray(colors) && colors.length > 0 ? (
+              <div className="flex items-center gap-1">
+                {colors.slice(0, 5).map((c: string, i: number) => (
+                  <span key={i} className="w-4 h-4 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
+                ))}
+              </div>
+            ) : null;
+          })()}
+          {/* Brand context sentence */}
+          <p className="text-center px-6" style={{ fontSize: "12px", color: "var(--muted-foreground)", lineHeight: 1.5, maxWidth: 420 }}>
+            {(() => {
+              const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
+              const tonePrimary = vault?.tone?.primary_tone || "";
+              const promise = vault?.brand_platform?.promise || "";
+              const tagline = vault?.tagline || "";
+
+              if (locale === "fr") {
+                const parts: string[] = [];
+                if (sector) parts.push(`${sector}`);
+                if (tonePrimary) parts.push(`ton ${tonePrimary.toLowerCase()}`);
+                const detail = parts.length > 0 ? ` — ${parts.join(", ")}` : "";
+                const promiseText = promise ? `. ${promise}` : tagline ? `. "${tagline}"` : "";
+                return `ORA connaît l'univers ${brandName}${detail}${promiseText}`;
+              } else {
+                const parts: string[] = [];
+                if (sector) parts.push(`${sector}`);
+                if (tonePrimary) parts.push(`${tonePrimary.toLowerCase()} tone`);
+                const detail = parts.length > 0 ? ` — ${parts.join(", ")}` : "";
+                const promiseText = promise ? `. ${promise}` : tagline ? `. "${tagline}"` : "";
+                return `ORA knows ${brandName}'s universe${detail}${promiseText}`;
+              }
+            })()}
+          </p>
+        </motion.div>
+      )}
 
       {/* Inspire me button + idea bubbles */}
       <motion.div
@@ -3236,6 +3283,55 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     s.items?.find((i: any) => i.label?.toLowerCase().includes("nom"))
   )?.items?.find((i: any) => i.label?.toLowerCase().includes("nom"))?.value || "";
 
+  // ── Extract vault brand intelligence ──
+  const vaultSector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
+  const vaultTone = vault?.tone;
+  const vaultTonePrimary = vaultTone?.primary_tone || "";
+  const vaultToneAdj = vaultTone?.adjectives || [];
+  const vaultPromise = vault?.brand_platform?.promise || "";
+  const vaultCreativeTension = vault?.brand_platform?.creative_tension || "";
+  const vaultNarrativeRegister = vault?.brand_platform?.narrative_register || "";
+  const vaultTagline = vault?.tagline || "";
+  const vaultMission = vault?.mission || "";
+  const vaultValues = vault?.values || [];
+  const vaultColors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+  const vaultLogoUrl = vault?.logo_url || vault?.logoUrl || vault?.logo?.url || "";
+  const vaultAudiences: string[] = (() => {
+    const raw = vault?.target_audiences || vault?.targetAudiences || [];
+    if (!Array.isArray(raw)) return [];
+    return raw.map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 4);
+  })();
+
+  // ── Pre-fill from vault on mount ──
+  useEffect(() => {
+    // Tone: map vault primary_tone to closest TONE_OPTIONS
+    if (!tone && vaultTonePrimary) {
+      const mapping: Record<string, string> = {
+        professional: "Professionnel", professionnel: "Professionnel",
+        inspiring: "Inspirant", inspirant: "Inspirant",
+        casual: "Décontracté", décontracté: "Décontracté", decontracte: "Décontracté",
+        educational: "Éducatif", éducatif: "Éducatif", educatif: "Éducatif",
+        persuasive: "Persuasif", persuasif: "Persuasif",
+        humorous: "Humoristique", humoristique: "Humoristique",
+        authentic: "Authentique", authentique: "Authentique",
+        premium: "Premium", luxe: "Premium",
+      };
+      const matched = mapping[vaultTonePrimary.toLowerCase()];
+      if (matched) setTone(matched);
+    }
+    // Audience: pre-fill from vault first audience
+    if (!targetAudience && vaultAudiences.length > 0) {
+      setTargetAudience(vaultAudiences[0]);
+    }
+    // Key messages: seed from vault values + promise
+    if (!keyMessages) {
+      const seeds: string[] = [];
+      if (vaultPromise) seeds.push(vaultPromise);
+      if (Array.isArray(vaultValues) && vaultValues.length) seeds.push(...vaultValues.slice(0, 3));
+      if (seeds.length) setKeyMessages(seeds.join(", "));
+    }
+  }, [vault]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Chip helper
   const Chip = ({ selected, onClick, children, size = "md" }: { selected: boolean; onClick: () => void; children: React.ReactNode; size?: "sm" | "md" }) => (
     <button onClick={onClick}
@@ -3291,6 +3387,87 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       </div>
 
       <div className="px-5 py-4 space-y-5" style={{ maxHeight: "65vh", overflowY: "auto" }}>
+
+        {/* ═══ BRAND DNA CARD — "On connaît votre marque" ═══ */}
+        {brandName && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl p-4 relative overflow-hidden"
+            style={{ background: "linear-gradient(135deg, var(--secondary) 0%, var(--card) 100%)", border: "1px solid var(--border)" }}
+          >
+            {/* Subtle brand color accents */}
+            {Array.isArray(vaultColors) && vaultColors.length > 0 && (
+              <div className="absolute top-0 left-0 right-0 h-1 flex">
+                {vaultColors.slice(0, 5).map((c: string, i: number) => (
+                  <div key={i} className="flex-1" style={{ background: c.startsWith("#") ? c : `#${c}` }} />
+                ))}
+              </div>
+            )}
+            <div className="flex items-start gap-3" style={{ marginTop: Array.isArray(vaultColors) && vaultColors.length > 0 ? 4 : 0 }}>
+              {/* Logo */}
+              {vaultLogoUrl && (
+                <img src={vaultLogoUrl} alt="" className="w-9 h-9 rounded-lg object-contain flex-shrink-0"
+                  style={{ background: "var(--background)", padding: 2, border: "1px solid var(--border)" }} />
+              )}
+              <div className="flex-1 min-w-0">
+                {/* Brand name + sector */}
+                <div className="flex items-center gap-2 mb-1">
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>{brandName}</span>
+                  {vaultSector && (
+                    <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, background: "var(--border)", color: "var(--muted-foreground)" }}>
+                      {vaultSector}
+                    </span>
+                  )}
+                </div>
+                {/* Brand insight sentence */}
+                {(vaultPromise || vaultTagline) && (
+                  <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.5, marginBottom: 6 }}>
+                    {vaultTagline ? `"${vaultTagline}"` : ""}
+                    {vaultTagline && vaultPromise ? " — " : ""}
+                    {vaultPromise || ""}
+                  </p>
+                )}
+                {/* Compact brand attributes */}
+                <div className="flex flex-wrap gap-1.5">
+                  {vaultTonePrimary && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
+                      🎙 {vaultTonePrimary}{vaultToneAdj.length > 0 ? `, ${vaultToneAdj.slice(0, 2).join(", ")}` : ""}
+                    </span>
+                  )}
+                  {vaultNarrativeRegister && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
+                      📖 {vaultNarrativeRegister}
+                    </span>
+                  )}
+                  {vaultAudiences.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
+                      👥 {vaultAudiences.slice(0, 2).join(", ")}
+                    </span>
+                  )}
+                  {/* Color swatches inline */}
+                  {Array.isArray(vaultColors) && vaultColors.length > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
+                      style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
+                      {vaultColors.slice(0, 5).map((c: string, i: number) => (
+                        <span key={i} className="inline-block w-3 h-3 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
+                      ))}
+                    </span>
+                  )}
+                </div>
+                {/* Creative tension */}
+                {vaultCreativeTension && (
+                  <p style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 6, fontStyle: "italic", lineHeight: 1.4 }}>
+                    💡 {vaultCreativeTension}
+                  </p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* ═══ NIVEAU 1 — Essentiel (toujours visible) ═══ */}
 
@@ -3449,11 +3626,18 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
         {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
         <div className="space-y-4">
-              {/* Audience */}
+              {/* Audience — vault audiences first, then generic fallbacks */}
               <div>
-                <SectionLabel>Audience cible</SectionLabel>
+                <SectionLabel>Audience cible{vaultAudiences.length > 0 ? " (depuis votre vault)" : ""}</SectionLabel>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {AUDIENCE_PRESETS.map(a => (
+                  {/* Vault audiences first — highlighted */}
+                  {vaultAudiences.map(a => (
+                    <Chip key={`v-${a}`} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>
+                      <span style={{ fontSize: "9px" }}>⭐</span> {a}
+                    </Chip>
+                  ))}
+                  {/* Generic presets (exclude duplicates from vault) */}
+                  {AUDIENCE_PRESETS.filter(a => !vaultAudiences.some(v => v.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(v.toLowerCase()))).map(a => (
                     <Chip key={a} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>{a}</Chip>
                   ))}
                 </div>
@@ -3468,7 +3652,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
               {/* Ton */}
               <div>
-                <SectionLabel>Ton (override vault)</SectionLabel>
+                <SectionLabel>Ton {vaultTonePrimary ? `(vault : ${vaultTonePrimary})` : ""}</SectionLabel>
                 <div className="flex flex-wrap gap-1.5">
                   {TONE_OPTIONS.map(tn => (
                     <Chip key={tn} size="sm" selected={tone === tn} onClick={() => setTone(tone === tn ? "" : tn)}>{tn}</Chip>
