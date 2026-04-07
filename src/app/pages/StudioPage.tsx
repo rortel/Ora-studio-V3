@@ -138,7 +138,7 @@ export function StudioPage() {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
-  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string } | null>(null);
+  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string; editIdx?: number } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1267,7 +1267,7 @@ export function StudioPage() {
                         msg={msg}
                         onSuggestion={handleSend}
                         onCompare={handleCompare}
-                        onFinalize={(posts, logoUrl, brief, startDate, duration) => setFinalizingCampaign({ posts, logoUrl, brief, campaignStartDate: startDate, campaignDuration: duration })}
+                        onFinalize={(posts, logoUrl, brief, startDate, duration, editIdx) => setFinalizingCampaign({ posts, logoUrl, brief, campaignStartDate: startDate, campaignDuration: duration, editIdx })}
                         onEdit={(item, type, prompt) => {
                           if (type === "image" && item.url) {
                             handleSend(`Édite cette image : garde le même sujet mais propose une variante différente. Image originale: ${item.url}`);
@@ -1303,6 +1303,7 @@ export function StudioPage() {
                     onSaved={() => { setFinalizingCampaign(null); toast.success(t("studio.campaignSaved")); }}
                     campaignStartDate={finalizingCampaign.campaignStartDate}
                     campaignDuration={finalizingCampaign.campaignDuration}
+                    initialEditIdx={finalizingCampaign.editIdx}
                   />
                 )}
 
@@ -1760,7 +1761,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
 }) {
   const { t } = useI18n();
@@ -1800,12 +1801,9 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 }
 
 /* ── Campaign Carousel — fullscreen feel ── */
-function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void }) {
+function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void }) {
   const { t } = useI18n();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-
-  const prev = () => setCurrent(i => Math.max(0, i - 1));
-  const next = () => setCurrent(i => Math.min(posts.length - 1, i + 1));
 
   // Platform colors
   const platformColor: Record<string, string> = {
@@ -1860,15 +1858,15 @@ function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; l
                     </div>
                   )}
                   {/* Edit overlay on hover */}
-                  {onEdit && (
+                  {onEditVisual && post.imageUrl && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
                       style={{ background: "rgba(0,0,0,0.5)" }}>
                       <button
-                        onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, post.videoUrl ? "video" : "image", post.text || ""); }}
+                        onClick={e => { e.stopPropagation(); onEditVisual(idx); }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
                         style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600 }}>
                         <Pencil size={11} />
-                        Edit
+                        Éditer
                       </button>
                     </div>
                   )}
@@ -1918,13 +1916,13 @@ function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; l
                       )}
                       {/* Edit + Download buttons */}
                       <div className="absolute top-2 right-2 flex items-center gap-1.5">
-                        {onEdit && (
+                        {onEditVisual && post.imageUrl && (
                           <button
-                            onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, post.videoUrl ? "video" : "image", post.text || ""); }}
+                            onClick={e => { e.stopPropagation(); onEditVisual(idx); }}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
                             style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
                             <Pencil size={11} />
-                            Modifier
+                            Éditer le visuel
                           </button>
                         )}
                         <a href={post.imageUrl || post.videoUrl} download target="_blank" rel="noreferrer"
@@ -1949,16 +1947,27 @@ function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; l
                       <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
                     </div>
                   )}
-                  {/* Edit text button */}
-                  {onEdit && (
-                    <button
-                      onClick={e => { e.stopPropagation(); onEdit({ text: post.text, model: post.variants?.[0]?.model || "unknown" }, "text", post.text || ""); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                      style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
-                      <Pencil size={10} />
-                      Modifier le texte
-                    </button>
-                  )}
+                  {/* Edit buttons */}
+                  <div className="flex items-center gap-2 pt-1">
+                    {onEdit && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit({ text: post.text, model: post.variants?.[0]?.model || "unknown" }, "text", post.text || ""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
+                        <RefreshCw size={10} />
+                        Réécrire le texte
+                      </button>
+                    )}
+                    {onEdit && (post.imageUrl || post.videoUrl) && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, "image", post.text || ""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
+                        <RefreshCw size={10} />
+                        Régénérer le visuel
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1973,7 +1982,7 @@ function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; l
 function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
   logoUrl?: string;
 }) {
@@ -2264,9 +2273,13 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   }
 
   if (result.type === "campaign" && result.campaignPosts) {
+    const openKonvaForPost = (postIdx: number) => {
+      // Open Finalizer with Konva editor on the specific post
+      onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration, postIdx);
+    };
     return (
       <div className="space-y-3">
-        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} />
+        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost} />
         <button
           onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration)}
           className="flex items-center gap-2.5 w-full px-5 py-3 rounded-xl cursor-pointer transition-all group"
@@ -2480,7 +2493,7 @@ const CHANNEL_OPTIONS = [
   { id: "youtube", label: "YouTube", icon: Youtube },
 ];
 
-function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved, campaignStartDate, campaignDuration }: {
+function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved, campaignStartDate, campaignDuration, initialEditIdx }: {
   posts: CampaignPost[];
   logoUrl?: string;
   brief: string;
@@ -2491,6 +2504,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   onSaved: () => void;
   campaignStartDate?: string;
   campaignDuration?: string;
+  initialEditIdx?: number;
 }) {
   const { t } = useI18n();
   const [step, setStep] = useState<FinalizerStep>("review");
@@ -2546,6 +2560,13 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
     { key: "schedule", label: t("studio.calendarLabel"), icon: Calendar },
     { key: "save", label: t("studio.saveLabel"), icon: Save },
   ];
+
+  // Auto-open Konva editor if initialEditIdx provided
+  React.useEffect(() => {
+    if (initialEditIdx !== undefined && initialEditIdx >= 0 && initialEditIdx < posts.length) {
+      openKonvaEditor(initialEditIdx);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Step 1: Review ---
   const updatePost = (idx: number, updates: Partial<CampaignPost>) => {
