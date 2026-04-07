@@ -1800,7 +1800,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 }
 
 /* ── Campaign Carousel — fullscreen feel ── */
-function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?: string }) {
+function CampaignCarousel({ posts, logoUrl, onEdit }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void }) {
   const { t } = useI18n();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
@@ -1848,7 +1848,7 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
               }}>
               {/* Visual thumbnail or text-only */}
               {hasVisual && !isExpanded && (
-                <div className="relative" style={{ height: 120 }}>
+                <div className="relative group/thumb" style={{ height: 120 }}>
                   {post.videoUrl ? (
                     <video src={post.videoUrl} className="w-full h-full object-cover" muted />
                   ) : (
@@ -1857,6 +1857,19 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
                   {post.videoUrl && (
                     <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
                       <Film size={10} style={{ color: "#fff" }} />
+                    </div>
+                  )}
+                  {/* Edit overlay on hover */}
+                  {onEdit && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+                      style={{ background: "rgba(0,0,0,0.5)" }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, post.videoUrl ? "video" : "image", post.text || ""); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                        style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600 }}>
+                        <Pencil size={11} />
+                        Edit
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1891,7 +1904,7 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
               {isExpanded && (
                 <div className="px-3 pb-3 space-y-3">
                   {hasVisual && (
-                    <div className="relative rounded-lg overflow-hidden">
+                    <div className="relative rounded-lg overflow-hidden group/expanded">
                       {post.videoUrl ? (
                         <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
                       ) : (
@@ -1903,6 +1916,24 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
                           <img src={logoUrl} className="w-full h-full object-contain" alt="" />
                         </div>
                       )}
+                      {/* Edit + Download buttons */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                        {onEdit && (
+                          <button
+                            onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, post.videoUrl ? "video" : "image", post.text || ""); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
+                            style={{ background: "rgba(255,255,255,0.95)", color: "#000", fontSize: "11px", fontWeight: 600, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+                            <Pencil size={11} />
+                            Modifier
+                          </button>
+                        )}
+                        <a href={post.imageUrl || post.videoUrl} download target="_blank" rel="noreferrer"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center"
+                          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+                          onClick={e => e.stopPropagation()}>
+                          <Download size={12} style={{ color: "#fff" }} />
+                        </a>
+                      </div>
                     </div>
                   )}
                   {post.headline && (
@@ -1917,6 +1948,16 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
                       <ArrowRight size={11} />
                       <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
                     </div>
+                  )}
+                  {/* Edit text button */}
+                  {onEdit && (
+                    <button
+                      onClick={e => { e.stopPropagation(); onEdit({ text: post.text, model: post.variants?.[0]?.model || "unknown" }, "text", post.text || ""); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                      style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
+                      <Pencil size={10} />
+                      Modifier le texte
+                    </button>
                   )}
                 </div>
               )}
@@ -2225,7 +2266,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   if (result.type === "campaign" && result.campaignPosts) {
     return (
       <div className="space-y-3">
-        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} />
+        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} />
         <button
           onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration)}
           className="flex items-center gap-2.5 w-full px-5 py-3 rounded-xl cursor-pointer transition-all group"
