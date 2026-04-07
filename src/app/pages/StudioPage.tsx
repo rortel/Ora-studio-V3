@@ -1623,50 +1623,59 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
       </motion.p>
 
       {/* Brand insight strip — shows we know the brand */}
-      {brandName && (vault?.sector || vault?.industry || vault?.tone || vault?.brand_platform?.promise) && (
+      {brandName && (vault?.industry || vault?.tone || vault?.brand_platform) && (
         <motion.div
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
-          className="mb-6 flex flex-col items-center gap-2"
+          className="mb-6 w-full max-w-md"
         >
-          {/* Color palette strip */}
-          {(() => {
-            const rawColors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
-            const colors = Array.isArray(rawColors) ? rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || c?.color_hex || c?.value || c?.color || "").filter(Boolean) : [];
-            return colors.length > 0 ? (
-              <div className="flex items-center gap-1">
-                {colors.slice(0, 5).map((c: string, i: number) => (
-                  <span key={i} className="w-4 h-4 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
-                ))}
-              </div>
-            ) : null;
-          })()}
-          {/* Brand context sentence */}
-          <p className="text-center px-6" style={{ fontSize: "12px", color: "var(--muted-foreground)", lineHeight: 1.5, maxWidth: 420 }}>
+          <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+            {/* Logo or color swatch */}
             {(() => {
-              const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
-              const tonePrimary = vault?.tone?.primary_tone || "";
-              const promise = vault?.brand_platform?.promise || "";
-              const tagline = vault?.tagline || "";
-
-              if (locale === "fr") {
-                const parts: string[] = [];
-                if (sector) parts.push(`${sector}`);
-                if (tonePrimary) parts.push(`ton ${tonePrimary.toLowerCase()}`);
-                const detail = parts.length > 0 ? ` — ${parts.join(", ")}` : "";
-                const promiseText = promise ? `. ${promise}` : tagline ? `. "${tagline}"` : "";
-                return `ORA connaît l'univers ${brandName}${detail}${promiseText}`;
-              } else {
-                const parts: string[] = [];
-                if (sector) parts.push(`${sector}`);
-                if (tonePrimary) parts.push(`${tonePrimary.toLowerCase()} tone`);
-                const detail = parts.length > 0 ? ` — ${parts.join(", ")}` : "";
-                const promiseText = promise ? `. ${promise}` : tagline ? `. "${tagline}"` : "";
-                return `ORA knows ${brandName}'s universe${detail}${promiseText}`;
-              }
+              const logoUrl = vault?.logo_url || vault?.logoUrl || "";
+              if (logoUrl) return <img src={logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" style={{ background: "var(--background)", padding: 2, border: "1px solid var(--border)" }} />;
+              const rawColors = vault?.colors || [];
+              const firstColor = Array.isArray(rawColors) && rawColors.length > 0 ? (typeof rawColors[0] === "string" ? rawColors[0] : rawColors[0]?.hex || "") : "";
+              if (firstColor) return <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ background: firstColor.startsWith("#") ? firstColor : `#${firstColor}` }} />;
+              return <div className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "14px", fontWeight: 700 }}>{brandName.charAt(0)}</div>;
             })()}
-          </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: "12px", fontWeight: 600 }}>{brandName}</span>
+                {vault?.industry && (
+                  <span className="px-1.5 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 500, background: "var(--border)", color: "var(--muted-foreground)" }}>
+                    {vault.industry}
+                  </span>
+                )}
+              </div>
+              {/* Short brand DNA line — tone + key attribute */}
+              <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: 2 }}>
+                {(() => {
+                  const parts: string[] = [];
+                  const tp = vault?.tone?.primary_tone;
+                  if (tp) parts.push(locale === "fr" ? `Ton ${tp.toLowerCase()}` : `${tp} tone`);
+                  const adj = vault?.tone?.adjectives;
+                  if (Array.isArray(adj) && adj.length > 0) parts.push(adj.slice(0, 2).join(", "));
+                  const reg = vault?.brand_platform?.narrative_register;
+                  if (reg) parts.push(reg);
+                  return parts.length > 0 ? parts.join(" · ") : (locale === "fr" ? "Univers de marque chargé" : "Brand universe loaded");
+                })()}
+              </div>
+            </div>
+            {/* Color dots */}
+            {(() => {
+              const rawColors = vault?.colors || [];
+              const colors = Array.isArray(rawColors) ? rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || "").filter(Boolean) : [];
+              return colors.length > 0 ? (
+                <div className="flex gap-1 flex-shrink-0">
+                  {colors.slice(0, 4).map((c: string, i: number) => (
+                    <span key={i} className="w-3 h-3 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
+                  ))}
+                </div>
+              ) : null;
+            })()}
+          </div>
         </motion.div>
       )}
 
@@ -3285,30 +3294,38 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   )?.items?.find((i: any) => i.label?.toLowerCase().includes("nom"))?.value || "";
 
   // ── Extract vault brand intelligence ──
-  const vaultSector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
-  const vaultTone = vault?.tone;
+  const vaultSector = vault?.industry || "";
+  const vaultTone = vault?.tone; // { formality, confidence, warmth, humor, primary_tone, adjectives }
   const vaultTonePrimary = vaultTone?.primary_tone || "";
-  const vaultToneAdj = vaultTone?.adjectives || [];
+  const vaultToneAdj: string[] = Array.isArray(vaultTone?.adjectives) ? vaultTone.adjectives : [];
   const vaultPromise = vault?.brand_platform?.promise || "";
   const vaultCreativeTension = vault?.brand_platform?.creative_tension || "";
   const vaultNarrativeRegister = vault?.brand_platform?.narrative_register || "";
   const vaultTagline = vault?.tagline || "";
   const vaultMission = vault?.mission || "";
-  const vaultValues = vault?.values || [];
+  const vaultValues: string[] = (() => {
+    const v = vault?.values;
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string" && v) return v.split(",").map((s: string) => s.trim()).filter(Boolean);
+    return [];
+  })();
+  const vaultKeyMessages: string[] = Array.isArray(vault?.key_messages) ? vault.key_messages.filter(Boolean) : [];
+  // Colors: vault stores { hex, name, role }[] — extract hex strings
   const vaultColors: string[] = (() => {
-    const raw = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+    const raw = vault?.colors || [];
     if (!Array.isArray(raw)) return [];
     return raw.map((c: any) => {
       if (typeof c === "string") return c;
-      if (c && typeof c === "object") return c.hex || c.color_hex || c.value || c.color || "";
-      return String(c || "");
+      if (c && typeof c === "object") return c.hex || c.color_hex || "";
+      return "";
     }).filter(Boolean);
   })();
-  const vaultLogoUrl = vault?.logo_url || vault?.logoUrl || vault?.logo?.url || "";
+  const vaultLogoUrl = vault?.logo_url || vault?.logoUrl || "";
+  // Audiences: vault stores { name, description }[] — extract names
   const vaultAudiences: string[] = (() => {
-    const raw = vault?.target_audiences || vault?.targetAudiences || [];
+    const raw = vault?.target_audiences || [];
     if (!Array.isArray(raw)) return [];
-    return raw.map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 4);
+    return raw.map((a: any) => typeof a === "string" ? a : a.name || "").filter(Boolean).slice(0, 4);
   })();
 
   // ── Pre-fill from vault on mount ──
@@ -3332,12 +3349,13 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     if (!targetAudience && vaultAudiences.length > 0) {
       setTargetAudience(vaultAudiences[0]);
     }
-    // Key messages: seed from vault values + promise
+    // Key messages: seed from vault key_messages first, then values
     if (!keyMessages) {
-      const seeds: string[] = [];
-      if (vaultPromise) seeds.push(vaultPromise);
-      if (Array.isArray(vaultValues) && vaultValues.length) seeds.push(...vaultValues.slice(0, 3));
-      if (seeds.length) setKeyMessages(seeds.join(", "));
+      if (vaultKeyMessages.length > 0) {
+        setKeyMessages(vaultKeyMessages.slice(0, 3).join(", "));
+      } else if (vaultValues.length > 0) {
+        setKeyMessages(vaultValues.slice(0, 3).join(", "));
+      }
     }
   }, [vault]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3429,12 +3447,10 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                     </span>
                   )}
                 </div>
-                {/* Brand insight sentence */}
-                {(vaultPromise || vaultTagline) && (
-                  <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.5, marginBottom: 6 }}>
-                    {vaultTagline ? `"${vaultTagline}"` : ""}
-                    {vaultTagline && vaultPromise ? " — " : ""}
-                    {vaultPromise || ""}
+                {/* Tagline only (short) — not full promise which can be too long */}
+                {vaultTagline && (
+                  <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.5, marginBottom: 6, fontStyle: "italic" }}>
+                    "{vaultTagline}"
                   </p>
                 )}
                 {/* Compact brand attributes */}
