@@ -476,14 +476,20 @@ export function StudioPage() {
           let productBrief = brief || "";
           let productRefUrls: string[] = [];
 
+          // ── ATTACHED IMAGE: if user attached a reference photo in the chat, use it as product ref ──
+          if (attachedImage?.signedUrl) {
+            productRefUrls.push(attachedImage.signedUrl);
+            console.log(`[studio] Using attached reference image as product ref: ${attachedImage.signedUrl.slice(0, 60)}`);
+          }
+
           // ── SCRAPE PRODUCT URL: if the AI collected a product page URL, scrape it for images ──
           if (productUrl && typeof productUrl === "string" && productUrl.startsWith("http")) {
             try {
               console.log(`[studio] Scraping product URL for images: ${productUrl.slice(0, 80)}`);
               const scrapeRes = await serverPost("/products/scrape-url", { url: productUrl });
               if (scrapeRes.success && scrapeRes.product?.imageUrls?.length) {
-                productRefUrls = scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5);
-                console.log(`[studio] Scraped ${productRefUrls.length} product images from URL`);
+                productRefUrls.push(...scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 5));
+                console.log(`[studio] Scraped product images from URL, total: ${productRefUrls.length}`);
                 // Also enrich the brief with scraped product info
                 const sp = scrapeRes.product;
                 if (sp.name) productBrief += `\n\nPRODUCT: ${sp.name}`;
