@@ -1632,8 +1632,9 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
         >
           {/* Color palette strip */}
           {(() => {
-            const colors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
-            return Array.isArray(colors) && colors.length > 0 ? (
+            const rawColors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+            const colors = Array.isArray(rawColors) ? rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || c?.color_hex || c?.value || c?.color || "").filter(Boolean) : [];
+            return colors.length > 0 ? (
               <div className="flex items-center gap-1">
                 {colors.slice(0, 5).map((c: string, i: number) => (
                   <span key={i} className="w-4 h-4 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
@@ -3294,7 +3295,15 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const vaultTagline = vault?.tagline || "";
   const vaultMission = vault?.mission || "";
   const vaultValues = vault?.values || [];
-  const vaultColors = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+  const vaultColors: string[] = (() => {
+    const raw = vault?.colors || vault?.colorPalette || vault?.brand_platform?.colors || [];
+    if (!Array.isArray(raw)) return [];
+    return raw.map((c: any) => {
+      if (typeof c === "string") return c;
+      if (c && typeof c === "object") return c.hex || c.color_hex || c.value || c.color || "";
+      return String(c || "");
+    }).filter(Boolean);
+  })();
   const vaultLogoUrl = vault?.logo_url || vault?.logoUrl || vault?.logo?.url || "";
   const vaultAudiences: string[] = (() => {
     const raw = vault?.target_audiences || vault?.targetAudiences || [];
