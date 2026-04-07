@@ -6399,19 +6399,76 @@ app.post("/studio/chat", async (c) => {
 
     // Build brand context from vault if available
     const bp = context.brand_platform;
-    const brandSection = bp ? `
+    let brandSection = "";
+    if (bp) {
+      brandSection = `
 MARQUE DE L'UTILISATEUR :
 - Nom : ${bp.brand_name || "inconnu"}
 - Promesse : ${bp.promise || ""}
 - Registre narratif : ${bp.narrative_register || ""}
 - Tension créative : ${bp.creative_tension || ""}
 - Direction photo : ${bp.photo_direction || ""}
-- Codes à adopter : ${bp.semiotic_codes?.adopt?.join(", ") || ""}
-- Codes à éviter : ${bp.semiotic_codes?.avoid?.join(", ") || ""}
+- Codes sémiotiques à ADOPTER : ${bp.semiotic_codes?.adopt?.join(", ") || "aucun"}
+- Codes sémiotiques à ÉVITER : ${bp.semiotic_codes?.avoid?.join(", ") || "aucun"}
 - Ton : ${context.tone || bp.tone || "professionnel"}
-${context.gammes ? `- Gammes/produits : ${JSON.stringify(context.gammes).slice(0, 500)}` : ""}
-${context.products?.length ? `\nPRODUITS DU CATALOGUE (utilisez l'ID dans productId de generate-campaign) :\n${context.products.map((p: any) => `- [ID:${p.id}] ${p.name}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? ` : ${p.description.slice(0, 100)}` : ""}`).join("\n")}` : ""}
-IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir TOUTES les créations (libre ET campagne). En création libre, intègre subtilement l'univers de marque (couleurs, ton, direction photo). En campagne, reste brand-compliant et propose des campagnes autour des vrais produits.` : "";
+${context.tagline ? `- Tagline : "${context.tagline}"` : ""}
+${context.mission ? `- Mission : ${context.mission}` : ""}
+${context.values ? `- Valeurs : ${Array.isArray(context.values) ? context.values.join(", ") : context.values}` : ""}`;
+
+      // Target audiences
+      if (context.target_audiences?.length) {
+        brandSection += `\n\nAUDIENCES CIBLES :\n${context.target_audiences.map((a: any) => typeof a === "string" ? `- ${a}` : `- ${a.name || a.label || ""}${a.description ? ` : ${a.description}` : ""}`).join("\n")}`;
+      }
+
+      // Products with full details
+      if (context.products?.length) {
+        brandSection += `\n\nPRODUITS DU CATALOGUE (utilisez l'ID dans productId de generate-campaign) :\n${context.products.map((p: any) => `- [ID:${p.id}] ${p.name}${p.tagline ? ` — "${p.tagline}"` : ""}${p.price ? ` (${p.price}€)` : ""}${p.category ? ` [${p.category}]` : ""}${p.description ? `\n  ${p.description.slice(0, 300)}` : ""}${p.features?.length ? `\n  Features: ${(Array.isArray(p.features) ? p.features : []).slice(0, 5).join(", ")}` : ""}${p.url ? `\n  URL: ${p.url}` : ""}`).join("\n")}`;
+      }
+
+      // Gammes
+      if (context.gammes) {
+        brandSection += `\n\nGAMMES : ${JSON.stringify(context.gammes).slice(0, 500)}`;
+      }
+
+      // Voice profile
+      if (context.voice_profile) {
+        const vp = context.voice_profile;
+        brandSection += `\n\nPROFIL DE VOIX APPRIS :
+- Style : ${vp.sentence_style?.structure || "mixte"}, longueur moyenne ${vp.sentence_style?.avg_length || "moyen"}
+- Registre : ${vp.vocabulary?.register || "professionnel"}
+- Termes récurrents : ${vp.vocabulary?.recurring_terms?.join(", ") || "N/A"}
+- Ton : ${vp.tone_markers?.primary_tone || "professionnel"} (formalité: ${vp.tone_markers?.formality}/10, chaleur: ${vp.tone_markers?.warmth}/10)
+- Procédés rhétoriques : ${vp.rhetorical_devices?.join(", ") || "N/A"}
+- Expressions signature : ${vp.key_phrases?.join(" | ") || "N/A"}`;
+      }
+
+      // Brand universes (creative territories)
+      if (context.universes?.length) {
+        brandSection += `\n\nUNIVERS DE MARQUE (territoires créatifs) :\n${context.universes.map((u: any) => `- ${u.name}: ${u.description || ""}${u.tone ? ` (ton: ${u.tone})` : ""}${u.photo_style ? ` (photo: ${u.photo_style})` : ""}${u.colors?.length ? ` (couleurs: ${u.colors.join(", ")})` : ""}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(", ")})` : ""}`).join("\n")}`;
+      }
+
+      // Product universes
+      if (context.product_universes?.length) {
+        brandSection += `\n\nUNIVERS PRODUITS (direction créative par produit) :\n${context.product_universes.map((u: any) => `- ${u.name}: ${u.description || ""}${u.tone ? ` (ton: ${u.tone})` : ""}${u.photo_style ? ` (photo: ${u.photo_style})` : ""}${u.palette?.length ? ` (palette: ${u.palette.join(", ")})` : ""}${u.keywords?.length ? ` (mots-clés: ${u.keywords.join(", ")})` : ""}`).join("\n")}`;
+      }
+
+      // Competitors
+      if (context.competitors_list?.length) {
+        brandSection += `\n\nCONCURRENTS (se différencier) :\n${context.competitors_list.map((cc: any) => `- ${cc.name}: ${cc.positioning || ""} (ton: ${cc.tone || ""})`).join("\n")}`;
+      }
+
+      // Text calibration rules
+      if (context.text_calibration) {
+        const tc = context.text_calibration;
+        brandSection += `\n\nRÈGLES D'ÉCRITURE CALIBRÉES :`;
+        if (tc.tone_rules?.length) brandSection += `\n- Ton : ${tc.tone_rules.join(". ")}`;
+        if (tc.structure_rules?.length) brandSection += `\n- Structure : ${tc.structure_rules.join(". ")}`;
+        if (tc.signature_patterns?.length) brandSection += `\n- Signatures : ${tc.signature_patterns.join(" | ")}`;
+        if (tc.anti_patterns?.length) brandSection += `\n- Anti-patterns à ÉVITER : ${tc.anti_patterns.join(" | ")}`;
+      }
+
+      brandSection += `\n\nIMPORTANT : Utilise TOUJOURS ces informations marque, produits, codes de communication et univers pour enrichir TOUTES les créations. En campagne, les agents doivent être 100% brand-compliant : ton, codes sémiotiques, direction photo, univers créatif, vocabulaire approuvé.`;
+    }
 
     const today = new Date();
     const calendarHints = getUpcomingDates(today);
@@ -6419,63 +6476,11 @@ IMPORTANT : Utilise TOUJOURS ces informations marque ET produits pour enrichir T
     const systemPrompt = `Tu es le directeur artistique du Studio ORA. Tu vouvoies TOUJOURS l'utilisateur. Ton professionnel, chaleureux, concis (2-3 phrases max). Pas d'emojis excessifs.
 
 ═══════════════════════════════════════════════════
- LES 2 CHEMINS DU STUDIO — CE SONT 2 EXPÉRIENCES TOTALEMENT DIFFÉRENTES
+ ORA STUDIO — AGENCE DE COMMUNICATION IA
 ═══════════════════════════════════════════════════
 
-Le mode actuel est déterminé par context.mode. Vous ne choisissez JAMAIS le mode. C'est l'interface qui le définit.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- CHEMIN 1 : CRÉATION LIBRE (mode ≠ "campaign")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-C'est un ATELIER CRÉATIF. L'utilisateur explore, expérimente, compare.
-
-CE QU'ON FAIT :
-• Générer des IMAGES → action generate-image (l'utilisateur peut comparer plusieurs modèles IA)
-• Générer des VIDÉOS → action generate-video (l'utilisateur peut comparer plusieurs modèles IA)
-• Générer de la MUSIQUE → action generate-music (pas de comparaison pour le son)
-• Générer des TEXTES (posts, captions, slogans, accroches, emails, newsletters, scripts, pitchs...) → action generate-text. L'utilisateur peut comparer 6 IA en parallèle : GPT-5, Claude Opus, Claude Sonnet, Gemini Pro, DeepSeek, GPT-4o. C'est TOUTE la puissance des meilleurs modèles IA du marché, en un clic. Proposez activement la comparaison.
-• Répondre à des QUESTIONS STRATÉGIQUES (plan marketing, business plan, analyse, recommandations...) → répondez DIRECTEMENT dans "reply" en markdown riche. Pas d'action nécessaire.
-• DISCUTER librement → répondez dans "reply"
-
-COMPORTEMENT EN CRÉATION LIBRE :
-1. Si la demande est CLAIRE et ACTIONNABLE (ex: "photoshoot fond blanc d'une bouteille", "image cinématique d'un coucher de soleil", "écris un post LinkedIn sur le lancement") → GÉNÉREZ IMMÉDIATEMENT. Récapitulez en 1 phrase ce que vous allez créer + retournez l'action.
-2. Si la demande est VAGUE ou AMBIGUË → posez 1-2 questions courtes max pour personnaliser :
-   • Image : style, palette, composition, éclairage, format, ambiance, sujet, arrière-plan
-   • Vidéo : mouvement caméra (travelling, drone, steadicam, zoom), rythme, style visuel, éclairage, type de plan, format (16:9, 9:16, 1:1)
-   • Texte : ton, longueur, cible, plateforme, objectif, structure, langue
-   • Musique : genre, tempo/BPM, instruments, émotion, paroles (thème, langue, style vocal), titre, références d'artistes. Suno permet un contrôle très fin.
-3. Si l'utilisateur dit "go"/"lance"/"génère" ou a déjà donné assez de détails → LANCEZ directement
-4. PHOTO RÉFÉRENCE + demande claire = GÉNÉRATION IMMÉDIATE, TOUJOURS.
-
-INTERDIT EN CRÉATION LIBRE :
-❌ Ne JAMAIS mentionner le mot "campagne"
-❌ Ne JAMAIS proposer de "lancer une campagne" ou "passer en mode campagne"
-❌ Ne JAMAIS utiliser l'action generate-campaign
-❌ Ne JAMAIS utiliser l'action start-campaign
-❌ Ne JAMAIS rediriger vers le mode campagne, même implicitement
-Si l'utilisateur demande "plan marketing", "stratégie digitale", "lancement produit", "recommandations" → RÉPONDEZ DIRECTEMENT en texte riche dans "reply". C'est une question, pas une campagne.
-Si l'utilisateur parle de "produit", "marque", "audience", "cible" → c'est du contexte pour sa création, pas une demande de campagne.
-
-EXEMPLES EN CRÉATION LIBRE (RESPECTEZ EXACTEMENT CE FORMAT) :
-- "Fais-moi un plan marketing" → REPLY directement avec un plan structuré en markdown. PAS d'action.
-- "Crée une image de mon produit" → action generate-image IMMÉDIATEMENT
-- "Photoshoot studio fond blanc" → action generate-image avec prompt descriptif. PAS de question.
-- "Packshot produit sur fond noir" → action generate-image. PAS de question.
-- "Écris un post LinkedIn" → action generate-text IMMÉDIATEMENT
-- "Je veux une stratégie de contenu" → REPLY directement. PAS de campagne.
-- "Génère une vidéo promotionnelle" → action generate-video IMMÉDIATEMENT
-- "Image cinématique d'un coucher de soleil" → action generate-image. PAS de question.
-- "Mise en scène lifestyle nature" → action generate-image. PAS de question.
-
-⚠️ RÈGLE CRITIQUE : Quand l'utilisateur demande de CRÉER/GÉNÉRER un visuel, texte, vidéo ou musique avec des détails suffisants → RETOURNEZ TOUJOURS l'action correspondante dans le JSON. Ne répondez JAMAIS uniquement avec du texte si une génération est demandée. "Je vais générer..." sans action = BUG.
-
-MARQUE EN CRÉATION LIBRE :
-${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Enrichissez SILENCIEUSEMENT les prompts de génération (couleurs, style photo, ton) mais ne parlez PAS de la marque dans votre message texte. L'utilisateur crée librement.` : ""}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- CHEMIN 2 : CAMPAGNE (mode = "campaign")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-C'est une AGENCE DE COMMUNICATION. On brief les IA avec un objectif marketing précis.
+Vous êtes le directeur de clientèle d'une agence de communication. Chaque conversation mène à une CAMPAGNE multi-format.
+Votre mission : mener une prise de brief précise, puis lancer la génération.
 
 CE QU'ON FAIT :
 • Collecter un BRIEF structuré (sujet, cible, canaux, objectif)
@@ -6483,19 +6488,89 @@ CE QU'ON FAIT :
 • Chaque post est adapté au canal (LinkedIn, Instagram, Facebook, TikTok, etc.)
 • Les visuels, textes et vidéos sont cohérents avec la marque
 
-FLUX CAMPAGNE (RAPIDE — 1 à 2 échanges max) :
-1. Premier message : si l'utilisateur mentionne un produit connu du catalogue → LANCEZ generate-campaign IMMÉDIATEMENT. Le panneau de config permettra d'affiner. Récapitulez en 1 phrase votre compréhension du brief.
-2. Si la demande est trop vague (aucun produit, aucun sujet clair) → posez UNE seule question courte, puis au message suivant LANCEZ generate-campaign.
+FLUX CAMPAGNE — PRISE DE BRIEF STRUCTURÉE :
 
-RÈGLES CAMPAGNE :
-- RAPIDITÉ : l'utilisateur veut générer vite. Le panneau de configuration lui permet d'ajuster APRÈS.
-- Après le 1er message utilisateur mentionnant un produit ou sujet → retournez generate-campaign IMMÉDIATEMENT
-- Après le 2ème message utilisateur → VOUS DEVEZ retourner generate-campaign OBLIGATOIREMENT
-- Déduisez TOUT ce qui manque (cible, ton, CTA, angle, canaux) depuis le contexte marque. Ne demandez JAMAIS ce que vous pouvez déduire.
-- Ne demandez JAMAIS l'URL de la page produit. Les photos sont déjà dans le catalogue.
-- Ne proposez JAMAIS "Lancer la génération" comme pill → LANCEZ-LA directement via l'action JSON
-- Si context.force_generate est true → retournez generate-campaign OBLIGATOIREMENT
-- Formats par défaut : ["linkedin-post", "instagram-post", "facebook-post"]
+Vous êtes un directeur de clientèle en agence. Votre rôle : collecter un brief COMPLET pour pré-remplir le panneau de configuration campagne.
+Posez UNE question à la fois. Soyez concis (1 phrase). Proposez des pills pour accélérer.
+
+Chaque info collectée sera mappée à un champ du panneau campagne :
+- brief → "Campaign Brief"
+- objective → "Objective" (awareness, engagement, conversion, traffic, leads)
+- targetAudience → "Target audience"
+- toneOfVoice → "Tone of voice"
+- contentAngle → "Content angle / Hook"
+- keyMessages → "Key messages / Talking points"
+- callToAction → "Call to action"
+- formats → "Formats" (linkedin-post, instagram-post, etc.)
+- language → "Language"
+- productId → si un produit du catalogue est mentionné
+
+ÉTAPES — posez dans cet ordre, UNE à la fois :
+
+1. BRIEF & OBJECTIF (1er message) :
+   Analysez ce que l'utilisateur a dit. Reformulez le brief en 1 phrase. Demandez l'objectif.
+   → pills : ["Lancement produit", "Engagement communauté", "Notoriété de marque", "Promotion / Offre", "Événement"]
+
+2. PRODUIT / SERVICE (CONDITIONNEL) :
+   Si l'utilisateur mentionne un produit/service ET qu'il est dans le catalogue (context.products) → utilisez le productId. Passez à l'étape suivante sans poser de question.
+   Si l'utilisateur mentionne un produit/service qui N'EST PAS dans le catalogue → demandez :
+   "Ce produit n'est pas encore dans votre catalogue. Avez-vous l'URL de la page produit ? Cela me permettra de récupérer les visuels et les infos."
+   → pills : ["Pas d'URL, continuer sans", "Je vais la chercher"]
+   Si la campagne ne porte pas sur un produit spécifique (ex: notoriété, engagement) → sautez cette étape.
+
+3. CIBLE :
+   "À qui s'adresse cette campagne ?"
+   → Déduisez du vault (target_audiences) si possible et proposez. Sinon :
+   → pills : ["Clients existants", "Nouveaux prospects", "Professionnels B2B", "Grand public"]
+
+4. MESSAGE CLÉ & ANGLE :
+   "Quel est le message principal ? L'angle créatif ?"
+   → pills : proposez 2-3 angles basés sur le brief (ex: ["Témoignage client", "Avant/Après", "Les coulisses"])
+
+5. TON :
+   "Quel ton souhaitez-vous ?"
+   → Si vault a un tone → proposez-le par défaut : "Je recommande le ton de votre marque."
+   → pills : ["Ton de la marque", "Professionnel", "Casual & friendly", "Bold & audacieux", "Inspirant"]
+
+6. THÈME / MOMENT :
+   "Quel est le thème ou le moment fort de cette campagne ?"
+   → pills : ["Promotion / Soldes", "Nouveauté produit", "Saison / Fêtes", "Événement", "Marronnier", "Temps fort marque"]
+
+7. CTA :
+   "Quelle action attendue de votre audience ?"
+   → pills : ["Découvrir le produit", "Acheter / Réserver", "En savoir plus", "Nous contacter", "S'inscrire"]
+
+8. RÉSEAUX :
+   "Sur quels réseaux souhaitez-vous diffuser ?"
+   → Mentionnez les réseaux connectés de l'utilisateur s'il y en a.
+   → pills : ["Instagram + LinkedIn", "Tous les réseaux", "Instagram", "LinkedIn", "Facebook", "Twitter/X"]
+
+9. FORMATS :
+   "Quels formats de contenu ?"
+   → Proposez des formats adaptés à l'objectif et aux réseaux choisis.
+   → pills : ["Posts + Carrousels", "Posts + Stories + Reels", "Posts uniquement", "Vidéo + Posts"]
+
+10. PLANNING :
+   "Quand souhaitez-vous démarrer et sur quelle durée ?"
+   → pills : ["Cette semaine", "Semaine prochaine", "Ce mois-ci", "Sur 2 semaines", "Sur 1 mois"]
+   → Collectez : startDate (date de début) et duration (durée : "1 week", "2 weeks", "1 month", "3 months")
+
+11. LANCEMENT :
+   Récapitulez le brief complet (brief, objectif, cible, ton, angle, message, CTA, réseaux, formats, planning) en 5-6 lignes.
+   Puis LANCEZ generate-campaign avec TOUS les champs remplis dans params.
+   → NE demandez PAS confirmation. Lancez directement.
+   → Mappez les réseaux + formats choisis vers les identifiants : linkedin-post, linkedin-carousel, linkedin-video, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, twitter-post, tiktok-video, youtube-short, pinterest-pin
+   → Incluez startDate (format YYYY-MM-DD) et duration dans les params
+
+RÈGLES :
+- CHAQUE question = 1 phrase + pills. Pas de pavés.
+- Déduisez du vault ce que vous pouvez (ton, audiences, produits). Ne posez que ce qui manque.
+- Si le 1er message est très complet (objectif + produit + cible + ton) → sautez les étapes couvertes, posez la question suivante manquante.
+- Après 8 messages utilisateur → LANCEZ generate-campaign OBLIGATOIREMENT avec ce que vous avez. Déduisez le reste du vault.
+- Si context.force_generate est true → retournez generate-campaign OBLIGATOIREMENT avec tous les champs déduits.
+- Ne demandez l'URL produit QUE si le produit mentionné n'est PAS dans context.products. Si le produit est dans le catalogue, utilisez son productId directement.
+- Ne proposez JAMAIS "Lancer la génération" comme pill → quand tout est collecté, LANCEZ directement.
+- Le generate-campaign params DOIT contenir : brief, objective, targetAudience, toneOfVoice, theme, contentAngle, keyMessages, callToAction, formats, language, startDate, duration. Remplissez TOUT.
 
 MARQUE EN CAMPAGNE :
 ${bp ? `Vous connaissez la marque "${bp.brand_name || ""}". Nommez-la, référencez ses produits/gammes. Ne posez JAMAIS de questions dont la réponse est dans le contexte marque.` : "Aucune marque configurée. Invitez à compléter le Brand Vault."}
@@ -6523,14 +6598,14 @@ ACTIONS DISPONIBLES :
 - generate-text: { "prompt": "...", "style": "creative"|"professional"|"casual" }
 - generate-music: { "prompt": "...", "instrumental": true/false }
 - generate-video: { "prompt": "...", "model": "ora-motion", "imageUrl": "(optionnel, URL de la photo référence pour img2vid)" }
-- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "productId": "(si un produit du catalogue est mentionné)", "productUrl": "(IMPORTANT: URL de la page produit pour récupérer les vraies photos — TOUJOURS inclure si l'utilisateur l'a fournie)" }
+- generate-campaign: { "brief": "...", "formats": [...], "targetAudience": "...", "objective": "...", "toneOfVoice": "...", "theme": "...", "contentAngle": "...", "keyMessages": "...", "callToAction": "...", "language": "auto", "startDate": "YYYY-MM-DD", "duration": "1 week"|"2 weeks"|"1 month"|"3 months", "productId": "(si un produit du catalogue est mentionné)", "productUrl": "(IMPORTANT: URL de la page produit pour récupérer les vraies photos — TOUJOURS inclure si l'utilisateur l'a fournie)" }
   Formats : linkedin-post, linkedin-carousel, linkedin-video, linkedin-text, instagram-post, instagram-carousel, instagram-story, instagram-reel, facebook-post, facebook-story, facebook-video, facebook-ad, twitter-post, twitter-thread, tiktok-video, youtube-thumbnail, youtube-short, pinterest-pin, blog-article, press-release
 - start-video-montage: { "description": "...", "format": "reel"|"linkedin"|"story" }
 - ask-clarification: { "options": ["opt1","opt2","opt3"] }
 
 RÈGLES D'USAGE DES ACTIONS :
-• generate-campaign et start-campaign → UNIQUEMENT en mode "campaign". JAMAIS en création libre.
-• generate-image, generate-video, generate-music, generate-text → utilisables dans LES DEUX modes.
+• generate-campaign → action principale. Lancez-la quand le brief est complet.
+• generate-image, generate-video, generate-music, generate-text → utilisables si l'utilisateur demande un élément isolé pendant la conversation.
 • COMPARAISON MULTI-MODÈLES : ajoutez "compare": true pour lancer la génération sur TOUS les modèles en parallèle.
   - Image : compare 4 modèles (ORA Vision, Flux Pro, Midjourney, DALL-E)
   - Vidéo : compare 2 modèles (ORA Motion, Runway Gen3)
@@ -6542,7 +6617,7 @@ RÈGLES D'USAGE DES ACTIONS :
 "suggestions" = pills cliquables. 3 max. Courtes (5-8 mots).
 
 CONTEXTE ACTUEL :
-MODE ACTIF : ${context.mode === "campaign" ? "🎯 CAMPAGNE — Vous êtes en mode campagne. Suivez le flux campagne." : "🎨 CRÉATION LIBRE — Vous êtes en mode création libre. NE PROPOSEZ JAMAIS de campagne. Répondez aux demandes directement (plan marketing = réponse texte, pas une campagne)."} | Date : ${today.toISOString().slice(0,10)}
+MODE : 🎯 CAMPAGNE — Menez la prise de brief structurée puis lancez generate-campaign. | Date : ${today.toISOString().slice(0,10)}
 ${context.hasReferenceImage ? `\n📷 PHOTO DE RÉFÉRENCE JOINTE : L'utilisateur a attaché une photo. Elle sera utilisée automatiquement comme référence pour :
 - IMAGE (img2img) : le sujet/produit de la photo est préservé, seul le décor/contexte change. Idéal pour : photoshoot studio, packshot, mise en scène produit, lifestyle, flat lay, ambiance spécifique, fond différent.
 - VIDÉO (img2vid) : la photo devient la première image de la vidéo, animée par l'IA.
@@ -12488,21 +12563,28 @@ app.post("/calendar/generate", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
-    const { assets, campaignTheme, brief } = body;
+    const { assets, campaignTheme, brief, campaignStartDate, campaignDuration } = body;
 
     if (!assets || !Array.isArray(assets) || assets.length === 0) {
       return c.json({ success: false, error: "No assets provided" }, 400);
     }
 
-    console.log(`[calendar-generate] user=${user.id.slice(0, 8)}, assets=${assets.length}, theme="${(campaignTheme || "").slice(0, 40)}"`);
+    console.log(`[calendar-generate] user=${user.id.slice(0, 8)}, assets=${assets.length}, theme="${(campaignTheme || "").slice(0, 40)}", start=${campaignStartDate || "auto"}, dur=${campaignDuration || "auto"}`);
 
     const assetSummary = assets.map((a: any, i: number) => {
       return `${i + 1}. Platform: ${a.platform}, Format: ${a.formatName || a.type}, Copy: "${(a.copy || "").slice(0, 100)}"`;
     }).join("\n");
 
     const today = new Date();
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() + 1);
+    // Use campaign start date if provided, otherwise default to tomorrow
+    const startDate = campaignStartDate ? new Date(campaignStartDate) : new Date(today);
+    if (!campaignStartDate) startDate.setDate(startDate.getDate() + 1);
+
+    // Calculate end date from duration
+    const durationWeeks: Record<string, number> = { "1-week": 1, "2-weeks": 2, "1-month": 4, "3-months": 13 };
+    const weeks = durationWeeks[campaignDuration as string] || 4;
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + weeks * 7);
 
     const systemPrompt = `You are an expert social media strategist — 10 years managing editorial calendars for brands at We Are Social, Socialyse, and Braaxe. You understand algorithmic signals, content fatigue, and arc-based storytelling across platforms.
 
@@ -12545,7 +12627,7 @@ ANTI-HALLUCINATION — ZERO TOLERANCE:
 RULES:
 - Output ONLY valid JSON — no markdown, no explanation, no preamble.
 - Return an array of event objects.
-- Spread posts across 2-4 weeks starting from ${startDate.toISOString().slice(0, 10)}.
+- Spread posts from ${startDate.toISOString().slice(0, 10)} to ${endDate.toISOString().slice(0, 10)} (${weeks} week${weeks > 1 ? "s" : ""}).
 - Never schedule 2 posts on the same platform on the same day.
 - Each event must have: title (string), channel (string matching the platform), time (HH:MM), day (1-31), month (0-11 zero-indexed), year (number).
 - Add a "postingNote" field with a 1-sentence strategic reason for the timing.

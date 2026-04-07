@@ -47,6 +47,8 @@ interface GeneratedResult {
   refImageUrl?: string;
   campaignPosts?: CampaignPost[];
   logoUrl?: string;
+  campaignStartDate?: string;
+  campaignDuration?: string;
 }
 
 interface CampaignPostVariant {
@@ -136,7 +138,7 @@ export function StudioPage() {
   const [vaultLoading, setVaultLoading] = useState(false);
   const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
-  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string } | null>(null);
+  const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string } | null>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -463,7 +465,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme } = action.params;
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -628,6 +630,9 @@ export function StudioPage() {
             keyMessages: keyMessages || "",
             callToAction: callToAction || "",
             language,
+            ...(campaignStartDate ? { campaignStartDate } : {}),
+            ...(campaignDuration ? { campaignDuration } : {}),
+            ...(campaignTheme ? { campaignTheme } : {}),
           };
 
           const textResults = await Promise.all(
@@ -900,6 +905,8 @@ export function StudioPage() {
               items: [],
               campaignPosts: posts,
               logoUrl: vault?.logo_url || vault?.logoUrl || undefined,
+              campaignStartDate: campaignStartDate as string | undefined,
+              campaignDuration: campaignDuration as string | undefined,
             };
           }
           break;
@@ -968,64 +975,66 @@ export function StudioPage() {
     if (!msg || isThinking) return;
     if (!text) setInput("");
 
-    // ── CREATE MODE shortcut: skip AI, show welcome locally ──
-    if (msg === "__CREATE_MODE__") {
-      setContext(prev => ({ ...prev, mode: "create" }));
-      setMessages([{
-        id: `assist-welcome-${Date.now()}`,
-        role: "assistant",
-        content: t("studio.welcomeCreateMode"),
-        suggestions: [t("studio.suggestImage"), t("studio.suggestVideoShort"), t("studio.suggestMusicShort"), t("studio.suggestTextShort")],
-      }]);
-      loadVault();
+    // ── INSPIRE → CAMPAIGN: idea from welcome screen, switch to campaign mode and send ──
+    if (msg.startsWith("__INSPIRE__:")) {
+      const idea = msg.slice("__INSPIRE__:".length).trim();
+      setContext(prev => ({ ...prev, mode: "campaign" }));
+      // Small delay to let mode update, then re-send as campaign message
+      await new Promise(r => setTimeout(r, 50));
+      const userMsg: ChatMessage = { id: `user-${Date.now()}`, role: "user", content: idea };
+      setMessages(prev => [...prev, userMsg]);
+      setIsThinking(true);
+      try {
+        let vaultData = vault;
+        let productsData = products;
+        if (!vaultData) {
+          const loaded = await loadVault(true);
+          vaultData = loaded.vault;
+          productsData = loaded.products;
+        }
+        const res = await serverPost("/studio/chat", {
+          message: idea,
+          history: [],
+          context: {
+            mode: "campaign",
+            ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
+            ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
+            ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
+            ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
+            ...((vaultData || vault)?.voice_profile ? { voice_profile: (vaultData || vault).voice_profile } : {}),
+            ...((vaultData || vault)?.universes?.length ? { universes: (vaultData || vault).universes } : {}),
+            ...((vaultData || vault)?.product_universes?.length ? { product_universes: (vaultData || vault).product_universes } : {}),
+            ...((vaultData || vault)?.competitors_list?.length ? { competitors_list: (vaultData || vault).competitors_list } : {}),
+            ...((vaultData || vault)?.text_calibration ? { text_calibration: (vaultData || vault).text_calibration } : {}),
+            ...((vaultData || vault)?.tagline ? { tagline: (vaultData || vault).tagline } : {}),
+            ...((vaultData || vault)?.mission ? { mission: (vaultData || vault).mission } : {}),
+            ...((vaultData || vault)?.values ? { values: (vaultData || vault).values } : {}),
+            ...((vaultData || vault)?.target_audiences?.length ? { target_audiences: (vaultData || vault).target_audiences } : {}),
+            ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category, tagline: p.tagline, features: p.features, url: p.url })).slice(0, 20) } : {}),
+          },
+        });
+        if (res.success) {
+          const assistMsg: ChatMessage = {
+            id: `assist-${Date.now()}`,
+            role: "assistant",
+            content: res.reply || "",
+            action: res.action || null,
+            suggestions: res.suggestions || [],
+            isGenerating: false,
+          };
+          setMessages(prev => [...prev, assistMsg]);
+          if (res.action?.type === "generate-campaign") {
+            setPendingCampaign({ action: res.action, msgId: assistMsg.id });
+          } else if (res.action?.type === "start-campaign") {
+            setContext(prev => ({ ...prev, mode: "campaign", campaignBrief: res.action.params }));
+          }
+        }
+      } catch { /* silent */ }
+      setIsThinking(false);
       return;
     }
 
     // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
-    if (msg === "__CAMPAIGN_MODE__") {
-      setContext(prev => ({ ...prev, mode: "campaign" }));
-      // Wait for auth token if not ready yet (max 5s)
-      let token = getAuthHeader();
-      if (!token) {
-        console.log("[studio] Campaign: waiting for auth token...");
-        for (let i = 0; i < 50 && !token; i++) {
-          await new Promise(r => setTimeout(r, 100));
-          token = getAuthHeader();
-        }
-        console.log(`[studio] Campaign: token after wait = ${token ? "OK" : "STILL EMPTY"}`);
-      }
-      const loaded = await loadVault(true);
-      console.log("[studio] Campaign vault loaded:", JSON.stringify(loaded.vault ? Object.keys(loaded.vault) : null), "products:", loaded.products?.length);
-      const brandName = loaded.vault?.brandName || loaded.vault?.company_name || loaded.vault?.brand_platform?.brand_name;
-      const allProducts = loaded.products?.map((p: any) => p.name).filter(Boolean) || [];
-      const hasBrand = !!brandName;
-      const hasProducts = allProducts.length > 0;
-
-      let welcomeContent = "";
-      let suggestions: string[] = [];
-
-      if (hasBrand && hasProducts) {
-        welcomeContent = t("studio.campaignWelcomeWithProducts").replace("{brand}", brandName).replace("{products}", allProducts.join(", "));
-        // Show ALL products as suggestion chips (max 8 for UI readability)
-        suggestions = allProducts.slice(0, 8).map((n: string) => `${t("studio.campaignPrefix")} ${n}`);
-        suggestions.push(t("studio.campaignAwareness"));
-      } else if (hasBrand) {
-        welcomeContent = t("studio.campaignWelcomeWithBrand").replace("{brand}", brandName);
-        suggestions = [t("studio.productLaunch"), t("studio.seasonalPromotion"), t("studio.campaignAwareness")];
-      } else {
-        welcomeContent = t("studio.campaignWelcomeNoBrand");
-        suggestions = [t("studio.completeBrandVault"), t("studio.launchWithoutBrand"), t("studio.genericCampaign")];
-      }
-
-      setMessages([{
-        id: `assist-campaign-welcome-${Date.now()}`,
-        role: "assistant",
-        content: welcomeContent,
-        suggestions,
-      }]);
-      return;
-    }
-
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -1035,9 +1044,9 @@ export function StudioPage() {
     setIsThinking(true);
 
     try {
-      // Default to "create" mode if not explicitly set to "campaign"
-      if (!context.mode) setContext(prev => ({ ...prev, mode: "create" }));
-      const isCampaignMode = context.mode === "campaign";
+      // Always campaign mode — Studio = agence
+      if (!context.mode) setContext(prev => ({ ...prev, mode: "campaign" }));
+      const isCampaignMode = true;
 
       // Load vault + products (always — brand context enriches all generations)
       let vaultData = vault;
@@ -1048,11 +1057,11 @@ export function StudioPage() {
         productsData = loaded.products;
       }
 
-      // Count campaign exchanges to force generation after 3 user messages
+      // Count campaign exchanges to force generation after enough brief questions
       const userMsgCount = isCampaignMode
         ? messages.filter(m => m.role === "user").length + 1
         : 0;
-      const forceGenerate = isCampaignMode && userMsgCount >= 3;
+      const forceGenerate = isCampaignMode && userMsgCount >= 8;
 
       const res = await serverPost("/studio/chat", {
         message: forceGenerate
@@ -1061,12 +1070,21 @@ export function StudioPage() {
         history: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         context: {
           ...context,
-          mode: context.mode || "create",
+          mode: "campaign",
           ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
           ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
           ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
           ...((vaultData || vault)?.logo_url || (vaultData || vault)?.logoUrl ? { logo_url: (vaultData || vault).logo_url || (vaultData || vault).logoUrl } : {}),
-          ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category })).slice(0, 20) } : {}),
+          ...((vaultData || vault)?.voice_profile ? { voice_profile: (vaultData || vault).voice_profile } : {}),
+          ...((vaultData || vault)?.universes?.length ? { universes: (vaultData || vault).universes } : {}),
+          ...((vaultData || vault)?.product_universes?.length ? { product_universes: (vaultData || vault).product_universes } : {}),
+          ...((vaultData || vault)?.competitors_list?.length ? { competitors_list: (vaultData || vault).competitors_list } : {}),
+          ...((vaultData || vault)?.text_calibration ? { text_calibration: (vaultData || vault).text_calibration } : {}),
+          ...((vaultData || vault)?.tagline ? { tagline: (vaultData || vault).tagline } : {}),
+          ...((vaultData || vault)?.mission ? { mission: (vaultData || vault).mission } : {}),
+          ...((vaultData || vault)?.values ? { values: (vaultData || vault).values } : {}),
+          ...((vaultData || vault)?.target_audiences?.length ? { target_audiences: (vaultData || vault).target_audiences } : {}),
+          ...((productsData?.length || products?.length) ? { products: (productsData?.length ? productsData : products).map((p: any) => ({ id: p.id, name: p.name, description: p.description, price: p.price, category: p.category, tagline: p.tagline, features: p.features, url: p.url })).slice(0, 20) } : {}),
           ...(forceGenerate ? { force_generate: true } : {}),
           ...(attachedImage?.signedUrl ? { hasReferenceImage: true, referenceImageUrl: attachedImage.signedUrl } : {}),
         },
@@ -1225,7 +1243,7 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} socialAccounts={socialAccounts} onAccountConnected={() => {
+              <WelcomeScreen onSend={handleSend} onFillInput={(text: string) => { setInput(text); setTimeout(() => inputRef.current?.focus(), 50); }} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} socialAccounts={socialAccounts} onAccountConnected={() => {
                 // Refresh social accounts after connection
                 setTimeout(() => {
                   fetch(`${API_BASE}/zernio/accounts/list`, {
@@ -1249,7 +1267,7 @@ export function StudioPage() {
                         msg={msg}
                         onSuggestion={handleSend}
                         onCompare={handleCompare}
-                        onFinalize={(posts, logoUrl, brief) => setFinalizingCampaign({ posts, logoUrl, brief })}
+                        onFinalize={(posts, logoUrl, brief, startDate, duration) => setFinalizingCampaign({ posts, logoUrl, brief, campaignStartDate: startDate, campaignDuration: duration })}
                         onEdit={(item, type, prompt) => {
                           if (type === "image" && item.url) {
                             handleSend(`Édite cette image : garde le même sujet mais propose une variante différente. Image originale: ${item.url}`);
@@ -1283,6 +1301,8 @@ export function StudioPage() {
                     serverGet={serverGet}
                     onClose={() => setFinalizingCampaign(null)}
                     onSaved={() => { setFinalizingCampaign(null); toast.success(t("studio.campaignSaved")); }}
+                    campaignStartDate={finalizingCampaign.campaignStartDate}
+                    campaignDuration={finalizingCampaign.campaignDuration}
                   />
                 )}
 
@@ -1482,14 +1502,12 @@ const SOCIAL_PLATFORMS_STUDIO = [
   { id: "twitter", label: "X", icon: Twitter },
 ];
 
-function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
+function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onFillInput: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
   const { t, locale } = useI18n();
   const { session, accessToken } = useAuth();
-  const [greeting, setGreeting] = useState<string>("");
-  const [greetingLoaded, setGreetingLoaded] = useState(false);
-  const greetingRequested = useRef(false);
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [briefText, setBriefText] = useState("");
+  const [inspiring, setInspiring] = useState(false);
+  const [ideas, setIdeas] = useState<string[]>([]);
 
   const hasConnectedAccounts = Array.isArray(socialAccounts) && socialAccounts.length > 0;
   const accountsLoaded = socialAccounts !== null;
@@ -1518,168 +1536,160 @@ function WelcomeScreen({ onSend, onSetMode, vault, products, socialAccounts, onA
     } catch { setConnecting(null); }
   }, [onAccountConnected]);
 
-  // Fetch personalized greeting from AI
-  useEffect(() => {
-    if (greetingRequested.current) return;
-    greetingRequested.current = true;
-
-    const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
-    const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
-    const productNames = (products || []).filter((p: any) => p.name).map((p: any) => p.name).slice(0, 5);
-
-    fetch(`${API_BASE}/studio/greeting`, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain", Authorization: `Bearer ${session?.access_token || ""}`, apikey: publicAnonKey },
-      body: JSON.stringify({ brandName, sector, products: productNames, locale }),
-    })
-      .then(r => r.json())
-      .then(data => { if (data.greeting) setGreeting(data.greeting); })
-      .catch(() => {})
-      .finally(() => setGreetingLoaded(true));
-  }, [vault, products, session, locale]);
-
-  // Build example campaigns — tailored if brand/products exist
   const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
-  const productNames = (products || []).filter((p: any) => p.name).map((p: any) => p.name).slice(0, 3);
-  const exampleCampaigns = brandName || productNames.length > 0
-    ? [
-        productNames.length > 0
-          ? (locale === "fr" ? `Lancer ${productNames[0]} sur Instagram et LinkedIn avec des visuels lifestyle` : `Launch ${productNames[0]} on Instagram and LinkedIn with lifestyle visuals`)
-          : t("studio.exampleCampaign1"),
-        brandName
-          ? (locale === "fr" ? `Animer la communauté ${brandName} cette semaine` : `Engage the ${brandName} community this week`)
-          : t("studio.exampleCampaign2"),
-        t("studio.exampleCampaign3"),
-      ]
-    : [t("studio.exampleCampaign1"), t("studio.exampleCampaign2"), t("studio.exampleCampaign3")];
 
-  const handleSubmit = () => {
-    const text = briefText.trim();
-    if (!text) return;
-    onSend(text);
+  const handleInspire = async () => {
+    setInspiring(true);
+    try {
+      // Build rich brand context from vault
+      const ctx: string[] = [];
+      if (brandName) ctx.push(`Brand: ${brandName}`);
+      const sector = vault?.sector || vault?.industry || vault?.brand_platform?.sector || "";
+      if (sector) ctx.push(`Sector: ${sector}`);
+      if (vault?.tagline) ctx.push(`Tagline: "${vault.tagline}"`);
+      if (vault?.mission) ctx.push(`Mission: ${vault.mission}`);
+      if (vault?.values) ctx.push(`Values: ${Array.isArray(vault.values) ? vault.values.join(", ") : vault.values}`);
+      // Tone
+      const tone = vault?.tone;
+      if (tone) {
+        const parts = [];
+        if (tone.primary_tone) parts.push(tone.primary_tone);
+        if (tone.adjectives?.length) parts.push(tone.adjectives.join(", "));
+        if (parts.length) ctx.push(`Tone: ${parts.join(" — ")}`);
+      }
+      // Brand platform
+      const bp = vault?.brand_platform;
+      if (bp?.promise) ctx.push(`Promise: ${bp.promise}`);
+      if (bp?.narrative_register) ctx.push(`Register: ${bp.narrative_register}`);
+      if (bp?.creative_tension) ctx.push(`Creative tension: ${bp.creative_tension}`);
+      // Target audiences
+      const audiences = vault?.target_audiences || vault?.targetAudiences || [];
+      if (Array.isArray(audiences) && audiences.length > 0) {
+        ctx.push(`Target audiences: ${audiences.map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 3).join(", ")}`);
+      }
+      // Products
+      const prods = (products || []).filter((p: any) => p.name).slice(0, 5);
+      if (prods.length > 0) {
+        ctx.push(`Products: ${prods.map((p: any) => `${p.name}${p.tagline ? ` — ${p.tagline}` : ""}${p.price ? ` (${p.price})` : ""}`).join("; ")}`);
+      }
+      // Connected platforms
+      const connectedPlatforms = (socialAccounts || []).map((a: any) => a.platform).filter(Boolean);
+      if (connectedPlatforms.length) ctx.push(`Connected platforms: ${connectedPlatforms.join(", ")}`);
+
+      const brandContext = ctx.length > 0 ? ctx.join("\n") : "No brand context available.";
+
+      const systemPrompt = `You are a senior social media strategist working for a creative agency. You have deep knowledge of this brand:\n\n${brandContext}\n\nGenerate exactly 3 different campaign ideas. Each idea = 1 short sentence (max 15 words), specific and actionable. Each must reference a concrete angle (product, event, value, audience). Format: one idea per line, numbered 1. 2. 3. — nothing else. Reply in ${locale === "fr" ? "French" : "English"}.`;
+
+      const res = await fetch(`${API_BASE}/generate/text-multi-get?prompt=${encodeURIComponent("Generate 3 campaign ideas for this brand.")}&models=gpt-5&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=200`, {
+        headers: { Authorization: `Bearer ${session?.access_token || ""}`, apikey: publicAnonKey },
+      });
+      const data = await res.json();
+      if (data.success && data.results?.[0]?.result?.text) {
+        const raw = data.results[0].result.text.trim();
+        const parsed = raw.split(/\n/).map((l: string) => l.replace(/^\d+[\.\)\-]\s*/, "").trim()).filter((l: string) => l.length > 5);
+        setIdeas(parsed.slice(0, 3));
+      }
+    } catch { /* silent */ }
+    setInspiring(false);
   };
 
-  const placeholderText = locale === "fr"
-    ? "Ex : Lancer notre nouveau produit sur Instagram et LinkedIn avec des visuels lifestyle et un code promo -20%..."
-    : "E.g.: Launch our new product on Instagram and LinkedIn with lifestyle visuals and a -20% promo code...";
-
   return (
-    <div className="h-full flex flex-col justify-center px-6 pb-4 max-w-2xl mx-auto w-full">
-      {/* Greeting — small text */}
-      <motion.p
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: greetingLoaded ? 1 : 0, y: greetingLoaded ? 0 : 8 }}
-        transition={{ duration: 0.4 }}
-        className="mb-6 flex items-center gap-2"
-        style={{ fontSize: "13px", color: "var(--muted-foreground)" }}
-      >
-        <Sparkles size={13} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
-        {greeting || t("studio.welcomeGreetingFallback")}
-      </motion.p>
-
-      {/* Hero headline */}
+    <div className="h-full flex flex-col justify-center items-center px-6 pb-4 max-w-xl mx-auto w-full">
+      {/* Headline — personalized with brand name */}
       <motion.h1
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className="mb-2"
-        style={{ fontSize: "28px", fontWeight: 700, color: "var(--foreground)", lineHeight: 1.2 }}
+        transition={{ duration: 0.4 }}
+        className="mb-3 text-center"
+        style={{ fontSize: "26px", fontWeight: 700, color: "var(--foreground)", lineHeight: 1.3 }}
       >
-        {t("studio.welcomeHeadline")}
+        {brandName
+          ? (locale === "fr" ? `${brandName}, engagez votre communauté` : `${brandName}, engage your community`)
+          : (locale === "fr" ? "Engagez votre communauté" : "Engage your community")}
       </motion.h1>
 
-      {/* Subtitle */}
+      {/* Subtitle — short, no brand repetition */}
       <motion.p
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-        className="mb-6"
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="mb-8 text-center"
         style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.5 }}
       >
-        {t("studio.welcomeSubtitle")}
+        {locale === "fr"
+          ? "Décrivez votre prochaine campagne ou laissez ORA vous inspirer"
+          : "Describe your next campaign or let ORA inspire you"}
       </motion.p>
 
-      {/* Brief textarea */}
+      {/* Inspire me button + idea bubbles */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.3 }}
-        className="mb-4"
-      >
-        <textarea
-          value={briefText}
-          onChange={e => setBriefText(e.target.value)}
-          placeholder={placeholderText}
-          className="w-full rounded-xl px-4 py-3.5 outline-none resize-none transition-all"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            fontSize: "14px",
-            lineHeight: 1.6,
-            minHeight: 120,
-            color: "var(--foreground)",
-          }}
-          onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-          onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-          onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
-        />
-      </motion.div>
-
-      {/* Example campaign cards */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
-        className="flex flex-wrap gap-2 mb-6"
-      >
-        {exampleCampaigns.map((example, i) => (
-          <button
-            key={i}
-            onClick={() => setBriefText(example)}
-            className="px-3 py-1.5 rounded-lg cursor-pointer transition-all hover:shadow-sm active:scale-[0.98]"
-            style={{
-              background: "var(--secondary)",
-              border: "1px solid var(--border)",
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "var(--muted-foreground)",
-              lineHeight: 1.4,
-            }}
-          >
-            {example}
-          </button>
-        ))}
-      </motion.div>
-
-      {/* Submit button */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.45 }}
-        className="mb-6"
+        className="flex flex-col items-center gap-4 mb-8 w-full"
       >
         <button
-          onClick={handleSubmit}
-          disabled={!briefText.trim()}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-xl cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          onClick={handleInspire}
+          disabled={inspiring}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all hover:shadow-md active:scale-[0.97] disabled:opacity-60 disabled:cursor-wait"
           style={{
             background: "var(--foreground)",
             color: "var(--background)",
-            fontSize: "14px",
+            fontSize: "13px",
             fontWeight: 600,
           }}
         >
-          <Rocket size={15} />
-          {t("studio.launchCampaign")}
+          {inspiring ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+          {inspiring
+            ? (locale === "fr" ? "Réflexion en cours..." : "Thinking...")
+            : (locale === "fr" ? "Inspirez-moi" : "Inspire me")}
         </button>
+
+        {/* Idea bubbles — appear after inspire */}
+        <AnimatePresence>
+          {ideas.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col gap-2 w-full max-w-md"
+            >
+              {ideas.map((idea, i) => (
+                <motion.button
+                  key={i}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  onClick={() => onSend(`__INSPIRE__:${idea}`)}
+                  className="text-left px-4 py-3 rounded-2xl rounded-bl-md cursor-pointer transition-all hover:shadow-md active:scale-[0.98] group"
+                  style={{
+                    background: "var(--secondary)",
+                    border: "1px solid var(--border)",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                    color: "var(--foreground)",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                >
+                  <div className="flex items-start gap-3">
+                    <Lightbulb size={14} className="flex-shrink-0 mt-0.5" style={{ color: "var(--muted-foreground)" }} />
+                    <span>{idea}</span>
+                    <ArrowRight size={13} className="flex-shrink-0 mt-0.5 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
+                  </div>
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* Social accounts bar */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.55 }}
-        className="flex items-center gap-2 flex-wrap"
+        transition={{ duration: 0.4, delay: 0.5 }}
+        className="flex items-center justify-center gap-2 flex-wrap"
       >
         {accountsLoaded && hasConnectedAccounts ? (
           <>
@@ -1750,7 +1760,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
 }) {
   const { t } = useI18n();
@@ -2016,7 +2026,7 @@ function CampaignCarousel({ posts, logoUrl }: { posts: CampaignPost[]; logoUrl?:
 function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
-  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string) => void;
+  onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
   logoUrl?: string;
 }) {
@@ -2121,39 +2131,158 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
   }
 
   if (result.type === "text") {
-    return (
-      <div className="space-y-2">
-        {result.items.map((item, i) => (
-          <div key={i} className="rounded-xl p-4 relative"
-            style={{
-              background: "var(--card)",
-              border: selected.has(i) ? "2px solid var(--foreground)" : "1px solid var(--border)",
-              cursor: result.items.length > 1 ? "pointer" : "default",
-            }}
-            onClick={() => result.items.length > 1 && toggleSelect(i)}>
-            {result.items.length > 1 && (
-              <div className="flex items-center gap-2 mb-2">
+    // --- Platform detection: parse text into platform sections ---
+    const PLATFORM_META: Record<string, { icon: typeof Instagram; color: string; label: string }> = {
+      instagram: { icon: Instagram, color: "#E1306C", label: "Instagram" },
+      linkedin: { icon: Linkedin, color: "#0A66C2", label: "LinkedIn" },
+      facebook: { icon: Facebook, color: "#1877F2", label: "Facebook" },
+      twitter: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
+      x: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
+    };
+
+    const parsePlatformSections = (text: string): { platform: string | null; content: string }[] => {
+      const platformRegex = /^(Instagram|LinkedIn|Facebook|Twitter|X)\s*[:\-–—]/gim;
+      const matches: { index: number; platform: string }[] = [];
+      let m;
+      while ((m = platformRegex.exec(text)) !== null) {
+        matches.push({ index: m.index, platform: m[1].toLowerCase() === "x" ? "twitter" : m[1].toLowerCase() });
+      }
+      if (matches.length === 0) return [{ platform: null, content: text }];
+      const sections: { platform: string | null; content: string }[] = [];
+      if (matches[0].index > 0) {
+        const pre = text.slice(0, matches[0].index).trim();
+        if (pre) sections.push({ platform: null, content: pre });
+      }
+      matches.forEach((match, idx) => {
+        const start = match.index;
+        const end = idx < matches.length - 1 ? matches[idx + 1].index : text.length;
+        sections.push({ platform: match.platform, content: text.slice(start, end).trim() });
+      });
+      return sections;
+    };
+
+    // --- Expandable card sub-component ---
+    const TEXT_TRUNCATE_LENGTH = 280;
+    const TextCard = ({ item, index, isGrid }: { item: typeof result.items[0]; index: number; isGrid: boolean }) => {
+      const [expanded, setExpanded] = useState(false);
+      const sections = parsePlatformSections(item.text || "");
+      const fullText = item.text || "";
+      const needsTruncation = fullText.length > TEXT_TRUNCATE_LENGTH;
+
+      return (
+        <div className="rounded-xl overflow-hidden relative group"
+          style={{
+            background: "var(--card)",
+            border: selected.has(index) ? "2px solid var(--foreground)" : "1px solid var(--border)",
+            cursor: result.items.length > 1 ? "pointer" : "default",
+          }}
+          onClick={() => result.items.length > 1 && toggleSelect(index)}>
+          {/* Model header */}
+          <div className="flex items-center justify-between px-4 py-2.5"
+            style={{ borderBottom: "1px solid var(--border)", background: "var(--secondary)" }}>
+            <div className="flex items-center gap-2">
+              {result.items.length > 1 && (
                 <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: selected.has(i) ? "var(--foreground)" : "var(--secondary)", border: "1.5px solid var(--border)" }}>
-                  {selected.has(i) && <Check size={10} style={{ color: "var(--background)" }} />}
+                  style={{ background: selected.has(index) ? "var(--foreground)" : "transparent", border: "1.5px solid var(--border)" }}>
+                  {selected.has(index) && <Check size={10} style={{ color: "var(--background)" }} />}
                 </div>
-                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase" }}>
-                  {item.model}
+              )}
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {item.model}
+              </span>
+              {item.latencyMs && (
+                <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                  {(item.latencyMs / 1000).toFixed(1)}s
                 </span>
-              </div>
-            )}
-            <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-              {item.text}
+              )}
             </div>
-            {/* Copy button */}
             <button onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(item.text || ""); toast.success(t("studio.textCopied")); }}
-              className="absolute top-3 right-3 w-7 h-7 rounded-md flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
+              className="w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-opacity opacity-60 hover:opacity-100"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
               title={t("studio.copy")}>
-              <BookOpen size={12} />
+              <BookOpen size={11} />
             </button>
           </div>
-        ))}
+
+          {/* Content with platform sections */}
+          <div className="px-4 py-3 space-y-3">
+            {sections.length > 1 ? (
+              // Multiple platform sections — render as separate mini-cards
+              sections.map((section, si) => {
+                const meta = section.platform ? PLATFORM_META[section.platform] : null;
+                const PlatformIcon = meta?.icon;
+                const displayText = !expanded && needsTruncation && si === 0
+                  ? section.content.slice(0, TEXT_TRUNCATE_LENGTH)
+                  : section.content;
+                return (
+                  <div key={si} className="rounded-lg p-3" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
+                    {meta && PlatformIcon && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: meta.color + "18" }}>
+                          <PlatformIcon size={11} style={{ color: meta.color }} />
+                        </div>
+                        <span style={{ fontSize: "11px", fontWeight: 600, color: meta.color }}>{meta.label}</span>
+                      </div>
+                    )}
+                    <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap", color: "var(--foreground)" }}>
+                      {!expanded && needsTruncation && si > 0 ? null : displayText}
+                    </div>
+                  </div>
+                );
+              }).filter(Boolean)
+            ) : (
+              // Single block — no platform sections detected
+              <div style={{ fontSize: "13px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {!expanded && needsTruncation ? fullText.slice(0, TEXT_TRUNCATE_LENGTH) + "…" : fullText}
+              </div>
+            )}
+          </div>
+
+          {/* Expand/collapse toggle */}
+          {needsTruncation && (
+            <button
+              onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 cursor-pointer transition-all"
+              style={{ borderTop: "1px solid var(--border)", fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", background: "var(--secondary)" }}
+              onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; }}
+              onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; }}>
+              <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "rotate(0)", transition: "0.2s" }} />
+              {expanded ? "Réduire" : "Voir plus"}
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    const isMultiModel = result.items.length > 1;
+
+    return (
+      <div className="space-y-3">
+        {/* Selection bar for multi-model */}
+        {isMultiModel && (
+          <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            <button onClick={selected.size === result.items.length ? clearSelection : selectAll}
+              className="flex items-center gap-1 px-2 py-1 rounded-md cursor-pointer transition-all"
+              style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              {selected.size === result.items.length ? <X size={10} /> : <CheckCircle2 size={10} />}
+              {selected.size === result.items.length ? t("studio.deselectAll") : t("studio.selectAll")}
+            </button>
+            {selected.size > 0 && (
+              <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
+                {selected.size}/{result.items.length} {selected.size > 1 ? t("studio.selectedPlural") : t("studio.selected")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Model comparison grid (side-by-side when multiple models) */}
+        <div className={isMultiModel ? "grid grid-cols-1 md:grid-cols-2 gap-3" : ""}>
+          {result.items.map((item, i) => (
+            <TextCard key={i} item={item} index={i} isGrid={isMultiModel} />
+          ))}
+        </div>
+
+        {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => onCompare(result)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all cursor-pointer"
@@ -2192,7 +2321,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
       <div className="space-y-3">
         <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} />
         <button
-          onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt)}
+          onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration)}
           className="flex items-center gap-2.5 w-full px-5 py-3 rounded-xl cursor-pointer transition-all group"
           style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}
           onMouseEnter={e => { e.currentTarget.style.opacity = "0.9"; }}
@@ -2404,7 +2533,7 @@ const CHANNEL_OPTIONS = [
   { id: "youtube", label: "YouTube", icon: Youtube },
 ];
 
-function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved }: {
+function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverPost, serverGet, onClose, onSaved, campaignStartDate, campaignDuration }: {
   posts: CampaignPost[];
   logoUrl?: string;
   brief: string;
@@ -2413,6 +2542,8 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   serverGet: (path: string) => Promise<any>;
   onClose: () => void;
   onSaved: () => void;
+  campaignStartDate?: string;
+  campaignDuration?: string;
 }) {
   const { t } = useI18n();
   const [step, setStep] = useState<FinalizerStep>("review");
@@ -2490,7 +2621,7 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
         imageUrl: p.imageUrl || "",
         videoUrl: p.videoUrl || "",
       }));
-      const res = await serverPost("/calendar/generate", { assets, brief, campaignTheme: campaignName });
+      const res = await serverPost("/calendar/generate", { assets, brief, campaignTheme: campaignName, ...(campaignStartDate ? { campaignStartDate } : {}), ...(campaignDuration ? { campaignDuration } : {}) });
       if (res.success && res.events) {
         const newDates: Record<number, { date: string; time: string }> = {};
         (res.events as any[]).forEach((evt: any, i: number) => {
@@ -2991,23 +3122,38 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [brief, setBrief] = useState(params.brief || "");
   const [selectedProduct, setSelectedProduct] = useState<string>(params.productId || "");
   const [objective, setObjective] = useState(params.objective || "awareness");
-  const [selectedNetworks, setSelectedNetworks] = useState<string[]>(["LinkedIn", "Instagram", "Facebook"]);
-  const [selectedFormats, setSelectedFormats] = useState<string[]>(
-    params.formats || ["linkedin-post", "instagram-post", "facebook-post"]
-  );
-  const [visualStyle, setVisualStyle] = useState("");
+  // Deduce networks from formats passed by chat
+  const initialFormats = params.formats || ["linkedin-post", "instagram-post", "facebook-post"];
+  const deduceNetworks = (fmts: string[]) => {
+    const nets = new Set<string>();
+    for (const f of fmts) {
+      if (f.startsWith("linkedin")) nets.add("LinkedIn");
+      else if (f.startsWith("instagram")) nets.add("Instagram");
+      else if (f.startsWith("facebook")) nets.add("Facebook");
+      else if (f.startsWith("twitter")) nets.add("Twitter");
+      else if (f.startsWith("tiktok")) nets.add("TikTok");
+      else if (f.startsWith("youtube")) nets.add("YouTube");
+      else if (f.startsWith("pinterest")) nets.add("Pinterest");
+    }
+    return nets.size > 0 ? Array.from(nets) : ["LinkedIn", "Instagram", "Facebook"];
+  };
+  const [selectedNetworks, setSelectedNetworks] = useState<string[]>(deduceNetworks(initialFormats));
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(initialFormats);
+  const [visualStyle, setVisualStyle] = useState(params.visualStyle || "");
   const [tone, setTone] = useState(params.toneOfVoice || "");
   const [targetAudience, setTargetAudience] = useState(params.targetAudience || "");
   const [callToAction, setCallToAction] = useState(params.callToAction || "");
-  const [moment, setMoment] = useState("");
+  const [moment, setMoment] = useState(params.theme || "");
   const [isSponsored, setIsSponsored] = useState(false);
   const [postCount, setPostCount] = useState("3");
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
-  const [textModels, setTextModels] = useState<string[]>(["gpt-4o"]);
-  const [imageModels, setImageModels] = useState<string[]>(["photon-1"]);
-  const [videoModels, setVideoModels] = useState<string[]>(["ora-motion"]);
+  const [textModels, setTextModels] = useState<string[]>(params.textModels || ["gpt-4o"]);
+  const [imageModels, setImageModels] = useState<string[]>(params.imageModels || ["photon-1"]);
+  const [videoModels, setVideoModels] = useState<string[]>(params.videoModels || ["ora-motion"]);
+  const [startDate, setStartDate] = useState(params.startDate || "");
+  const [duration, setDuration] = useState(params.duration || "");
   const [inspiring, setInspiring] = useState(false);
   // showAdvanced removed — all fields always visible
 
@@ -3103,6 +3249,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       imageModels,
       videoModels,
       visualStyle,
+      ...(startDate ? { startDate } : {}),
+      ...(duration ? { duration } : {}),
+      ...(moment ? { theme: moment } : {}),
     });
   };
 
@@ -3483,6 +3632,37 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   {LANGUAGE_OPTIONS.map(l => (
                     <Chip key={l.id} size="sm" selected={language === l.id} onClick={() => setLanguage(l.id)}>{l.label}</Chip>
                   ))}
+                </div>
+              </div>
+
+              {/* Planning — Start date + Duration */}
+              <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
+                  <Calendar size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Planning
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Date de début</label>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                      className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--foreground)" }}
+                      onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Durée</label>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { id: "1 week", label: "1 sem." },
+                        { id: "2 weeks", label: "2 sem." },
+                        { id: "1 month", label: "1 mois" },
+                        { id: "3 months", label: "3 mois" },
+                      ].map(d => (
+                        <Chip key={d.id} size="sm" selected={duration === d.id} onClick={() => setDuration(duration === d.id ? "" : d.id)}>{d.label}</Chip>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
         </div>
