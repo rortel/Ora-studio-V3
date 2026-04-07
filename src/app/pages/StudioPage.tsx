@@ -2607,14 +2607,18 @@ const CONFIG_TEXT_MODELS = [
   { id: "gpt-4o", label: "GPT-4o", badge: "Fast" },
   { id: "gpt-5", label: "GPT-5", badge: "Smart" },
   { id: "gpt-5.1", label: "GPT-5.1", badge: "Premium" },
+  { id: "gpt-5.2", label: "GPT-5.2", badge: "Latest" },
   // Anthropic
   { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative" },
   { id: "claude-haiku", label: "Claude Haiku", badge: "Ultra Fast" },
   { id: "claude-opus", label: "Claude Opus", badge: "Best" },
   // Google
   { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Multimodal" },
+  { id: "gemini-flash", label: "Gemini Flash", badge: "Fast" },
   // DeepSeek
   { id: "deepseek", label: "DeepSeek v3", badge: "Open Source" },
+  // ORA
+  { id: "ora-writer", label: "ORA Writer", badge: "Agence" },
 ];
 
 const CONFIG_IMAGE_MODELS = [
@@ -2623,28 +2627,53 @@ const CONFIG_IMAGE_MODELS = [
   // Luma
   { id: "photon-1", label: "Luma Photon", badge: "Quality" },
   { id: "photon-flash-1", label: "Photon Flash", badge: "Fast" },
-  // FAL / Flux
-  { id: "flux-pro", label: "Flux Pro (FAL)", badge: "Creative" },
-  { id: "flux-schnell", label: "Flux Schnell (FAL)", badge: "Ultra Fast" },
   // OpenAI
+  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o" },
   { id: "dall-e", label: "DALL-E 3", badge: "Precise" },
+  // FAL / Flux
+  { id: "flux-pro", label: "Flux Pro", badge: "Creative" },
+  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium" },
+  { id: "flux-dev-leo", label: "Flux Dev", badge: "Open" },
+  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast" },
+  // Kontext
+  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit" },
   // Leonardo
   { id: "phoenix-1.0", label: "Leonardo Phoenix", badge: "Versatile" },
   { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo" },
-  // Higgsfield
+  { id: "leonardo-lightning", label: "Leonardo Lightning", badge: "Fast" },
+  { id: "leonardo-kino", label: "Leonardo Kino", badge: "Cinema" },
+  // Higgsfield / SeedDream
   { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed" },
-  { id: "soul", label: "Soul (Higgsfield)", badge: "Artistic" },
+  { id: "seedream-v4.5", label: "SeedDream v4.5", badge: "Latest" },
+  { id: "soul", label: "Soul", badge: "Artistic" },
   { id: "nano-banana", label: "Nano Banana", badge: "Fast" },
+  { id: "nano-banana-2-leo", label: "Nano Banana 2", badge: "Upgraded" },
+  // ORA
+  { id: "ora-vision", label: "ORA Vision", badge: "Agence" },
 ];
 
 const CONFIG_VIDEO_MODELS = [
   // Luma
   { id: "ray-2", label: "Luma Ray 2", badge: "Quality" },
   { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast" },
-  // Higgsfield
+  // Google
+  { id: "veo-3.1", label: "Veo 3.1", badge: "Google" },
+  // OpenAI
+  { id: "sora-2", label: "Sora 2", badge: "OpenAI" },
+  // Kling
   { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic" },
+  // Seedance
   { id: "seedance-v1", label: "Seedance v1", badge: "TikTok" },
-  { id: "dop", label: "DOP (Higgsfield)", badge: "Creative" },
+  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro", badge: "Pro" },
+  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest" },
+  // Runway
+  { id: "runway-gen3", label: "Runway Gen-3", badge: "Creative" },
+  // Pika
+  { id: "pika", label: "Pika", badge: "Fun" },
+  // Higgsfield
+  { id: "dop", label: "DOP", badge: "Artistic" },
+  // ORA
+  { id: "ora-motion", label: "ORA Motion", badge: "Agence" },
 ];
 
 const TONE_OPTIONS = [
