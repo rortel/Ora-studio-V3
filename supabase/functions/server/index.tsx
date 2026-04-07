@@ -12882,6 +12882,15 @@ app.get("/calendar", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// POST version for CORS-safe calendar loading
+app.post("/calendar/list", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const events = await kv.getByPrefix(`calendar:${user.id}:`);
+    return c.json({ success: true, events: events || [] });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
 app.post("/calendar", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -12898,6 +12907,20 @@ app.delete("/calendar/:id", async (c) => {
   try {
     const user = await requireAuth(c);
     const eventId = c.req.param("id");
+    const events = await kv.getByPrefix(`calendar:${user.id}:`);
+    const found = events.find((ev: any) => ev.id === eventId || ev.id?.endsWith(eventId));
+    if (found) await kv.del(found.id);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
+// POST version for CORS-safe calendar delete
+app.post("/calendar/delete", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const eventId = body.eventId;
+    if (!eventId) return c.json({ success: false, error: "eventId required" }, 400);
     const events = await kv.getByPrefix(`calendar:${user.id}:`);
     const found = events.find((ev: any) => ev.id === eventId || ev.id?.endsWith(eventId));
     if (found) await kv.del(found.id);
