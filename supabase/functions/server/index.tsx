@@ -3357,11 +3357,16 @@ app.get("/generate/video-start", async (c) => {
 
     const aspectRatio = clientAspectRatio || mapping.aspectRatio;
 
+    // Luma Ray-2 supports specific durations: 5s, 9s. Map closest.
+    const lumaDuration = mapping.lumaModel?.includes("ray")
+      ? (videoDuration <= 7 ? 5 : 9)
+      : videoDuration;
+
     const body: any = {
       prompt: finalVideoPrompt,
       model: mapping.lumaModel,
       aspect_ratio: aspectRatio,
-      duration: `${videoDuration}s`,
+      duration: `${lumaDuration}s`,
     };
 
     if (resolvedImageUrl) {
@@ -4878,10 +4883,15 @@ app.post("/ideogram/remix", async (c) => {
     const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
     if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
 
-    console.log(`[ideogram/remix] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}", weight=${imageWeight}`);
+    console.log(`[ideogram/remix] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}", weight=${imageWeight}, imageUrl=${imageUrl.slice(0, 80)}`);
 
     const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) {
+      console.log(`[ideogram/remix] Failed to fetch source image: ${imgRes.status} ${imgRes.statusText}`);
+      return c.json({ success: false, error: `Failed to fetch source image: ${imgRes.status}` }, 500);
+    }
     const imgBlob = await imgRes.blob();
+    console.log(`[ideogram/remix] Source image fetched: ${imgBlob.size} bytes, type=${imgBlob.type}`);
 
     const fd = new FormData();
     fd.append("image", imgBlob, "image.png");
@@ -5000,7 +5010,7 @@ app.post("/ideogram/replace-background", async (c) => {
     const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
     if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
 
-    console.log(`[ideogram/replace-bg] user=${user.id.slice(0, 8)}, prompt="${(prompt || "").slice(0, 60)}"`);
+    console.log(`[ideogram/replace-bg] user=${user.id.slice(0, 8)}, prompt="${(prompt || "").slice(0, 60)}", imageUrl=${imageUrl.slice(0, 80)}`);
 
     // Fetch brand vault colors for color_palette compliance
     let brandColors: { color_hex: string; color_weight: number }[] | undefined;
@@ -5015,7 +5025,12 @@ app.post("/ideogram/replace-background", async (c) => {
     } catch { /* continue without brand colors */ }
 
     const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) {
+      console.log(`[ideogram/replace-bg] Failed to fetch source image: ${imgRes.status} ${imgRes.statusText}`);
+      return c.json({ success: false, error: `Failed to fetch source image: ${imgRes.status}` }, 500);
+    }
     const imgBlob = await imgRes.blob();
+    console.log(`[ideogram/replace-bg] Source image fetched: ${imgBlob.size} bytes, type=${imgBlob.type}`);
 
     const fd = new FormData();
     fd.append("image", imgBlob, "image.png");
