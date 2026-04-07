@@ -1183,7 +1183,7 @@ export function StudioPage() {
       const userMsgCount = isCampaignMode
         ? messages.filter(m => m.role === "user").length + 1
         : 0;
-      const forceGenerate = isCampaignMode && userMsgCount >= 8;
+      const forceGenerate = isCampaignMode && userMsgCount >= 4;
 
       const res = await serverPost("/studio/chat", {
         message: forceGenerate
