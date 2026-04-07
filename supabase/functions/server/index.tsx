@@ -190,6 +190,9 @@ function supabaseAdmin() {
   );
 }
 
+// ── Global Supabase client (used by storage uploads across all endpoints) ──
+const supabase = supabaseAdmin();
+
 // ── Auth Helpers ─────────────────────────────────────────────
 const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL") || "romainortel@gmail.com"; // FIX: depuis env
 
