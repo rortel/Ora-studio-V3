@@ -16,7 +16,7 @@ import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { useI18n } from "../lib/i18n";
 import { TemplateEditor } from "../components/TemplateEditor";
-import { TemplateSelectorGrid } from "../components/TemplateSelectorGrid";
+// TemplateSelectorGrid removed — template selection moved into CampaignConfigPanel
 import { registerTemplate, getTemplateById, getTemplatesForFormat } from "../components/templates";
 import type { TemplateDefinition } from "../components/templates/types";
 import { compositeAdCreative, selectTemplateForFormat } from "../lib/compositeAdCreative";
@@ -146,7 +146,7 @@ export function StudioPage() {
   const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
   const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string; editIdx?: number } | null>(null);
-  const [templateSelector, setTemplateSelector] = useState<{ action: StudioAction; msgId: string } | null>(null);
+  // templateSelector state removed — selection now in CampaignConfigPanel
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1436,39 +1436,12 @@ export function StudioPage() {
                     onGenerate={(finalParams) => {
                       const action = { ...pendingCampaign.action, params: finalParams };
                       const msgId = pendingCampaign.msgId;
-                      const formats: string[] = finalParams.formats || ["linkedin-post"];
-                      // Check if any format has templates available
-                      const hasTemplates = formats.some(f => getTemplatesForFormat(f).length > 0);
                       setPendingCampaign(null);
-                      if (hasTemplates) {
-                        setTemplateSelector({ action, msgId });
-                      } else {
-                        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
-                        executeAction(action, msgId);
-                      }
+                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
+                      executeAction(action, msgId);
                     }}
                     onCancel={() => setPendingCampaign(null)}
                     serverPost={serverPost}
-                  />
-                )}
-
-                {/* Template selector interstitial */}
-                {templateSelector && (
-                  <TemplateSelectorGrid
-                    formatIds={templateSelector.action.params.formats || ["linkedin-post"]}
-                    onConfirm={(selections) => {
-                      const action = { ...templateSelector.action, params: { ...templateSelector.action.params, templateSelections: selections } };
-                      const msgId = templateSelector.msgId;
-                      setTemplateSelector(null);
-                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
-                      executeAction(action, msgId);
-                    }}
-                    onSkip={() => {
-                      const { action, msgId } = templateSelector;
-                      setTemplateSelector(null);
-                      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isGenerating: true } : m));
-                      executeAction(action, msgId);
-                    }}
                   />
                 )}
 
@@ -3320,6 +3293,49 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   );
 }
 
+// ── Template miniature — CSS-based preview of a real template ──
+function TemplateMiniature({ tmpl }: { tmpl: TemplateDefinition }) {
+  return (
+    <div className="w-full h-full relative" style={{ overflow: "hidden" }}>
+      {/* Base dark bg */}
+      <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #2a2a2a, #1a1a1a)" }} />
+      {/* Shape + gradient layers */}
+      {tmpl.layers.filter(l => l.type === "shape" || l.type === "gradient-overlay" || l.type === "circle").map(layer => (
+        <div key={layer.id} className="absolute" style={{
+          left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`,
+          background: layer.type === "gradient-overlay" ? "linear-gradient(to bottom, transparent, rgba(0,0,0,0.6))"
+            : layer.type === "circle" ? (layer.style?.fill?.startsWith("vault") ? "var(--ora-signal, #a88362)" : layer.style?.fill || "rgba(255,255,255,0.1)")
+            : layer.style?.fill?.startsWith("vault") ? "var(--ora-signal, #a88362)" : layer.style?.fill || "rgba(255,255,255,0.08)",
+          opacity: layer.style?.opacity ?? 1,
+          borderRadius: layer.type === "circle" ? "50%" : layer.style?.cornerRadius ? `${layer.style.cornerRadius}px` : undefined,
+          zIndex: layer.zIndex,
+        }} />
+      ))}
+      {/* Image placeholder */}
+      {tmpl.layers.filter(l => l.type === "background-image" || l.type === "image").map(layer => (
+        <div key={layer.id} className="absolute" style={{
+          left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`,
+          background: "linear-gradient(135deg, rgba(168,131,98,0.25), rgba(168,131,98,0.08))",
+          zIndex: layer.zIndex,
+        }} />
+      ))}
+      {/* Text placeholders */}
+      {tmpl.layers.filter(l => l.type === "text").slice(0, 4).map(layer => {
+        const isH = layer.id === "headline";
+        return (
+          <div key={layer.id} className="absolute flex flex-col gap-px justify-center" style={{
+            left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`,
+            padding: "1px", zIndex: layer.zIndex,
+          }}>
+            <div className="rounded-sm" style={{ height: isH ? "3px" : "2px", width: isH ? "80%" : "60%", background: "rgba(255,255,255,0.7)", opacity: isH ? 0.9 : 0.5 }} />
+            {isH && <div className="rounded-sm" style={{ height: "3px", width: "55%", background: "rgba(255,255,255,0.5)" }} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Layout wireframe thumbnails — visual representation of each layout preset ──
 function LayoutWireframe({ layoutId, accent, fg }: { layoutId: string; accent: string; fg: string }) {
   const w = 48, h = 48;
@@ -3447,6 +3463,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [language, setLanguage] = useState(params.language || "auto");
   const [selectedAmbiances, setSelectedAmbiances] = useState<string[]>(["lifestyle-dore"]);
   const [selectedLayout, setSelectedLayout] = useState<string>("ad-ready");
+  const [selectedTemplates, setSelectedTemplates] = useState<Record<string, string>>({});
   const [startDate, setStartDate] = useState(params.startDate || "");
   const [duration, setDuration] = useState(params.duration || "");
   const [videoDuration, setVideoDuration] = useState(params.videoDuration || "5");
@@ -3530,6 +3547,8 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     const resolvedModels = getModelsForAmbiances(selectedAmbiances);
     const promptDirective = getPromptDirective(selectedAmbiances);
     const templateCategory = getPreferredTemplateCategory(selectedAmbiances, selectedLayout);
+    // Pass user-selected templates directly (skip interstitial)
+    const hasSelections = Object.keys(selectedTemplates).length > 0;
     onGenerate({
       brief: `${brief}${moment ? `\nMoment: ${moment}` : ""}${isSponsored ? "\nContenu sponsorisé — CTA direct" : ""}${postCount !== "3" ? `\nNombre de posts souhaité: ${postCount}` : ""}`,
       formats: selectedFormats,
@@ -3547,6 +3566,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       visualStyle: promptDirective,
       templateCategory,
       videoDuration,
+      ...(hasSelections ? { templateSelections: selectedTemplates } : {}),
       ...(startDate ? { startDate } : {}),
       ...(duration ? { duration } : {}),
       ...(moment ? { theme: moment } : {}),
@@ -3922,30 +3942,52 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* Mise en page — miniatures visuelles */}
-        <div>
-          <SectionLabel>Mise en page</SectionLabel>
-          <div className="grid grid-cols-3 gap-1.5">
-            {LAYOUT_PRESETS.map(layout => {
-              const isSelected = selectedLayout === layout.id;
-              const fg = isSelected ? "var(--background)" : "var(--text-primary)";
-              const accent = isSelected ? "var(--background)" : "var(--foreground)";
+        {/* Mise en page — vrais templates avec aperçu */}
+        {selectedFormats.length > 0 && (
+          <div>
+            <SectionLabel>Mise en page</SectionLabel>
+            {selectedFormats.map(formatId => {
+              const templates = getTemplatesForFormat(formatId);
+              if (templates.length === 0) return null;
+              const formatLabel = CONFIG_FORMATS.find(f => f.id === formatId)?.label || formatId;
               return (
-                <button key={layout.id} onClick={() => setSelectedLayout(layout.id)}
-                  className="flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-xl transition-all cursor-pointer text-center"
-                  style={{
-                    background: isSelected ? "var(--foreground)" : "var(--secondary)",
-                    color: fg,
-                    border: `1.5px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
-                  }}>
-                  {/* Wireframe miniature */}
-                  <LayoutWireframe layoutId={layout.id} accent={accent} fg={fg} />
-                  <span style={{ fontSize: "10px", fontWeight: 600, lineHeight: 1.2 }}>{layout.label}</span>
-                </button>
+                <div key={formatId} className="mb-3">
+                  {selectedFormats.length > 1 && (
+                    <div style={{ fontSize: "9px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{formatLabel}</div>
+                  )}
+                  <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
+                    {templates.map(tmpl => {
+                      const isSelected = selectedTemplates[formatId] === tmpl.id;
+                      return (
+                        <button
+                          key={tmpl.id}
+                          onClick={() => setSelectedTemplates(prev => ({ ...prev, [formatId]: isSelected ? "" : tmpl.id }))}
+                          className="flex-shrink-0 rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.04]"
+                          style={{
+                            width: 72, height: 72,
+                            border: isSelected ? "2px solid var(--foreground)" : "2px solid var(--border)",
+                            background: "#1a1a1a",
+                            position: "relative",
+                          }}
+                        >
+                          <TemplateMiniature tmpl={tmpl} />
+                          {isSelected && (
+                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)" }}>
+                              <Check size={9} strokeWidth={3} style={{ color: "var(--background)" }} />
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5" style={{ background: "rgba(0,0,0,0.65)" }}>
+                            <div style={{ fontSize: "6px", color: "#fff", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tmpl.name}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
-        </div>
+        )}
 
         {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
         <div className="space-y-4">
