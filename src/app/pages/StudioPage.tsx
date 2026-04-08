@@ -3892,6 +3892,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [videoDuration, setVideoDuration] = useState(params.videoDuration || "5");
   const [inspiring, setInspiring] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedImageModels, setSelectedImageModels] = useState<string[]>(["ora-vision"]);
+  const [selectedTextModels, setSelectedTextModels] = useState<string[]>(["claude-sonnet"]);
+  const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>(["ora-motion"]);
 
   // Visual scene presets
   const SCENE_PRESETS = [
@@ -3966,13 +3969,17 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
 
   const handleGenerate = () => {
     if (!selectedFormats.length) { toast.error(t("studio.selectAtLeastOneFormat")); return; }
-    // Resolve ambiances to models and visual direction
+    // Resolve ambiances to visual direction + fallback models
     const resolvedModels = getModelsForAmbiances(selectedAmbiances);
     const promptDirective = getPromptDirective(selectedAmbiances);
     const templateCategory = getPreferredTemplateCategory(selectedAmbiances, selectedLayout);
+    // User-selected models take priority, fallback to ambiance-resolved
+    const finalImageModels = selectedImageModels.length > 0 ? selectedImageModels : resolvedModels.imageModels;
+    const finalTextModels = selectedTextModels.length > 0 ? selectedTextModels : resolvedModels.textModels;
+    const finalVideoModels = selectedVideoModels.length > 0 ? selectedVideoModels : resolvedModels.videoModels;
     // Pass user-selected templates directly (skip interstitial)
     const hasSelections = Object.keys(selectedTemplates).length > 0;
-    console.log(`[studio] handleGenerate: selectedTemplates=`, selectedTemplates, `hasSelections=${hasSelections}`);
+    console.log(`[studio] handleGenerate: selectedTemplates=`, selectedTemplates, `hasSelections=${hasSelections}`, `models: img=${finalImageModels} txt=${finalTextModels} vid=${finalVideoModels}`);
     onGenerate({
       brief: `${brief}${moment ? `\nMoment: ${moment}` : ""}${isSponsored ? "\nContenu sponsorisé — CTA direct" : ""}${postCount !== "3" ? `\nNombre de posts souhaité: ${postCount}` : ""}`,
       formats: selectedFormats,
@@ -3984,9 +3991,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       contentAngle,
       keyMessages,
       language,
-      textModels: resolvedModels.textModels,
-      imageModels: resolvedModels.imageModels,
-      videoModels: resolvedModels.videoModels,
+      textModels: finalTextModels,
+      imageModels: finalImageModels,
+      videoModels: finalVideoModels,
       visualStyle: promptDirective,
       templateCategory,
       videoDuration,
@@ -4336,6 +4343,40 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   );
                 })}
               </div>
+            </div>
+
+            {/* IA Models — selectable */}
+            <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", marginBottom: 8 }}>
+                {COMPARE_MODELS.image.length + COMPARE_MODELS.text.length + COMPARE_MODELS.video.length} modèles IA disponibles
+              </div>
+              {([
+                { label: "Image", models: COMPARE_MODELS.image, selected: selectedImageModels, toggle: (id: string) => setSelectedImageModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
+                { label: "Texte", models: COMPARE_MODELS.text, selected: selectedTextModels, toggle: (id: string) => setSelectedTextModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
+                { label: "Vidéo", models: COMPARE_MODELS.video, selected: selectedVideoModels, toggle: (id: string) => setSelectedVideoModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
+              ] as const).map(group => (
+                <div key={group.label} className="mb-2.5 last:mb-0">
+                  <div style={{ fontSize: "9px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>{group.label}</div>
+                  <div className="flex flex-wrap gap-1">
+                    {group.models.map(m => {
+                      const isOn = group.selected.includes(m.id);
+                      return (
+                        <button key={m.id} onClick={() => group.toggle(m.id)}
+                          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 cursor-pointer transition-all"
+                          style={{
+                            fontSize: "9px", fontWeight: isOn ? 600 : 500, whiteSpace: "nowrap",
+                            background: isOn ? "var(--foreground)" : "var(--card)",
+                            color: isOn ? "var(--background)" : "var(--foreground)",
+                            border: `1px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
+                          }}>
+                          {m.label}
+                          <span style={{ fontSize: "7px", opacity: isOn ? 0.7 : 0.4 }}>{m.badge}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Ton */}
