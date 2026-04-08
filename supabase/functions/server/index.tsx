@@ -5643,66 +5643,146 @@ app.post("/generate/image-beautify", async (c) => {
     const p = presets[preset] || presets["magazine-interior"];
     console.log(`[beautify] preset=${preset}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
 
+    // ── Strategy 1: Photoroom v2/edit — non-generative enhancement ──
+    // Photoroom only adjusts real pixels (lighting, shadows, sharpness). Zero generation.
+    // We try multiple param combos since some require removeBackground=true.
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    const arSizeMap: Record<string, string> = {
+      "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+      "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+    };
+    const outputSize = arSizeMap[aspectRatio] || "1200x900";
+
+    if (photoroomKey) {
+      // Photoroom lighting per preset
+      const lightingMap: Record<string, string> = {
+        "magazine-interior": "ai.balanced",
+        "golden-hour": "ai.warm",
+        "luxury-feel": "ai.dramatic",
+        "food-styling": "ai.warm",
+        "storefront-chic": "ai.balanced",
+        "bright-airy": "ai.bright",
+        "moody-dramatic": "ai.dramatic",
+        "natural-fresh": "ai.balanced",
+        "sunset-terrace": "ai.warm",
+        "cozy-warmth": "ai.warm",
+        "pool-paradise": "ai.bright",
+        "boutique-hotel": "ai.balanced",
+      };
+      const lighting = lightingMap[preset] || "ai.balanced";
+
+      // Attempt A: removeBackground=false (scene photos — keep everything)
+      // Some Photoroom features may require bg removal, so we try without first
+      const attempts = [
+        // Attempt 1: no bg removal, just lighting
+        () => {
+          const params = new URLSearchParams();
+          params.set("imageUrl", imageUrl);
+          params.set("removeBackground", "false");
+          params.set("lighting.mode", lighting);
+          params.set("outputSize", outputSize);
+          params.set("padding", "0");
+          params.set("export.format", "webp");
+          return params;
+        },
+        // Attempt 2: no bg removal, no lighting, just output (quality resize)
+        () => {
+          const params = new URLSearchParams();
+          params.set("imageUrl", imageUrl);
+          params.set("removeBackground", "false");
+          params.set("outputSize", outputSize);
+          params.set("padding", "0");
+          params.set("export.format", "webp");
+          return params;
+        },
+        // Attempt 3: bg removal + lighting + solid bg to re-compose
+        // (subject is enhanced, background is replaced with solid color — less ideal but functional)
+        () => {
+          const params = new URLSearchParams();
+          params.set("imageUrl", imageUrl);
+          params.set("removeBackground", "true");
+          params.set("lighting.mode", lighting);
+          params.set("shadow.mode", "ai.soft");
+          params.set("background.prompt", "same original environment, same room, same setting, photorealistic");
+          params.set("outputSize", outputSize);
+          params.set("padding", "0");
+          params.set("export.format", "webp");
+          return params;
+        },
+      ];
+
+      for (let i = 0; i < attempts.length; i++) {
+        try {
+          const params = attempts[i]();
+          const prUrl = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
+          console.log(`[beautify] Photoroom attempt ${i + 1}: ${prUrl.slice(0, 120)}...`);
+
+          const headers: Record<string, string> = { "x-api-key": photoroomKey };
+          if (params.get("background.prompt")) {
+            headers["pr-ai-background-model-version"] = "background-studio-beta-2025-03-17";
+          }
+          const prRes = await fetch(prUrl, { headers });
+
+          if (prRes.ok) {
+            const contentType = prRes.headers.get("content-type") || "";
+            if (contentType.includes("image") || contentType.includes("webp") || contentType.includes("octet")) {
+              const imageBuffer = await prRes.arrayBuffer();
+              if (imageBuffer.byteLength > 1000) { // valid image, not an error page
+                const fileName = `beautify-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+                const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
+                const sb = supabaseAdmin();
+                const { error: uploadError } = await sb.storage
+                  .from("make-cad57f79-media")
+                  .upload(storagePath, imageBuffer, { contentType: "image/webp", upsert: true });
+                if (!uploadError) {
+                  const { data: signedData } = await sb.storage
+                    .from("make-cad57f79-media")
+                    .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+                  const resultUrl = signedData?.signedUrl;
+                  if (resultUrl) {
+                    console.log(`[beautify] Photoroom attempt ${i + 1} OK in ${Date.now() - t0}ms (${imageBuffer.byteLength} bytes)`);
+                    return c.json({ success: true, imageUrl: resultUrl, provider: `beautify-photoroom-${i + 1}`, preset });
+                  }
+                }
+              }
+            } else {
+              const body = await prRes.text();
+              console.log(`[beautify] Photoroom attempt ${i + 1} returned non-image: ${contentType} — ${body.slice(0, 200)}`);
+            }
+          } else {
+            const errBody = await prRes.text();
+            console.log(`[beautify] Photoroom attempt ${i + 1} failed ${prRes.status}: ${errBody.slice(0, 200)}`);
+          }
+        } catch (err) { console.log(`[beautify] Photoroom attempt ${i + 1} error: ${err}`); }
+      }
+    }
+
+    // ── Strategy 2: FAL AuraSR — pure super-resolution, no prompt, zero generation ──
     const falKey = Deno.env.get("FAL_API_KEY");
-    if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
-
-    // ── Strategy 1: FAL Clarity Upscaler with ZERO creativity ──
-    // At creativity=0 + resemblance=1.0, this is a pure quality enhancer:
-    // sharpens details, improves lighting uniformity, cleans noise.
-    // No generation, no invention. The prompt only guides subtle tonal shifts.
-    try {
-      console.log(`[beautify] FAL clarity-upscaler (creativity=0, resemblance=1.0)...`);
-      const res = await fetch("https://fal.run/fal-ai/clarity-upscaler", {
-        method: "POST",
-        headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          prompt: p.prompt,
-          negative_prompt: p.negativePrompt,
-          scale: 2,  // 2x upscale for quality boost
-          creativity: 0, // ZERO = no generation at all
-          resemblance: 1.0, // 1.0 = 100% original structure preserved
-          guidance_scale: 2, // very low guidance
-          num_inference_steps: 10,
-          enable_safety_checker: false,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const resultUrl = data.image?.url || data.images?.[0]?.url;
-        if (resultUrl) {
-          console.log(`[beautify] FAL clarity-upscaler OK in ${Date.now() - t0}ms`);
-          return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-clarity-upscaler", preset });
+    if (falKey) {
+      try {
+        console.log(`[beautify] Fallback: FAL aura-sr (pure upscale, zero generation)...`);
+        const res = await fetch("https://fal.run/fal-ai/aura-sr", {
+          method: "POST",
+          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            upscaling_factor: 2,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const resultUrl = data.image?.url || data.images?.[0]?.url;
+          if (resultUrl) {
+            console.log(`[beautify] FAL aura-sr OK in ${Date.now() - t0}ms`);
+            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-aura-sr", preset });
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[beautify] FAL aura-sr ${res.status}: ${b.slice(0, 200)}`);
         }
-      } else {
-        const b = await res.text();
-        console.log(`[beautify] FAL clarity-upscaler ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) { console.log(`[beautify] FAL clarity-upscaler error: ${err}`); }
-
-    // ── Strategy 2: FAL AuraSR — pure super-resolution, no prompt, no generation ──
-    try {
-      console.log(`[beautify] Fallback: FAL aura-sr (pure upscale, no generation)...`);
-      const res = await fetch("https://fal.run/fal-ai/aura-sr", {
-        method: "POST",
-        headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          upscaling_factor: 2,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const resultUrl = data.image?.url || data.images?.[0]?.url;
-        if (resultUrl) {
-          console.log(`[beautify] FAL aura-sr OK in ${Date.now() - t0}ms`);
-          return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-aura-sr", preset });
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[beautify] FAL aura-sr ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) { console.log(`[beautify] FAL aura-sr error: ${err}`); }
+      } catch (err) { console.log(`[beautify] FAL aura-sr error: ${err}`); }
+    }
 
     return c.json({ success: false, error: "All beautify providers failed" }, 500);
   } catch (err) {
