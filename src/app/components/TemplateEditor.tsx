@@ -272,6 +272,24 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   }, [template, open, cw, ch]);
 
   /* ───────────────────────────────────────────────────────────────────────
+     CANVAS PIXEL RATIO — keep images sharp at any zoom level
+     At 30% zoom the canvas is only 324px wide for 1080 content.
+     Increasing pixelRatio forces a higher-resolution backing store.
+     ─────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!stageRef.current) return;
+    const needed = Math.max(window.devicePixelRatio || 2, Math.ceil(1 / stageScale));
+    const konvaLayers = stageRef.current.getLayers();
+    for (const layer of konvaLayers) {
+      const canvas = layer.getCanvas();
+      if (canvas.pixelRatio !== needed) {
+        canvas.pixelRatio = needed;
+      }
+    }
+    stageRef.current.batchDraw();
+  }, [stageScale, layers]);
+
+  /* ───────────────────────────────────────────────────────────────────────
      TRANSFORMER
      ─────────────────────────────────────────────────────────────────────── */
   useEffect(() => {
