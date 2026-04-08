@@ -7395,16 +7395,34 @@ ${context.force_generate ? `\n⚠️ PRIORITÉ ABSOLUE : Retournez generate-camp
         ],
         response_format: { type: "json_object" },
       }),
+      signal: AbortSignal.timeout(80_000),
     });
 
     if (!aiRes.ok) {
-      console.error("[studio/chat] AI error:", await aiRes.text());
+      const errText = await aiRes.text().catch(() => "unknown");
+      console.error("[studio/chat] AI error:", aiRes.status, errText.slice(0, 300));
       return c.json({ success: false, error: "AI routing failed." }, 502);
     }
 
     const aiData = await aiRes.json();
     const raw = (aiData.choices?.[0]?.message?.content || "").trim();
-    const result = JSON.parse(raw);
+    if (!raw) {
+      console.error("[studio/chat] AI returned empty content");
+      return c.json({ success: false, error: "AI returned empty response." }, 502);
+    }
+    let result: any;
+    try {
+      result = JSON.parse(raw);
+    } catch (parseErr) {
+      console.error("[studio/chat] JSON parse error:", parseErr, "raw:", raw.slice(0, 500));
+      // Try to extract JSON from markdown code blocks
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        result = JSON.parse(jsonMatch[0]);
+      } else {
+        return c.json({ success: false, error: "AI returned invalid JSON." }, 502);
+      }
+    }
 
     console.log(`[studio/chat] user=${user.id.slice(0,8)} action=${result.action?.type || "none"}`);
     return c.json({ success: true, ...result });
