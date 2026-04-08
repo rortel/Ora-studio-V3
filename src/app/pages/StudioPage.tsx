@@ -473,7 +473,8 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory, templateSelections } = action.params;
+          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory, templateSelections, versionCount: reqVersions = 1 } = action.params;
+          const versionCount = Math.max(1, Math.min(7, typeof reqVersions === "number" ? reqVersions : parseInt(reqVersions, 10) || 1));
 
           // Build product context for the brief if a product is selected
           let productBrief = brief || "";
@@ -802,14 +803,13 @@ export function StudioPage() {
                 ? "1:1"
                 : "16:9";
 
+            // ── Build a pool of generation jobs, limited to versionCount ──
+            const jobs: Promise<{ imageUrl: string | null }>[] = [];
+
             if (productRefUrls.length > 0) {
-              // ── PRODUCT MODE: Photoroom + Ideogram Remix + Ideogram Replace-BG ──
+              // ── PRODUCT MODE: all engines receive the product ref → product always respected ──
               const refUrl = productRefUrls[i % productRefUrls.length];
-
-              // Primary scene: use the campaign prompt or visual style
               const primaryScenePrompt = campaignVisualStyle || enrichedPrompt;
-
-              // Extract vault color palette for Ideogram (hex → { color_hex, color_weight })
               const ideogramColorPalette: { color_hex: string; color_weight: number }[] = (() => {
                 const rawColors = vault?.colors || [];
                 if (!Array.isArray(rawColors)) return [];
@@ -820,141 +820,89 @@ export function StudioPage() {
                 }));
               })();
 
-              // Build Photoroom scene list
-              const scenePrompts = [
-                { prompt: primaryScenePrompt.slice(0, 500), label: "Photoroom" },
-                ...PHOTOROOM_SCENE_VARIANTS
-                  .filter(s => !primaryScenePrompt.toLowerCase().includes(s.id))
-                  .slice(0, 1)
-                  .map(s => ({ prompt: s.prompt, label: `Photoroom (${s.label})` })),
+              // Pool of product-safe engines (all keep the real product)
+              const productEnginePool = [
+                // Photoroom scenes — pixel-perfect product placement
+                () => serverPost("/generate/image-start", {
+                  prompt: primaryScenePrompt.slice(0, 500), model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+
+                () => serverPost("/generate/image-start", {
+                  prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography", model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+
+                () => serverPost("/generate/image-start", {
+                  prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast", model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+
+                () => serverPost("/generate/image-start", {
+                  prompt: "Clean studio packshot, pure white background, professional product photography", model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+
+                () => serverPost("/generate/image-start", {
+                  prompt: "High-fashion editorial setting, clean minimal backdrop, magazine quality", model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+
+                // Ideogram Replace-BG — pixel-perfect product, new background
+                () => serverPost("/ideogram/replace-background", {
+                  imageUrl: refUrl,
+                  prompt: campaignVisualStyle ? `${campaignVisualStyle}, elegant background, professional product staging` : "Beautiful lifestyle environment, warm soft lighting, premium product staging",
+                }, 90_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
+
+                // Ideogram Remix — product preserved via high imageWeight
+                () => serverPost("/ideogram/remix", {
+                  imageUrl: refUrl,
+                  prompt: `Professional product photography, ${primaryScenePrompt.slice(0, 300)}, premium quality`,
+                  imageWeight: 70, aspectRatio, styleType: "REALISTIC",
+                  colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
+                }, 90_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
               ];
 
-              // Build Ideogram scene prompts (lifestyle remix + clean replace-bg)
-              const remixScenePrompt = `Professional product photography, ${primaryScenePrompt.slice(0, 300)}, premium quality, studio lighting, editorial`;
-              const replaceBgPrompt = campaignVisualStyle
-                ? `${campaignVisualStyle}, elegant background, professional product staging`
-                : `Beautiful lifestyle environment, warm soft lighting, premium product staging, editorial photography, elegant background`;
-
-              // Launch ALL variants in parallel: Photoroom + Ideogram Remix + Ideogram Replace-BG
-              const allProductResults = await Promise.all([
-                // Photoroom variants
-                ...scenePrompts.map(async (scene) => {
-                  try {
-                    console.log(`[studio] Photoroom [${imageOnlyFormats[i].format}/${scene.label}]: ref=${refUrl.slice(0, 60)}`);
-                    const prRes = await fetch(`${API_BASE}/generate/image-start`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${publicAnonKey}` },
-                      body: JSON.stringify({
-                        prompt: scene.prompt,
-                        imageRefUrl: refUrl,
-                        refSource: "upload",
-                        aspectRatio,
-                        model: "photon-1",
-                        _token: getAuthHeader(),
-                      }),
-                      signal: AbortSignal.timeout(60_000),
-                    });
-                    const prData = await prRes.json();
-                    if (prData.success && (prData.imageUrl || prData.results?.[0]?.result?.imageUrl)) {
-                      const url = prData.imageUrl || prData.results[0].result.imageUrl;
-                      console.log(`[studio] Photoroom OK [${scene.label}]: ${url.slice(0, 60)}`);
-                      return { model: "photoroom", imageUrl: url, imageModel: scene.label };
-                    }
-                    return { model: "photoroom", imageUrl: null as string | null, imageModel: scene.label };
-                  } catch (e: any) {
-                    console.warn(`[studio] Photoroom [${scene.label}] failed:`, e?.message);
-                    return { model: "photoroom", imageUrl: null as string | null, imageModel: scene.label };
-                  }
-                }),
-
-                // Ideogram Remix — high imageWeight (70) keeps product recognizable, adds lifestyle staging
-                (async () => {
-                  try {
-                    console.log(`[studio] Ideogram Remix [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}, weight=70`);
-                    const remixData = await serverPost("/ideogram/remix", {
-                      imageUrl: refUrl,
-                      prompt: remixScenePrompt,
-                      imageWeight: 70,
-                      aspectRatio,
-                      styleType: "REALISTIC",
-                      colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
-                    }, 90_000);
-                    if (remixData.success && remixData.imageUrl) {
-                      console.log(`[studio] Ideogram Remix OK: ${remixData.imageUrl.slice(0, 60)}`);
-                      return { model: "ideogram", imageUrl: remixData.imageUrl, imageModel: "Ideogram Remix" };
-                    }
-                    console.warn(`[studio] Ideogram Remix failed:`, JSON.stringify(remixData));
-                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
-                  } catch (e: any) {
-                    console.warn(`[studio] Ideogram Remix error:`, e?.message);
-                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Remix" };
-                  }
-                })(),
-
-                // Ideogram Replace-BG — keeps product pixel-perfect, swaps background to lifestyle scene
-                (async () => {
-                  try {
-                    console.log(`[studio] Ideogram Replace-BG [${imageOnlyFormats[i].format}]: ref=${refUrl.slice(0, 60)}`);
-                    const bgData = await serverPost("/ideogram/replace-background", {
-                      imageUrl: refUrl,
-                      prompt: replaceBgPrompt,
-                    }, 90_000);
-                    if (bgData.success && bgData.imageUrl) {
-                      console.log(`[studio] Ideogram Replace-BG OK: ${bgData.imageUrl.slice(0, 60)}`);
-                      return { model: "ideogram", imageUrl: bgData.imageUrl, imageModel: "Ideogram Replace-BG" };
-                    }
-                    console.warn(`[studio] Ideogram Replace-BG failed:`, JSON.stringify(bgData));
-                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
-                  } catch (e: any) {
-                    console.warn(`[studio] Ideogram Replace-BG error:`, e?.message);
-                    return { model: "ideogram", imageUrl: null as string | null, imageModel: "Ideogram Replace-BG" };
-                  }
-                })(),
-              ]);
-
-              const successfulResults = allProductResults.filter(r => r.imageUrl);
-              // Prefer Ideogram results first (higher quality staging), then Photoroom
-              const sortedResults = [
-                ...successfulResults.filter(r => r.imageModel === "Ideogram Replace-BG"),
-                ...successfulResults.filter(r => r.imageModel === "Ideogram Remix"),
-                ...successfulResults.filter(r => r.model === "photoroom"),
-              ];
-              if (sortedResults.length > 0) {
-                imageOnlyFormats[i].imageUrl = sortedResults[0].imageUrl!;
-              }
-              // Add all as selectable variants
-              if (sortedResults.length > 1) {
-                imageOnlyFormats[i].variants = sortedResults.map(r => ({
-                  model: r.model,
-                  text: imageOnlyFormats[i].text,
-                  imageUrl: r.imageUrl!,
-                  imageModel: r.imageModel,
-                }));
-                imageOnlyFormats[i].selectedVariant = 0;
+              // Pick versionCount engines (shuffle for variety)
+              const shuffled = productEnginePool.sort(() => Math.random() - 0.5);
+              for (let j = 0; j < Math.min(versionCount, shuffled.length); j++) {
+                jobs.push(shuffled[j]());
               }
             } else {
-              // ── NO PRODUCT: AI generative models (text-to-image) ──
-              const imgResults = await Promise.all(
-                imageModelList.map(model =>
-                  serverGet(
-                    `/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`
-                  ).then(res => ({
-                    model,
-                    imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null,
-                  })).catch(() => ({ model, imageUrl: null }))
-                )
-              );
+              // ── NO PRODUCT: text-to-image with diverse models ──
+              const allImageModels = [...imageModelList];
+              // Add more models from CONFIG_IMAGE_MODELS for diversity
+              for (const m of CONFIG_IMAGE_MODELS) {
+                if (!allImageModels.includes(m.id)) allImageModels.push(m.id);
+              }
+              // Shuffle and pick versionCount
+              const shuffled = allImageModels.sort(() => Math.random() - 0.5);
+              for (let j = 0; j < Math.min(versionCount, shuffled.length); j++) {
+                const model = shuffled[j];
+                jobs.push(
+                  serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`)
+                    .then(res => ({ imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null }))
+                    .catch(() => ({ imageUrl: null }))
+                );
+              }
+            }
 
-              const primaryImg = imgResults.find(r => r.imageUrl);
-              if (primaryImg) {
-                imageOnlyFormats[i].imageUrl = primaryImg.imageUrl!;
-              }
-              if (imgResults.filter(r => r.imageUrl).length > 1) {
-                imageOnlyFormats[i].variants = imgResults
-                  .filter(r => r.imageUrl)
-                  .map(r => ({ model: r.model, text: imageOnlyFormats[i].text, imageUrl: r.imageUrl!, imageModel: r.model }));
-                imageOnlyFormats[i].selectedVariant = 0;
-              }
+            console.log(`[studio] Generating ${jobs.length} versions for ${imageOnlyFormats[i].format} (versionCount=${versionCount})`);
+            const allResults = await Promise.all(jobs);
+            const successful = allResults.filter(r => r.imageUrl);
+
+            if (successful.length > 0) {
+              imageOnlyFormats[i].imageUrl = successful[0].imageUrl!;
+            }
+            // Store ALL successful results as selectable variants (labeled "Version 1", "Version 2"...)
+            if (successful.length > 1) {
+              imageOnlyFormats[i].variants = successful.map((r, idx) => ({
+                model: `v${idx + 1}`,
+                text: imageOnlyFormats[i].text,
+                imageUrl: r.imageUrl!,
+                imageModel: `Version ${idx + 1}`,
+              }));
+              imageOnlyFormats[i].selectedVariant = 0;
             }
           }
 
@@ -2135,6 +2083,17 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, on
 function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions, onAnimate, isGenerating }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void; onMoreVersions?: (postIdx: number) => void; onAnimate?: (postIdx: number) => void; isGenerating?: boolean }) {
   const { t } = useI18n();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [variantSelections, setVariantSelections] = useState<Record<number, number>>({});
+
+  const selectVariant = (postIdx: number, variantIdx: number) => {
+    setVariantSelections(prev => ({ ...prev, [postIdx]: variantIdx }));
+    // Also update the post's imageUrl to the selected variant
+    const variant = posts[postIdx]?.variants?.[variantIdx];
+    if (variant?.imageUrl) {
+      posts[postIdx].imageUrl = variant.imageUrl;
+      posts[postIdx].selectedVariant = variantIdx;
+    }
+  };
 
   // Platform colors
   const platformColor: Record<string, string> = {
@@ -2215,8 +2174,8 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                     {post.format.replace(post.platform.toLowerCase() + "-", "")}
                   </span>
                   {post.variants && post.variants.length > 1 && (
-                    <span style={{ fontSize: "9px", color: "var(--muted-foreground)", marginLeft: "auto" }}>
-                      {post.variants.length} var.
+                    <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", color: "var(--foreground)", background: "var(--secondary)", fontWeight: 600, marginLeft: "auto" }}>
+                      {post.variants.length} propositions
                     </span>
                   )}
                 </div>
@@ -2265,6 +2224,42 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                       </div>
                     </div>
                   )}
+                  {/* Variant picker — visual grid to choose favorite */}
+                  {post.variants && post.variants.length > 1 && (
+                    <div>
+                      <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 6 }}>
+                        {post.variants.length} propositions — choisissez votre préférée :
+                      </div>
+                      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(post.variants.length, 4)}, 1fr)` }}>
+                        {post.variants.map((v, vIdx) => {
+                          const isSelected = (variantSelections[idx] ?? post.selectedVariant ?? 0) === vIdx;
+                          return (
+                            <div key={vIdx}
+                              onClick={e => { e.stopPropagation(); selectVariant(idx, vIdx); }}
+                              className="relative rounded-lg overflow-hidden cursor-pointer transition-all"
+                              style={{
+                                outline: isSelected ? "2px solid var(--foreground)" : "1px solid var(--border)",
+                                outlineOffset: isSelected ? -2 : -1,
+                                opacity: isSelected ? 1 : 0.7,
+                              }}>
+                              <img src={v.imageUrl} className="w-full object-cover" style={{ aspectRatio: "1", height: 80 }} alt="" />
+                              {isSelected && (
+                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
+                                  style={{ background: "var(--foreground)" }}>
+                                  <Check size={10} style={{ color: "var(--background)" }} />
+                                </div>
+                              )}
+                              <div className="absolute bottom-0 left-0 right-0 py-0.5 text-center"
+                                style={{ background: "rgba(0,0,0,0.5)", fontSize: "9px", color: "#fff", fontWeight: 600 }}>
+                                {vIdx + 1}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {post.headline && (
                     <div style={{ fontSize: "14px", fontWeight: 700, lineHeight: 1.3 }}>{post.headline}</div>
                   )}
@@ -3638,6 +3633,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [moment, setMoment] = useState(params.theme || "");
   const [isSponsored, setIsSponsored] = useState(false);
   const [postCount, setPostCount] = useState("3");
+  const [versionCount, setVersionCount] = useState("3");
   const [contentAngle, setContentAngle] = useState(params.contentAngle || "");
   const [keyMessages, setKeyMessages] = useState(params.keyMessages || "");
   const [language, setLanguage] = useState(params.language || "auto");
@@ -3747,6 +3743,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       visualStyle: promptDirective,
       templateCategory,
       videoDuration,
+      versionCount: parseInt(versionCount, 10),
       ...(hasSelections ? { templateSelections: selectedTemplates } : {}),
       ...(startDate ? { startDate } : {}),
       ...(duration ? { duration } : {}),
@@ -4205,6 +4202,29 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                     <Chip key={n} size="sm" selected={postCount === n} onClick={() => setPostCount(n)}>{n}</Chip>
                   ))}
                 </div>
+              </div>
+
+              {/* Propositions par visuel — controls how many creative engines fire */}
+              <div>
+                <SectionLabel icon={Sparkles}>Propositions par visuel</SectionLabel>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    {[
+                      { id: "1", label: "1" },
+                      { id: "3", label: "3" },
+                      { id: "5", label: "5" },
+                      { id: "7", label: "7" },
+                    ].map(n => (
+                      <Chip key={n.id} size="sm" selected={versionCount === n.id} onClick={() => setVersionCount(n.id)}>{n.label}</Chip>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                    46 moteurs créatifs
+                  </span>
+                </div>
+                <p style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 4 }}>
+                  Chaque proposition est unique. Vous choisissez votre préférée.
+                </p>
               </div>
 
               {/* Angle / Messages clés */}
