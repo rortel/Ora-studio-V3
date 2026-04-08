@@ -136,8 +136,13 @@ const COMPARE_MODELS = {
     { id: "pika", label: "Pika", badge: "Pika" },
     { id: "dop", label: "DOP", badge: "Higgsfield" },
   ],
-  music: [] as { id: string; label: string; badge: string }[],
-  campaign: [] as { id: string; label: string; badge: string }[],
+  music: [
+    { id: "suno-v5", label: "Suno V5", badge: "Suno" },
+    { id: "musicgen", label: "MusicGen", badge: "Meta" },
+    { id: "elevenlabs-music", label: "ElevenLabs", badge: "ElevenLabs" },
+  ],
+  voice: [] as { id: string; label: string; badge: string }[],
+  editing: [] as { id: string; label: string; badge: string }[],
 };
 
 export function StudioPage() {
@@ -4348,12 +4353,13 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             {/* IA Models — selectable */}
             <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
               <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", marginBottom: 8 }}>
-                {COMPARE_MODELS.image.length + COMPARE_MODELS.text.length + COMPARE_MODELS.video.length} modèles IA disponibles
+                {COMPARE_MODELS.image.length + COMPARE_MODELS.text.length + COMPARE_MODELS.video.length + COMPARE_MODELS.music.length} modèles IA disponibles
               </div>
               {([
                 { label: "Image", models: COMPARE_MODELS.image, selected: selectedImageModels, toggle: (id: string) => setSelectedImageModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
                 { label: "Texte", models: COMPARE_MODELS.text, selected: selectedTextModels, toggle: (id: string) => setSelectedTextModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
                 { label: "Vidéo", models: COMPARE_MODELS.video, selected: selectedVideoModels, toggle: (id: string) => setSelectedVideoModels(prev => prev.includes(id) ? (prev.length > 1 ? prev.filter(m => m !== id) : prev) : [...prev, id]) },
+                { label: "Musique", models: COMPARE_MODELS.music, selected: [] as string[], toggle: () => {} },
               ] as const).map(group => (
                 <div key={group.label} className="mb-2.5 last:mb-0">
                   <div style={{ fontSize: "9px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>{group.label}</div>
