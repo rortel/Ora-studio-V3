@@ -83,28 +83,65 @@ function replaceSvgPlaceholders(
   const { placeholders } = template;
 
   // ── Replace images ──
+  const XLINK_NS = "http://www.w3.org/1999/xlink";
   for (const imgId of placeholders.imageIds) {
     // Figma SVGs use <rect fill="url(#patternXXX)"> for images.
-    // The pattern contains an <image> with the placeholder data.
-    const rect = doc.querySelector(`[id="${imgId}"]`);
+    // The pattern contains <use xlink:href="#imageXXX"/> referencing an <image> in <defs>.
+    const rect = doc.querySelector(`[id="${imgId}"]`)
+      || doc.querySelector(`[id="${CSS.escape(imgId)}"]`);
     if (!rect) {
-      console.warn(`[figmaSvgEngine] Image placeholder "${imgId}" not found in SVG`);
+      // Also try: the imgId might be a <g> wrapping a <rect>
+      const group = doc.getElementById(imgId);
+      const innerRect = group?.querySelector("rect[fill^='url(#']");
+      if (!innerRect) {
+        console.warn(`[figmaSvgEngine] Image placeholder "${imgId}" not found in SVG`);
+        continue;
+      }
+      replaceImageInRect(innerRect);
       continue;
     }
 
     const fill = rect.getAttribute("fill");
     if (fill?.startsWith("url(#")) {
-      const patternId = fill.slice(5, -1);
-      const pattern = doc.getElementById(patternId);
-      if (pattern) {
-        const imageEl = pattern.querySelector("image");
-        if (imageEl) {
-          // Replace the placeholder with the product image URL
-          imageEl.removeAttribute("xlink:href");
-          imageEl.setAttribute("href", opts.imageUrl);
-          imageEl.setAttribute("preserveAspectRatio", "xMidYMid slice");
+      replaceImageInRect(rect);
+    } else {
+      // Might be a <g> containing a <rect> with pattern fill
+      const innerRect = rect.querySelector("rect[fill^='url(#']");
+      if (innerRect) replaceImageInRect(innerRect);
+    }
+  }
+
+  function replaceImageInRect(rectEl: Element) {
+    const fill = rectEl.getAttribute("fill");
+    if (!fill?.startsWith("url(#")) return;
+    const patternId = fill.slice(5, -1);
+    const pattern = doc.getElementById(patternId);
+    if (!pattern) return;
+
+    // First try: <image> directly inside <pattern>
+    let imageEl: Element | null = pattern.querySelector("image");
+
+    if (!imageEl) {
+      // Figma structure: <pattern><use xlink:href="#imageXXX"/></pattern>
+      // The <image> is a sibling in <defs>, not a child of <pattern>
+      const useEl = pattern.querySelector("use");
+      if (useEl) {
+        const useRef = useEl.getAttributeNS(XLINK_NS, "href")
+          || useEl.getAttribute("href")
+          || useEl.getAttribute("xlink:href");
+        if (useRef?.startsWith("#")) {
+          imageEl = doc.getElementById(useRef.slice(1));
         }
       }
+    }
+
+    if (imageEl) {
+      // Remove old href (both namespaced and non-namespaced)
+      imageEl.removeAttributeNS(XLINK_NS, "href");
+      imageEl.removeAttribute("href");
+      // Set new URL using xlink:href (what Figma SVGs expect)
+      imageEl.setAttributeNS(XLINK_NS, "xlink:href", opts.imageUrl);
+      imageEl.setAttribute("preserveAspectRatio", "xMidYMid slice");
     }
   }
 
@@ -215,23 +252,36 @@ async function renderSvgToPng(
  * Required because SVGs rendered via <img> tag can't fetch external resources.
  */
 async function inlineExternalImages(svgText: string): Promise<string> {
-  // Find all href="http..." references in the SVG
-  const urlRegex = /href="(https?:\/\/[^"]+)"/g;
+  // Find all href/xlink:href references to external URLs in the SVG
+  const urlRegex = /((?:xlink:)?href)="(https?:\/\/[^"]+)"/g;
   const matches = [...svgText.matchAll(urlRegex)];
 
   if (matches.length === 0) return svgText;
 
   let result = svgText;
+  const inlinedCache = new Map<string, string>();
+
   for (const match of matches) {
-    const externalUrl = match[1];
+    const attrName = match[1]; // "href" or "xlink:href"
+    const externalUrl = match[2];
+
+    if (inlinedCache.has(externalUrl)) {
+      result = result.replace(match[0], `${attrName}="${inlinedCache.get(externalUrl)}"`);
+      continue;
+    }
+
     try {
       const response = await fetch(externalUrl, { mode: "cors" });
-      if (!response.ok) continue;
+      if (!response.ok) {
+        console.warn(`[figmaSvgEngine] Image fetch failed (${response.status}): ${externalUrl.slice(0, 60)}...`);
+        continue;
+      }
       const blob = await response.blob();
       const base64 = await blobToBase64(blob);
-      result = result.replace(match[0], `href="${base64}"`);
-    } catch {
-      console.warn(`[figmaSvgEngine] Could not inline image: ${externalUrl.slice(0, 60)}...`);
+      inlinedCache.set(externalUrl, base64);
+      result = result.replace(match[0], `${attrName}="${base64}"`);
+    } catch (err) {
+      console.warn(`[figmaSvgEngine] Could not inline image: ${externalUrl.slice(0, 60)}...`, err);
     }
   }
 
