@@ -1485,10 +1485,28 @@ export function StudioPage() {
                         onCompare={handleCompare}
                         onFinalize={(posts, logoUrl, brief, startDate, duration, editIdx) => setFinalizingCampaign({ posts, logoUrl, brief, campaignStartDate: startDate, campaignDuration: duration, editIdx })}
                         onEdit={(item, type, prompt) => {
-                          if (type === "image" && item.url) {
-                            handleSend(`Édite cette image : garde le même sujet mais propose une variante différente. Image originale: ${item.url}`);
-                          } else if (type === "text" && item.text) {
+                          if (type === "text" && item.text) {
                             handleSend(`Réécris ce texte avec une approche différente : "${item.text.slice(0, 200)}"`);
+                          }
+                        }}
+                        onRemix={async (imageUrl, editPrompt) => {
+                          const remixMsgId = `remix-${Date.now()}`;
+                          setMessages(prev => [...prev,
+                            { id: `user-${remixMsgId}`, role: "user", content: `✏️ ${editPrompt}` },
+                            { id: remixMsgId, role: "assistant", content: "", isGenerating: true },
+                          ]);
+                          try {
+                            const res = await serverPost("/ideogram/remix", { imageUrl, prompt: editPrompt, imageWeight: 50, rendering_speed: "TURBO" }, 60_000);
+                            if (res.success && res.imageUrl) {
+                              setMessages(prev => prev.map(m => m.id === remixMsgId ? {
+                                ...m, isGenerating: false, content: "Voici la version modifiée :",
+                                result: { type: "image" as const, prompt: editPrompt, items: [{ url: res.imageUrl, model: "Ideogram Remix" }] },
+                              } : m));
+                            } else {
+                              setMessages(prev => prev.map(m => m.id === remixMsgId ? { ...m, isGenerating: false, content: `Remix échoué : ${res.error || "erreur inconnue"}` } : m));
+                            }
+                          } catch (err) {
+                            setMessages(prev => prev.map(m => m.id === remixMsgId ? { ...m, isGenerating: false, content: `Remix échoué : ${err}` } : m));
                           }
                         }}
                         onMoreVersions={handleMoreVersions}
@@ -2033,12 +2051,13 @@ function UserBubble({ content }: { content: string }) {
 }
 
 /* ── Assistant message ── */
-function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, onMoreVersions, onAnimate, isGenerating }: {
+function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, onRemix, onMoreVersions, onAnimate, isGenerating }: {
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
+  onRemix?: (imageUrl: string, editPrompt: string) => void;
   onMoreVersions?: (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => void;
   onAnimate?: (postIdx: number, posts: CampaignPost[]) => void;
   isGenerating?: boolean;
@@ -2071,7 +2090,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, on
 
       {/* Generated results */}
       {msg.result && (
-        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} onMoreVersions={onMoreVersions} onAnimate={onAnimate} isGenerating={isGenerating} logoUrl={msg.result.logoUrl} />
+        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} onRemix={onRemix} onMoreVersions={onMoreVersions} onAnimate={onAnimate} isGenerating={isGenerating} logoUrl={msg.result.logoUrl} />
       )}
 
       {/* Suggestions removed — pure conversational, no buttons */}
@@ -2349,11 +2368,12 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
 }
 
 /* ── Result card ── */
-function ResultCard({ result, onCompare, onFinalize, onEdit, onMoreVersions, onAnimate, isGenerating, logoUrl }: {
+function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVersions, onAnimate, isGenerating, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
+  onRemix?: (imageUrl: string, editPrompt: string) => void;
   onMoreVersions?: (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => void;
   onAnimate?: (postIdx: number, posts: CampaignPost[]) => void;
   isGenerating?: boolean;
@@ -2361,6 +2381,10 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onMoreVersions, onA
 }) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [isRemixing, setIsRemixing] = useState(false);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const toggleSelect = (i: number) => setSelected(prev => {
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);
@@ -2401,16 +2425,50 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onMoreVersions, onA
                   {selected.has(i) && <Check size={12} style={{ color: "var(--background)" }} />}
                 </div>
               )}
+              {/* Inline remix input overlay */}
+              {editingIdx === i && (
+                <div className="absolute bottom-0 inset-x-0 p-3 z-10" onClick={e => e.stopPropagation()}
+                  style={{ background: "linear-gradient(transparent 0%, rgba(0,0,0,0.85) 30%)" }}>
+                  <form onSubmit={async e => {
+                    e.preventDefault();
+                    if (!editPrompt.trim() || !item.url || !onRemix || isRemixing) return;
+                    setIsRemixing(true);
+                    try { await onRemix(item.url, editPrompt.trim()); }
+                    finally { setIsRemixing(false); setEditingIdx(null); setEditPrompt(""); }
+                  }} className="flex gap-1.5">
+                    <input ref={editInputRef} value={editPrompt} onChange={e => setEditPrompt(e.target.value)}
+                      placeholder="Décrivez le changement..."
+                      autoFocus
+                      className="flex-1 px-3 py-1.5 rounded-lg text-white text-xs outline-none"
+                      style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)" }}
+                      disabled={isRemixing}
+                      onKeyDown={e => { if (e.key === "Escape") { setEditingIdx(null); setEditPrompt(""); } }} />
+                    {isRemixing ? (
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
+                        <Loader2 size={14} className="animate-spin" style={{ color: "#fff" }} />
+                      </div>
+                    ) : (
+                      <button type="submit" disabled={!editPrompt.trim()}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                        style={{ background: editPrompt.trim() ? "var(--foreground)" : "rgba(255,255,255,0.15)" }}>
+                        <Wand2 size={14} style={{ color: editPrompt.trim() ? "var(--background)" : "#fff" }} />
+                      </button>
+                    )}
+                  </form>
+                </div>
+              )}
+              {/* Hover actions */}
+              {editingIdx !== i && (
               <div className="absolute bottom-0 inset-x-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
                 style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.7))" }}>
                 <div className="flex items-center justify-between">
                   <span style={{ fontSize: "10px", color: "#fff", fontWeight: 500 }}>{item.model}</span>
                   <div className="flex gap-1">
-                    {onEdit && (
-                      <button onClick={e => { e.stopPropagation(); onEdit(item, "image", result.prompt); }}
+                    {onRemix && item.url && (
+                      <button onClick={e => { e.stopPropagation(); setEditingIdx(i); setEditPrompt(""); setTimeout(() => editInputRef.current?.focus(), 100); }}
                         className="w-6 h-6 rounded-md flex items-center justify-center cursor-pointer"
                         style={{ background: "rgba(255,255,255,0.2)" }}
-                        title={t("studio.edit")}>
+                        title="Modifier ce visuel">
                         <Pencil size={10} style={{ color: "#fff" }} />
                       </button>
                     )}
@@ -2423,6 +2481,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onMoreVersions, onA
                   </div>
                 </div>
               </div>
+              )}
             </div>
           ))}
         </div>
