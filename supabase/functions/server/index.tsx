@@ -1023,15 +1023,40 @@ const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 const LEONARDO_V2_BASE = "https://cloud.leonardo.ai/api/rest/v2";
 
 // ── PROMPT ENHANCER — translates any language to English + produces cinematic photorealistic prompts ──
-async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false): Promise<string> {
+async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false, brandCtx?: BrandContext | null): Promise<string> {
   const t0 = Date.now();
-  // Always enhance — even English prompts benefit from photorealistic detail injection
   const key = Deno.env.get("APIPOD_API_KEY");
   if (!key) { console.log("[enhancePrompt] No API key, using raw"); return rawPrompt; }
   const enhanceModels = ["gpt-4o", "gpt-5"];
   const isVague = rawPrompt.trim().split(/\s+/).length < 20;
-  const systemPrompt = `You are a world-class image prompt engineer — ex-Harcourt, Annie Leibovitz studio, Condé Nast visual department. You specialize in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
 
+  // Build brand direction block — injected into system prompt so the AI composes a unified creative vision
+  let brandDirectionBlock = "";
+  if (brandCtx) {
+    const bd: string[] = [];
+    const allColors = [...new Set([...brandCtx.colorPalette, ...brandCtx.imageBankColors])].slice(0, 6);
+    if (allColors.length > 0) bd.push(`Color palette: ${brandCtx.colorNames.length > 0 ? brandCtx.colorNames.join(", ") : allColors.join(", ")}. Weave these colors into the scene through props, wardrobe, background elements, or light tint — never as flat color blocks.`);
+    if (brandCtx.photoStyle) {
+      if (brandCtx.photoStyle.mood) bd.push(`Mood: ${brandCtx.photoStyle.mood}`);
+      if (brandCtx.photoStyle.lighting) bd.push(`Lighting direction: ${brandCtx.photoStyle.lighting}`);
+      if (brandCtx.photoStyle.framing) bd.push(`Framing: ${brandCtx.photoStyle.framing}`);
+      if (brandCtx.photoStyle.subjects) bd.push(`Subject treatment: ${brandCtx.photoStyle.subjects}`);
+    }
+    if (brandCtx.imageBankMoods.length > 0) bd.push(`Emotional territory (from brand reference photos): ${brandCtx.imageBankMoods.slice(0, 4).join(", ")}`);
+    if (brandCtx.imageBankStyles.length > 0) bd.push(`Visual style references: ${brandCtx.imageBankStyles.slice(0, 3).join(", ")}`);
+    if (brandCtx.imageBankLighting.length > 0) bd.push(`Lighting patterns: ${brandCtx.imageBankLighting.slice(0, 3).join(", ")}`);
+    if (brandCtx.imageBankCompositions.length > 0) bd.push(`Composition patterns: ${brandCtx.imageBankCompositions.slice(0, 3).join(", ")}`);
+    if (brandCtx.industry) bd.push(`Industry: ${brandCtx.industry}`);
+    if (bd.length > 0) {
+      brandDirectionBlock = `\n\nBRAND CREATIVE DIRECTION (MANDATORY — this defines the visual identity of the output):
+${bd.join("\n")}
+
+YOUR JOB: Compose a SINGLE unified prompt where the brand direction is woven INTO the scene description — not appended as keywords. The lighting, color grading, props, wardrobe, and atmosphere should all serve the brand's visual identity. Think like an art director briefing a photographer: "I want the viewer to feel X, using Y light, with Z color accents."`;
+    }
+  }
+
+  const systemPrompt = `You are a world-class image prompt engineer — ex-Harcourt, Annie Leibovitz studio, Condé Nast visual department. You specialize in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
+${brandDirectionBlock}
 METHODOLOGY — SCENE-STACK (build every prompt in this order):
 1. SUBJECT — What is the hero element? Describe it with extreme material precision (texture, color, shape, surface finish).
 2. CAMERA — Specific body + lens + aperture + focal length. Examples: "Sony A7RV, 85mm f/1.4 GM", "Hasselblad X2D, 90mm f/2.5", "Canon R5 Mark II, 24-70mm f/2.8 at 35mm".
@@ -1040,7 +1065,7 @@ METHODOLOGY — SCENE-STACK (build every prompt in this order):
 5. EMOTION — What should the viewer FEEL? Warmth, desire, calm, power, intimacy, awe.
 6. STYLE — Photography genre: editorial, commercial product, lifestyle, fashion, food, architecture, documentary, portrait, still life.
 7. TECHNIQUE — Lighting setup + color grading + atmosphere + post-production look.
-8. ANTI-DEFECTS — Explicit negative instructions to prevent AI artifacts.
+8. ANTI-DEFECTS — End with: "No text, no logos, no watermarks. 8K, photorealistic."
 
 LIGHTING THEORY (choose the most appropriate):
 - Golden Hour: warm directional light, long shadows, amber tones — for lifestyle, outdoor, emotional
@@ -1055,65 +1080,29 @@ LIGHTING THEORY (choose the most appropriate):
 COMPOSITION RULES (apply at least 2):
 - Rule of Thirds: subject placed at power points, never dead center unless intentional symmetry
 - Leading Lines: environmental lines draw eye to subject (roads, architecture, fabric folds)
-- Negative Space: generous empty areas for breathing room and implied text placement
+- Negative Space: generous empty areas for breathing room
 - Depth Layering: foreground element (blurred) → subject (sharp) → background (soft bokeh)
 - Frame Within Frame: doorways, windows, arches framing the subject
 - Diagonal Tension: tilted elements creating dynamic energy
 
 ${isVague ? `SHORT/VAGUE PROMPT DETECTED — EXPANSION PROTOCOL:
-The user wrote a brief request. They have a clear mental image but lack prompt engineering vocabulary. READ BETWEEN THE LINES and expand into a rich visual scene.
-
-EXPANSION STRATEGY:
-1. IDENTIFY the core subject — what is the main thing they want to see?
-2. INFER the most likely context — where would this subject naturally be? What setting makes sense?
-3. CHOOSE the best photography style — product shot? lifestyle? editorial? portrait? food photography?
-4. BUILD THE SCENE — don't describe an object in isolation; place it in a believable environment with props, background, and atmosphere.
-5. DEFAULT TO PREMIUM — assume the user wants professional, magazine-quality results. Warm, inviting, high-end aesthetics.
-
-Examples:
-- "black cat" → A sleek black cat with piercing golden eyes sitting on a sunlit windowsill in a cozy Parisian apartment, lace curtains softly diffusing warm afternoon light, potted herbs nearby, shot on Sony A7IV 85mm f/1.4, shallow depth of field, golden hour warmth...
-- "my bread" → A freshly baked artisan sourdough loaf on a rustic wooden cutting board, golden crust with flour dusting, steam rising gently, warm bakery morning light, shot on Canon R5 100mm macro f/2.8, food photography editorial style...
-- "running shoes" → A pair of modern performance running shoes on wet pavement after rain, urban dawn, reflections on ground, shot on Fujifilm X-T5 23mm f/1.4, shallow depth of field, athletic lifestyle editorial...
+The user wrote a brief request. READ BETWEEN THE LINES and expand into a rich visual scene.
+1. IDENTIFY the core subject
+2. INFER the most likely context — where would this subject naturally be?
+3. CHOOSE the best photography style
+4. BUILD THE SCENE — place subject in a believable environment with props, background, and atmosphere
+5. DEFAULT TO PREMIUM — assume professional, magazine-quality results
 
 NEVER ask for clarification. NEVER output multiple options. Pick the BEST interpretation and commit fully.
 ` : ''}OUTPUT RULES:
 - Output ONLY the prompt text. No quotes, no explanation, no preamble, no markdown.
 - Keep it between ${isVague ? '120 and 200' : '80 and 180'} words.
-- Preserve the user's creative intent EXACTLY — do not change the subject or concept.${isVague ? ' But ADD visual context, scene, environment, and mood that the user likely imagined but didn\'t write.' : ''}
+- Preserve the user's creative intent EXACTLY — do not change the subject or concept.${isVague ? ' But ADD visual context, scene, environment, and mood.' : ''}
 - If the user's request is in another language, translate it faithfully to English first.
-- ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt (e.g. "MAN eTGX", "Nike Air Max 90"). The brand name helps the AI match the reference image identity. Do NOT remove or replace brand names with generic descriptions. However, do NOT add any NEW brand names that aren't already in the prompt.` : `CRITICAL ANTI-HALLUCINATION: REMOVE ALL brand names, product model names, company names from the prompt. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery". NEVER mention any brand by name — AI image models render brand names as garbled hallucinated text.`}
-- CRITICAL TEMPORAL: Vehicles, machines, technology MUST be described as MODERN, CONTEMPORARY, CURRENT-GENERATION (2024-era). NEVER vintage, retro, classic, old, antique. Always add "modern, latest generation" for vehicles.
-- NEVER reference competing brands or any brand at all.
+- ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt. Do NOT remove or replace brand names. However, do NOT add any NEW brand names not already in the prompt.` : `REMOVE ALL brand names, product model names, company names. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery".`}
+- Vehicles, machines, technology MUST be MODERN, CONTEMPORARY (2024-era). NEVER vintage or retro.
+- End the prompt with: "No text, no logos, no watermarks. 8K, photorealistic."`;
 
-BRAND INTEGRATION (when brand context is provided):
-- Weave brand colors NATURALLY into the scene (props, background, clothing, light tint) — never "add [color]"
-- Match the brand's semiotic territory: luxury = negative space + muted tones, youthful = saturated + dynamic angles, expert = clean + structured
-- If a product universe specifies a photo_style or palette, adopt it as the dominant visual direction
-
-ALWAYS ADD these technical details (pick what is relevant):
-- Camera and lens: specific camera model, focal length, aperture (e.g. "shot on Sony A7IV, 85mm f/1.4")
-- Lighting: specific setup from the LIGHTING THEORY section above
-- Atmosphere: haze, dust particles, volumetric light, rain droplets, humidity, lens flare, etc.
-- Texture and material: surface detail, fabric weave, metal reflection, skin pores, condensation, etc.
-- Color grading: specific film stock look (Kodak Portra 400, Fuji Pro 400H), color temperature, contrast
-- Composition: at least 2 rules from the COMPOSITION RULES section above
-- Resolution keywords: "8K resolution", "ultra-detailed", "photorealistic", "hyperrealistic"
-- Style anchor: "editorial photography", "cinematic still", "commercial product shot", "documentary style"
-
-NEVER add: text, watermarks, logos, brand names, product names, model numbers, signatures, borders, collages, split screens, any readable writing.
-End the prompt with: "Absolutely no visible text, no letters, no words, no brand names, no logos anywhere in the image. Ultra-detailed, 8K resolution, photorealistic."
-
-PRODUCT FIDELITY — ABSOLUTE RULE:
-- ONLY describe product features, shapes, colors, materials that exist in the provided context
-- NEVER invent product details, certifications, or visual elements not described by the user
-- If product details are sparse, focus on ATMOSPHERE and SCENE rather than inventing product specifics
-- Describe the product as it IS, not as you imagine it could be
-
-ANTI-HALLUCINATION — ZERO TOLERANCE:
-- NEVER invent certifications, labels, or text that would appear in the image
-- NEVER fabricate product details, packaging, or branding elements
-- NEVER add text overlays, signage, or readable content of any kind
-- When in doubt, describe MOOD and ATMOSPHERE rather than specific claims`;
   for (const m of enhanceModels) {
     try {
       const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
@@ -1125,7 +1114,7 @@ ANTI-HALLUCINATION — ZERO TOLERANCE:
             { role: "system", content: systemPrompt },
             { role: "user", content: rawPrompt },
           ],
-          max_tokens: 350,
+          max_tokens: 400,
         }),
         signal: AbortSignal.timeout(12_000),
       });
@@ -1133,7 +1122,7 @@ ANTI-HALLUCINATION — ZERO TOLERANCE:
       const data = await res.json();
       const enhanced = data.choices?.[0]?.message?.content?.trim();
       if (enhanced && enhanced.length > 20) {
-        console.log(`[enhancePrompt] OK via ${m} (${Date.now() - t0}ms): "${rawPrompt.slice(0, 40)}" → "${enhanced.slice(0, 120)}"`);
+        console.log(`[enhancePrompt] OK via ${m} (${Date.now() - t0}ms, brand=${!!brandCtx}): "${rawPrompt.slice(0, 40)}" → "${enhanced.slice(0, 120)}"`);
         return enhanced;
       }
     } catch (err) { console.log(`[enhancePrompt] ${m} error: ${err}`); }
@@ -5430,27 +5419,55 @@ app.post("/generate/image-start", async (c) => {
       return c.json({ success: false, error: "All providers failed" }, 500);
     }
 
-    // ═══ NO REF or non-upload ref: Standard Luma generation ═══
-    let prompt = rawPrompt;
+    // ═══ NO REF or non-upload ref: Standard generation ═══
     let brandCtx: BrandContext | null = null;
     if (user) {
-      try {
-        brandCtx = await buildBrandContext(user.id);
-        if (brandCtx) {
-          prompt = enrichPromptWithBrand(prompt, brandCtx, aspectRatio);
-        }
-      } catch (err) { console.log(`[image-start-POST] buildBrandContext failed: ${err}`); }
+      try { brandCtx = await buildBrandContext(user.id); } catch (err) { console.log(`[image-start-POST] buildBrandContext failed: ${err}`); }
     }
-    const antiTextSuffix = ". No visible text, letters, numbers, words, watermarks, labels or typography in the image.";
-    if (brandCtx?.brandName) {
-      const bn = brandCtx.brandName;
-      prompt = prompt.replace(new RegExp(bn, "gi"), "the product");
+
+    // Enhance prompt with brand context — unified creative prompt, no keyword-stuffing
+    const prompt = await enhanceImagePrompt(rawPrompt, false, brandCtx);
+    console.log(`[image-start-POST] Enhanced prompt (${prompt.length} chars, brand=${!!brandCtx}): "${prompt.slice(0, 120)}..."`);
+
+    // ── Route to Ideogram when brand has color palette (native color control) ──
+    const brandColors = brandCtx ? [...new Set([...brandCtx.colorPalette, ...brandCtx.imageBankColors])].slice(0, 4) : [];
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (ideogramKey && brandColors.length >= 2) {
+      try {
+        console.log(`[image-start-POST] Routing to Ideogram (brand has ${brandColors.length} colors: ${brandColors.join(", ")})`);
+        const result = await generateImageIdeogram({
+          prompt,
+          model: "ideogram-v3",
+          aspectRatio,
+          colorPalette: brandColors.map(hex => ({ color_hex: hex.replace("#", "") })),
+          styleType: "REALISTIC",
+        });
+        if (result?.imageUrl) {
+          console.log(`[image-start-POST] Ideogram OK in ${Date.now() - t0}ms`);
+          if (user) logEvent("generation", { userId: user.id, type: "image", model: "ideogram-v3", provider: "ideogram" }).catch(() => {});
+          return c.json({ success: true, imageUrl: result.imageUrl, provider: "ideogram", directResult: true });
+        }
+      } catch (err) {
+        console.log(`[image-start-POST] Ideogram failed, falling back to Luma: ${err}`);
+      }
     }
 
     const lumaArMap2: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
-    const lumaBody2: any = { prompt: prompt + antiTextSuffix, model: "photon-1", aspect_ratio: lumaArMap2[aspectRatio] || "1:1" };
+    const lumaBody2: any = { prompt, model: "photon-1", aspect_ratio: lumaArMap2[aspectRatio] || "1:1" };
     if (imageRefUrl) {
-      lumaBody2.image_ref = [{ url: imageRefUrl, weight: 0.80 }];
+      lumaBody2.image_ref = [{ url: imageRefUrl, weight: 0.60 }];
+    } else if (brandCtx && brandCtx.topRefImages.length > 0) {
+      // Auto-resolve best brand reference image for style coherence
+      try {
+        await ensureImageBankBucket();
+        const sb = supabaseAdmin();
+        const bestRef = brandCtx.topRefImages[0];
+        const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(bestRef.storagePath, 3600);
+        if (signedData?.signedUrl) {
+          lumaBody2.image_ref = [{ url: signedData.signedUrl, weight: 0.60 }];
+          console.log(`[image-start-POST] Auto-resolved brand ref (weight=0.60): "${bestRef.description?.slice(0, 50)}"`);
+        }
+      } catch (err) { console.log(`[image-start-POST] Auto-resolve brand ref failed: ${err}`); }
     }
 
     const lumaRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/image`, {
@@ -5505,50 +5522,13 @@ app.get("/generate/image-start", async (c) => {
       }
     }
 
-    if (brandCtx) {
-      const brandParts: string[] = [];
-      const allColors = [...new Set([...brandCtx.colorPalette, ...brandCtx.imageBankColors])].slice(0, 6);
-      if (allColors.length > 0) brandParts.push(`dominant color palette ${allColors.join(", ")}`);
-      if (brandCtx.imageBankMoods.length > 0) brandParts.push(`${brandCtx.imageBankMoods.slice(0, 3).join(", ")} mood`);
-      else if (brandCtx.photoStyle?.mood) brandParts.push(`${brandCtx.photoStyle.mood} mood`);
-      if (brandCtx.imageBankLighting.length > 0) brandParts.push(`${brandCtx.imageBankLighting.slice(0, 3).join(", ")} lighting`);
-      else if (brandCtx.photoStyle?.lighting) brandParts.push(`${brandCtx.photoStyle.lighting} lighting`);
-      if (brandCtx.imageBankCompositions.length > 0) brandParts.push(`${brandCtx.imageBankCompositions.slice(0, 2).join(", ")} composition`);
-      else if (brandCtx.photoStyle?.framing) brandParts.push(`${brandCtx.photoStyle.framing} framing`);
-      if (brandCtx.imageBankStyles.length > 0) brandParts.push(`${brandCtx.imageBankStyles.slice(0, 2).join(", ")} style`);
-
-      if (brandParts.length > 0) {
-        prompt = `${rawPrompt}. Visual direction: ${brandParts.join(", ")}. Cohesive brand aesthetic, premium quality.`;
-        console.log(`[image-start] Brand-enriched prompt (${prompt.length} chars): ...${prompt.slice(-120)}`);
-      }
-    } else if (brandVisualPrefix && brandVisualPrefix.length > 10) {
-      prompt = `${rawPrompt}. Visual direction: ${brandVisualPrefix}. Cohesive brand aesthetic.`;
-      console.log(`[image-start] Fallback brand visual from query param (${prompt.length} chars)`);
-    }
+    // Enhance prompt with brand context — the prompt engineer weaves brand direction into a unified creative prompt
+    prompt = await enhanceImagePrompt(rawPrompt, false, brandCtx);
+    console.log(`[image-start] Enhanced prompt (${prompt.length} chars, brand=${!!brandCtx}): "${prompt.slice(0, 120)}..."`);
 
     if (user) deductCredit(user.id, getModelCreditCost("image", model)).catch(() => {});
 
-    // Force anti-text suffix on EVERY image prompt to prevent hallucinated brand names/logos
-    const antiTextSuffix = ". ABSOLUTELY NO visible text, no letters, no words, no brand names, no logos, no signs, no labels, no writing anywhere in the image. Clean photographic image only.";
-    if (!prompt.toLowerCase().includes("no visible text")) {
-      prompt = prompt + antiTextSuffix;
-    }
-
-    // Strip known brand names from image prompts — AI generators hallucinate fake logos when they see brand names
-    // This is a safety net in case the campaign AI still includes brand names in imagePrompt
-    if (brandCtx?.brandName) {
-      const bn = brandCtx.brandName;
-      const before = prompt;
-      // Simple case-insensitive replacement without complex regex escaping
-      const lp = prompt.toLowerCase();
-      const lb = bn.toLowerCase();
-      let idx = lp.indexOf(lb);
-      while (idx !== -1) {
-        prompt = prompt.slice(0, idx) + "the product" + prompt.slice(idx + bn.length);
-        idx = prompt.toLowerCase().indexOf(lb, idx + 11);
-      }
-      if (before !== prompt) console.log(`[image-start] Stripped brand name "${bn}" from prompt to prevent text hallucination`);
-    }
+    const antiTextSuffix = ". No text, no logos, no watermarks.";
 
     const body: any = { prompt, model, aspect_ratio: aspectRatio };
     const isUploadRef = refSource === "upload";
@@ -5585,8 +5565,8 @@ app.get("/generate/image-start", async (c) => {
         const bestRef = brandCtx.topRefImages[0];
         const { data } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(bestRef.storagePath, 3600);
         if (data?.signedUrl) {
-          body.image_ref = [{ url: data.signedUrl, weight: 0.80 }];
-          console.log(`[image-start] Auto-resolved brand ref image (weight=0.80): "${bestRef.description?.slice(0, 50)}" (score=${bestRef.score})`);
+          body.image_ref = [{ url: data.signedUrl, weight: 0.60 }];
+          console.log(`[image-start] Auto-resolved brand ref image (weight=0.60): "${bestRef.description?.slice(0, 50)}" (score=${bestRef.score})`);
         }
       } catch (err) {
         console.log(`[image-start] Auto-resolve brand ref failed (continuing without): ${err}`);
