@@ -64,6 +64,14 @@ interface CampaignPostVariant {
   imageModel?: string;
 }
 
+interface CarouselSlide {
+  slideNumber: number;
+  headline?: string;    // LinkedIn/Facebook: text overlay
+  body?: string;        // LinkedIn/Facebook: text overlay
+  imagePrompt?: string; // Prompt for this slide's image
+  imageUrl?: string;    // Generated image URL
+}
+
 interface CampaignPost {
   format: string;
   platform: string;
@@ -78,6 +86,7 @@ interface CampaignPost {
   price?: string;
   features?: string[];
   aspectRatio?: string;
+  slides?: CarouselSlide[]; // Carousel slides (linkedin-carousel, instagram-carousel, etc.)
   variants?: CampaignPostVariant[];
   selectedVariant?: number;
 }
@@ -721,6 +730,15 @@ export function StudioPage() {
                 }
               }
 
+              // Parse carousel slides if present
+              const rawSlides = Array.isArray(copy.slides) ? copy.slides : undefined;
+              const slides: CarouselSlide[] | undefined = rawSlides?.map((s: any) => ({
+                slideNumber: s.slideNumber || 0,
+                headline: s.headline || undefined,
+                body: s.body || undefined,
+                imagePrompt: s.imagePrompt || undefined,
+              }));
+
               posts.push({
                 format: formatId,
                 platform,
@@ -731,6 +749,7 @@ export function StudioPage() {
                 cta: extractCta(copy),
                 price: extractPrice(copy),
                 features: extractFeatures(copy),
+                slides,
                 variants: variants.length > 1 ? variants : undefined,
                 selectedVariant: 0,
               });
@@ -768,19 +787,44 @@ export function StudioPage() {
             ? `. ${brandVisualParts.join(". ")}.`
             : "";
 
-          // 3. Split visual formats into IMAGE vs VIDEO
+          // 3. Split visual formats into IMAGE vs CAROUSEL vs VIDEO
           const VIDEO_FORMAT_KEYWORDS = ["video", "reel", "short"];
           const isVideoFormat = (f: string) => VIDEO_FORMAT_KEYWORDS.some(k => f.includes(k));
+          const isCarouselFormat = (f: string) => f.includes("carousel");
 
           const allVisualFormats = posts.filter(p =>
             !p.format.includes("text") && !p.format.includes("article") && !p.format.includes("thread")
           );
-          const imageOnlyFormats = allVisualFormats.filter(p => !isVideoFormat(p.format));
+          const carouselFormats = allVisualFormats.filter(p => isCarouselFormat(p.format));
+          const imageOnlyFormats = allVisualFormats.filter(p => !isVideoFormat(p.format) && !isCarouselFormat(p.format));
           const videoFormats = allVisualFormats.filter(p => isVideoFormat(p.format));
 
           console.log(`[studio] Posts: ${posts.length}, formats: ${posts.map(p => p.format).join(", ")}`);
-          console.log(`[studio] Visual: ${allVisualFormats.length}, Images: ${imageOnlyFormats.length}, Videos: ${videoFormats.length}`);
+          console.log(`[studio] Visual: ${allVisualFormats.length}, Images: ${imageOnlyFormats.length}, Carousels: ${carouselFormats.length}, Videos: ${videoFormats.length}`);
           console.log(`[studio] productRefUrls: ${productRefUrls.length}, imageModelList: ${imageModelList.join(",")}`);
+
+          // 3a-pre. Generate CAROUSEL SLIDE IMAGES (one image per slide, in parallel)
+          for (const carouselPost of carouselFormats) {
+            if (!carouselPost.slides || carouselPost.slides.length === 0) continue;
+            const aspectRatio = "1:1"; // Carousels are always 1:1
+            console.log(`[studio] Generating ${carouselPost.slides.length} slide images for ${carouselPost.format}`);
+
+            const slideJobs = carouselPost.slides.map(async (slide) => {
+              const slidePrompt = slide.imagePrompt || `${brief}, abstract textured background, editorial photography`;
+              try {
+                const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(slidePrompt)}&models=ideogram-3-leo&aspectRatio=${aspectRatio}`);
+                return res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null;
+              } catch { return null; }
+            });
+
+            const slideResults = await Promise.all(slideJobs);
+            for (let si = 0; si < carouselPost.slides.length; si++) {
+              carouselPost.slides[si].imageUrl = slideResults[si] || undefined;
+            }
+            // Set first slide as the thumbnail
+            carouselPost.imageUrl = carouselPost.slides.find(s => s.imageUrl)?.imageUrl;
+            console.log(`[studio] Carousel ${carouselPost.format}: ${slideResults.filter(Boolean).length}/${carouselPost.slides.length} slides generated`);
+          }
 
           // 3a. Generate IMAGES for image formats
           // PRODUCT PRESENT → Photoroom only (pixel-perfect product, multiple scene variants)
@@ -2099,10 +2143,11 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, on
 }
 
 /* ── Campaign Carousel — fullscreen feel ── */
-function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions, onAnimate, isGenerating }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void; onMoreVersions?: (postIdx: number) => void; onAnimate?: (postIdx: number) => void; isGenerating?: boolean }) {
+function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMoreVersions, onAnimate, isGenerating }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void; onRemix?: (imageUrl: string, editPrompt: string) => void; onMoreVersions?: (postIdx: number) => void; onAnimate?: (postIdx: number) => void; isGenerating?: boolean }) {
   const { t } = useI18n();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [variantSelections, setVariantSelections] = useState<Record<number, number>>({});
+  const [slideIdx, setSlideIdx] = useState<Record<number, number>>({});
 
   const selectVariant = (postIdx: number, variantIdx: number) => {
     setVariantSelections(prev => ({ ...prev, [postIdx]: variantIdx }));
@@ -2153,11 +2198,11 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                 border: "1px solid var(--border)",
                 ...(isExpanded ? { gridColumn: "1 / -1" } : {}),
               }}>
-              {/* Visual thumbnail — show selected variant */}
-              {hasVisual && !isExpanded && (() => {
+              {/* Visual thumbnail — show selected variant or first carousel slide */}
+              {(hasVisual || (post.slides && post.slides.length > 0)) && !isExpanded && (() => {
                 const selIdx = variantSelections[idx] ?? post.selectedVariant ?? 0;
                 const selVariant = post.variants?.[selIdx];
-                const thumbUrl = selVariant?.imageUrl || post.compositeImageUrl || post.imageUrl;
+                const thumbUrl = selVariant?.imageUrl || post.compositeImageUrl || post.slides?.[0]?.imageUrl || post.imageUrl;
                 return (
                 <div className="relative group/thumb" style={{ height: 120 }}>
                   {post.videoUrl ? (
@@ -2170,8 +2215,13 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                       <Film size={10} style={{ color: "#fff" }} />
                     </div>
                   )}
-                  {/* Variant count badge */}
-                  {post.variants && post.variants.length > 1 && (
+                  {/* Slide/variant count badge */}
+                  {post.slides && post.slides.length > 0 ? (
+                    <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md flex items-center gap-1"
+                      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", fontSize: "9px", color: "#fff", fontWeight: 700 }}>
+                      <LayoutGrid size={9} /> {post.slides.length} slides
+                    </div>
+                  ) : post.variants && post.variants.length > 1 && (
                     <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md"
                       style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", fontSize: "9px", color: "#fff", fontWeight: 700 }}>
                       {post.variants.length} versions
@@ -2226,7 +2276,86 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                 const displayImageUrl = selVariant?.imageUrl || post.compositeImageUrl || post.imageUrl;
                 return (
                 <div className="px-3 pb-3 space-y-3">
-                  {hasVisual && (
+                  {/* Carousel slides view */}
+                  {post.slides && post.slides.length > 0 ? (() => {
+                    const currentSlide = slideIdx[idx] ?? 0;
+                    const slide = post.slides![currentSlide];
+                    const isLinkedin = post.platform.toLowerCase() === "linkedin" || post.platform.toLowerCase() === "facebook";
+                    return (
+                      <div className="space-y-2">
+                        {/* Slide image with overlay text for LinkedIn */}
+                        <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1" }}>
+                          {slide?.imageUrl ? (
+                            <img src={slide.imageUrl} className="w-full h-full object-cover" alt="" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center" style={{ background: "var(--secondary)" }}>
+                              <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                            </div>
+                          )}
+                          {/* LinkedIn/Facebook: text overlay on image */}
+                          {isLinkedin && (slide?.headline || slide?.body) && (
+                            <div className="absolute inset-0 flex flex-col justify-end p-6"
+                              style={{ background: "linear-gradient(transparent 30%, rgba(0,0,0,0.75) 100%)" }}>
+                              {slide?.headline && (
+                                <div style={{ fontSize: "18px", fontWeight: 800, color: "#fff", lineHeight: 1.2, marginBottom: 6, textShadow: "0 2px 8px rgba(0,0,0,0.5)" }}>
+                                  {slide.headline}
+                                </div>
+                              )}
+                              {slide?.body && (
+                                <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.9)", lineHeight: 1.5 }}>
+                                  {slide.body}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Slide counter */}
+                          <div className="absolute top-2 left-2 px-2 py-1 rounded-md"
+                            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", fontSize: "10px", color: "#fff", fontWeight: 700 }}>
+                            {currentSlide + 1} / {post.slides!.length}
+                          </div>
+                          {/* Navigation arrows */}
+                          {currentSlide > 0 && (
+                            <button className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer"
+                              style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+                              onClick={e => { e.stopPropagation(); setSlideIdx(prev => ({ ...prev, [idx]: currentSlide - 1 })); }}>
+                              <ChevronLeft size={16} style={{ color: "#fff" }} />
+                            </button>
+                          )}
+                          {currentSlide < post.slides!.length - 1 && (
+                            <button className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer"
+                              style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+                              onClick={e => { e.stopPropagation(); setSlideIdx(prev => ({ ...prev, [idx]: currentSlide + 1 })); }}>
+                              <ChevronRight size={16} style={{ color: "#fff" }} />
+                            </button>
+                          )}
+                        </div>
+                        {/* Slide dots indicator */}
+                        <div className="flex items-center justify-center gap-1.5">
+                          {post.slides!.map((_, si) => (
+                            <button key={si}
+                              className="rounded-full cursor-pointer transition-all"
+                              style={{ width: si === currentSlide ? 16 : 6, height: 6, background: si === currentSlide ? "var(--foreground)" : "var(--border)" }}
+                              onClick={e => { e.stopPropagation(); setSlideIdx(prev => ({ ...prev, [idx]: si })); }} />
+                          ))}
+                        </div>
+                        {/* Slide thumbnails strip */}
+                        <div className="flex gap-1 overflow-x-auto pb-1">
+                          {post.slides!.map((s, si) => (
+                            <div key={si}
+                              className="flex-shrink-0 rounded-md overflow-hidden cursor-pointer transition-all"
+                              style={{ width: 48, height: 48, border: si === currentSlide ? "2px solid var(--foreground)" : "1px solid var(--border)", opacity: si === currentSlide ? 1 : 0.5 }}
+                              onClick={e => { e.stopPropagation(); setSlideIdx(prev => ({ ...prev, [idx]: si })); }}>
+                              {s.imageUrl ? (
+                                <img src={s.imageUrl} className="w-full h-full object-cover" alt="" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center" style={{ background: "var(--secondary)", fontSize: "10px", color: "var(--muted-foreground)" }}>{si + 1}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })() : hasVisual && (
                     <div className="relative rounded-lg overflow-hidden group/expanded">
                       {post.videoUrl ? (
                         <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
@@ -2711,7 +2840,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVers
     };
     return (
       <div className="space-y-3">
-        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost}
+        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost} onRemix={onRemix}
           onMoreVersions={onMoreVersions ? (idx) => onMoreVersions(idx, result.campaignPosts!, result.refImageUrl) : undefined}
           onAnimate={onAnimate ? (idx) => onAnimate(idx, result.campaignPosts!) : undefined}
           isGenerating={isGenerating} />

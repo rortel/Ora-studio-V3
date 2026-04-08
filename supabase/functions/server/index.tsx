@@ -1064,7 +1064,8 @@ YOUR images must feel CANDID, REAL, ALIVE:
 - Real moments: mid-gesture, mid-laugh, looking away from camera, caught in thought
 - Textured environments: lived-in spaces, worn surfaces, real weather, natural mess
 - Modern color grading: desaturated earth tones, or bold monochrome with one accent, or warm film grain — NEVER the "bright airy stock" look (blown-out whites + saturated primaries)
-- AVOID AT ALL COSTS: people pointing at laptops, handshakes, arms crossed, thumbs up, sterile white offices, generic coffee shops with identical chairs, "diverse group smiling at camera"
+- SKIN & PEOPLE: Real skin texture — pores, freckles, fine lines, uneven tone. NEVER smooth/airbrushed/plastic skin. No uncanny valley. Natural body proportions. Real hair texture, not salon-perfect. Hands with veins, knuckles, imperfect nails. Eyes with actual catchlights and natural asymmetry.
+- AVOID AT ALL COSTS: people pointing at laptops, handshakes, arms crossed, thumbs up, sterile white offices, generic coffee shops with identical chairs, "diverse group smiling at camera", airbrushed skin, plastic-looking faces, perfect symmetry, over-saturated colors
 
 METHODOLOGY — SCENE-STACK (build every prompt in this order):
 1. SUBJECT — What is the hero element? Describe with material precision: texture, wear, patina, surface finish, micro-details.
@@ -4334,11 +4335,14 @@ async function handleCampaignPlan(c: any, brief: string, imageContext: string, l
     : "";
 
   // ── Dynamic asset definitions based on template + selected formats ──
-  const ALL_FORMATS: Record<string, { id: string; platform: string; formatName: string; type: "image" | "video" | "text"; aspectRatio: string; dimensions: string; copyHint: string }> = {
+  const ALL_FORMATS: Record<string, { id: string; platform: string; formatName: string; type: "image" | "video" | "text" | "carousel"; aspectRatio: string; dimensions: string; copyHint: string; slideCount?: number }> = {
     "linkedin-post":    { id: "linkedin-post",    platform: "LinkedIn",  formatName: "LinkedIn Post",    type: "image", aspectRatio: "16:9", dimensions: "1200x627",  copyHint: "Post text (professional tone, 100-200 words, line breaks as \\\\n)" },
     "instagram-post":   { id: "instagram-post",   platform: "Instagram", formatName: "Instagram Post",   type: "image", aspectRatio: "1:1",  dimensions: "1080x1080", copyHint: "Caption (engaging, hashtags, 80-150 words)" },
     "instagram-story":  { id: "instagram-story",  platform: "Instagram", formatName: "Instagram Story",  type: "image", aspectRatio: "9:16", dimensions: "1080x1920", copyHint: "Story overlay text (15-30 words max, punchy)" },
     "facebook-post":    { id: "facebook-post",    platform: "Facebook",  formatName: "Facebook Post",    type: "image", aspectRatio: "16:9", dimensions: "1200x630",  copyHint: "Post text (conversational, 80-150 words)" },
+    "linkedin-carousel": { id: "linkedin-carousel", platform: "LinkedIn", formatName: "LinkedIn Carousel", type: "carousel", aspectRatio: "1:1", dimensions: "1080x1080", copyHint: "Post text introducing the carousel (professional, 80-120 words)", slideCount: 5 },
+    "instagram-carousel": { id: "instagram-carousel", platform: "Instagram", formatName: "Instagram Carousel", type: "carousel", aspectRatio: "1:1", dimensions: "1080x1080", copyHint: "Caption (engaging, hashtags, 80-150 words)", slideCount: 5 },
+    "facebook-carousel": { id: "facebook-carousel", platform: "Facebook", formatName: "Facebook Carousel", type: "carousel", aspectRatio: "1:1", dimensions: "1080x1080", copyHint: "Post text (conversational, 80-120 words)", slideCount: 5 },
     "instagram-reel":   { id: "instagram-reel",   platform: "Instagram", formatName: "Instagram Reel",   type: "video", aspectRatio: "9:16", dimensions: "1080x1920", copyHint: "Reel caption (short, hashtags, 50-80 words)" },
     "linkedin-video":   { id: "linkedin-video",   platform: "LinkedIn",  formatName: "LinkedIn Video",   type: "video", aspectRatio: "16:9", dimensions: "1920x1080", copyHint: "Video post text (professional, 80-120 words)" },
     "tiktok-video":     { id: "tiktok-video",     platform: "TikTok",    formatName: "TikTok Video",     type: "video", aspectRatio: "9:16", dimensions: "1080x1920", copyHint: "Caption (trendy, hashtags, 40-80 words)" },
@@ -4384,7 +4388,6 @@ async function handleCampaignPlan(c: any, brief: string, imageContext: string, l
     const fmt = ALL_FORMATS[id];
     if (!fmt) return "";
     if (fmt.type === "text") {
-      // Text-only assets: structured copy, no image/video prompts
       return `    {
       "id": "${fmt.id}",
       "platform": "${fmt.platform}",
@@ -4393,6 +4396,32 @@ async function handleCampaignPlan(c: any, brief: string, imageContext: string, l
       "aspectRatio": "${fmt.aspectRatio}",
       "dimensions": "${fmt.dimensions}",
       "copy": "${fmt.copyHint}"
+    }`;
+    }
+    if (fmt.type === "carousel") {
+      const sc = fmt.slideCount || 5;
+      const isLinkedin = fmt.platform === "LinkedIn";
+      return `    {
+      "id": "${fmt.id}",
+      "platform": "${fmt.platform}",
+      "formatName": "${fmt.formatName}",
+      "type": "carousel",
+      "aspectRatio": "${fmt.aspectRatio}",
+      "dimensions": "${fmt.dimensions}",
+      "copy": "${fmt.copyHint}",
+      "slides": [
+        ${Array.from({ length: sc }, (_, si) => {
+          if (isLinkedin) {
+            // LinkedIn carousel = text-heavy educational slides
+            if (si === 0) return `{ "slideNumber": ${si + 1}, "headline": "Bold hook headline (5-8 words, scroll-stopping)", "body": "Subtext that creates curiosity (15-25 words)", "imagePrompt": "Abstract textured background — dark moody surface with subtle brand-colored light leak, shot on Hasselblad, shallow DOF. No text, no logos." }`;
+            if (si === sc - 1) return `{ "slideNumber": ${si + 1}, "headline": "CTA headline (action-oriented)", "body": "What to do next + value proposition (15-25 words)", "imagePrompt": "Abstract textured background — brand-colored gradient with organic texture, cinematic. No text, no logos." }`;
+            return `{ "slideNumber": ${si + 1}, "headline": "Key insight #${si} (5-8 words)", "body": "Explanation with specific value, data point, or tip (25-40 words)", "imagePrompt": "Specific authentic scene illustrating this point — candid, editorial, real textures. Fujifilm X-T5, 56mm f/1.2. No text, no logos." }`;
+          } else {
+            // Instagram carousel = pure visual storytelling, NO TEXT on images
+            return `{ "slideNumber": ${si + 1}, "imagePrompt": "UNIQUE scene for slide ${si + 1} — each slide tells a different chapter of the story. Hyper-specific, candid, authentic. Include camera+lens, lighting, film grade. No text, no logos, no watermarks." }`;
+          }
+        }).join(",\n        ")}
+      ]
     }`;
     }
     const promptField = fmt.type === "video" ? videoPromptInstruction : imagePromptInstruction;
@@ -4429,6 +4458,10 @@ ${adaptationMode ? `- VISUAL FIDELITY IS MANDATORY: The client provided real pho
   Each imagePrompt MUST include: specific camera + lens (e.g. "Fujifilm X-T5, 56mm f/1.2"), lighting direction (e.g. "overcast window light from camera-left"), and a film color grade (e.g. "Kodak Portra 400 warm tones, slight grain").
   Think Tyler Mitchell, Magnum Photos, Kinfolk magazine — NOT Shutterstock.
 ${adaptationMode ? `- Every asset MUST have a "brandRefImageIndex" (integer >= 0). Match the best reference image to each format based on its category, mood, and recommended usage. Use 0 as default.` : ""}
+- *** CAROUSEL RULES ***:
+  LINKEDIN CAROUSEL: Each slide has headline + body + imagePrompt. Slides 2-4 are the VALUE slides with educational insights, tips, or data. Slide 1 is the HOOK (bold statement/question), last slide is CTA. imagePrompt for LinkedIn MUST be abstract/textured backgrounds (NOT stock photos of people) — the TEXT is the hero, laid over the image. Think: dark moody textures, brand-colored gradients, architectural close-ups, material surfaces.
+  INSTAGRAM CAROUSEL: Each slide has ONLY imagePrompt. NO headline, NO body — text goes in the caption ("copy" field). Each slide imagePrompt must be a DIFFERENT scene/angle/moment of the story — visual storytelling. Think editorial photo series, each image revealing the next chapter. NEVER repeat the same scene.
+  FACEBOOK CAROUSEL: Same structure as LinkedIn carousel.
 - Copy must be platform-appropriate
 ${productContextBlock ? `- PRODUCT FIDELITY: Copy fields must use exact product names, real features, real benefits from the scraped pages. imagePrompt/videoPrompt MUST also include the exact brand+model name (e.g. "MAN eTGX electric truck") to ensure correct product identity — plus visual characteristics and a NEW scene from the brief.` : ""}
 - For assets with type "text" (email-campaign, landing-page): the "copy" field MUST be a STRINGIFIED JSON object. The frontend calls JSON.parse() on it, so it MUST be valid JSON with properly escaped inner quotes.
