@@ -589,12 +589,9 @@ export function StudioPage() {
             }
           }
 
-          // 2. FALLBACK: if no specific product refs, collect images from ALL products in catalog
+          // 2. FALLBACK: if no specific product refs, collect from catalog (no scraping — too slow)
           if (productRefUrls.length === 0 && products.length > 0) {
-            // Debug: log what products actually contain
-            console.log(`[studio] DEBUG: ${products.length} products in catalog:`);
             for (const prod of products) {
-              console.log(`[studio]   "${prod.name}" — images:${prod.images?.length || 0}, imageUrls:${prod.imageUrls?.length || 0}, imageUrl:${prod.imageUrl ? "YES" : "NO"}, url:${prod.url ? "YES" : "NO"}`);
               const imgs = extractProductImages(prod);
               productRefUrls.push(...imgs);
               if (productRefUrls.length >= 5) break;
@@ -602,50 +599,7 @@ export function StudioPage() {
             if (productRefUrls.length > 0) {
               console.log(`[studio] Using ${productRefUrls.length} ref(s) from catalog for Photoroom`);
             } else {
-              console.log(`[studio] ⚠️ No product images found — attempting fallbacks...`);
-
-              // FALLBACK A: scrape product URLs from catalog to get images
-              for (const prod of products) {
-                if (prod.url && productRefUrls.length < 3) {
-                  try {
-                    console.log(`[studio] Scraping "${prod.name}" from ${prod.url.slice(0, 60)}...`);
-                    const scrapeRes = await serverPost("/products/scrape-url", { url: prod.url });
-                    if (scrapeRes.success && scrapeRes.product?.imageUrls?.length) {
-                      const scraped = scrapeRes.product.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 3);
-                      productRefUrls.push(...scraped);
-                      console.log(`[studio] Scraped ${scraped.length} images from "${prod.name}"`);
-                    }
-                  } catch { /* non-blocking */ }
-                }
-              }
-
-              // FALLBACK B: search web for product images by name (last resort)
-              if (productRefUrls.length === 0) {
-                const brandName = vault?.brandName || vault?.brand_name || vault?.brand_platform?.brand_name || "";
-                // Try finding images for the first 3 products
-                for (const prod of products.slice(0, 3)) {
-                  if (productRefUrls.length >= 3) break;
-                  try {
-                    console.log(`[studio] 🔍 Searching web images for "${prod.name}"...`);
-                    const findRes = await serverPost("/products/find-images", {
-                      productName: prod.name,
-                      brandName,
-                      productId: prod.id,
-                    }, 15_000);
-                    if (findRes.success && findRes.imageUrls?.length) {
-                      const found = findRes.imageUrls.filter((u: string) => typeof u === "string" && u.startsWith("http")).slice(0, 3);
-                      productRefUrls.push(...found);
-                      console.log(`[studio] Found ${found.length} web images for "${prod.name}"`);
-                    }
-                  } catch { /* non-blocking */ }
-                }
-              }
-
-              if (productRefUrls.length > 0) {
-                console.log(`[studio] ✅ Total: ${productRefUrls.length} product images for Photoroom`);
-              } else {
-                console.log(`[studio] ❌ No product images at all — Photoroom will be skipped, using generative AI only`);
-              }
+              console.log(`[studio] No product images — using generative AI only`);
             }
           }
 
@@ -653,8 +607,10 @@ export function StudioPage() {
           const textModelList: string[] = Array.isArray(txtModels) ? txtModels : [txtModels];
           const imageModelList: string[] = Array.isArray(imgModels) ? imgModels : [imgModels];
 
-          // 1. Generate texts with all selected text models (in parallel)
-          // Inject visual style into the brief so AI generates scene-appropriate imagePrompts
+          // ── PERF: Use only 1 text model (fastest) — variants available via Compare ──
+          const primaryTextModel = textModelList[0] || "claude-sonnet";
+
+          // 1. Generate texts with PRIMARY model only (fast path)
           const styledBrief = campaignVisualStyle
             ? `${productBrief}\n\nVISUAL DIRECTION: All imagePrompt fields MUST describe a "${campaignVisualStyle}" scene. Adapt lighting, background, composition to match this visual style.`
             : productBrief;
@@ -674,23 +630,28 @@ export function StudioPage() {
             ...(campaignTheme ? { campaignTheme } : {}),
           };
 
-          const textResults = await Promise.all(
-            textModelList.map(model =>
-              serverPost("/campaign/generate-texts", { ...textGenPayload, model })
-                .then(res => {
-                  console.log(`[studio] generate-texts response [${model}]:`, JSON.stringify({ success: res.success, copyMapKeys: Object.keys(res.copyMap || {}), error: res.error }));
-                  return { model, success: res.success, copyMap: res.copyMap || {} };
-                })
-                .catch((err) => {
-                  console.error(`[studio] generate-texts FAILED [${model}]:`, err?.message || err);
-                  return { model, success: false, copyMap: {} };
-                })
-            )
-          );
+          console.log(`[studio] generate-texts: using 1 model (${primaryTextModel}) for speed`);
+          const primaryTextRes = await serverPost("/campaign/generate-texts", { ...textGenPayload, model: primaryTextModel })
+            .then(res => {
+              console.log(`[studio] generate-texts response [${primaryTextModel}]:`, JSON.stringify({ success: res.success, copyMapKeys: Object.keys(res.copyMap || {}), error: res.error }));
+              return { model: primaryTextModel, success: res.success, copyMap: res.copyMap || {} };
+            })
+            .catch((err) => {
+              console.error(`[studio] generate-texts FAILED [${primaryTextModel}]:`, err?.message || err);
+              return { model: primaryTextModel, success: false, copyMap: {} };
+            });
 
-          // Use first successful result as primary, others as variants
-          const primaryText = textResults.find(r => r.success && Object.keys(r.copyMap).length > 0) || textResults[0];
-          const variantTexts = textResults.filter(r => r !== primaryText && r.success && Object.keys(r.copyMap).length > 0);
+          // Fallback: if primary fails, try next model
+          let primaryText = primaryTextRes;
+          if (!primaryText.success && textModelList.length > 1) {
+            const fallbackModel = textModelList[1];
+            console.log(`[studio] Primary text failed, trying fallback: ${fallbackModel}`);
+            primaryText = await serverPost("/campaign/generate-texts", { ...textGenPayload, model: fallbackModel })
+              .then(res => ({ model: fallbackModel, success: res.success, copyMap: res.copyMap || {} }))
+              .catch(() => ({ model: fallbackModel, success: false, copyMap: {} }));
+          }
+
+          const variantTexts: typeof primaryText[] = [];
 
           console.log(`[studio] primaryText: model=${primaryText?.model}, success=${primaryText?.success}, copyMapKeys=${JSON.stringify(Object.keys(primaryText?.copyMap || {}))}`);
 
@@ -879,65 +840,39 @@ export function StudioPage() {
                 }));
               })();
 
-              // Pool of product-safe engines (all keep the real product)
+              // ── PERF: 3 fast engines max (was 7) — more versions via Compare ──
               const productEnginePool = [
-                // Photoroom scenes — pixel-perfect product placement
+                // 1. Photoroom primary scene (fastest, always first)
                 () => serverPost("/generate/image-start", {
                   prompt: primaryScenePrompt.slice(0, 500), model: "photon-1", aspectRatio,
                   imageRefUrl: refUrl, refSource: "upload",
-                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
+                }, 45_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
 
-                () => serverPost("/generate/image-start", {
-                  prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography", model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-
-                () => serverPost("/generate/image-start", {
-                  prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast", model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-
-                () => serverPost("/generate/image-start", {
-                  prompt: "Clean studio packshot, pure white background, professional product photography", model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-
-                () => serverPost("/generate/image-start", {
-                  prompt: "High-fashion editorial setting, clean minimal backdrop, magazine quality", model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 60_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-
-                // Ideogram Replace-BG — pixel-perfect product, new background
+                // 2. Ideogram Replace-BG (good quality, different look)
                 () => serverPost("/ideogram/replace-background", {
                   imageUrl: refUrl,
                   prompt: campaignVisualStyle ? `${campaignVisualStyle}, elegant background, professional product staging` : "Beautiful lifestyle environment, warm soft lighting, premium product staging",
-                }, 90_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
+                }, 45_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
 
-                // Ideogram Remix — product preserved via high imageWeight
-                () => serverPost("/ideogram/remix", {
-                  imageUrl: refUrl,
-                  prompt: `Professional product photography, ${primaryScenePrompt.slice(0, 300)}, premium quality`,
-                  imageWeight: 70, aspectRatio, styleType: "REALISTIC",
-                  colorPalette: ideogramColorPalette.length > 0 ? ideogramColorPalette : undefined,
-                }, 90_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
+                // 3. Photoroom lifestyle variant
+                () => serverPost("/generate/image-start", {
+                  prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography", model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 45_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
               ];
 
-              // Pick versionCount engines (shuffle for variety)
-              const shuffled = productEnginePool.sort(() => Math.random() - 0.5);
-              for (let j = 0; j < Math.min(versionCount, shuffled.length); j++) {
-                jobs.push(shuffled[j]());
+              // Launch only what's needed (1 per format by default, more via versionCount)
+              const maxEngines = Math.min(versionCount, productEnginePool.length);
+              for (let j = 0; j < maxEngines; j++) {
+                jobs.push(productEnginePool[j]());
               }
             } else {
-              // ── NO PRODUCT: text-to-image with diverse models ──
-              const allImageModels = [...imageModelList];
-              // Add more models from CONFIG_IMAGE_MODELS for diversity
-              for (const m of CONFIG_IMAGE_MODELS) {
-                if (!allImageModels.includes(m.id)) allImageModels.push(m.id);
-              }
-              // Shuffle and pick versionCount
-              const shuffled = allImageModels.sort(() => Math.random() - 0.5);
-              for (let j = 0; j < Math.min(versionCount, shuffled.length); j++) {
-                const model = shuffled[j];
+              // ── NO PRODUCT: 1 image per format with primary model (fast) ──
+              const primaryImgModel = imageModelList[0] || "photon-1";
+              const modelsToUse = versionCount > 1
+                ? [primaryImgModel, ...imageModelList.slice(1)].slice(0, Math.min(versionCount, 3))
+                : [primaryImgModel];
+              for (const model of modelsToUse) {
                 jobs.push(
                   serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`)
                     .then(res => ({ imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null }))
@@ -1003,16 +938,10 @@ export function StudioPage() {
                 console.warn(`[studio] Video error [${vf.format}]:`, e?.message);
               }
 
-              // Also generate a thumbnail image for the video card (non-blocking for UX)
-              try {
-                const thumbPrompt = copyEntry?.imagePrompt || fullVideoPrompt;
-                const thumbRes = await serverGet(
-                  `/generate/image-via-get?prompt=${encodeURIComponent(thumbPrompt)}&models=${imageModelList[0] || "photon-1"}&aspectRatio=${aspectRatio}`
-                );
-                if (thumbRes.success && thumbRes.results?.[0]?.result?.imageUrl) {
-                  vf.imageUrl = thumbRes.results[0].result.imageUrl;
-                }
-              } catch { /* thumbnail is optional */ }
+              // Skip thumbnail generation — use product ref or first frame from video
+              if (productRefUrls.length > 0) {
+                vf.imageUrl = productRefUrls[i % productRefUrls.length];
+              }
             });
 
             await Promise.all(videoPromises);
