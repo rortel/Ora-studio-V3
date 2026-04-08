@@ -1022,6 +1022,7 @@ export function StudioPage() {
               items: [],
               campaignPosts: posts,
               logoUrl: compositeLogoUrl || undefined,
+              refImageUrl: productRefUrls[0] || undefined,
               campaignStartDate: campaignStartDate as string | undefined,
               campaignDuration: campaignDuration as string | undefined,
             };
@@ -1355,6 +1356,122 @@ export function StudioPage() {
     setIsGenerating(false);
   }, [comparePicker, serverGet]);
 
+  // ── "Plus de versions" — style-based variants (no technical model names) ──
+  const STYLE_VARIANTS = [
+    { id: "lifestyle", label: "Lifestyle", prompt: "Beautiful natural lifestyle environment, warm golden hour light, editorial photography, soft bokeh background" },
+    { id: "packshot", label: "Packshot", prompt: "Clean studio packshot, pure white background, professional product photography, perfect lighting" },
+    { id: "cinematic", label: "Cinématique", prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast, cinematic color grading, anamorphic feel" },
+    { id: "editorial", label: "Éditorial", prompt: "High-fashion editorial setting, clean minimal backdrop, dramatic directional lighting, magazine quality" },
+    { id: "natural", label: "Naturel", prompt: "Organic natural setting, soft diffused daylight, earthy tones, authentic lifestyle feel, gentle shadows" },
+  ];
+
+  const handleMoreVersions = useCallback(async (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => {
+    const post = posts[postIdx];
+    if (!post?.imageUrl) return;
+    setIsGenerating(true);
+    const sourceUrl = refImageUrl || post.imageUrl;
+
+    try {
+      const results = await Promise.all(
+        STYLE_VARIANTS.map(async (style) => {
+          try {
+            // Use Photoroom (product-safe) when we have a product ref
+            if (refImageUrl) {
+              const res = await serverPost("/generate/image-start", {
+                prompt: style.prompt,
+                model: "photon-1",
+                aspectRatio: post.format.includes("story") ? "9:16" : post.format.includes("post") ? "1:1" : "16:9",
+                imageRefUrl: refImageUrl,
+                refSource: "upload",
+              }, 60_000);
+              if (res.success && (res.imageUrl || res.results?.[0]?.result?.imageUrl)) {
+                return { style: style.label, imageUrl: res.imageUrl || res.results[0].result.imageUrl };
+              }
+            } else {
+              // No product ref — use Ideogram Remix on the existing image
+              const res = await serverPost("/ideogram/remix", {
+                imageUrl: post.imageUrl,
+                prompt: style.prompt,
+                imageWeight: 50,
+                aspectRatio: post.format.includes("story") ? "9:16" : post.format.includes("post") ? "1:1" : "16:9",
+                styleType: "REALISTIC",
+              }, 90_000);
+              if (res.success && res.imageUrl) {
+                return { style: style.label, imageUrl: res.imageUrl };
+              }
+            }
+            return null;
+          } catch { return null; }
+        })
+      );
+
+      const successful = results.filter(Boolean) as { style: string; imageUrl: string }[];
+      if (successful.length > 0) {
+        // Add as a comparison result message
+        const msg: ChatMessage = {
+          id: `versions-${Date.now()}`, role: "assistant",
+          content: `${successful.length} versions de style différent :`,
+          result: {
+            type: "image", prompt: post.text || "",
+            items: [
+              { url: post.imageUrl!, model: "Original", latencyMs: 0 },
+              ...successful.map(r => ({ url: r.imageUrl, model: r.style, latencyMs: 0 })),
+            ],
+            refImageUrl: refImageUrl,
+          },
+        };
+        setMessages(prev => [...prev, msg]);
+      } else {
+        toast.error("Impossible de générer des variantes");
+      }
+    } catch {
+      toast.error("Erreur lors de la génération des variantes");
+    }
+    setIsGenerating(false);
+  }, [serverPost, serverGet]);
+
+  // ── "Animer" — image-to-video, auto-pick best model ──
+  const handleAnimate = useCallback(async (postIdx: number, posts: CampaignPost[]) => {
+    const post = posts[postIdx];
+    if (!post?.imageUrl) return;
+    setIsGenerating(true);
+
+    try {
+      const aspectRatio = post.format.includes("story") || post.format.includes("reel") ? "9:16" : "16:9";
+      const videoPrompt = post.headline
+        ? `${post.headline}. Gentle cinematic motion, professional product animation.`
+        : "Gentle cinematic motion, smooth camera movement, professional product reveal.";
+
+      const startRes = await serverGet(
+        `/generate/video-start?prompt=${encodeURIComponent(videoPrompt)}&model=ora-motion&imageUrl=${encodeURIComponent(post.imageUrl)}&aspectRatio=${aspectRatio}&duration=5`
+      );
+
+      if (startRes.success && startRes.generationId) {
+        toast.success("Animation en cours...");
+        const videoUrl = await pollVideo(startRes.generationId);
+        if (videoUrl) {
+          // Add video as a new result message
+          const msg: ChatMessage = {
+            id: `animate-${Date.now()}`, role: "assistant",
+            content: "Voici votre visuel animé :",
+            result: {
+              type: "video", prompt: videoPrompt,
+              items: [{ url: videoUrl, model: "Animation", latencyMs: 0 }],
+            },
+          };
+          setMessages(prev => [...prev, msg]);
+        } else {
+          toast.error("L'animation n'a pas abouti");
+        }
+      } else {
+        toast.error(startRes.error || "Impossible de lancer l'animation");
+      }
+    } catch (err: any) {
+      toast.error("Erreur d'animation");
+    }
+    setIsGenerating(false);
+  }, [serverGet]);
+
   const showWelcome = messages.length === 0;
 
   return (
@@ -1396,6 +1513,9 @@ export function StudioPage() {
                             handleSend(`Réécris ce texte avec une approche différente : "${item.text.slice(0, 200)}"`);
                           }
                         }}
+                        onMoreVersions={handleMoreVersions}
+                        onAnimate={handleAnimate}
+                        isGenerating={isGenerating}
                       />
                     )}
                   </div>
@@ -1935,12 +2055,15 @@ function UserBubble({ content }: { content: string }) {
 }
 
 /* ── Assistant message ── */
-function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: {
+function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit, onMoreVersions, onAnimate, isGenerating }: {
   msg: ChatMessage;
   onSuggestion: (text: string) => void;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
+  onMoreVersions?: (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => void;
+  onAnimate?: (postIdx: number, posts: CampaignPost[]) => void;
+  isGenerating?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -1970,7 +2093,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 
       {/* Generated results */}
       {msg.result && (
-        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} logoUrl={msg.result.logoUrl} />
+        <ResultCard result={msg.result} onCompare={onCompare} onFinalize={onFinalize} onEdit={onEdit} onMoreVersions={onMoreVersions} onAnimate={onAnimate} isGenerating={isGenerating} logoUrl={msg.result.logoUrl} />
       )}
 
       {/* Suggestions removed — pure conversational, no buttons */}
@@ -1979,7 +2102,7 @@ function AssistantMessage({ msg, onSuggestion, onCompare, onFinalize, onEdit }: 
 }
 
 /* ── Campaign Carousel — fullscreen feel ── */
-function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void }) {
+function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions, onAnimate, isGenerating }: { posts: CampaignPost[]; logoUrl?: string; onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void; onEditVisual?: (postIdx: number) => void; onMoreVersions?: (postIdx: number) => void; onAnimate?: (postIdx: number) => void; isGenerating?: boolean }) {
   const { t } = useI18n();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
@@ -2145,6 +2268,26 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: Cam
                         Régénérer le visuel
                       </button>
                     )}
+                    {onMoreVersions && post.imageUrl && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onMoreVersions(idx); }}
+                        disabled={isGenerating}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500, opacity: isGenerating ? 0.5 : 1 }}>
+                        <Sparkles size={10} />
+                        Plus de versions
+                      </button>
+                    )}
+                    {onAnimate && post.imageUrl && !post.videoUrl && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onAnimate(idx); }}
+                        disabled={isGenerating}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500, opacity: isGenerating ? 0.5 : 1 }}>
+                        <Film size={10} />
+                        Animer
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -2157,11 +2300,14 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual }: { posts: Cam
 }
 
 /* ── Result card ── */
-function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
+function ResultCard({ result, onCompare, onFinalize, onEdit, onMoreVersions, onAnimate, isGenerating, logoUrl }: {
   result: GeneratedResult;
   onCompare: (result: GeneratedResult) => void;
   onFinalize: (posts: CampaignPost[], logoUrl: string | undefined, brief: string, campaignStartDate?: string, campaignDuration?: string, editIdx?: number) => void;
   onEdit?: (item: { url?: string; text?: string; model: string }, type: string, prompt: string) => void;
+  onMoreVersions?: (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => void;
+  onAnimate?: (postIdx: number, posts: CampaignPost[]) => void;
+  isGenerating?: boolean;
   logoUrl?: string;
 }) {
   const { t } = useI18n();
@@ -2457,7 +2603,10 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, logoUrl }: {
     };
     return (
       <div className="space-y-3">
-        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost} />
+        <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost}
+          onMoreVersions={onMoreVersions ? (idx) => onMoreVersions(idx, result.campaignPosts!, result.refImageUrl) : undefined}
+          onAnimate={onAnimate ? (idx) => onAnimate(idx, result.campaignPosts!) : undefined}
+          isGenerating={isGenerating} />
         <button
           onClick={() => onFinalize(result.campaignPosts!, logoUrl || result.logoUrl, result.prompt, result.campaignStartDate, result.campaignDuration)}
           className="flex items-center gap-2.5 w-full px-5 py-3 rounded-xl cursor-pointer transition-all group"
