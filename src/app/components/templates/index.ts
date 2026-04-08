@@ -1,5 +1,6 @@
 import type { TemplateDefinition, TemplateLayer } from "./types";
 import { figmaInstagramPostTemplates, figmaProductPostTemplates, figmaInstagramStoryTemplates, figmaBundleTemplates, figmaSkincareTemplates, figmaFlyerTemplates, figmaFashionAdTemplates, figmaFashionPostTemplates, figmaProPackTemplates, figmaLinkedInTemplates, figmaB2BLinkedInTemplates } from "./figma-templates";
+import { FIGMA_SVG_TEMPLATES } from "../../lib/figmaSvgEngine";
 
 // ── Shared layer helpers ──
 
@@ -775,6 +776,19 @@ const ALL_TEMPLATES: TemplateDefinition[] = [
   ...figmaProPackTemplates,
   ...figmaLinkedInTemplates,
   ...figmaB2BLinkedInTemplates,
+  // Figma SVG templates — real Figma designs rendered via SVG engine
+  ...FIGMA_SVG_TEMPLATES.map(t => ({
+    id: t.id,
+    name: t.name,
+    formatId: t.formatId,
+    aspectRatio: `${t.canvasWidth}:${t.canvasHeight}`,
+    canvasWidth: t.canvasWidth,
+    canvasHeight: t.canvasHeight,
+    category: t.category as TemplateDefinition["category"],
+    layers: [], // No Konva layers — rendering goes through SVG engine
+    figmaSvgTemplateId: t.id,
+    referenceImageUrl: `/templates/${t.id}.png`,
+  } satisfies TemplateDefinition)),
 ];
 
 const TEMPLATE_BY_FORMAT: Record<string, TemplateDefinition[]> = {};
