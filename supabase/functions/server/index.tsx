@@ -5643,8 +5643,8 @@ app.post("/generate/image-beautify", async (c) => {
     const p = presets[preset] || presets["magazine-interior"];
     console.log(`[beautify] preset=${preset}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
 
-    const falKey = Deno.env.get("FAL_KEY");
-    if (!falKey) return c.json({ success: false, error: "FAL_KEY not configured" }, 500);
+    const falKey = Deno.env.get("FAL_API_KEY");
+    if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
 
     // ── Strategy 1: FAL Clarity Upscaler with ZERO creativity ──
     // At creativity=0 + resemblance=1.0, this is a pure quality enhancer:
