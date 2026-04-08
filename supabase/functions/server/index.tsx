@@ -3962,11 +3962,16 @@ FORMAT REQUIREMENTS:
 - linkedin-video: Professional intro. 50-100 words.
 - email-campaign: Subject (50 chars) + headline + body (250-400 words) + CTA button.
 - landing-page: H1 + H2 + 3 features (title+desc) + CTA. Conversion-optimized.
+
+CRITICAL — HEADLINE & CTA RULES (ALL FORMATS):
+- "headline": SHORT punchy title, 3-8 words max. REQUIRED for EVERY format. NEVER EMPTY. This is displayed as overlay text on the visual template.
+- "ctaText": Action phrase, 2-5 words (e.g. "Shop Now", "Discover More", "En savoir plus"). REQUIRED for EVERY format. NEVER EMPTY.
+- These fields are used to render branded visual templates. If empty, the visual output will look broken.
 ${targetAudience ? `TARGET AUDIENCE: ${targetAudience}` : ""}
 ${urlsShort ? `PRODUCT URLs: ${urlsShort}` : ""}
 
 OUTPUT: ONLY valid JSON. No markdown. No backticks. No explanation. Keys = format IDs. Each value:
-{"subject":"","headline":"","caption":"MAIN COPY min 80w social / 250w email-landing. NEVER EMPTY.","hashtags":"","ctaText":"","features":[],"imagePrompt":"cinematic photo desc max 80w, real product, no text","videoPrompt":"motion desc 30-50w"}
+{"subject":"","headline":"PUNCHY TITLE 3-8 WORDS. NEVER EMPTY.","caption":"MAIN COPY min 80w social / 250w email-landing. NEVER EMPTY.","hashtags":"","ctaText":"ACTION PHRASE 2-5 WORDS. NEVER EMPTY.","features":[],"imagePrompt":"cinematic photo desc max 80w, real product, no text","videoPrompt":"motion desc 30-50w"}
 
 FORMATS:
 ${fmtDesc}`;
