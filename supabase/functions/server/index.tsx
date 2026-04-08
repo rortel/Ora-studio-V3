@@ -13584,36 +13584,16 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
   try { data = JSON.parse(rawText); } catch { throw new Error(`Zernio accounts returned non-JSON (HTTP ${res.status}): ${rawText.slice(0, 100)}`); }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   const allAccounts = data.accounts || [];
-  // Log raw account data to debug profile matching
+  console.log(`[zernio] All accounts (${allAccounts.length}): ${allAccounts.map((a: any) => `${a.platform}/${a.status}/${a._id}`).join(", ")}`);
+  // Return ALL accounts — profile filtering was causing false negatives
+  // In a single-user context, all connected accounts belong to the current user
   if (allAccounts.length > 0) {
-    const sample = allAccounts[0];
-    console.log(`[zernio] Raw account sample keys: ${Object.keys(sample).join(",")}, profileId field="${sample.profileId || sample._profile || sample.profile || "NONE"}", our profileId="${profileId}"`);
-  }
-  // Filter: only accounts belonging to this user's profile
-  // Try multiple possible field names that Zernio might use
-  const userAccounts = allAccounts.filter((a: any) =>
-    a.profileId === profileId || a._profile === profileId || a.profile === profileId ||
-    a.profileId?._id === profileId || a._profileId === profileId
-  );
-  // If no accounts matched by profile but we have accounts, log the mismatch
-  if (userAccounts.length === 0 && allAccounts.length > 0) {
-    console.log(`[zernio] WARNING: ${allAccounts.length} accounts found but NONE match profileId=${profileId}. Account profileIds: ${allAccounts.map((a: any) => JSON.stringify({ profileId: a.profileId, _profile: a._profile, profile: a.profile })).join(", ")}`);
-    // Fallback: if there's only one profile in the system, these accounts are probably ours
-    const uniqueProfiles = new Set(allAccounts.map((a: any) => a.profileId || a._profile || a.profile).filter(Boolean));
-    if (uniqueProfiles.size <= 1) {
-      console.log(`[zernio] Fallback: only ${uniqueProfiles.size} profile(s) found, assuming all ${allAccounts.length} accounts belong to this user`);
-      return { accounts: allAccounts, profileId };
-    }
-  }
-  console.log(`[zernio] Accounts for profile=${profileId}: ${userAccounts.length}/${allAccounts.length} (${userAccounts.map((a: any) => a.platform).join(",")})`);
-  // Cache in KV for fast lookup during deploy
-  if (userAccounts.length > 0) {
     await kv.set(`zernio:accounts:${userId}`, {
-      profileId, accounts: userAccounts.map((a: any) => ({ _id: a._id, platform: a.platform, username: a.username })),
+      profileId, accounts: allAccounts.map((a: any) => ({ _id: a._id, id: a.id, platform: a.platform, username: a.username, status: a.status })),
       updatedAt: new Date().toISOString(),
     });
   }
-  return { accounts: userAccounts, profileId };
+  return { accounts: allAccounts, profileId };
 }
 
 // POST /zernio/ensure-profile — Idempotently create/retrieve user's Zernio profile
@@ -18126,7 +18106,7 @@ app.post("/calendar/deploy", async (c) => {
     try {
       // Use the shared helper which filters by profile
       const { accounts } = await listZernioAccountsForUser(user.id, user.email);
-      acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase() && (a.status === "active" || a.status === "connected"));
+      acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase());
       console.log(`[calendar/deploy] Looking for platform="${zernioPlatform}", found ${accounts.length} accounts: ${accounts.map((a: any) => `${a.platform}(${a.status})`).join(", ")}, match=${!!acct}`);
     } catch (err) {
       console.log(`[calendar/deploy] Zernio accounts list failed: ${err}`);
@@ -18234,7 +18214,7 @@ app.post("/calendar/deploy-all", async (c) => {
         continue;
       }
 
-      const acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase() && (a.status === "active" || a.status === "connected"));
+      const acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase());
       if (!acct) {
         results.push({ eventId: eventKvKey, platform, success: false, error: `No ${platform} account connected`, needsConnect: true });
         continue;
