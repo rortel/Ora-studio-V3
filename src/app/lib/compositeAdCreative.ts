@@ -176,6 +176,21 @@ export async function compositeAdCreative(opts: CompositeOptions): Promise<strin
   console.log(`[composite] Asset data:`, { headline: asset.headline, ctaText: asset.ctaText, subtitle: asset.subtitle, caption: asset.caption?.slice(0, 40) });
   console.log(`[composite] Images loaded:`, Object.keys(loadedImages));
 
+  // ── Auto-design: when template has a full-bleed background-image, convert to positioned product ──
+  // Detect if the first layer is a full-bleed background-image (x=0,y=0,w=100,h=100)
+  const bgLayer = sorted.find(l => l.type === "background-image" && l.x === 0 && l.y === 0 && l.width === 100 && l.height === 100);
+  const hasTextBelow50 = sorted.some(l => l.type === "text" && l.y >= 50);
+  const useAutoDesign = !!bgLayer && hasTextBelow50;
+
+  if (useAutoDesign) {
+    // 1) Solid dark background
+    layer.add(new Konva.Rect({ x: 0, y: 0, width: cw, height: ch, fill: "#0D0D0D" }));
+    // 2) Vault accent strip at top
+    const accentColor = resolveColor("vault:primary", vault);
+    layer.add(new Konva.Rect({ x: 0, y: 0, width: cw, height: Math.round(ch * 0.025), fill: accentColor }));
+    console.log(`[composite] Auto-design: solid bg #0D0D0D + accent strip ${accentColor}`);
+  }
+
   let nodesAdded = 0;
   for (const tl of sorted) {
     const vis = isVisible(tl, asset, vault);
@@ -183,6 +198,28 @@ export async function compositeAdCreative(opts: CompositeOptions): Promise<strin
       console.log(`[composite] Layer "${tl.id}" (${tl.type}) — HIDDEN (visible.when=${tl.visible?.when})`);
       continue;
     }
+
+    // Auto-design: transform full-bleed bg image into positioned product
+    if (useAutoDesign && tl === bgLayer) {
+      const img = images[tl.id];
+      if (img) {
+        // Position product: centered, top portion (leaving bottom for text)
+        const prodW = Math.round(cw * 0.65);
+        const prodH = Math.round(ch * 0.52);
+        const prodX = Math.round((cw - prodW) / 2);
+        const prodY = Math.round(ch * 0.04);
+        const crop = coverCrop(img.width, img.height, prodW, prodH);
+        layer.add(new Konva.Image({
+          x: prodX, y: prodY, width: prodW, height: prodH, image: img,
+          crop: { x: crop.x, y: crop.y, width: crop.width, height: crop.height },
+          cornerRadius: 12,
+        }));
+        nodesAdded++;
+        console.log(`[composite] Layer "${tl.id}" — AUTO-DESIGN: product ${prodW}x${prodH} at (${prodX},${prodY}) ✓`);
+      }
+      continue;
+    }
+
     const node = renderLayerImperative(tl, cw, ch, loadedImages, asset, vault, logoUrl);
     if (node) {
       layer.add(node);
