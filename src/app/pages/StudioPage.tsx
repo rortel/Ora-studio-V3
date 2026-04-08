@@ -1008,6 +1008,7 @@ export function StudioPage() {
               postsWithImages.map(async (post) => {
                 try {
                   const userSelectedId = templateSelections?.[post.format];
+                  console.log(`[studio] Template selection for ${post.format}: userSelectedId=${userSelectedId}, templateSelections=`, templateSelections, `tplCategory=${tplCategory}`);
                   const template = userSelectedId ? getTemplateById(userSelectedId) : selectTemplateForFormat(post.format, tplCategory);
                   if (!template) { console.log(`[studio] No template for format ${post.format}, skipping composite`); return; }
                   const compositeUrl = await compositeAdCreative({
@@ -3561,6 +3562,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
     const templateCategory = getPreferredTemplateCategory(selectedAmbiances, selectedLayout);
     // Pass user-selected templates directly (skip interstitial)
     const hasSelections = Object.keys(selectedTemplates).length > 0;
+    console.log(`[studio] handleGenerate: selectedTemplates=`, selectedTemplates, `hasSelections=${hasSelections}`);
     onGenerate({
       brief: `${brief}${moment ? `\nMoment: ${moment}` : ""}${isSponsored ? "\nContenu sponsorisé — CTA direct" : ""}${postCount !== "3" ? `\nNombre de posts souhaité: ${postCount}` : ""}`,
       formats: selectedFormats,
