@@ -296,8 +296,10 @@ export function StudioPage() {
   }, []);
 
   // Always load fresh vault when auth is ready (user may have changed brand)
+  const vaultLoadedRef = useRef(false);
   useEffect(() => {
-    if (accessToken) {
+    if (accessToken && !vaultLoadedRef.current) {
+      vaultLoadedRef.current = true;
       console.log("[studio] auth ready, loading fresh vault...");
       loadVault(true);
     }
@@ -711,7 +713,7 @@ export function StudioPage() {
               const extractCta = (c: any) => {
                 const cta = c.ctaText || c.cta || "";
                 if (cta) return cta;
-                return lang === "fr" ? "En savoir plus" : "Learn More";
+                return locale === "fr" ? "En savoir plus" : "Learn More";
               };
               const extractSubtitle = (c: any) => c.subtitle || "";
               const extractPrice = (c: any) => c.price || "";
