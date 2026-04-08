@@ -76,56 +76,75 @@ const txt = (id: string, x: number, y: number, w: number, h: number, binding: st
 // Pattern: image + gradient + white text
 // ══════════════════════════════════════════════════════════════
 
+// ── Positioned product image (not full-bleed) ──
+const productImg = (id: string, x: number, y: number, w: number, h: number, zIndex = 1): TemplateLayer => ({
+  id, type: "image", x, y, width: w, height: h,
+  dataBinding: { source: "asset", field: "imageUrl" },
+  style: { opacity: 1 }, zIndex,
+});
+
 export const figmaInstagramPostTemplates: TemplateDefinition[] = [
-  // ── 01: Cinematic bottom gradient — headline + CTA at bottom ──
+  // ── 01: Bold product card — solid bg + positioned product + headline bottom ──
+  // Like the Nike Post thumbnail: colored bg, product center, big text bottom
   {
     id: "figma-igp-01", name: "Brand Showcase Cinematic", formatId: "instagram-post",
     aspectRatio: "1:1", canvasWidth: 1080, canvasHeight: 1080, category: "bold",
     source: "builtin",
     layers: [
-      bg,
-      // Heavy dark scrim for legibility
-      grad("grad", 25, 0.92),
-      panel("accent-bar", 5, 55, 25, 1.2, "vault:primary", 1),
-      txt("headline", 5, 58, 70, 24, "headline", 9, { fontWeight: 900, lineHeight: 1.0, maxLines: 3, shadowColor: "#000000", shadowBlur: 8 }),
-      txt("subtitle", 5, 82, 60, 8, "subtitle", 3.5, { fontWeight: 400, opacity: 0.9 }),
+      // Solid dark background
+      panel("bg-solid", 0, 0, 100, 100, "#0D0D0D", 1),
+      // Accent color block top-left
+      panel("accent-block", 0, 0, 100, 3, "vault:primary", 1),
+      // Product image — positioned center, not full-bleed
+      productImg("bg", 15, 5, 70, 55),
+      // Headline zone — bottom area on dark bg
+      txt("headline", 6, 63, 88, 18, "headline", 8, { fontWeight: 900, lineHeight: 1.05, maxLines: 3 }),
+      txt("subtitle", 6, 82, 75, 7, "subtitle", 3, { fontWeight: 400, opacity: 0.8 }),
       // CTA button
-      panel("cta-bg", 5, 90, 30, 7, "vault:primary", 0.95, 10),
-      txt("cta", 5, 90, 30, 7, "ctaText", 2.8, { fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: 1.5 }),
-      logo(85, 3, 10),
+      panel("cta-bg", 6, 90, 35, 7, "vault:primary", 0.95, 10),
+      txt("cta", 6, 90, 35, 7, "ctaText", 2.8, { fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: 1.5 }),
+      logo(85, 90, 8),
     ],
   },
 
-  // ── 02: Split panel left — vault-colored panel + image right ──
+  // ── 02: Split panel — vault-colored left panel + product image right ──
   {
     id: "figma-igp-02", name: "Split Panel", formatId: "instagram-post",
     aspectRatio: "1:1", canvasWidth: 1080, canvasHeight: 1080, category: "editorial",
     source: "builtin",
     layers: [
-      bg,
-      panel("left-panel", 0, 0, 48, 100, "vault:primary", 0.96),
-      txt("headline", 4, 15, 42, 35, "headline", 7.5, { fontWeight: 800, lineHeight: 1.05, maxLines: 4 }),
-      txt("subtitle", 4, 52, 42, 18, "subtitle", 3, { fontWeight: 400, lineHeight: 1.3, opacity: 0.9, maxLines: 4 }),
+      // Right side: product image
+      panel("bg-right", 0, 0, 100, 100, "#111111", 1),
+      productImg("bg", 45, 0, 55, 100),
+      // Left side: solid vault-colored panel for text
+      panel("left-panel", 0, 0, 48, 100, "vault:primary", 0.97),
+      txt("headline", 5, 18, 40, 32, "headline", 7, { fontWeight: 800, lineHeight: 1.05, maxLines: 4 }),
+      txt("subtitle", 5, 52, 40, 18, "subtitle", 2.8, { fontWeight: 400, lineHeight: 1.35, opacity: 0.9, maxLines: 4 }),
       // Decorative line
-      { id: "line", type: "line", x: 4, y: 75, width: 18, height: 0.5,
+      { id: "line", type: "line", x: 5, y: 75, width: 18, height: 0.5,
         style: { fill: "#FFFFFF", opacity: 0.7, points: [0, 50, 100, 50] }, zIndex: 3 },
-      txt("cta", 4, 80, 40, 7, "ctaText", 2.5, { fontWeight: 600, textTransform: "uppercase", letterSpacing: 2 }),
-      logo(4, 4, 10),
+      txt("cta", 5, 80, 38, 7, "ctaText", 2.5, { fontWeight: 600, textTransform: "uppercase", letterSpacing: 2 }),
+      logo(5, 5, 10),
     ],
   },
 
-  // ── 03: Top gradient — headline at top, clean bottom ──
+  // ── 03: Top header card — headline top on vault bg + product image bottom ──
   {
     id: "figma-igp-03", name: "Top Header", formatId: "instagram-post",
     aspectRatio: "1:1", canvasWidth: 1080, canvasHeight: 1080, category: "playful",
     source: "builtin",
     layers: [
-      bg,
-      gradTop("grad-top", 50, 0.88),
+      // Full solid bg
+      panel("bg-solid", 0, 0, 100, 100, "#0D0D0D", 1),
+      // Accent strip top
       panel("accent-strip", 0, 0, 100, 2, "vault:primary", 1),
-      txt("headline", 5, 5, 75, 22, "headline", 8, { fontWeight: 900, lineHeight: 1.0, maxLines: 3, shadowColor: "#000000", shadowBlur: 6 }),
-      txt("subtitle", 5, 28, 60, 10, "subtitle", 3.2, { fontWeight: 400, opacity: 0.9 }),
-      logo(85, 4, 10),
+      // Text zone top
+      txt("headline", 5, 5, 80, 20, "headline", 7.5, { fontWeight: 900, lineHeight: 1.05, maxLines: 3 }),
+      txt("subtitle", 5, 26, 65, 8, "subtitle", 3, { fontWeight: 400, opacity: 0.85 }),
+      // Product image — positioned center-bottom
+      productImg("bg", 10, 36, 80, 58),
+      // Logo bottom corner
+      logo(85, 5, 10),
     ],
   },
 ];
