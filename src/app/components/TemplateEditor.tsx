@@ -1476,10 +1476,48 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               const formatId = asset?.formatId || template?.formatId || "instagram-post";
               const available = getTemplatesForFormat(formatId).filter(t => !!t.figmaSvgTemplateId);
               if (available.length === 0) return null;
+              const isOriginal = !isSvgTemplate;
               return (
                 <div className="mb-4">
                   <p style={sectionTitleStyle}>Mise en page</p>
                   <div className="grid grid-cols-3 gap-1.5">
+                    {/* "Original" — back to raw generated image */}
+                    <button
+                      onClick={() => {
+                        if (!isOriginal) {
+                          setSvgCompositeUrl(null);
+                          setSvgCompositing(false);
+                          // Create a raw image template to switch back
+                          const rawId = `auto-editor-${formatId}-${Date.now()}`;
+                          const rawTpl: TemplateDefinition = {
+                            id: rawId, name: "Image originale", formatId,
+                            aspectRatio: `${cw}:${ch}`, canvasWidth: cw, canvasHeight: ch,
+                            category: "minimal" as any, source: "ai-generated",
+                            layers: [
+                              { id: "bg", type: "background-image", x: 0, y: 0, width: 100, height: 100, dataBinding: { source: "asset", field: "imageUrl" }, zIndex: 0 },
+                              { id: "grad", type: "gradient-overlay", x: 0, y: 50, width: 100, height: 50, style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.7 }] }, zIndex: 1 },
+                              { id: "headline", type: "text", x: 5, y: 70, width: 65, height: 15, dataBinding: { source: "asset", field: "headline" }, style: { fontSize: 5, fontWeight: 700, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.15 }, visible: { when: "asset.headline", notEmpty: true }, zIndex: 3 },
+                              { id: "cta", type: "text", x: 5, y: 88, width: 35, height: 6, dataBinding: { source: "asset", field: "ctaText" }, style: { fontSize: 2.2, fontWeight: 600, color: "#FFFFFF", textAlign: "left", textTransform: "uppercase", letterSpacing: 1.5 }, visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 4 },
+                            ],
+                          };
+                          registerTemplate(rawTpl);
+                          if (onSave) onSave(rawTpl);
+                        }
+                      }}
+                      className="rounded overflow-hidden cursor-pointer transition-all hover:scale-[1.06]"
+                      style={{
+                        border: isOriginal ? "2px solid var(--foreground)" : "2px solid transparent",
+                        background: "#1a1a1a",
+                        aspectRatio: "1",
+                      }}
+                      title="Image originale"
+                    >
+                      {asset?.imageUrl ? (
+                        <img src={asset.imageUrl} alt="Original" className="w-full h-full object-cover" loading="lazy" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center" style={{ fontSize: 8, color: "#666" }}>Original</div>
+                      )}
+                    </button>
                     {available.map(tmpl => {
                       const isActive = template?.id === tmpl.id;
                       return (
@@ -1488,7 +1526,6 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           onClick={() => {
                             if (tmpl.figmaSvgTemplateId && !isActive) {
                               triggerSvgComposite(tmpl.figmaSvgTemplateId);
-                              // Update the template via onSave to switch
                               if (onSave) onSave(tmpl);
                             }
                           }}

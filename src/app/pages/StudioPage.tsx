@@ -2712,33 +2712,28 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   const openKonvaEditor = (idx: number) => {
     const post = posts[idx];
     if (!post.imageUrl) return;
-    // Auto-create a template for this post's format
+    // Always open with a raw-image template (no SVG layout applied).
+    // The user can pick an SVG layout in the editor's "Mise en page" section.
     const formatId = post.format || "generic";
-    const existing = getTemplatesForFormat(formatId);
-    let templateId: string;
-    if (existing.length > 0) {
-      templateId = existing[0].id;
-    } else {
-      const arParts = (post.aspectRatio || "1:1").split(/[:/]/);
-      const arW = parseFloat(arParts[0]) || 1;
-      const arH = parseFloat(arParts[1]) || 1;
-      const canvasW = arW >= arH ? 1080 : Math.round(1080 * (arW / arH));
-      const canvasH = arH >= arW ? 1080 : Math.round(1080 * (arH / arW));
-      templateId = `auto-finalizer-${formatId}-${Date.now()}`;
-      const autoTemplate: TemplateDefinition = {
-        id: templateId, name: "Éditeur direct", formatId,
-        aspectRatio: post.aspectRatio || "1:1", canvasWidth: canvasW, canvasHeight: canvasH,
-        category: "minimal", source: "ai-generated",
-        layers: [
-          { id: "bg", type: "background-image", x: 0, y: 0, width: 100, height: 100, dataBinding: { source: "asset", field: "imageUrl" }, zIndex: 0 },
-          { id: "grad", type: "gradient-overlay", x: 0, y: 50, width: 100, height: 50, style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.7 }] }, zIndex: 1 },
-          { id: "headline", type: "text", x: 5, y: 70, width: 65, height: 15, dataBinding: { source: "asset", field: "headline" }, style: { fontSize: 5, fontWeight: 700, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.15 }, visible: { when: "asset.headline", notEmpty: true }, zIndex: 3 },
-          { id: "cta", type: "text", x: 5, y: 88, width: 35, height: 6, dataBinding: { source: "asset", field: "ctaText" }, style: { fontSize: 2.2, fontWeight: 600, color: "#FFFFFF", textAlign: "left", textTransform: "uppercase", letterSpacing: 1.5 }, visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 4 },
-          { id: "logo", type: "logo", x: 88, y: 5, width: 8, height: 8, dataBinding: { source: "vault", field: "logoUrl" }, style: { objectFit: "contain", opacity: 0.9 }, visible: { when: "vault.logoUrl", notEmpty: true }, zIndex: 5 },
-        ],
-      };
-      registerTemplate(autoTemplate);
-    }
+    const arParts = (post.aspectRatio || "1:1").split(/[:/]/);
+    const arW = parseFloat(arParts[0]) || 1;
+    const arH = parseFloat(arParts[1]) || 1;
+    const canvasW = arW >= arH ? 1080 : Math.round(1080 * (arW / arH));
+    const canvasH = arH >= arW ? 1080 : Math.round(1080 * (arH / arW));
+    const templateId = `auto-editor-${formatId}-${Date.now()}`;
+    const rawTemplate: TemplateDefinition = {
+      id: templateId, name: "Image originale", formatId,
+      aspectRatio: post.aspectRatio || "1:1", canvasWidth: canvasW, canvasHeight: canvasH,
+      category: "minimal", source: "ai-generated",
+      layers: [
+        { id: "bg", type: "background-image", x: 0, y: 0, width: 100, height: 100, dataBinding: { source: "asset", field: "imageUrl" }, zIndex: 0 },
+        { id: "grad", type: "gradient-overlay", x: 0, y: 50, width: 100, height: 50, style: { gradientDirection: "bottom", gradientStops: [{ offset: 0, color: "#000000", opacity: 0 }, { offset: 1, color: "#000000", opacity: 0.7 }] }, zIndex: 1 },
+        { id: "headline", type: "text", x: 5, y: 70, width: 65, height: 15, dataBinding: { source: "asset", field: "headline" }, style: { fontSize: 5, fontWeight: 700, color: "#FFFFFF", textAlign: "left", maxLines: 2, lineHeight: 1.15 }, visible: { when: "asset.headline", notEmpty: true }, zIndex: 3 },
+        { id: "cta", type: "text", x: 5, y: 88, width: 35, height: 6, dataBinding: { source: "asset", field: "ctaText" }, style: { fontSize: 2.2, fontWeight: 600, color: "#FFFFFF", textAlign: "left", textTransform: "uppercase", letterSpacing: 1.5 }, visible: { when: "asset.ctaText", notEmpty: true }, zIndex: 4 },
+        { id: "logo", type: "logo", x: 88, y: 5, width: 8, height: 8, dataBinding: { source: "vault", field: "logoUrl" }, style: { objectFit: "contain", opacity: 0.9 }, visible: { when: "vault.logoUrl", notEmpty: true }, zIndex: 5 },
+      ],
+    };
+    registerTemplate(rawTemplate);
     setEditorTemplateId(templateId);
     setEditorPostIdx(idx);
   };
