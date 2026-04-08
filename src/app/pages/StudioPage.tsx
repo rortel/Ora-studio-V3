@@ -683,13 +683,13 @@ export function StudioPage() {
           if (primaryText?.copyMap) {
             for (const [formatId, copy] of Object.entries(primaryText.copyMap) as [string, any][]) {
               const platform = formatId.split("-")[0];
-              const extractText = (c: any) => c.caption || c.text || c.copy || c.body || c.content || c.message || "";
-              const extractHashtags = (c: any) => Array.isArray(c.hashtags) ? c.hashtags.join(" ") : c.hashtags || "";
+              const safeStr = (v: any): string => typeof v === "string" ? v : "";
+              const extractText = (c: any) => safeStr(c.caption) || safeStr(c.text) || safeStr(c.copy) || safeStr(c.body) || safeStr(c.content) || safeStr(c.message) || "";
+              const extractHashtags = (c: any) => Array.isArray(c.hashtags) ? c.hashtags.join(" ") : safeStr(c.hashtags);
               const extractHeadline = (c: any) => {
-                const h = c.headline || c.subject || "";
+                const h = safeStr(c.headline) || safeStr(c.subject);
                 if (h) return h;
-                // Fallback: derive headline from caption (first sentence, max 8 words)
-                const txt = c.caption || c.text || c.copy || "";
+                const txt = safeStr(c.caption) || safeStr(c.text) || safeStr(c.copy);
                 if (!txt) return "";
                 const firstSentence = txt.split(/[.!?\n]/)[0]?.trim() || "";
                 const words = firstSentence.split(/\s+/).slice(0, 8);
