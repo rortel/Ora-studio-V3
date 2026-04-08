@@ -243,7 +243,9 @@ function CalendarPageContent() {
         headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
         body: JSON.stringify({ eventId, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, _token: token }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { success: false, error: `Server error (HTTP ${res.status})` }; }
       if (data.success) {
         setEvents(prev => prev.map(ev => ev.id === eventId ? { ...ev, status: data.status as ContentStatus, zernioPostId: data.zernioPostId } : ev));
         toast.success(data.status === "scheduled" ? t("calendar.scheduledSuccess") : t("calendar.publishedSuccess"));
@@ -281,7 +283,9 @@ function CalendarPageContent() {
           _token: token,
         }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { success: false, error: `Server error (HTTP ${res.status})` }; }
       if (data.success && data.results) {
         // Update event statuses
         const resultMap = new Map(data.results.map((r: any) => [r.eventId, r]));
