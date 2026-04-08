@@ -3261,8 +3261,14 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             asset={editorAsset as any}
             vault={vault}
             brandLogoUrl={logoUrl || vault?.logo_url || vault?.logo?.url || ""}
-            onSave={(updatedTemplate) => {
+            onSave={(updatedTemplate, exportedImageUrl) => {
               registerTemplate(updatedTemplate);
+              // Persist the exported canvas image back to the post
+              if (exportedImageUrl && editorPostIdx !== null) {
+                setPosts(prev => prev.map((p, i) =>
+                  i === editorPostIdx ? { ...p, imageUrl: exportedImageUrl } : p
+                ));
+              }
               setEditorPostIdx(null);
               setEditorTemplateId(null);
             }}
