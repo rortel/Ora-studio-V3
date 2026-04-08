@@ -252,6 +252,17 @@ function CalendarPageContent() {
       } else if (data.needsConnect) {
         toast.error(t("calendar.connectPlatformFirst").replace("{platform}", data.platform));
       } else {
+        // Run diagnostic to understand why deploy failed
+        console.error("[calendar-deploy] FAILED:", data.error, "HTTP:", res.status, "Body:", text.slice(0, 300));
+        try {
+          const diagRes = await fetch(`${API_BASE}/calendar/deploy-check`, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+            body: JSON.stringify({ eventId, _token: token }),
+          });
+          const diagText = await diagRes.text();
+          console.error("[calendar-deploy] DIAGNOSTIC:", diagText);
+        } catch (diagErr) { console.error("[calendar-deploy] Diagnostic also failed:", diagErr); }
         toast.error(data.error || t("studio.deployFailed"));
       }
     } catch (err: any) {
