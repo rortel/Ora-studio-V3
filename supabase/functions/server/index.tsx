@@ -5572,69 +5572,71 @@ app.post("/generate/image-beautify", async (c) => {
     const imgCredits = getModelCreditCost("image", "beautify");
     if (user) deductCredit(user.id, imgCredits).catch(() => {});
 
-    // Preset definitions — each targets a specific visual enhancement style
-    // strength = how much AI changes (0.10 = very subtle, 0.25 = noticeable enhancement)
+    // Preset definitions — ENHANCEMENT ONLY, never describe a new scene
+    // strength MUST stay 0.05-0.10 to preserve 90-95% of original pixels
+    // Prompts say "enhance this exact photo" — never "a scene with..."
     type BeautifyPreset = { prompt: string; strength: number; negativePrompt: string };
+    const BEAUTIFY_NEGATIVE = "different room, different furniture, different layout, different objects, new items, added elements, changed scene, altered space, different location, people, text, watermark, cartoon, illustration, 3D render, painting, drawing";
     const presets: Record<string, BeautifyPreset> = {
       "magazine-interior": {
-        prompt: "Professional interior photography for architecture magazine, enhanced natural lighting, warm balanced white balance, subtle HDR, clean composition, elegant atmosphere, shot on Canon EOS R5 with 24mm tilt-shift lens, soft window light",
-        strength: 0.18,
-        negativePrompt: "different furniture, added objects, changed layout, new decorations, people, text, watermark, cartoon, illustration, 3D render, altered architecture, different room",
+        prompt: "Enhance this exact photo: professional color correction, balanced white balance, subtle HDR, sharpened details, clean shadows, magazine-quality lighting enhancement",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "golden-hour": {
-        prompt: "Golden hour warm sunlight streaming through windows, rich amber tones, soft long shadows, warm cozy atmosphere, cinematic color grading, magic hour photography, lens flare",
-        strength: 0.20,
-        negativePrompt: "cold tones, blue tint, different furniture, changed layout, new objects, people, text, watermark, altered room, different space",
+        prompt: "Enhance this exact photo: add warm golden hour color grading, amber warmth, soft warm tones, golden light enhancement, warm white balance shift",
+        strength: 0.08,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "luxury-feel": {
-        prompt: "Ultra-luxury high-end interior photography, dramatic professional lighting, rich deep contrast, elegant moody atmosphere, Architectural Digest quality, premium materials highlighted, warm sophisticated tones",
-        strength: 0.20,
-        negativePrompt: "cheap look, different furniture, added objects, changed layout, people, text, watermark, cartoon, altered space, different room",
+        prompt: "Enhance this exact photo: increase contrast, deepen shadows, rich warm tones, premium color grading, luxury editorial look, dramatic lighting enhancement",
+        strength: 0.08,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "food-styling": {
-        prompt: "Professional food photography styling, appetizing warm lighting, shallow depth of field, steam and freshness enhanced, rich saturated colors, overhead dramatic lighting, Bon Appétit magazine quality",
-        strength: 0.18,
-        negativePrompt: "different dishes, new food items, changed plating, different table, people, text, watermark, cartoon, illustration, different restaurant",
+        prompt: "Enhance this exact photo: boost color saturation, warm appetizing tones, sharpen food details, enhance freshness and texture, professional food color grading",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "storefront-chic": {
-        prompt: "Inviting boutique storefront photography, warm welcoming lighting, clean vibrant colors, attractive window display, professional retail photography, magazine quality shopfront",
-        strength: 0.18,
-        negativePrompt: "different products, changed display, new signs, altered facade, people, text overlay, watermark, different store, cartoon",
+        prompt: "Enhance this exact photo: brighten and clean colors, warm inviting tones, sharpen details, vibrant professional retail photography color correction",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "bright-airy": {
-        prompt: "Bright airy Scandinavian photography, soft diffused natural light, clean white tones, minimal shadows, fresh contemporary feel, light and luminous atmosphere, Instagram aesthetic",
-        strength: 0.18,
-        negativePrompt: "dark moody, different furniture, new objects, changed layout, people, text, watermark, cartoon, altered space",
+        prompt: "Enhance this exact photo: brighten exposure, lift shadows, soft diffused light feel, clean white tones, airy luminous atmosphere, reduce harsh shadows",
+        strength: 0.08,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "moody-dramatic": {
-        prompt: "Moody dramatic interior photography, deep rich shadows, cinematic contrast, warm accent lighting, atmospheric depth, film noir inspired, editorial dark luxury",
-        strength: 0.22,
-        negativePrompt: "bright overexposed, different furniture, added objects, changed layout, people, text, watermark, altered room, different space",
+        prompt: "Enhance this exact photo: deepen shadows, increase contrast, cinematic dark color grading, moody atmosphere, rich blacks, warm accent highlights",
+        strength: 0.09,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "natural-fresh": {
-        prompt: "Fresh natural photography, enhanced greenery and natural elements, crisp clean air feeling, gentle sunlight, organic warmth, lifestyle magazine quality, vibrant yet natural colors",
-        strength: 0.15,
-        negativePrompt: "artificial look, different plants, new furniture, changed layout, people, text, watermark, cartoon, altered space",
+        prompt: "Enhance this exact photo: boost green vibrancy, fresh natural color correction, gentle warmth, crisp clean tones, organic natural feel",
+        strength: 0.06,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "sunset-terrace": {
-        prompt: "Beautiful sunset terrace photography, warm golden-pink sky, romantic evening ambiance, soft twilight lighting, outdoor dining atmosphere, Mediterranean warmth, travel magazine quality",
-        strength: 0.22,
-        negativePrompt: "different furniture, changed layout, new objects, daytime, people, text, watermark, cartoon, altered terrace, different location",
+        prompt: "Enhance this exact photo: warm golden-pink color grading, sunset warmth tones, soft evening color correction, Mediterranean warm light",
+        strength: 0.08,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "cozy-warmth": {
-        prompt: "Cozy warm hygge photography, soft warm tungsten lighting, intimate atmosphere, rich warm wood tones, inviting comfort, candlelight warmth, boutique hotel photography",
-        strength: 0.18,
-        negativePrompt: "cold tones, different furniture, new objects, changed layout, people, text, watermark, cartoon, altered room",
+        prompt: "Enhance this exact photo: warm tungsten color grading, rich warm wood tones, cozy intimate lighting, soft warm shadows, hygge atmosphere color correction",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "pool-paradise": {
-        prompt: "Stunning pool and spa photography, crystal clear turquoise water, tropical paradise lighting, luxury resort atmosphere, vivid blue sky enhanced, infinity edge reflection, travel editorial quality",
-        strength: 0.20,
-        negativePrompt: "different pool, changed layout, new furniture, people, text, watermark, cartoon, altered landscape, different location",
+        prompt: "Enhance this exact photo: boost turquoise and blue saturation, vivid sky enhancement, crystal clear water tones, tropical color correction, bright clean look",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
       "boutique-hotel": {
-        prompt: "Boutique hotel editorial photography, design-forward interiors, curated aesthetic, warm professional lighting, lifestyle luxury atmosphere, Mr & Mrs Smith quality, impeccable composition",
-        strength: 0.18,
-        negativePrompt: "different furniture, added objects, changed decor, people, text, watermark, cartoon, altered room, different hotel",
+        prompt: "Enhance this exact photo: warm professional color grading, refined tones, subtle contrast boost, design-magazine quality lighting correction, sophisticated warmth",
+        strength: 0.07,
+        negativePrompt: BEAUTIFY_NEGATIVE,
       },
     };
 
