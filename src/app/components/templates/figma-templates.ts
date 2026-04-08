@@ -47,8 +47,8 @@ const grad = (id: string, fromY: number, opacity = 0.75): TemplateLayer => ({
 const gradTop = (id: string, toY: number, opacity = 0.7): TemplateLayer => ({
   id, type: "gradient-overlay", x: 0, y: 0, width: 100, height: toY,
   style: { gradientDirection: "top", gradientStops: [
-    { offset: 0, color: "#000000", opacity: 0 },
-    { offset: 1, color: "#000000", opacity },
+    { offset: 0, color: "#000000", opacity },
+    { offset: 1, color: "#000000", opacity: 0 },
   ]}, zIndex: 1,
 });
 
@@ -84,14 +84,15 @@ export const figmaInstagramPostTemplates: TemplateDefinition[] = [
     source: "builtin",
     layers: [
       bg,
-      grad("grad", 40, 0.82),
-      panel("accent-bar", 5, 58, 20, 0.8, "vault:primary", 1),
-      txt("headline", 5, 60, 65, 22, "headline", 8, { fontWeight: 900, lineHeight: 1.0, maxLines: 3 }),
-      txt("subtitle", 5, 82, 55, 8, "subtitle", 3.5, { fontWeight: 400, opacity: 0.85 }),
+      // Heavy dark scrim for legibility
+      grad("grad", 25, 0.92),
+      panel("accent-bar", 5, 55, 25, 1.2, "vault:primary", 1),
+      txt("headline", 5, 58, 70, 24, "headline", 9, { fontWeight: 900, lineHeight: 1.0, maxLines: 3, shadowColor: "#000000", shadowBlur: 8 }),
+      txt("subtitle", 5, 82, 60, 8, "subtitle", 3.5, { fontWeight: 400, opacity: 0.9 }),
       // CTA button
-      panel("cta-bg", 5, 90, 28, 6, "vault:primary", 0.95, 10),
-      txt("cta", 5, 90, 28, 6, "ctaText", 2.5, { fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: 1.5 }),
-      logo(85, 5, 8),
+      panel("cta-bg", 5, 90, 30, 7, "vault:primary", 0.95, 10),
+      txt("cta", 5, 90, 30, 7, "ctaText", 2.8, { fontWeight: 700, textAlign: "center", textTransform: "uppercase", letterSpacing: 1.5 }),
+      logo(85, 3, 10),
     ],
   },
 
@@ -102,14 +103,14 @@ export const figmaInstagramPostTemplates: TemplateDefinition[] = [
     source: "builtin",
     layers: [
       bg,
-      panel("left-panel", 0, 0, 45, 100, "vault:primary", 0.94),
-      txt("headline", 4, 20, 38, 30, "headline", 7, { fontWeight: 800, lineHeight: 1.05, maxLines: 3 }),
-      txt("subtitle", 4, 52, 38, 15, "subtitle", 3, { fontWeight: 400, lineHeight: 1.3, opacity: 0.85, maxLines: 3 }),
+      panel("left-panel", 0, 0, 48, 100, "vault:primary", 0.96),
+      txt("headline", 4, 15, 42, 35, "headline", 7.5, { fontWeight: 800, lineHeight: 1.05, maxLines: 4 }),
+      txt("subtitle", 4, 52, 42, 18, "subtitle", 3, { fontWeight: 400, lineHeight: 1.3, opacity: 0.9, maxLines: 4 }),
       // Decorative line
-      { id: "line", type: "line", x: 4, y: 75, width: 15, height: 0.5,
-        style: { fill: "#FFFFFF", opacity: 0.6, points: [0, 50, 100, 50] }, zIndex: 3 },
-      txt("cta", 4, 80, 35, 6, "ctaText", 2.2, { fontWeight: 600, textTransform: "uppercase", letterSpacing: 2 }),
-      logo(4, 5, 9),
+      { id: "line", type: "line", x: 4, y: 75, width: 18, height: 0.5,
+        style: { fill: "#FFFFFF", opacity: 0.7, points: [0, 50, 100, 50] }, zIndex: 3 },
+      txt("cta", 4, 80, 40, 7, "ctaText", 2.5, { fontWeight: 600, textTransform: "uppercase", letterSpacing: 2 }),
+      logo(4, 4, 10),
     ],
   },
 
@@ -120,11 +121,11 @@ export const figmaInstagramPostTemplates: TemplateDefinition[] = [
     source: "builtin",
     layers: [
       bg,
-      gradTop("grad-top", 45, 0.75),
-      panel("accent-strip", 0, 0, 100, 1.5, "vault:primary", 0.9),
-      txt("headline", 5, 5, 70, 20, "headline", 7.5, { fontWeight: 900, lineHeight: 1.0, maxLines: 2 }),
-      txt("subtitle", 5, 26, 55, 10, "subtitle", 3, { fontWeight: 400, opacity: 0.85 }),
-      logo(85, 5, 8),
+      gradTop("grad-top", 50, 0.88),
+      panel("accent-strip", 0, 0, 100, 2, "vault:primary", 1),
+      txt("headline", 5, 5, 75, 22, "headline", 8, { fontWeight: 900, lineHeight: 1.0, maxLines: 3, shadowColor: "#000000", shadowBlur: 6 }),
+      txt("subtitle", 5, 28, 60, 10, "subtitle", 3.2, { fontWeight: 400, opacity: 0.9 }),
+      logo(85, 4, 10),
     ],
   },
 ];
