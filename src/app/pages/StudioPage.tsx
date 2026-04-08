@@ -147,7 +147,7 @@ const COMPARE_MODELS = {
 
 export function StudioPage() {
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { getAuthHeader, accessToken, isLoading: authLoading } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -1125,6 +1125,7 @@ export function StudioPage() {
           history: [],
           context: {
             mode: "campaign",
+            locale,
             ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
             ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
             ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
@@ -1200,6 +1201,7 @@ export function StudioPage() {
         context: {
           ...context,
           mode: "campaign",
+          locale,
           ...((vaultData || vault)?.brand_platform ? { brand_platform: (vaultData || vault).brand_platform } : {}),
           ...((vaultData || vault)?.gammes ? { gammes: (vaultData || vault).gammes } : {}),
           ...((vaultData || vault)?.tone ? { tone: (vaultData || vault).tone } : {}),
