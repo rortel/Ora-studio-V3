@@ -8,7 +8,7 @@ import {
   Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
   BookOpen, LayoutGrid, Megaphone, Smartphone, Target, Check,
   ChevronDown, Lightbulb, Package, Globe, Languages,
-  Calendar, Save, Pencil, CheckCircle2, Clock, Camera,
+  Calendar, Save, Pencil, CheckCircle2, Clock, Camera, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
@@ -2134,17 +2134,28 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                 border: "1px solid var(--border)",
                 ...(isExpanded ? { gridColumn: "1 / -1" } : {}),
               }}>
-              {/* Visual thumbnail — show composite ad creative if available */}
-              {hasVisual && !isExpanded && (
+              {/* Visual thumbnail — show selected variant */}
+              {hasVisual && !isExpanded && (() => {
+                const selIdx = variantSelections[idx] ?? post.selectedVariant ?? 0;
+                const selVariant = post.variants?.[selIdx];
+                const thumbUrl = selVariant?.imageUrl || post.compositeImageUrl || post.imageUrl;
+                return (
                 <div className="relative group/thumb" style={{ height: 120 }}>
                   {post.videoUrl ? (
                     <video src={post.videoUrl} className="w-full h-full object-cover" muted />
                   ) : (
-                    <img src={post.compositeImageUrl || post.imageUrl} className="w-full h-full object-cover" alt="" />
+                    <img src={thumbUrl} className="w-full h-full object-cover" alt="" />
                   )}
                   {post.videoUrl && (
                     <div className="absolute bottom-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
                       <Film size={10} style={{ color: "#fff" }} />
+                    </div>
+                  )}
+                  {/* Variant count badge */}
+                  {post.variants && post.variants.length > 1 && (
+                    <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md"
+                      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", fontSize: "9px", color: "#fff", fontWeight: 700 }}>
+                      {post.variants.length} versions
                     </div>
                   )}
                   {/* Edit overlay on hover */}
@@ -2161,7 +2172,8 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* Platform badge + format */}
               <div className="px-2.5 py-2 space-y-1">
@@ -2189,14 +2201,18 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
               </div>
 
               {/* Expanded detail view */}
-              {isExpanded && (
+              {isExpanded && (() => {
+                const selIdx = variantSelections[idx] ?? post.selectedVariant ?? 0;
+                const selVariant = post.variants?.[selIdx];
+                const displayImageUrl = selVariant?.imageUrl || post.compositeImageUrl || post.imageUrl;
+                return (
                 <div className="px-3 pb-3 space-y-3">
                   {hasVisual && (
                     <div className="relative rounded-lg overflow-hidden group/expanded">
                       {post.videoUrl ? (
                         <video src={post.videoUrl} controls className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} />
                       ) : (
-                        <img src={post.compositeImageUrl || post.imageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
+                        <img src={displayImageUrl} className="w-full" style={{ maxHeight: 300, objectFit: "cover" }} alt="" />
                       )}
                       {logoUrl && (
                         <div className="absolute bottom-2 right-2 rounded-md overflow-hidden"
@@ -2227,31 +2243,38 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                   {/* Variant picker — visual grid to choose favorite */}
                   {post.variants && post.variants.length > 1 && (
                     <div>
-                      <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 6 }}>
-                        {post.variants.length} propositions — choisissez votre préférée :
+                      <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: "12px", fontWeight: 700 }}>
+                          Choisissez votre création
+                        </div>
+                        <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+                          {post.variants.length} propositions
+                        </span>
                       </div>
-                      <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(post.variants.length, 4)}, 1fr)` }}>
+                      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(post.variants.length, 4)}, 1fr)` }}>
                         {post.variants.map((v, vIdx) => {
-                          const isSelected = (variantSelections[idx] ?? post.selectedVariant ?? 0) === vIdx;
+                          const isSelected = selIdx === vIdx;
                           return (
                             <div key={vIdx}
                               onClick={e => { e.stopPropagation(); selectVariant(idx, vIdx); }}
-                              className="relative rounded-lg overflow-hidden cursor-pointer transition-all"
+                              className="relative rounded-xl overflow-hidden cursor-pointer transition-all"
                               style={{
-                                outline: isSelected ? "2px solid var(--foreground)" : "1px solid var(--border)",
-                                outlineOffset: isSelected ? -2 : -1,
-                                opacity: isSelected ? 1 : 0.7,
+                                border: isSelected ? "3px solid var(--foreground)" : "2px solid var(--border)",
+                                opacity: isSelected ? 1 : 0.55,
+                                transform: isSelected ? "scale(1.03)" : "scale(1)",
+                                boxShadow: isSelected ? "0 4px 16px rgba(0,0,0,0.15)" : "none",
+                                transition: "all 0.2s ease",
                               }}>
-                              <img src={v.imageUrl} className="w-full object-cover" style={{ aspectRatio: "1", height: 80 }} alt="" />
+                              <img src={v.imageUrl} className="w-full object-cover" style={{ aspectRatio: "1" }} alt="" />
                               {isSelected && (
-                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                                  style={{ background: "var(--foreground)" }}>
-                                  <Check size={10} style={{ color: "var(--background)" }} />
+                                <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+                                  style={{ background: "var(--foreground)", boxShadow: "0 2px 6px rgba(0,0,0,0.3)" }}>
+                                  <Check size={12} strokeWidth={3} style={{ color: "var(--background)" }} />
                                 </div>
                               )}
-                              <div className="absolute bottom-0 left-0 right-0 py-0.5 text-center"
-                                style={{ background: "rgba(0,0,0,0.5)", fontSize: "9px", color: "#fff", fontWeight: 600 }}>
-                                {vIdx + 1}
+                              <div className="absolute bottom-0 left-0 right-0 py-1 text-center"
+                                style={{ background: isSelected ? "var(--foreground)" : "rgba(0,0,0,0.5)", fontSize: "10px", color: isSelected ? "var(--background)" : "#fff", fontWeight: 700 }}>
+                                {isSelected ? "Sélectionnée" : `Version ${vIdx + 1}`}
                               </div>
                             </div>
                           );
@@ -2303,19 +2326,20 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onMoreVersions
                         Plus de versions
                       </button>
                     )}
-                    {onAnimate && post.imageUrl && !post.videoUrl && (
+                    {onAnimate && displayImageUrl && !post.videoUrl && (
                       <button
                         onClick={e => { e.stopPropagation(); onAnimate(idx); }}
                         disabled={isGenerating}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500, opacity: isGenerating ? 0.5 : 1 }}>
+                        style={{ background: "var(--foreground)", color: "var(--background)", border: "none", fontSize: "11px", fontWeight: 600, opacity: isGenerating ? 0.5 : 1 }}>
                         <Film size={10} />
-                        Animer
+                        Animer cette création
                       </button>
                     )}
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           );
         })}
@@ -3644,7 +3668,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [duration, setDuration] = useState(params.duration || "");
   const [videoDuration, setVideoDuration] = useState(params.videoDuration || "5");
   const [inspiring, setInspiring] = useState(false);
-  // showAdvanced removed — all fields always visible
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Visual scene presets
   const SCENE_PRESETS = [
@@ -3851,18 +3875,35 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       className="rounded-2xl overflow-hidden"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
-      {/* Header */}
-      <div className="px-5 py-4 flex items-center justify-between"
+      {/* Header — compact */}
+      <div className="px-5 py-3 flex items-center justify-between"
         style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "var(--foreground)" }}>
-            <Rocket size={14} style={{ color: "var(--background)" }} />
-          </div>
+          {vaultLogoUrl ? (
+            <img src={vaultLogoUrl} alt="" className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
+              style={{ background: "var(--background)", padding: 2, border: "1px solid var(--border)" }} />
+          ) : (
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: "var(--foreground)" }}>
+              <Rocket size={14} style={{ color: "var(--background)" }} />
+            </div>
+          )}
           <div>
-            <div style={{ fontSize: "14px", fontWeight: 700 }}>{t("studio.configTitle")}</div>
-            <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
-              {brandName ? `${t("studio.campaignFor")} ${brandName}` : t("studio.adjustParams")}
+            <div style={{ fontSize: "14px", fontWeight: 700 }}>
+              {brandName ? `Campagne ${brandName}` : t("studio.configTitle")}
+            </div>
+            {/* Inline brand summary */}
+            <div className="flex items-center gap-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+              {vaultSector && <span>{vaultSector}</span>}
+              {vaultTonePrimary && <span>· {vaultTonePrimary}</span>}
+              {selectedNetworks.length > 0 && <span>· {selectedNetworks.join(", ")}</span>}
+              {Array.isArray(vaultColors) && vaultColors.length > 0 && (
+                <span className="inline-flex gap-0.5 ml-1">
+                  {vaultColors.slice(0, 4).map((c: string, i: number) => (
+                    <span key={i} className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
+                  ))}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -3875,90 +3916,11 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         </button>
       </div>
 
-      <div className="px-5 py-4 space-y-5" style={{ maxHeight: "65vh", overflowY: "auto" }}>
+      <div className="px-5 py-4 space-y-4" style={{ maxHeight: "55vh", overflowY: "auto" }}>
 
-        {/* ═══ BRAND DNA CARD — "On connaît votre marque" ═══ */}
-        {brandName && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl p-4 relative overflow-hidden"
-            style={{ background: "linear-gradient(135deg, var(--secondary) 0%, var(--card) 100%)", border: "1px solid var(--border)" }}
-          >
-            {/* Subtle brand color accents */}
-            {Array.isArray(vaultColors) && vaultColors.length > 0 && (
-              <div className="absolute top-0 left-0 right-0 h-1 flex">
-                {vaultColors.slice(0, 5).map((c: string, i: number) => (
-                  <div key={i} className="flex-1" style={{ background: c.startsWith("#") ? c : `#${c}` }} />
-                ))}
-              </div>
-            )}
-            <div className="flex items-start gap-3" style={{ marginTop: Array.isArray(vaultColors) && vaultColors.length > 0 ? 4 : 0 }}>
-              {/* Logo */}
-              {vaultLogoUrl && (
-                <img src={vaultLogoUrl} alt="" className="w-9 h-9 rounded-lg object-contain flex-shrink-0"
-                  style={{ background: "var(--background)", padding: 2, border: "1px solid var(--border)" }} />
-              )}
-              <div className="flex-1 min-w-0">
-                {/* Brand name + sector */}
-                <div className="flex items-center gap-2 mb-1">
-                  <span style={{ fontSize: "13px", fontWeight: 700 }}>{brandName}</span>
-                  {vaultSector && (
-                    <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "9px", fontWeight: 600, background: "var(--border)", color: "var(--muted-foreground)" }}>
-                      {vaultSector}
-                    </span>
-                  )}
-                </div>
-                {/* Tagline only (short) — not full promise which can be too long */}
-                {vaultTagline && (
-                  <p style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.5, marginBottom: 6, fontStyle: "italic" }}>
-                    "{vaultTagline}"
-                  </p>
-                )}
-                {/* Compact brand attributes */}
-                <div className="flex flex-wrap gap-1.5">
-                  {vaultTonePrimary && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
-                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                      🎙 {vaultTonePrimary}{vaultToneAdj.length > 0 ? `, ${vaultToneAdj.slice(0, 2).join(", ")}` : ""}
-                    </span>
-                  )}
-                  {vaultNarrativeRegister && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
-                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                      📖 {vaultNarrativeRegister}
-                    </span>
-                  )}
-                  {vaultAudiences.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
-                      style={{ fontSize: "10px", fontWeight: 500, background: "var(--background)", border: "1px solid var(--border)", color: "var(--foreground)" }}>
-                      👥 {vaultAudiences.slice(0, 2).join(", ")}
-                    </span>
-                  )}
-                  {/* Color swatches inline */}
-                  {Array.isArray(vaultColors) && vaultColors.length > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
-                      style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
-                      {vaultColors.slice(0, 5).map((c: string, i: number) => (
-                        <span key={i} className="inline-block w-3 h-3 rounded-full" style={{ background: c.startsWith("#") ? c : `#${c}`, border: "1px solid var(--border)" }} />
-                      ))}
-                    </span>
-                  )}
-                </div>
-                {/* Creative tension */}
-                {vaultCreativeTension && (
-                  <p style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 6, fontStyle: "italic", lineHeight: 1.4 }}>
-                    💡 {vaultCreativeTension}
-                  </p>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
+        {/* ═══ QUICK MODE — Only the essentials ═══ */}
 
-        {/* ═══ NIVEAU 1 — Essentiel (toujours visible) ═══ */}
-
-        {/* Produit */}
+        {/* Product selector (only if products exist) */}
         {products.length > 0 && (
           <div>
             <SectionLabel icon={Package}>Produit</SectionLabel>
@@ -3972,26 +3934,6 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
             </div>
           </div>
         )}
-
-        {/* Objectif */}
-        <div>
-          <SectionLabel icon={Target}>Objectif de communication</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {OBJECTIVE_PRESETS.map(obj => (
-              <button key={obj.id} onClick={() => setObjective(obj.id)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer"
-                style={{
-                  background: objective === obj.id ? "var(--foreground)" : "var(--secondary)",
-                  color: objective === obj.id ? "var(--background)" : "var(--text-primary)",
-                  border: `1.5px solid ${objective === obj.id ? "var(--foreground)" : "var(--border)"}`,
-                  fontSize: "12px", fontWeight: 500,
-                }}>
-                <span style={{ fontSize: "14px" }}>{obj.icon}</span>
-                {obj.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Brief */}
         <div>
@@ -4009,192 +3951,224 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           <textarea value={brief} onChange={e => setBrief(e.target.value)}
             placeholder={briefPlaceholder}
             className="w-full rounded-xl px-3.5 py-2.5 resize-none outline-none transition-all"
-            style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", lineHeight: 1.6, minHeight: 64 }}
+            style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", lineHeight: 1.6, minHeight: 56 }}
             onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
             onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
           />
         </div>
 
-        {/* ═══ NIVEAU 2 — Visible, pré-rempli ═══ */}
-
-        {/* Réseaux sociaux (toggles visuels) */}
+        {/* Propositions par visuel — essential for credit control */}
         <div>
-          <SectionLabel>Réseaux sociaux</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {CONFIG_PLATFORMS.map(platform => {
-              const Icon = platform.icon;
-              const isOn = selectedNetworks.includes(platform.name);
-              const formatCount = CONFIG_FORMATS.filter(f => f.platform === platform.name && selectedFormats.includes(f.id)).length;
-              return (
-                <button key={platform.name} onClick={() => toggleNetwork(platform.name)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all cursor-pointer"
-                  style={{
-                    background: isOn ? "var(--foreground)" : "var(--secondary)",
-                    color: isOn ? "var(--background)" : "var(--text-primary)",
-                    border: `1.5px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
-                    fontSize: "12px", fontWeight: 500,
-                  }}>
-                  <Icon size={14} />
-                  {platform.name}
-                  {isOn && formatCount > 0 && (
-                    <span style={{ fontSize: "9px", fontWeight: 700, opacity: 0.7 }}>{formatCount}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Formats détaillés par réseau sélectionné */}
-        {selectedNetworks.length > 0 && (
-          <div>
-            <SectionLabel>Formats ({selectedFormats.length} {t("studio.formatsSelected")})</SectionLabel>
-            <div className="space-y-2.5">
-              {selectedNetworks.map(network => {
-                const formats = CONFIG_FORMATS.filter(f => f.platform === network);
-                if (!formats.length) return null;
-                return (
-                  <div key={network}>
-                    <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>{network}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {formats.map(fmt => (
-                        <Chip key={fmt.id} size="sm" selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
-                          {fmt.label}
-                        </Chip>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+          <SectionLabel icon={Sparkles}>Propositions par visuel</SectionLabel>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1.5">
+              {[
+                { id: "1", label: "1" },
+                { id: "3", label: "3" },
+                { id: "5", label: "5" },
+                { id: "7", label: "7" },
+              ].map(n => (
+                <Chip key={n.id} size="sm" selected={versionCount === n.id} onClick={() => setVersionCount(n.id)}>{n.label}</Chip>
+              ))}
             </div>
-          </div>
-        )}
-
-        {/* Formats longs */}
-        <div>
-          <SectionLabel icon={BookOpen}>Formats longs</SectionLabel>
-          <div className="flex flex-wrap gap-2">
-            {CONFIG_LONG_FORMATS.map(fmt => (
-              <Chip key={fmt.id} selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
-                {fmt.label}
-              </Chip>
-            ))}
-          </div>
-        </div>
-
-        {/* Ambiance visuelle */}
-        <div>
-          <SectionLabel icon={Camera}>
-            Ambiance visuelle
-            <span className="ml-1" style={{ fontSize: "9px", fontWeight: 500, color: "var(--muted-foreground)", textTransform: "none", letterSpacing: "normal" }}>
-              (multi-sélection)
+            <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
+              Comparez et choisissez la meilleure
             </span>
-          </SectionLabel>
-          <div className="grid grid-cols-3 gap-2">
-            {AMBIANCE_PRESETS.map(amb => {
-              const isSelected = selectedAmbiances.includes(amb.id);
-              return (
-                <button key={amb.id} onClick={() => toggleAmbiance(amb.id)}
-                  className="flex flex-col items-start gap-1 p-2 rounded-xl transition-all cursor-pointer text-left relative overflow-hidden"
-                  style={{
-                    background: isSelected ? "var(--foreground)" : "var(--secondary)",
-                    color: isSelected ? "var(--background)" : "var(--text-primary)",
-                    border: `2px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
-                    minHeight: 72,
-                  }}>
-                  {/* Gradient preview */}
-                  <div className="absolute inset-0 opacity-20 rounded-xl" style={{ background: amb.gradient }} />
-                  <div className="relative z-10">
-                    <span style={{ fontSize: "18px", lineHeight: 1 }}>{amb.emoji}</span>
-                    <div style={{ fontSize: "10px", fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>{amb.label}</div>
-                    <div style={{ fontSize: "8px", opacity: 0.7, lineHeight: 1.2, marginTop: 2 }}>{amb.description}</div>
-                  </div>
-                  {isSelected && (
-                    <div className="absolute top-1.5 right-1.5 z-10">
-                      <Check size={10} strokeWidth={3} />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
           </div>
         </div>
 
-        {/* Mise en page removed — template selection now happens in the editor after generation */}
+        {/* ═══ ADVANCED TOGGLE ═══ */}
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 w-full py-2 cursor-pointer transition-all"
+          style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)" }}
+          onMouseEnter={e => { e.currentTarget.style.color = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.color = "var(--muted-foreground)"; }}
+        >
+          <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+          <span className="flex items-center gap-1.5 px-3">
+            <Settings size={11} />
+            {showAdvanced ? "Masquer les options" : "Personnaliser"}
+            <ChevronDown size={11} style={{ transform: showAdvanced ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }} />
+          </span>
+          <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+        </button>
 
-        {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
-        <div className="space-y-4">
-              {/* Audience — vault audiences first, then generic fallbacks */}
-              <div>
-                <SectionLabel>Audience cible{vaultAudiences.length > 0 ? " (depuis votre vault)" : ""}</SectionLabel>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {/* Vault audiences first — highlighted */}
-                  {vaultAudiences.map(a => (
-                    <Chip key={`v-${a}`} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>
-                      <span style={{ fontSize: "9px" }}>⭐</span> {a}
-                    </Chip>
-                  ))}
-                  {/* Generic presets (exclude duplicates from vault) */}
-                  {AUDIENCE_PRESETS.filter(a => !vaultAudiences.some(v => v.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(v.toLowerCase()))).map(a => (
-                    <Chip key={a} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>{a}</Chip>
-                  ))}
-                </div>
-                <input value={targetAudience} onChange={e => setTargetAudience(e.target.value)}
-                  placeholder={t("studio.audiencePlaceholder")}
-                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
+        {/* ═══ ADVANCED OPTIONS — hidden by default ═══ */}
+        {showAdvanced && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            transition={{ duration: 0.25 }}
+            className="space-y-4"
+          >
+            {/* Objectif */}
+            <div>
+              <SectionLabel icon={Target}>Objectif</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {OBJECTIVE_PRESETS.map(obj => (
+                  <button key={obj.id} onClick={() => setObjective(obj.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                    style={{
+                      background: objective === obj.id ? "var(--foreground)" : "var(--secondary)",
+                      color: objective === obj.id ? "var(--background)" : "var(--text-primary)",
+                      border: `1.5px solid ${objective === obj.id ? "var(--foreground)" : "var(--border)"}`,
+                      fontSize: "11px", fontWeight: 500,
+                    }}>
+                    <span style={{ fontSize: "13px" }}>{obj.icon}</span>
+                    {obj.label}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              {/* Ton */}
+            {/* Réseaux sociaux */}
+            <div>
+              <SectionLabel>Réseaux sociaux</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {CONFIG_PLATFORMS.map(platform => {
+                  const Icon = platform.icon;
+                  const isOn = selectedNetworks.includes(platform.name);
+                  return (
+                    <button key={platform.name} onClick={() => toggleNetwork(platform.name)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all cursor-pointer"
+                      style={{
+                        background: isOn ? "var(--foreground)" : "var(--secondary)",
+                        color: isOn ? "var(--background)" : "var(--text-primary)",
+                        border: `1.5px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
+                        fontSize: "11px", fontWeight: 500,
+                      }}>
+                      <Icon size={13} />
+                      {platform.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Formats */}
+            {selectedNetworks.length > 0 && (
               <div>
-                <SectionLabel>Ton {vaultTonePrimary ? `(vault : ${vaultTonePrimary})` : ""}</SectionLabel>
-                <div className="flex flex-wrap gap-1.5">
-                  {TONE_OPTIONS.map(tn => (
-                    <Chip key={tn} size="sm" selected={tone === tn} onClick={() => setTone(tone === tn ? "" : tn)}>{tn}</Chip>
-                  ))}
+                <SectionLabel>Formats ({selectedFormats.length})</SectionLabel>
+                <div className="space-y-2">
+                  {selectedNetworks.map(network => {
+                    const formats = CONFIG_FORMATS.filter(f => f.platform === network);
+                    if (!formats.length) return null;
+                    return (
+                      <div key={network}>
+                        <div style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>{network}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {formats.map(fmt => (
+                            <Chip key={fmt.id} size="sm" selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
+                              {fmt.label}
+                            </Chip>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+            )}
 
-              {/* CTA */}
-              <div>
-                <SectionLabel>Call-to-action</SectionLabel>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {CTA_PRESETS.map(c => (
-                    <Chip key={c} size="sm" selected={callToAction === c} onClick={() => setCallToAction(callToAction === c ? "" : c)}>{c}</Chip>
-                  ))}
-                </div>
-                <input value={callToAction} onChange={e => setCallToAction(e.target.value)}
-                  placeholder={t("studio.customCtaPlaceholder")}
-                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
+            {/* Formats longs */}
+            <div>
+              <SectionLabel icon={BookOpen}>Formats longs</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {CONFIG_LONG_FORMATS.map(fmt => (
+                  <Chip key={fmt.id} selected={selectedFormats.includes(fmt.id)} onClick={() => toggleFormat(fmt.id)}>
+                    {fmt.label}
+                  </Chip>
+                ))}
               </div>
+            </div>
 
-              {/* Moment / Date */}
-              <div>
-                <SectionLabel icon={Calendar}>Moment / Contexte</SectionLabel>
-                <div className="flex flex-wrap gap-1.5">
-                  {MOMENT_PRESETS.map(m => (
-                    <Chip key={m} size="sm" selected={moment === m} onClick={() => setMoment(moment === m ? "" : m)}>{m}</Chip>
-                  ))}
-                </div>
+            {/* Ambiance visuelle */}
+            <div>
+              <SectionLabel icon={Camera}>Ambiance visuelle</SectionLabel>
+              <div className="grid grid-cols-3 gap-2">
+                {AMBIANCE_PRESETS.map(amb => {
+                  const isSelected = selectedAmbiances.includes(amb.id);
+                  return (
+                    <button key={amb.id} onClick={() => toggleAmbiance(amb.id)}
+                      className="flex flex-col items-start gap-1 p-2 rounded-xl transition-all cursor-pointer text-left relative overflow-hidden"
+                      style={{
+                        background: isSelected ? "var(--foreground)" : "var(--secondary)",
+                        color: isSelected ? "var(--background)" : "var(--text-primary)",
+                        border: `2px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
+                        minHeight: 64,
+                      }}>
+                      <div className="absolute inset-0 opacity-20 rounded-xl" style={{ background: amb.gradient }} />
+                      <div className="relative z-10">
+                        <span style={{ fontSize: "16px", lineHeight: 1 }}>{amb.emoji}</span>
+                        <div style={{ fontSize: "10px", fontWeight: 700, lineHeight: 1.2, marginTop: 3 }}>{amb.label}</div>
+                        <div style={{ fontSize: "8px", opacity: 0.7, lineHeight: 1.2, marginTop: 1 }}>{amb.description}</div>
+                      </div>
+                      {isSelected && (
+                        <div className="absolute top-1.5 right-1.5 z-10">
+                          <Check size={10} strokeWidth={3} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
+            </div>
 
-              {/* Organique / Sponsorisé */}
+            {/* Ton */}
+            <div>
+              <SectionLabel>Ton{vaultTonePrimary ? ` (${vaultTonePrimary})` : ""}</SectionLabel>
+              <div className="flex flex-wrap gap-1.5">
+                {TONE_OPTIONS.map(tn => (
+                  <Chip key={tn} size="sm" selected={tone === tn} onClick={() => setTone(tone === tn ? "" : tn)}>{tn}</Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* Audience */}
+            <div>
+              <SectionLabel>Audience</SectionLabel>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {vaultAudiences.map(a => (
+                  <Chip key={`v-${a}`} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>
+                    {a}
+                  </Chip>
+                ))}
+                {AUDIENCE_PRESETS.filter(a => !vaultAudiences.some(v => v.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(v.toLowerCase()))).map(a => (
+                  <Chip key={a} size="sm" selected={targetAudience === a} onClick={() => setTargetAudience(targetAudience === a ? "" : a)}>{a}</Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div>
+              <SectionLabel>Call-to-action</SectionLabel>
+              <div className="flex flex-wrap gap-1.5">
+                {CTA_PRESETS.map(c => (
+                  <Chip key={c} size="sm" selected={callToAction === c} onClick={() => setCallToAction(callToAction === c ? "" : c)}>{c}</Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* Moment */}
+            <div>
+              <SectionLabel icon={Calendar}>Moment</SectionLabel>
+              <div className="flex flex-wrap gap-1.5">
+                {MOMENT_PRESETS.map(m => (
+                  <Chip key={m} size="sm" selected={moment === m} onClick={() => setMoment(moment === m ? "" : m)}>{m}</Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* Organique / Sponsorisé + Nombre de posts */}
+            <div className="flex gap-6">
               <div>
                 <SectionLabel>Diffusion</SectionLabel>
                 <div className="flex gap-2">
                   <Chip selected={!isSponsored} onClick={() => setIsSponsored(false)}>Organique</Chip>
-                  <Chip selected={isSponsored} onClick={() => setIsSponsored(true)}>Sponsorisé (ads)</Chip>
+                  <Chip selected={isSponsored} onClick={() => setIsSponsored(true)}>Sponsorisé</Chip>
                 </div>
               </div>
-
-              {/* Nombre de posts */}
               <div>
                 <SectionLabel>Nombre de posts</SectionLabel>
                 <div className="flex gap-1.5">
@@ -4203,55 +4177,32 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
               </div>
+            </div>
 
-              {/* Propositions par visuel — controls how many creative engines fire */}
-              <div>
-                <SectionLabel icon={Sparkles}>Propositions par visuel</SectionLabel>
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1.5">
-                    {[
-                      { id: "1", label: "1" },
-                      { id: "3", label: "3" },
-                      { id: "5", label: "5" },
-                      { id: "7", label: "7" },
-                    ].map(n => (
-                      <Chip key={n.id} size="sm" selected={versionCount === n.id} onClick={() => setVersionCount(n.id)}>{n.label}</Chip>
-                    ))}
-                  </div>
-                  <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>
-                    46 moteurs créatifs
-                  </span>
-                </div>
-                <p style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 4 }}>
-                  Chaque proposition est unique. Vous choisissez votre préférée.
-                </p>
-              </div>
+            {/* Angle éditorial + Messages clés */}
+            <div>
+              <SectionLabel>Angle éditorial</SectionLabel>
+              <input value={contentAngle} onChange={e => setContentAngle(e.target.value)}
+                placeholder={t("studio.directionPlaceholder")}
+                className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
+                onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              />
+            </div>
+            <div>
+              <SectionLabel>Messages clés</SectionLabel>
+              <textarea value={keyMessages} onChange={e => setKeyMessages(e.target.value)}
+                placeholder={t("studio.keyPointsPlaceholder")}
+                className="w-full rounded-lg px-3 py-1.5 resize-none outline-none transition-all"
+                style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", minHeight: 40 }}
+                onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+              />
+            </div>
 
-              {/* Angle / Messages clés */}
-              <div>
-                <SectionLabel>Angle éditorial</SectionLabel>
-                <input value={contentAngle} onChange={e => setContentAngle(e.target.value)}
-                  placeholder={t("studio.directionPlaceholder")}
-                  className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px" }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
-              </div>
-
-              <div>
-                <SectionLabel>Messages clés</SectionLabel>
-                <textarea value={keyMessages} onChange={e => setKeyMessages(e.target.value)}
-                  placeholder={t("studio.keyPointsPlaceholder")}
-                  className="w-full rounded-lg px-3 py-1.5 resize-none outline-none transition-all"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", minHeight: 48 }}
-                  onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                />
-              </div>
-
-
-              {/* Video duration */}
+            {/* Video duration + Language */}
+            <div className="flex gap-6">
               <div>
                 <SectionLabel icon={Film}>Durée vidéo</SectionLabel>
                 <div className="flex flex-wrap gap-1.5">
@@ -4266,8 +4217,6 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
               </div>
-
-              {/* Language */}
               <div>
                 <SectionLabel icon={Languages}>Langue</SectionLabel>
                 <div className="flex flex-wrap gap-1">
@@ -4276,47 +4225,48 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                   ))}
                 </div>
               </div>
+            </div>
 
-              {/* Planning — Start date + Duration */}
-              <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
-                  <Calendar size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Planning
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Date de début</label>
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-                      className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--foreground)" }}
-                      onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
-                      onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Durée</label>
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        { id: "1 week", label: "1 sem." },
-                        { id: "2 weeks", label: "2 sem." },
-                        { id: "1 month", label: "1 mois" },
-                        { id: "3 months", label: "3 mois" },
-                      ].map(d => (
-                        <Chip key={d.id} size="sm" selected={duration === d.id} onClick={() => setDuration(duration === d.id ? "" : d.id)}>{d.label}</Chip>
-                      ))}
-                    </div>
+            {/* Planning */}
+            <div className="rounded-xl p-3" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
+                <Calendar size={10} className="inline mr-1" style={{ verticalAlign: "-1px" }} /> Planning
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Date de début</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                    className="w-full rounded-lg px-3 py-1.5 outline-none transition-all"
+                    style={{ background: "var(--card)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--foreground)" }}
+                    onFocus={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)", display: "block", marginBottom: 4 }}>Durée</label>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { id: "1 week", label: "1 sem." },
+                      { id: "2 weeks", label: "2 sem." },
+                      { id: "1 month", label: "1 mois" },
+                      { id: "3 months", label: "3 mois" },
+                    ].map(d => (
+                      <Chip key={d.id} size="sm" selected={duration === d.id} onClick={() => setDuration(duration === d.id ? "" : d.id)}>{d.label}</Chip>
+                    ))}
                   </div>
                 </div>
               </div>
-        </div>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* Footer — Generate button */}
-      <div className="px-5 py-4 flex items-center justify-between gap-3"
+      <div className="px-5 py-3 flex items-center justify-between gap-3"
         style={{ borderTop: "1px solid var(--border)" }}>
         <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
           {selectedFormats.length} format{selectedFormats.length > 1 ? "s" : ""}
           {selectedProduct && ` · ${products.find((p: any) => p.id === selectedProduct)?.name || "Produit"}`}
-          {selectedNetworks.length > 0 && ` · ${selectedNetworks.join(", ")}`}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onCancel}
