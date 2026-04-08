@@ -3263,13 +3263,8 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             brandLogoUrl={logoUrl || vault?.logo_url || vault?.logo?.url || ""}
             onSave={(updatedTemplate) => {
               registerTemplate(updatedTemplate);
-              // If switching to an SVG template, stay in the editor with the new template
-              if (updatedTemplate.figmaSvgTemplateId) {
-                setEditorTemplateId(updatedTemplate.id);
-              } else {
-                setEditorPostIdx(null);
-                setEditorTemplateId(null);
-              }
+              setEditorPostIdx(null);
+              setEditorTemplateId(null);
             }}
           />
         );
