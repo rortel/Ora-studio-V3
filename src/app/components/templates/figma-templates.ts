@@ -11,6 +11,24 @@
  */
 import type { TemplateDefinition, TemplateLayer } from "./types";
 
+// ── Thumbnail lookup — Figma-rendered previews stored in /public/templates/ ──
+const THUMBNAILS = new Set([
+  "figma-igp-01","figma-igp-02","figma-igp-03",
+  "figma-story-01","figma-story-02",
+  "figma-bundle-33","figma-bundle-35","figma-bundle-37","figma-bundle-68","figma-bundle-71",
+  "figma-skincare-01","figma-skincare-02","figma-skincare-03","figma-skincare-04",
+  "figma-flyer-music","figma-flyer-fitness","figma-flyer-food",
+  "figma-fashion-post-01","figma-fashion-post-02","figma-fashion-post-03",
+  "figma-pro-01","figma-pro-02","figma-pro-03","figma-pro-04",
+  "figma-linkedin-01","figma-linkedin-02","figma-linkedin-03","figma-linkedin-04",
+  "figma-b2b-01","figma-b2b-02","figma-b2b-03","figma-b2b-04","figma-b2b-05",
+]);
+
+/** Attach referenceImageUrl to templates that have Figma-rendered thumbnails */
+function applyThumbnails(templates: TemplateDefinition[]): TemplateDefinition[] {
+  return templates.map(t => THUMBNAILS.has(t.id) ? { ...t, referenceImageUrl: `/templates/${t.id}.png` } : t);
+}
+
 // ── Shared helpers ──
 
 const bg: TemplateLayer = {
@@ -816,3 +834,16 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
     ],
   },
 ];
+
+// ── Apply Figma thumbnails to all exported arrays ──
+// Mutate in-place so consumers get referenceImageUrl automatically
+[figmaInstagramPostTemplates, figmaProductPostTemplates, figmaInstagramStoryTemplates,
+ figmaBundleTemplates, figmaSkincareTemplates, figmaFlyerTemplates,
+ figmaFashionAdTemplates, figmaFashionPostTemplates, figmaProPackTemplates,
+ figmaLinkedInTemplates, figmaB2BLinkedInTemplates].forEach(arr => {
+  for (let i = 0; i < arr.length; i++) {
+    if (THUMBNAILS.has(arr[i].id)) {
+      arr[i] = { ...arr[i], referenceImageUrl: `/templates/${arr[i].id}.png` };
+    }
+  }
+});

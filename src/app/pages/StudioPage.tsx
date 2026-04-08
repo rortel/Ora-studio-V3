@@ -3293,34 +3293,34 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   );
 }
 
-// ── Template miniature — CSS-based preview of a real template ──
+// ── Template miniature — shows real Figma thumbnail when available ──
 function TemplateMiniature({ tmpl }: { tmpl: TemplateDefinition }) {
+  // If we have a real Figma-rendered thumbnail, use it
+  if (tmpl.referenceImageUrl) {
+    return (
+      <img
+        src={tmpl.referenceImageUrl}
+        alt={tmpl.name}
+        className="w-full h-full object-cover"
+        loading="lazy"
+      />
+    );
+  }
+  // Fallback: CSS wireframe
   return (
     <div className="w-full h-full relative" style={{ overflow: "hidden" }}>
-      {/* Base dark bg */}
       <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #2a2a2a, #1a1a1a)" }} />
-      {/* Shape + gradient layers */}
       {tmpl.layers.filter(l => l.type === "shape" || l.type === "gradient-overlay" || l.type === "circle").map(layer => (
         <div key={layer.id} className="absolute" style={{
           left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`,
           background: layer.type === "gradient-overlay" ? "linear-gradient(to bottom, transparent, rgba(0,0,0,0.6))"
-            : layer.type === "circle" ? (layer.style?.fill?.startsWith("vault") ? "var(--ora-signal, #a88362)" : layer.style?.fill || "rgba(255,255,255,0.1)")
             : layer.style?.fill?.startsWith("vault") ? "var(--ora-signal, #a88362)" : layer.style?.fill || "rgba(255,255,255,0.08)",
           opacity: layer.style?.opacity ?? 1,
           borderRadius: layer.type === "circle" ? "50%" : layer.style?.cornerRadius ? `${layer.style.cornerRadius}px` : undefined,
           zIndex: layer.zIndex,
         }} />
       ))}
-      {/* Image placeholder */}
-      {tmpl.layers.filter(l => l.type === "background-image" || l.type === "image").map(layer => (
-        <div key={layer.id} className="absolute" style={{
-          left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%`, height: `${layer.height}%`,
-          background: "linear-gradient(135deg, rgba(168,131,98,0.25), rgba(168,131,98,0.08))",
-          zIndex: layer.zIndex,
-        }} />
-      ))}
-      {/* Text placeholders */}
-      {tmpl.layers.filter(l => l.type === "text").slice(0, 4).map(layer => {
+      {tmpl.layers.filter(l => l.type === "text").slice(0, 3).map(layer => {
         const isH = layer.id === "headline";
         return (
           <div key={layer.id} className="absolute flex flex-col gap-px justify-center" style={{
@@ -3328,7 +3328,6 @@ function TemplateMiniature({ tmpl }: { tmpl: TemplateDefinition }) {
             padding: "1px", zIndex: layer.zIndex,
           }}>
             <div className="rounded-sm" style={{ height: isH ? "3px" : "2px", width: isH ? "80%" : "60%", background: "rgba(255,255,255,0.7)", opacity: isH ? 0.9 : 0.5 }} />
-            {isH && <div className="rounded-sm" style={{ height: "3px", width: "55%", background: "rgba(255,255,255,0.5)" }} />}
           </div>
         );
       })}
