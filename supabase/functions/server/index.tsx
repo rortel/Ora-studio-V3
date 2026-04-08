@@ -5554,6 +5554,175 @@ app.post("/generate/image-start", async (c) => {
   }
 });
 
+// ── PHOTO BEAUTIFY — enhance real photos (hotel rooms, restaurants, shops) without inventing content ──
+// Low-strength img2img: keeps 80-90% of original pixels, only improves lighting/colors/atmosphere
+app.post("/generate/image-beautify", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch { }
+
+    let body: any = {};
+    try { body = await c.req.json(); } catch { try { body = JSON.parse(await c.req.text()); } catch { } }
+    const imageUrl = body.imageUrl;
+    const preset = body.preset || "magazine-interior";
+    const aspectRatio = body.aspectRatio || "4:3";
+    if (!imageUrl) return c.json({ error: "imageUrl required" }, 400);
+
+    const imgCredits = getModelCreditCost("image", "beautify");
+    if (user) deductCredit(user.id, imgCredits).catch(() => {});
+
+    // Preset definitions — each targets a specific visual enhancement style
+    // strength = how much AI changes (0.10 = very subtle, 0.25 = noticeable enhancement)
+    type BeautifyPreset = { prompt: string; strength: number; negativePrompt: string };
+    const presets: Record<string, BeautifyPreset> = {
+      "magazine-interior": {
+        prompt: "Professional interior photography for architecture magazine, enhanced natural lighting, warm balanced white balance, subtle HDR, clean composition, elegant atmosphere, shot on Canon EOS R5 with 24mm tilt-shift lens, soft window light",
+        strength: 0.18,
+        negativePrompt: "different furniture, added objects, changed layout, new decorations, people, text, watermark, cartoon, illustration, 3D render, altered architecture, different room",
+      },
+      "golden-hour": {
+        prompt: "Golden hour warm sunlight streaming through windows, rich amber tones, soft long shadows, warm cozy atmosphere, cinematic color grading, magic hour photography, lens flare",
+        strength: 0.20,
+        negativePrompt: "cold tones, blue tint, different furniture, changed layout, new objects, people, text, watermark, altered room, different space",
+      },
+      "luxury-feel": {
+        prompt: "Ultra-luxury high-end interior photography, dramatic professional lighting, rich deep contrast, elegant moody atmosphere, Architectural Digest quality, premium materials highlighted, warm sophisticated tones",
+        strength: 0.20,
+        negativePrompt: "cheap look, different furniture, added objects, changed layout, people, text, watermark, cartoon, altered space, different room",
+      },
+      "food-styling": {
+        prompt: "Professional food photography styling, appetizing warm lighting, shallow depth of field, steam and freshness enhanced, rich saturated colors, overhead dramatic lighting, Bon Appétit magazine quality",
+        strength: 0.18,
+        negativePrompt: "different dishes, new food items, changed plating, different table, people, text, watermark, cartoon, illustration, different restaurant",
+      },
+      "storefront-chic": {
+        prompt: "Inviting boutique storefront photography, warm welcoming lighting, clean vibrant colors, attractive window display, professional retail photography, magazine quality shopfront",
+        strength: 0.18,
+        negativePrompt: "different products, changed display, new signs, altered facade, people, text overlay, watermark, different store, cartoon",
+      },
+      "bright-airy": {
+        prompt: "Bright airy Scandinavian photography, soft diffused natural light, clean white tones, minimal shadows, fresh contemporary feel, light and luminous atmosphere, Instagram aesthetic",
+        strength: 0.18,
+        negativePrompt: "dark moody, different furniture, new objects, changed layout, people, text, watermark, cartoon, altered space",
+      },
+      "moody-dramatic": {
+        prompt: "Moody dramatic interior photography, deep rich shadows, cinematic contrast, warm accent lighting, atmospheric depth, film noir inspired, editorial dark luxury",
+        strength: 0.22,
+        negativePrompt: "bright overexposed, different furniture, added objects, changed layout, people, text, watermark, altered room, different space",
+      },
+      "natural-fresh": {
+        prompt: "Fresh natural photography, enhanced greenery and natural elements, crisp clean air feeling, gentle sunlight, organic warmth, lifestyle magazine quality, vibrant yet natural colors",
+        strength: 0.15,
+        negativePrompt: "artificial look, different plants, new furniture, changed layout, people, text, watermark, cartoon, altered space",
+      },
+      "sunset-terrace": {
+        prompt: "Beautiful sunset terrace photography, warm golden-pink sky, romantic evening ambiance, soft twilight lighting, outdoor dining atmosphere, Mediterranean warmth, travel magazine quality",
+        strength: 0.22,
+        negativePrompt: "different furniture, changed layout, new objects, daytime, people, text, watermark, cartoon, altered terrace, different location",
+      },
+      "cozy-warmth": {
+        prompt: "Cozy warm hygge photography, soft warm tungsten lighting, intimate atmosphere, rich warm wood tones, inviting comfort, candlelight warmth, boutique hotel photography",
+        strength: 0.18,
+        negativePrompt: "cold tones, different furniture, new objects, changed layout, people, text, watermark, cartoon, altered room",
+      },
+      "pool-paradise": {
+        prompt: "Stunning pool and spa photography, crystal clear turquoise water, tropical paradise lighting, luxury resort atmosphere, vivid blue sky enhanced, infinity edge reflection, travel editorial quality",
+        strength: 0.20,
+        negativePrompt: "different pool, changed layout, new furniture, people, text, watermark, cartoon, altered landscape, different location",
+      },
+      "boutique-hotel": {
+        prompt: "Boutique hotel editorial photography, design-forward interiors, curated aesthetic, warm professional lighting, lifestyle luxury atmosphere, Mr & Mrs Smith quality, impeccable composition",
+        strength: 0.18,
+        negativePrompt: "different furniture, added objects, changed decor, people, text, watermark, cartoon, altered room, different hotel",
+      },
+    };
+
+    const p = presets[preset] || presets["magazine-interior"];
+    console.log(`[beautify] preset=${preset}, strength=${p.strength}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
+
+    // ── Strategy 1: FAL Flux img2img (best for low-strength, pixel-preserving enhancement) ──
+    const falKey = Deno.env.get("FAL_KEY");
+    const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
+    const falImageSize = falSizeMap[aspectRatio] || "landscape_4_3";
+
+    if (falKey) {
+      for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
+        try {
+          console.log(`[beautify] Trying FAL ${falModel} (strength=${p.strength})...`);
+          const res = await fetch(`https://queue.fal.run/${falModel}`, {
+            method: "POST",
+            headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_url: imageUrl,
+              prompt: p.prompt,
+              strength: p.strength,
+              image_size: falImageSize,
+              num_images: 1,
+              enable_safety_checker: false,
+              ...(p.negativePrompt ? { negative_prompt: p.negativePrompt } : {}),
+            }),
+          });
+          if (!res.ok) { const b = await res.text(); console.log(`[beautify] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+          const data = await res.json();
+          const resultUrl = data.images?.[0]?.url;
+          if (resultUrl) {
+            console.log(`[beautify] FAL ${falModel} OK in ${Date.now() - t0}ms`);
+            return c.json({ success: true, imageUrl: resultUrl, provider: `beautify-fal/${falModel}`, preset });
+          }
+        } catch (err) { console.log(`[beautify] FAL ${falModel} error: ${err}`); }
+      }
+    }
+
+    // ── Strategy 2: Luma Photon modify_image_ref with high weight (keep original) ──
+    const lumaKey = Deno.env.get("LUMA_API_KEY");
+    if (lumaKey) {
+      try {
+        console.log(`[beautify] Fallback: Luma modify_image_ref (weight=0.90)...`);
+        const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
+        const lumaBody = {
+          prompt: p.prompt,
+          model: "photon-1",
+          aspect_ratio: lumaArMap[aspectRatio] || "4:3",
+          modify_image_ref: { url: imageUrl, weight: 0.90 },
+        };
+        const submitRes = await fetch("https://api.lumalabs.ai/dream-machine/v1/generations/image", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lumaKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify(lumaBody),
+        });
+        if (submitRes.ok) {
+          const gen = await submitRes.json();
+          if (gen.id) {
+            let elapsed = 0;
+            while (elapsed < 90_000) {
+              await new Promise(r => setTimeout(r, 3_000)); elapsed += 3_000;
+              try {
+                const pollRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${gen.id}`, {
+                  headers: { Authorization: `Bearer ${lumaKey}` },
+                });
+                if (pollRes.ok) {
+                  const status = await pollRes.json();
+                  if (status.state === "completed" && status.assets?.image) {
+                    console.log(`[beautify] Luma OK in ${Date.now() - t0}ms`);
+                    return c.json({ success: true, imageUrl: status.assets.image, provider: "beautify-luma", preset });
+                  }
+                  if (status.state === "failed") { console.log(`[beautify] Luma failed: ${status.failure_reason}`); break; }
+                }
+              } catch { }
+            }
+          }
+        }
+      } catch (err) { console.log(`[beautify] Luma error: ${err}`); }
+    }
+
+    return c.json({ success: false, error: "All beautify providers failed" }, 500);
+  } catch (err) {
+    console.error(`[beautify] Error:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 app.get("/generate/image-start", async (c) => {
   const t0 = Date.now();
   try {
@@ -18088,6 +18257,96 @@ app.post("/analytics/all-posts-metrics", async (c) => {
   } catch (err) {
     console.log(`[all-posts-metrics] error: ${err}`);
     return c.json({ success: false, error: `Metrics fetch failed: ${err}` }, 500);
+  }
+});
+
+// POST /analytics/ai-insights — AI analysis of post performance with recommendations
+app.post("/analytics/ai-insights", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { posts, totals, byPlatform } = body;
+
+    if (!posts || !Array.isArray(posts) || posts.length === 0) {
+      return c.json({ success: false, error: "No posts data provided" }, 400);
+    }
+
+    // Build context for AI analysis
+    const postSummaries = posts.slice(0, 20).map((p: any) => {
+      const m = p.metrics || {};
+      const engRate = m.impressions > 0 ? ((m.likes + m.comments + m.shares) / m.impressions * 100).toFixed(1) : "0";
+      return `- [${p.platform}] ${p.content?.slice(0, 100) || "no text"} | ${m.impressions || 0} impressions, ${m.likes || 0} likes, ${m.comments || 0} comments, ${m.shares || 0} shares, eng.rate: ${engRate}% | ${(p.publishedAt || p.scheduledAt || "").slice(0, 16)}`;
+    }).join("\n");
+
+    const platformSummary = byPlatform ? Object.entries(byPlatform).map(([plat, d]: [string, any]) => {
+      const engRate = d.impressions > 0 ? ((d.likes + d.comments + d.shares) / d.impressions * 100).toFixed(1) : "0";
+      return `${plat}: ${d.count} posts, ${d.impressions} impressions, ${d.likes} likes, ${d.comments} comments, eng.rate: ${engRate}%`;
+    }).join("\n") : "No platform data";
+
+    const totalEngRate = totals?.engagementRate || "N/A";
+
+    const systemPrompt = `You are a senior social media strategist at a top agency (ex-We Are Social, Publicis). Analyze post performance data and provide actionable insights.
+
+RULES:
+- Be specific and data-driven — reference actual numbers from the data
+- Identify patterns: what content type performs best, worst posting times, platform differences
+- Give 3-5 concrete, actionable recommendations for the next posts
+- If engagement is low, explain WHY based on the content patterns you see
+- Compare platforms if multiple are used
+- Mention specific content themes that work or don't work
+- Be direct, no fluff. Agency-quality analysis.
+- Respond in the user's language (French if the content is French, English otherwise)
+- Format with markdown: use ## headers, bullet points, and **bold** for key metrics`;
+
+    const userPrompt = `Analyze these social media posts and their performance:
+
+OVERALL METRICS:
+- Total impressions: ${totals?.impressions || 0}
+- Total engagement rate: ${totalEngRate}
+- Posts with metrics: ${totals?.postsWithMetrics || 0} / ${totals?.totalPosts || 0}
+
+BY PLATFORM:
+${platformSummary}
+
+INDIVIDUAL POSTS (most recent first):
+${postSummaries}
+
+Provide:
+1. **Performance Summary** — what's working, what's not
+2. **Top Performing Content** — which posts/themes drive the most engagement and why
+3. **Weak Points** — what to avoid or change
+4. **Platform-Specific Insights** — how each platform performs differently
+5. **5 Actionable Recommendations** — concrete next steps to improve engagement on the next posts`;
+
+    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") || "",
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: userPrompt }],
+        system: systemPrompt,
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const err = await aiRes.text();
+      console.log(`[ai-insights] Anthropic error ${aiRes.status}: ${err.slice(0, 200)}`);
+      return c.json({ success: false, error: "AI analysis failed" }, 500);
+    }
+
+    const aiData = await aiRes.json();
+    const analysis = aiData.content?.[0]?.text || "No analysis generated";
+
+    console.log(`[ai-insights] OK, ${analysis.length} chars for user=${user.id.slice(0, 8)}`);
+    return c.json({ success: true, analysis });
+  } catch (err: any) {
+    console.log(`[ai-insights] error: ${err}`);
+    return c.json({ success: false, error: `AI insights failed: ${err.message}` }, 500);
   }
 });
 

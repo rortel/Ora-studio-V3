@@ -160,6 +160,7 @@ export function StudioPage() {
   const [socialAccounts, setSocialAccounts] = useState<any[] | null>(null);
   const [pendingCampaign, setPendingCampaign] = useState<{ action: StudioAction; msgId: string } | null>(null);
   const [finalizingCampaign, setFinalizingCampaign] = useState<{ posts: CampaignPost[]; logoUrl?: string; brief: string; campaignStartDate?: string; campaignDuration?: string; editIdx?: number } | null>(null);
+  const [showRetouchPanel, setShowRetouchPanel] = useState(false);
   // templateSelector state removed — selection now in CampaignConfigPanel
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -1153,6 +1154,12 @@ export function StudioPage() {
       return;
     }
 
+    // ── RETOUCH: open photo beautify panel ──
+    if (msg === "__RETOUCH__") {
+      setShowRetouchPanel(true);
+      return;
+    }
+
     // ── CAMPAIGN MODE shortcut: load vault first, then show contextual welcome ──
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -1777,6 +1784,26 @@ export function StudioPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Photo Retouch Panel ── */}
+      <AnimatePresence>
+        {showRetouchPanel && (
+          <PhotoRetouchPanel
+            products={products}
+            serverPost={serverPost}
+            onClose={() => setShowRetouchPanel(false)}
+            onResult={(imageUrl, preset) => {
+              setShowRetouchPanel(false);
+              const msg: ChatMessage = {
+                id: `beautify-${Date.now()}`, role: "assistant",
+                content: `Photo embellie avec le preset "${preset}" :`,
+                result: { type: "image" as const, prompt: preset, items: [{ url: imageUrl, model: `Beautify · ${preset}`, latencyMs: 0 }] },
+              };
+              setMessages(prev => [...prev, msg]);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </RouteGuard>
   );
 }
@@ -1987,6 +2014,23 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
           {inspiring
             ? (locale === "fr" ? "Réflexion en cours..." : "Thinking...")
             : (locale === "fr" ? "Inspirez-moi" : "Inspire me")}
+        </button>
+
+        <button
+          onClick={() => onSend("__RETOUCH__")}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all hover:shadow-md active:scale-[0.97]"
+          style={{
+            background: "var(--secondary)",
+            color: "var(--foreground)",
+            fontSize: "13px",
+            fontWeight: 600,
+            border: "1px solid var(--border)",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+        >
+          <Camera size={14} />
+          {locale === "fr" ? "Embellir mes photos" : "Beautify my photos"}
         </button>
 
         {/* Idea bubbles — appear after inspire */}
@@ -4554,6 +4598,273 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </button>
         </div>
       </div>
+    </motion.div>
+  );
+}
+
+/* ── Photo Retouch / Beautify Panel ── */
+const BEAUTIFY_PRESETS = [
+  { id: "magazine-interior", label: "Magazine Interior", emoji: "🏠", description: "Éclairage pro, composition magazine" },
+  { id: "golden-hour", label: "Golden Hour", emoji: "🌅", description: "Lumière dorée, chaleur naturelle" },
+  { id: "luxury-feel", label: "Luxury Feel", emoji: "✨", description: "Contraste riche, atmosphère premium" },
+  { id: "food-styling", label: "Food Styling", emoji: "🍽️", description: "Couleurs appétissantes, fraîcheur" },
+  { id: "storefront-chic", label: "Storefront Chic", emoji: "🏪", description: "Vitrine accueillante, couleurs vives" },
+  { id: "bright-airy", label: "Bright & Airy", emoji: "☁️", description: "Lumineux, scandinave, Instagram" },
+  { id: "moody-dramatic", label: "Moody & Dramatic", emoji: "🌑", description: "Ombres profondes, édito sombre" },
+  { id: "natural-fresh", label: "Natural & Fresh", emoji: "🌿", description: "Verdure, lumière douce, organique" },
+  { id: "sunset-terrace", label: "Sunset Terrace", emoji: "🌇", description: "Terrasse au coucher de soleil" },
+  { id: "cozy-warmth", label: "Cozy & Warm", emoji: "🕯️", description: "Hygge, bougies, intimité" },
+  { id: "pool-paradise", label: "Pool & Paradise", emoji: "🏊", description: "Piscine cristalline, resort luxe" },
+  { id: "boutique-hotel", label: "Boutique Hotel", emoji: "🛎️", description: "Design hôtelier, lifestyle luxe" },
+];
+
+function PhotoRetouchPanel({ products, serverPost, onClose, onResult }: {
+  products: any[];
+  serverPost: (path: string, body: any, timeoutMs?: number) => Promise<any>;
+  onClose: () => void;
+  onResult: (imageUrl: string, preset: string) => void;
+}) {
+  const [selectedPreset, setSelectedPreset] = useState("magazine-interior");
+  const [uploadedImage, setUploadedImage] = useState<{ file: File; preview: string; signedUrl?: string } | null>(null);
+  const [selectedProductImage, setSelectedProductImage] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [resultImage, setResultImage] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Extract ALL product images from all possible fields
+  const productImages: { url: string; name: string }[] = [];
+  for (const p of products) {
+    if (Array.isArray(p.images)) {
+      for (const img of p.images) {
+        const url = img.signedUrl || img.url || "";
+        if (url) productImages.push({ url, name: p.name });
+      }
+    }
+    if (Array.isArray(p.imageUrls)) {
+      for (const url of p.imageUrls) {
+        if (url && typeof url === "string" && url.startsWith("http") && !productImages.some(pi => pi.url === url)) {
+          productImages.push({ url, name: p.name });
+        }
+      }
+    }
+    if (p.imageUrl && typeof p.imageUrl === "string" && !productImages.some(pi => pi.url === p.imageUrl)) {
+      productImages.push({ url: p.imageUrl, name: p.name });
+    }
+  }
+
+  // Default to product images when available
+  const hasProductImages = productImages.length > 0;
+  const [imageSource, setImageSource] = useState<"upload" | "product">(hasProductImages ? "product" : "upload");
+
+  const handleUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const preview = URL.createObjectURL(file);
+    setUploadedImage({ file, preview });
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/hub/upload-ref`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success && data.signedUrl) {
+        setUploadedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl } : null);
+      }
+    } catch { setUploadedImage(null); }
+  };
+
+  const handleBeautify = async () => {
+    const imageUrl = imageSource === "upload" ? uploadedImage?.signedUrl : selectedProductImage;
+    if (!imageUrl) return;
+    setIsProcessing(true);
+    setResultImage(null);
+    try {
+      const res = await serverPost("/generate/image-beautify", { imageUrl, preset: selectedPreset, aspectRatio: "4:3" }, 120_000);
+      if (res.success && res.imageUrl) {
+        setResultImage(res.imageUrl);
+      } else {
+        toast.error(res.error || "Erreur lors de l'embellissement");
+      }
+    } catch (err: any) {
+      toast.error("Erreur réseau");
+    }
+    setIsProcessing(false);
+  };
+
+  const imageReady = imageSource === "upload" ? !!uploadedImage?.signedUrl : !!selectedProductImage;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="rounded-2xl w-full max-w-lg mx-4 overflow-hidden"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", maxHeight: "85vh" }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2">
+            <Camera size={16} />
+            <span style={{ fontSize: "14px", fontWeight: 700 }}>Embellir mes photos</span>
+          </div>
+          <button onClick={onClose} className="cursor-pointer" style={{ color: "var(--muted-foreground)" }}><X size={18} /></button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 overflow-y-auto" style={{ maxHeight: "calc(85vh - 120px)" }}>
+
+          {/* Source toggle — products first when available */}
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
+              {hasProductImages ? `Mes photos produits (${productImages.length})` : "Source de la photo"}
+            </label>
+            {hasProductImages && (
+              <div className="flex gap-2 mb-3">
+                <button onClick={() => setImageSource("product")}
+                  className="flex-1 py-2 rounded-xl cursor-pointer transition-all text-center"
+                  style={{
+                    fontSize: "12px", fontWeight: 600,
+                    background: imageSource === "product" ? "var(--foreground)" : "var(--secondary)",
+                    color: imageSource === "product" ? "var(--background)" : "var(--foreground)",
+                    border: `1px solid ${imageSource === "product" ? "var(--foreground)" : "var(--border)"}`,
+                  }}>
+                  Mes produits
+                </button>
+                <button onClick={() => setImageSource("upload")}
+                  className="flex-1 py-2 rounded-xl cursor-pointer transition-all text-center"
+                  style={{
+                    fontSize: "12px", fontWeight: 600,
+                    background: imageSource === "upload" ? "var(--foreground)" : "var(--secondary)",
+                    color: imageSource === "upload" ? "var(--background)" : "var(--foreground)",
+                    border: `1px solid ${imageSource === "upload" ? "var(--foreground)" : "var(--border)"}`,
+                  }}>
+                  Autre photo
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Upload zone */}
+          {imageSource === "upload" && (
+            <div>
+              <input type="file" ref={fileRef} accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ""; }} />
+              {uploadedImage ? (
+                <div className="relative group">
+                  <img src={uploadedImage.preview} className="w-full rounded-xl object-cover" style={{ maxHeight: 200, border: "1px solid var(--border)" }} alt="" />
+                  <button onClick={() => { if (uploadedImage.preview) URL.revokeObjectURL(uploadedImage.preview); setUploadedImage(null); }}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ background: "var(--foreground)", color: "var(--background)" }}>
+                    <X size={12} />
+                  </button>
+                  {!uploadedImage.signedUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-xl" style={{ background: "rgba(0,0,0,0.4)" }}>
+                      <Loader2 size={20} className="animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button onClick={() => fileRef.current?.click()}
+                  className="w-full py-8 rounded-xl cursor-pointer transition-all flex flex-col items-center gap-2"
+                  style={{ border: "2px dashed var(--border)", background: "var(--secondary)", color: "var(--muted-foreground)" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}>
+                  <ImageIcon size={24} />
+                  <span style={{ fontSize: "12px", fontWeight: 500 }}>Cliquez pour importer votre photo</span>
+                  <span style={{ fontSize: "10px", opacity: 0.6 }}>JPG, PNG — max 10 Mo</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Product image picker */}
+          {imageSource === "product" && (
+            <div className="grid grid-cols-4 gap-2" style={{ maxHeight: 200, overflowY: "auto" }}>
+              {productImages.map((img, i) => (
+                <button key={i} onClick={() => setSelectedProductImage(img.url)}
+                  className="relative rounded-lg overflow-hidden cursor-pointer transition-all"
+                  style={{ border: `2px solid ${selectedProductImage === img.url ? "var(--foreground)" : "var(--border)"}`, aspectRatio: "1" }}>
+                  <img src={img.url} className="w-full h-full object-cover" alt={img.name} />
+                  {selectedProductImage === img.url && (
+                    <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.3)" }}>
+                      <Check size={18} style={{ color: "white" }} />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Preset selector */}
+          <div>
+            <label style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
+              Style d'embellissement
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {BEAUTIFY_PRESETS.map(p => {
+                const isOn = selectedPreset === p.id;
+                return (
+                  <button key={p.id} onClick={() => setSelectedPreset(p.id)}
+                    className="flex flex-col items-start gap-0.5 p-2 rounded-xl transition-all cursor-pointer text-left"
+                    style={{
+                      background: isOn ? "var(--foreground)" : "var(--secondary)",
+                      color: isOn ? "var(--background)" : "var(--foreground)",
+                      border: `1.5px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
+                    }}>
+                    <span style={{ fontSize: "14px" }}>{p.emoji}</span>
+                    <span style={{ fontSize: "10px", fontWeight: 700, lineHeight: 1.2 }}>{p.label}</span>
+                    <span style={{ fontSize: "8px", opacity: 0.7, lineHeight: 1.2 }}>{p.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Result preview */}
+          {resultImage && (
+            <div>
+              <label style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)", display: "block", marginBottom: 6 }}>
+                Résultat
+              </label>
+              <div className="relative">
+                <img src={resultImage} className="w-full rounded-xl object-cover" style={{ maxHeight: 300, border: "1px solid var(--border)" }} alt="Beautified" />
+                <div className="absolute bottom-2 right-2 flex gap-1.5">
+                  <a href={resultImage} download target="_blank" rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                    style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "11px", fontWeight: 600 }}>
+                    <Download size={12} /> Télécharger
+                  </a>
+                  <button onClick={() => onResult(resultImage, BEAUTIFY_PRESETS.find(p => p.id === selectedPreset)?.label || selectedPreset)}
+                    className="px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer"
+                    style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "11px", fontWeight: 600 }}>
+                    <Check size={12} /> Utiliser
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: "1px solid var(--border)" }}>
+          <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            {imageReady ? `Photo prête · ${BEAUTIFY_PRESETS.find(p => p.id === selectedPreset)?.label}` : "Importez ou sélectionnez une photo"}
+          </span>
+          <button
+            onClick={handleBeautify}
+            disabled={!imageReady || isProcessing}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
+            {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {isProcessing ? "Embellissement..." : "Embellir"}
+          </button>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
