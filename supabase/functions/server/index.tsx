@@ -12933,6 +12933,23 @@ app.post("/calendar", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// POST /calendar/update — Update an existing calendar event (content, schedule, etc.)
+app.post("/calendar/update", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { eventId, ...updates } = body;
+    if (!eventId) return c.json({ success: false, error: "Missing eventId" }, 400);
+    const existing = await kv.get(eventId);
+    if (!existing) return c.json({ success: false, error: "Event not found" }, 404);
+    if (existing.userId && existing.userId !== user.id) return c.json({ success: false, error: "Not authorized" }, 403);
+    const { _token, ...safeUpdates } = updates;
+    const updated = { ...existing, ...safeUpdates, updatedAt: new Date().toISOString() };
+    await kv.set(eventId, updated);
+    return c.json({ success: true, event: updated });
+  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+});
+
 app.delete("/calendar/:id", async (c) => {
   try {
     const user = await requireAuth(c);
@@ -13462,9 +13479,26 @@ Create the optimal posting schedule as a JSON array.`;
       TikTok: "#00f2ea", YouTube: "#FF0000", Pinterest: "#E60023",
     };
 
+    // Build lookup: match scheduled events to source assets by platform
+    const assetsByPlatform: Record<string, any[]> = {};
+    for (const a of assets) {
+      const key = (a.platform || "").toLowerCase();
+      if (!assetsByPlatform[key]) assetsByPlatform[key] = [];
+      assetsByPlatform[key].push(a);
+    }
+    // Track used asset indices per platform so each event gets a unique asset
+    const usedAssetIdx: Record<string, number> = {};
+
     const savedEvents: any[] = [];
     for (const ev of schedule) {
       const id = `calendar:${user.id}:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      // Find matching asset for this event's platform
+      const platformKey = (ev.channel || "LinkedIn").toLowerCase();
+      const platformAssets = assetsByPlatform[platformKey] || assets; // fallback to all assets
+      const assetIdx = usedAssetIdx[platformKey] || 0;
+      const matchedAsset = platformAssets[assetIdx % platformAssets.length] || {};
+      usedAssetIdx[platformKey] = assetIdx + 1;
+
       const event = {
         id,
         title: ev.title || "Untitled post",
@@ -13479,6 +13513,13 @@ Create the optimal posting schedule as a JSON array.`;
         year: ev.year,
         postingNote: ev.postingNote || "",
         campaignTheme: campaignTheme || brief || "",
+        // Content from matched asset — required for deploy
+        copy: matchedAsset.copy || matchedAsset.caption || "",
+        caption: matchedAsset.caption || matchedAsset.copy || "",
+        headline: matchedAsset.headline || ev.title || "",
+        imageUrl: matchedAsset.imageUrl || "",
+        videoUrl: matchedAsset.videoUrl || "",
+        hashtags: matchedAsset.hashtags || "",
         userId: user.id,
         createdAt: new Date().toISOString(),
       };
@@ -13511,8 +13552,10 @@ const zernioHeaders = () => {
   return { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
 };
 const ZERNIO_PLATFORM_MAP: Record<string, string> = {
-  LinkedIn: "linkedin", Instagram: "instagram", Facebook: "facebook",
-  "Twitter/X": "twitter", Twitter: "twitter",
+  LinkedIn: "linkedin", linkedin: "linkedin",
+  Instagram: "instagram", instagram: "instagram",
+  Facebook: "facebook", facebook: "facebook",
+  "Twitter/X": "twitter", Twitter: "twitter", twitter: "twitter",
   TikTok: "tiktok", tiktok: "tiktok",
   YouTube: "youtube", youtube: "youtube",
 };
