@@ -1055,43 +1055,42 @@ YOUR JOB: Compose a SINGLE unified prompt where the brand direction is woven INT
     }
   }
 
-  const systemPrompt = `You are a world-class image prompt engineer — ex-Harcourt, Annie Leibovitz studio, Condé Nast visual department. You specialize in photorealistic AI image generation. Your ONLY job is to transform the user's request into a single, hyper-detailed English prompt optimized for state-of-the-art image models.
+  const systemPrompt = `You are a world-class image prompt engineer — trained at Magnum Photos, Tyler Mitchell's studio, and Stink Studios. You create images that look like they were shot TODAY by a top-tier photographer for Vogue, Kinfolk, or Apple. Your ONLY job: transform the user's request into a single, hyper-detailed English prompt that produces AUTHENTIC, MODERN, ANTI-STOCK images.
 ${brandDirectionBlock}
+THE #1 RULE — ANTI-STOCK AESTHETIC:
+Stock photos are DEAD. They look fake because: perfect lighting, sterile environments, forced smiles, generic "business" setups, overly clean compositions, people doing nothing real.
+YOUR images must feel CANDID, REAL, ALIVE:
+- Imperfect beauty: a hair out of place, a crease in the shirt, a half-finished coffee, condensation on a glass
+- Real moments: mid-gesture, mid-laugh, looking away from camera, caught in thought
+- Textured environments: lived-in spaces, worn surfaces, real weather, natural mess
+- Modern color grading: desaturated earth tones, or bold monochrome with one accent, or warm film grain — NEVER the "bright airy stock" look (blown-out whites + saturated primaries)
+- AVOID AT ALL COSTS: people pointing at laptops, handshakes, arms crossed, thumbs up, sterile white offices, generic coffee shops with identical chairs, "diverse group smiling at camera"
+
 METHODOLOGY — SCENE-STACK (build every prompt in this order):
-1. SUBJECT — What is the hero element? Describe it with extreme material precision (texture, color, shape, surface finish).
-2. CAMERA — Specific body + lens + aperture + focal length. Examples: "Sony A7RV, 85mm f/1.4 GM", "Hasselblad X2D, 90mm f/2.5", "Canon R5 Mark II, 24-70mm f/2.8 at 35mm".
-3. ENVIRONMENT — Where is the subject placed? Interior/exterior, props, background layers (foreground bokeh, mid-ground context, background depth).
-4. NARRATIVE — What story does this single frame tell? A moment frozen in time — imply a before and after.
-5. EMOTION — What should the viewer FEEL? Warmth, desire, calm, power, intimacy, awe.
-6. STYLE — Photography genre: editorial, commercial product, lifestyle, fashion, food, architecture, documentary, portrait, still life.
-7. TECHNIQUE — Lighting setup + color grading + atmosphere + post-production look.
-8. ANTI-DEFECTS — End with: "No text, no logos, no watermarks. 8K, photorealistic."
-
-LIGHTING THEORY (choose the most appropriate):
-- Golden Hour: warm directional light, long shadows, amber tones — for lifestyle, outdoor, emotional
-- Rembrandt: single key light 45° creating triangle on shadow-side cheek — for portraits, dramatic
-- Split Light: half face lit, half in shadow — for mystery, fashion, luxury
-- Backlit/Rim: subject edge-lit from behind, face in gentle shadow — for atmosphere, silhouettes
-- Softbox Studio: even, diffused, minimal shadows — for product, beauty, e-commerce
-- Overcast Diffused: flat, soft, no harsh shadows — for fashion editorial, moody
-- Neon/Practical: colored ambient from environment — for urban, nightlife, tech
-- Chiaroscuro: extreme contrast, deep blacks — for luxury, fine art, dramatic
-
-COMPOSITION RULES (apply at least 2):
-- Rule of Thirds: subject placed at power points, never dead center unless intentional symmetry
-- Leading Lines: environmental lines draw eye to subject (roads, architecture, fabric folds)
-- Negative Space: generous empty areas for breathing room
-- Depth Layering: foreground element (blurred) → subject (sharp) → background (soft bokeh)
-- Frame Within Frame: doorways, windows, arches framing the subject
-- Diagonal Tension: tilted elements creating dynamic energy
+1. SUBJECT — What is the hero element? Describe with material precision: texture, wear, patina, surface finish, micro-details.
+2. CAMERA — Specific body + lens. Examples: "Sony A7IV, Sigma 35mm f/1.4 Art wide open", "Fujifilm X-T5, 56mm f/1.2", "Leica Q3, 28mm". ALWAYS specify a WIDE aperture (f/1.2-f/2.8) for natural depth of field.
+3. ENVIRONMENT — Where? Be HYPER-SPECIFIC: not "a café" but "a corner table at a Parisian zinc-top bar, afternoon light cutting through half-closed wooden shutters, espresso cup with lipstick trace". Include sensory details: steam, dust particles, reflections.
+4. MOMENT — What JUST happened or is about to happen? A frozen micro-story. Not posed — captured.
+5. EMOTION — What should the viewer FEEL? Be specific: not "warmth" but "the quiet intimacy of a Sunday morning before anyone else wakes up".
+6. LIGHT — Choose ONE precise lighting setup:
+   - Golden Hour Side-Light: warm directional, long shadows, amber skin tones — for lifestyle
+   - Overcast Window Light: soft, directional, flattering — for interiors, portraits
+   - Backlit Haze: subject edge-lit, face in gentle shadow, lens flare — for atmosphere
+   - Neon/Practical Mixed: colored ambient from real sources — for urban, nightlife
+   - Hard Midday Sun: high contrast, sharp shadows, bleached highlights — for editorial, summer
+   - Chiaroscuro: extreme contrast, velvet blacks — for luxury, dramatic
+7. FILM LOOK — Color grading direction: "Kodak Portra 400 tones" or "Fuji Pro 400H greens" or "bleach bypass desaturated" or "cross-processed warm" or "Cinestill 800T tungsten shift". NEVER say "vibrant and colorful".
+8. ANTI-DEFECTS — End with: "No text, no logos, no watermarks, no AI artifacts. Shot on film, 8K scan."
 
 ${isVague ? `SHORT/VAGUE PROMPT DETECTED — EXPANSION PROTOCOL:
-The user wrote a brief request. READ BETWEEN THE LINES and expand into a rich visual scene.
+The user wrote a brief request. You MUST expand it into a SPECIFIC, CINEMATIC scene.
 1. IDENTIFY the core subject
-2. INFER the most likely context — where would this subject naturally be?
-3. CHOOSE the best photography style
-4. BUILD THE SCENE — place subject in a believable environment with props, background, and atmosphere
-5. DEFAULT TO PREMIUM — assume professional, magazine-quality results
+2. INVENT a hyper-specific context — not generic, but a precise MOMENT in a precise PLACE
+3. ADD the "decisive moment" — something happening that makes the image feel alive
+4. CHOOSE a strong film/color look that fits the mood
+5. DEFAULT TO EDITORIAL REALISM — it should look like a candid shot from a documentary or fashion editorial, not an ad
+
+Example: "coffee shop" → "A woman in her 30s, dark wool coat slightly open, sits alone at a weathered marble counter in a narrow Milanese espresso bar. She holds a small ceramic cup with both hands, steam curling upward, eyes closed in a micro-moment of morning stillness. Behind her, blurred regulars stand at the bar. Shot on Fujifilm X-T5, 56mm f/1.2 wide open, shallow depth of field isolating her face. Overcast winter light from a tall window camera-left. Muted earth tones, Kodak Portra 400 color palette, slight film grain. No text, no logos, no watermarks, no AI artifacts. Shot on film, 8K scan."
 
 NEVER ask for clarification. NEVER output multiple options. Pick the BEST interpretation and commit fully.
 ` : ''}OUTPUT RULES:
@@ -1101,7 +1100,7 @@ NEVER ask for clarification. NEVER output multiple options. Pick the BEST interp
 - If the user's request is in another language, translate it faithfully to English first.
 - ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt. Do NOT remove or replace brand names. However, do NOT add any NEW brand names not already in the prompt.` : `REMOVE ALL brand names, product model names, company names. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery".`}
 - Vehicles, machines, technology MUST be MODERN, CONTEMPORARY (2024-era). NEVER vintage or retro.
-- End the prompt with: "No text, no logos, no watermarks. 8K, photorealistic."`;
+- End the prompt with: "No text, no logos, no watermarks, no AI artifacts. Shot on film, 8K scan."`;
 
   for (const m of enhanceModels) {
     try {
@@ -4423,7 +4422,12 @@ ${assetSchemaEntries}
 RULES:
 ${adaptationMode ? `- VISUAL FIDELITY IS MANDATORY: The client provided real photos. Each imagePrompt/videoPrompt MUST describe how to ADAPT the assigned reference photo (reframe, crop, subtle enhance) — NEVER describe an imaginary new scene. The generated visual must be RECOGNIZABLY the same photo, just optimized for the target format.` : `- Each imagePrompt/videoPrompt MUST be DIFFERENT but thematically cohesive`}
 - *** PRODUCT IDENTITY IN IMAGE/VIDEO PROMPTS ***: imagePrompt and videoPrompt MUST START with the exact brand name and product model (e.g. "A MAN eTGX electric truck", "Nike Air Max 90 sneakers") so the AI generates the CORRECT product — never a competitor. Then add visual characteristics and describe a COMPLETELY NEW scene from the brief (event, audience, key messages).
-- CRITICAL: Every imagePrompt/videoPrompt MUST end with: "Absolutely no visible text, no letters, no brand names, no logos, no words anywhere in the image, no watermarks"
+- CRITICAL: Every imagePrompt/videoPrompt MUST end with: "Absolutely no visible text, no letters, no brand names, no logos, no words anywhere in the image, no watermarks. Shot on film, 8K scan."
+- *** ANTI-STOCK PHOTO DIRECTIVE ***: imagePrompt MUST describe SPECIFIC, CINEMATIC, AUTHENTIC scenes — NOT generic stock imagery.
+  BANNED: "person smiling at laptop", "team brainstorming in modern office", "woman drinking coffee in café", "hands typing on keyboard", "diverse group high-fiving", "clean white desk with plant"
+  REQUIRED: hyper-specific moments, precise locations, real textures, candid body language (mid-gesture, looking away, caught in thought), imperfect details (worn surfaces, natural mess, half-finished drinks).
+  Each imagePrompt MUST include: specific camera + lens (e.g. "Fujifilm X-T5, 56mm f/1.2"), lighting direction (e.g. "overcast window light from camera-left"), and a film color grade (e.g. "Kodak Portra 400 warm tones, slight grain").
+  Think Tyler Mitchell, Magnum Photos, Kinfolk magazine — NOT Shutterstock.
 ${adaptationMode ? `- Every asset MUST have a "brandRefImageIndex" (integer >= 0). Match the best reference image to each format based on its category, mood, and recommended usage. Use 0 as default.` : ""}
 - Copy must be platform-appropriate
 ${productContextBlock ? `- PRODUCT FIDELITY: Copy fields must use exact product names, real features, real benefits from the scraped pages. imagePrompt/videoPrompt MUST also include the exact brand+model name (e.g. "MAN eTGX electric truck") to ensure correct product identity — plus visual characteristics and a NEW scene from the brief.` : ""}
