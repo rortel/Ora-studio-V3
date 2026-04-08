@@ -5652,7 +5652,7 @@ app.post("/generate/image-beautify", async (c) => {
     // No generation, no invention. The prompt only guides subtle tonal shifts.
     try {
       console.log(`[beautify] FAL clarity-upscaler (creativity=0, resemblance=1.0)...`);
-      const res = await fetch("https://queue.fal.run/fal-ai/clarity-upscaler", {
+      const res = await fetch("https://fal.run/fal-ai/clarity-upscaler", {
         method: "POST",
         headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -5683,7 +5683,7 @@ app.post("/generate/image-beautify", async (c) => {
     // ── Strategy 2: FAL AuraSR — pure super-resolution, no prompt, no generation ──
     try {
       console.log(`[beautify] Fallback: FAL aura-sr (pure upscale, no generation)...`);
-      const res = await fetch("https://queue.fal.run/fal-ai/aura-sr", {
+      const res = await fetch("https://fal.run/fal-ai/aura-sr", {
         method: "POST",
         headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
