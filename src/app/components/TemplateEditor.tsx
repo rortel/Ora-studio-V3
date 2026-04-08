@@ -1320,34 +1320,34 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
      STYLES (reusable inline style objects)
      ═══════════════════════════════════════════════════════════════════════ */
   const inputStyle: React.CSSProperties = {
-    background: "rgba(26,23,20,0.03)",
-    border: "1px solid rgba(26,23,20,0.04)",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.08)",
     color: "var(--foreground)",
-    borderRadius: 4,
-    fontSize: 11,
-    padding: "3px 6px",
+    borderRadius: 6,
+    fontSize: 12,
+    padding: "5px 8px",
     width: "100%",
     outline: "none",
   };
 
-  const labelStyle: React.CSSProperties = { fontSize: 10, color: "#7A7572", display: "block" };
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: "#9B9692", display: "block", marginBottom: 2 };
 
   const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)",
-    textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6,
+    fontSize: 11, fontWeight: 600, color: "#9B9692",
+    letterSpacing: "0.3px", marginBottom: 8,
   };
 
   const smallBtnStyle: React.CSSProperties = {
-    background: "rgba(26,23,20,0.03)",
-    border: "1px solid var(--border)",
-    color: "var(--text-tertiary)",
-    borderRadius: 4,
-    fontSize: 11,
-    padding: "3px 8px",
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    color: "#B8B4B0",
+    borderRadius: 6,
+    fontSize: 12,
+    padding: "5px 10px",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
   };
 
   /* ═══════════════════════════════════════════════════════════════════════
@@ -1366,50 +1366,41 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           maxHeight: "90vh",
         }}
       >
-        <DialogTitle className="sr-only">Template Editor</DialogTitle>
+        <DialogTitle className="sr-only">Visual Editor</DialogTitle>
 
         {/* ─── HEADER / TOOLBAR ─── */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
           <div className="flex items-center gap-3">
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>Template Editor</span>
-            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-              {template.name} — {cw}×{ch}
-            </span>
-            <span style={{ fontSize: 9, color: "#3C3A38", marginLeft: 8 }}>
-              ⌘Z undo · ⌘⇧Z redo · ⌘D duplicate · ⌫ delete · ← → ↑ ↓ nudge · ⌘+scroll zoom
-            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{template.name || "Editor"}</span>
+            <span style={{ fontSize: 12, color: "#6B6865" }}>{cw}×{ch}</span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Undo/Redo */}
-            <button onClick={undo} disabled={historyIdx <= 0} style={{ ...smallBtnStyle, opacity: historyIdx <= 0 ? 0.3 : 1 }} title="Undo">
-              <Undo2 size={12} />
+          <div className="flex items-center gap-2">
+            <button onClick={undo} disabled={historyIdx <= 0} style={{ ...smallBtnStyle, opacity: historyIdx <= 0 ? 0.3 : 1 }} title="Undo (⌘Z)">
+              <Undo2 size={14} />
             </button>
-            <button onClick={redo} disabled={historyIdx >= history.length - 1} style={{ ...smallBtnStyle, opacity: historyIdx >= history.length - 1 ? 0.3 : 1 }} title="Redo">
-              <Redo2 size={12} />
+            <button onClick={redo} disabled={historyIdx >= history.length - 1} style={{ ...smallBtnStyle, opacity: historyIdx >= history.length - 1 ? 0.3 : 1 }} title="Redo (⌘⇧Z)">
+              <Redo2 size={14} />
             </button>
 
-            <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)", margin: "0 4px" }} />
 
-            {/* Zoom */}
             <button onClick={() => setStageScale(s => Math.max(0.2, s - 0.1))} style={smallBtnStyle} title="Zoom out">
-              <ZoomOut size={12} />
+              <ZoomOut size={14} />
             </button>
-            <span style={{ fontSize: 11, color: "#7A7572", minWidth: 36, textAlign: "center" }}>{Math.round(stageScale * 100)}%</span>
+            <span style={{ fontSize: 12, color: "#9B9692", minWidth: 40, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{Math.round(stageScale * 100)}%</span>
             <button onClick={() => setStageScale(s => Math.min(2, s + 0.1))} style={smallBtnStyle} title="Zoom in">
-              <ZoomIn size={12} />
+              <ZoomIn size={14} />
             </button>
 
-            <div style={{ width: 1, height: 18, background: "var(--border)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)", margin: "0 4px" }} />
 
-            {/* Export */}
-            <button onClick={handleExport} style={smallBtnStyle} title="Export PNG">
-              <Download size={12} /> <span>Export</span>
+            <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#B8B4B0", fontSize: 12, fontWeight: 500 }}>
+              <Download size={14} /> Export
             </button>
 
-            {/* Save */}
-            <button onClick={handleSave} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--ora-signal, #111111)", color: "#fff", fontSize: 12, fontWeight: 600 }}>
-              <Save size={12} /> Save
+            <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg cursor-pointer" style={{ background: "#fff", color: "#111", fontSize: 12, fontWeight: 600 }}>
+              <Save size={14} /> Save
             </button>
           </div>
         </div>
@@ -1418,69 +1409,69 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         <div className="flex flex-1 overflow-hidden">
 
           {/* ═══ LEFT PANEL — Layers ═══ */}
-          <div className="flex-shrink-0 border-r p-3 overflow-y-auto" style={{ width: 200, borderColor: "var(--border)" }}>
+          <div className="flex-shrink-0 border-r p-3.5 overflow-y-auto" style={{ width: 220, borderColor: "rgba(255,255,255,0.06)" }}>
             {/* Add elements */}
-            <div className="mb-4">
+            <div className="mb-5">
               <p style={sectionTitleStyle}>Add Element</p>
               <div className="flex flex-wrap gap-1.5">
-                <button onClick={addTextLayer} style={smallBtnStyle} title="Add text (T)">
-                  <Type size={10} /> Text
+                <button onClick={addTextLayer} style={smallBtnStyle} title="Add text">
+                  <Type size={12} /> Text
                 </button>
                 <button onClick={addShapeLayer} style={smallBtnStyle} title="Add rectangle">
-                  <Palette size={10} /> Rect
+                  <Palette size={12} /> Shape
                 </button>
                 <button onClick={addCircleLayer} style={smallBtnStyle} title="Add circle">
-                  <Circle size={10} /> Circle
+                  <Circle size={12} /> Circle
                 </button>
-                <button onClick={addGradientLayer} style={smallBtnStyle} title="Add gradient">
-                  <Layers size={10} /> Grad
+                <button onClick={addGradientLayer} style={smallBtnStyle} title="Add gradient overlay">
+                  <Layers size={12} /> Gradient
                 </button>
                 <button onClick={addLineLayer} style={smallBtnStyle} title="Add line">
-                  <Minus size={10} /> Line
+                  <Minus size={12} /> Line
                 </button>
                 <button onClick={() => imageInputRef.current?.click()} style={smallBtnStyle} title="Upload image">
-                  <ImagePlus size={10} /> Image
+                  <ImagePlus size={12} /> Image
                 </button>
               </div>
               <input ref={imageInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
             </div>
 
-            {/* Brand Assets from Vault */}
+            {/* Brand Vault */}
             {vault && (
-              <div className="mb-4">
-                <p style={sectionTitleStyle}>Brand Vault</p>
-                <div className="space-y-2">
+              <div className="mb-5">
+                <p style={sectionTitleStyle}>Brand</p>
+                <div className="space-y-2.5">
                   {/* Logo */}
                   {(brandLogoUrl || vault?.logo_url || vault?.logoUrl) && (
                     <button
                       onClick={addVaultLogo}
-                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}
-                      title="Add brand logo to canvas"
+                      className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      title="Add logo"
                     >
                       <img
                         src={brandLogoUrl || vault?.logo_url || vault?.logoUrl}
                         alt="Logo"
-                        className="w-7 h-7 rounded object-contain"
-                        style={{ background: "#222" }}
+                        className="w-8 h-8 rounded-md object-contain"
+                        style={{ background: "rgba(255,255,255,0.06)" }}
                       />
-                      <span style={{ fontSize: 10, color: "var(--text-tertiary)", fontWeight: 500 }}>Add Logo</span>
+                      <span style={{ fontSize: 11, color: "#9B9692", fontWeight: 500 }}>Add Logo</span>
                     </button>
                   )}
 
                   {/* Colors */}
                   {vaultColors.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Colors — click to add block</span>
-                      <div className="flex flex-wrap gap-1">
+                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>Colors</span>
+                      <div className="flex flex-wrap gap-1.5">
                         {vaultColors.map((c, i) => (
                           <button
                             key={i}
                             onClick={() => addColorBlock(c.hex)}
                             title={`${c.name || c.role}: ${c.hex}`}
                             style={{
-                              width: 22, height: 22, borderRadius: 4, background: c.hex,
-                              border: "1px solid rgba(255,255,255,0.15)", cursor: "pointer",
+                              width: 26, height: 26, borderRadius: 6, background: c.hex,
+                              border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer",
                             }}
                           />
                         ))}
@@ -1492,27 +1483,27 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {(vault?.company_name || vault?.brandName) && (
                     <button
                       onClick={() => addVaultText(vault?.company_name || vault?.brandName || "", 5)}
-                      className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 10, color: "var(--text-tertiary)" }}
+                      className="w-full text-left px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "#9B9692" }}
                     >
-                      + Brand name: <strong style={{ color: "#C4BEB8" }}>{(vault?.company_name || vault?.brandName || "").slice(0, 20)}</strong>
+                      + <strong style={{ color: "#C4BEB8" }}>{(vault?.company_name || vault?.brandName || "").slice(0, 20)}</strong>
                     </button>
                   )}
                   {vault?.tagline && (
                     <button
                       onClick={() => addVaultText(vault.tagline, 3)}
-                      className="w-full text-left px-2 py-1.5 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", fontSize: 10, color: "var(--text-tertiary)" }}
+                      className="w-full text-left px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
+                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "#9B9692" }}
                     >
-                      + Tagline: <em style={{ color: "#7A7572" }}>{(vault.tagline as string).slice(0, 25)}</em>
+                      + <em style={{ color: "#7A7572" }}>{(vault.tagline as string).slice(0, 30)}</em>
                     </button>
                   )}
 
-                  {/* Vault fonts as quick-apply */}
+                  {/* Vault fonts */}
                   {(vault?.fonts as string[])?.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>Brand Fonts</span>
-                      <div className="space-y-0.5">
+                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>Fonts</span>
+                      <div className="space-y-1">
                         {(vault.fonts as string[]).slice(0, 4).map((f, i) => (
                           <button
                             key={i}
@@ -1524,9 +1515,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                                 }
                               }
                             }}
-                            className="w-full text-left px-2 py-1 rounded cursor-pointer transition-colors hover:bg-white/[0.06]"
-                            style={{ fontSize: 10, color: "#7A7572", fontFamily: `'${f}', sans-serif` }}
-                            title={selectedId ? `Apply "${f}" to selected text` : `Font: ${f}`}
+                            className="w-full text-left px-2.5 py-1.5 rounded-md cursor-pointer transition-colors hover:bg-white/[0.06]"
+                            style={{ fontSize: 12, color: "#9B9692", fontFamily: `'${f}', sans-serif` }}
+                            title={selectedId ? `Apply "${f}"` : f}
                           >
                             {f}
                           </button>
@@ -1535,46 +1526,42 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     </div>
                   )}
 
-                  {/* Brand Assets (logos, patterns, graphics, packshots, overlays) */}
+                  {/* Brand Assets */}
                   {brandAssets.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
-                        Brand Assets ({brandAssets.length})
+                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>
+                        Assets ({brandAssets.length})
                       </span>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {brandAssets.filter(a => a.signedUrl).map(asset => (
                           <button
                             key={asset.id}
                             onClick={() => addVaultAssetImage(asset.signedUrl!, asset.label, asset.role === "logo")}
-                            className="relative rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
-                            style={{ aspectRatio: "1/1", background: "var(--card)" }}
-                            title={`Add ${asset.label} (${asset.role})`}
+                            className="relative rounded-md overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/20"
+                            style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }}
+                            title={asset.label}
                           >
                             <img src={asset.signedUrl!} alt={asset.label} className="w-full h-full object-contain p-0.5" />
-                            <span className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-center truncate"
-                              style={{ fontSize: 7, color: "var(--text-tertiary)", background: "rgba(0,0,0,0.7)" }}>
-                              {asset.role}
-                            </span>
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Image Bank photos */}
+                  {/* Image Bank */}
                   {brandImages.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 9, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
-                        Image Bank ({brandImages.length})
+                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>
+                        Images ({brandImages.length})
                       </span>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {brandImages.filter(img => img.signedUrl).slice(0, 9).map(img => (
                           <button
                             key={img.id}
                             onClick={() => addVaultAssetImage(img.signedUrl!, img.fileName)}
-                            className="rounded overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/30"
-                            style={{ aspectRatio: "1/1", background: "var(--card)" }}
-                            title={`Add ${img.fileName}${img.tags?.length ? ` (${img.tags.join(", ")})` : ""}`}
+                            className="rounded-md overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/20"
+                            style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }}
+                            title={img.fileName}
                           >
                             <img src={img.signedUrl!} alt={img.fileName} className="w-full h-full object-cover" />
                           </button>
@@ -1584,7 +1571,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   )}
 
                   {vaultAssetsLoading && (
-                    <span style={{ fontSize: 9, color: "var(--text-secondary)" }}>Loading vault assets...</span>
+                    <span style={{ fontSize: 11, color: "#6B6865" }}>Loading...</span>
                   )}
                 </div>
               </div>
@@ -1598,33 +1585,30 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   <div
                     key={layer.id}
                     onClick={() => setSelectedId(layer.id)}
-                    className="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors"
+                    className="flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors"
                     style={{
-                      background: selectedId === layer.id ? "rgba(17,17,17,0.15)" : "transparent",
-                      border: `1px solid ${selectedId === layer.id ? "rgba(17,17,17,0.3)" : "transparent"}`,
+                      background: selectedId === layer.id ? "rgba(255,255,255,0.08)" : "transparent",
+                      border: `1px solid ${selectedId === layer.id ? "rgba(255,255,255,0.1)" : "transparent"}`,
                     }}
                   >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <button onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                        {hiddenLayers.has(layer.id) ? <EyeOff size={9} style={{ color: "#3C3A38" }} /> : <Eye size={9} style={{ color: "var(--text-secondary)" }} />}
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                        {hiddenLayers.has(layer.id) ? <EyeOff size={12} style={{ color: "#3C3A38" }} /> : <Eye size={12} style={{ color: "#6B6865" }} />}
                       </button>
-                      <span className="truncate" style={{ fontSize: 11, color: selectedId === layer.id ? "var(--foreground)" : "#7A7572", fontWeight: 500 }}>
+                      <span className="truncate" style={{ fontSize: 12, color: selectedId === layer.id ? "#fff" : "#9B9692", fontWeight: 500 }}>
                         {layer.type === "background-image" ? "Background"
                           : layer.type === "gradient-overlay" ? "Gradient"
                           : layer.type === "logo" ? "Logo"
                           : layer.id === "headline" ? "Headline"
                           : layer.id === "cta" ? "CTA"
                           : layer.type === "text" ? (resolveBinding(layer.dataBinding)?.slice(0, 18) || "Text")
-                          : layer.type === "shape" ? (layer.id.includes("bar") ? "Bar" : layer.id.includes("panel") ? "Panel" : "Shape")
+                          : layer.type === "shape" ? "Shape"
                           : layer.type === "circle" ? "Circle"
                           : layer.type === "line" ? "Line"
                           : layer.type === "image" ? "Image"
                           : layer.id}
                       </span>
                     </div>
-                    <span style={{ fontSize: 9, color: "var(--text-secondary)", flexShrink: 0 }}>
-                      {layer.type === "background-image" ? "📷" : layer.type === "text" ? "T" : layer.type === "shape" ? "□" : layer.type === "circle" ? "○" : layer.type === "gradient-overlay" ? "▓" : layer.type === "logo" ? "✦" : layer.type === "line" ? "—" : layer.type === "image" ? "🖼" : layer.type}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -1716,14 +1700,14 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           </div>
 
           {/* ═══ RIGHT PANEL — Properties ═══ */}
-          <div className="flex-shrink-0 border-l p-3 overflow-y-auto" style={{ width: 240, borderColor: "var(--border)" }}>
+          <div className="flex-shrink-0 border-l p-3.5 overflow-y-auto" style={{ width: 250, borderColor: "rgba(255,255,255,0.06)" }}>
             {selectedLayer ? (
-              <div className="space-y-4">
+              <div className="space-y-5">
 
                 {/* ── Section: Position & Size ── */}
                 <div>
-                  <p style={sectionTitleStyle}>Position & Size</p>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <p style={sectionTitleStyle}>Size & Position</p>
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { label: "X", value: selectedLayer.x, key: "x" },
                       { label: "Y", value: selectedLayer.y, key: "y" },
@@ -1731,13 +1715,13 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                       { label: "H", value: selectedLayer.height, key: "height" },
                     ].map(item => (
                       <label key={item.key} style={labelStyle}>
-                        {item.label} (%)
+                        {item.label}
                         <input
                           type="number"
                           step={0.5}
                           value={Math.round(item.value * 10) / 10}
                           onChange={(e) => updateLayer(selectedLayer.id, { [item.key]: +e.target.value })}
-                          style={{ ...inputStyle, marginTop: 2 }}
+                          style={{ ...inputStyle, marginTop: 3 }}
                         />
                       </label>
                     ))}
@@ -1746,7 +1730,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
 
                 {/* ── Section: Appearance ── */}
                 <div>
-                  <p style={sectionTitleStyle}>Appearance</p>
+                  <p style={sectionTitleStyle}>Style</p>
                   <div className="space-y-2">
                     {/* Color / Fill */}
                     {(selectedLayer.type === "shape" || selectedLayer.type === "circle") && (
@@ -2002,7 +1986,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
 
                 {/* ── Section: Border & Shadow ── */}
                 <div>
-                  <p style={sectionTitleStyle}>Border & Shadow</p>
+                  <p style={sectionTitleStyle}>Effects</p>
                   <div className="space-y-2">
                     <label style={labelStyle}>
                       Stroke Color
@@ -2095,13 +2079,13 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
 
                     {/* Duplicate */}
                     <button onClick={() => duplicateLayer(selectedLayer.id)} style={{ ...smallBtnStyle, width: "100%", justifyContent: "center" }}>
-                      <Copy size={12} /> Duplicate Layer
+                      <Copy size={12} /> Duplicate
                     </button>
 
                     {/* ── AI Actions for image/logo layers ── */}
                     {(selectedLayer.type === "image" || selectedLayer.type === "logo" || selectedLayer.type === "background-image") && (
                       <div className="space-y-1.5 pb-2">
-                        <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>IA Actions</p>
+                        <p style={sectionTitleStyle}>AI Tools</p>
                         <button
                           onClick={() => removeBackground(selectedLayer.id)}
                           disabled={aiProcessing === selectedLayer.id}
@@ -2134,7 +2118,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                         </button>
 
                         {/* Ideogram AI Tools separator */}
-                        <p style={{ fontSize: 9, color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 8 }}>Ideogram IA</p>
+                        <p style={{ ...sectionTitleStyle, marginTop: 10 }}>Advanced AI</p>
 
                         {/* Inpaint / Edit button */}
                         <button
@@ -2311,26 +2295,24 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           borderColor: "rgba(212,24,61,0.15)",
                         }}
                       >
-                        <Trash2 size={12} /> Delete Layer
+                        <Trash2 size={12} /> Delete
                       </button>
                     )}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4" style={{ color: "var(--text-secondary)" }}>
-                <Layers size={24} style={{ color: "#3C3A38", marginBottom: 12 }} />
-                <p style={{ fontSize: 13, fontWeight: 600, color: "#7A7572" }}>Select a layer</p>
-                <p style={{ fontSize: 11, marginTop: 4, lineHeight: 1.5 }}>Click elements on the canvas or in the layer list to edit their properties</p>
-                <div className="mt-6 text-left w-full space-y-2" style={{ fontSize: 10, color: "#3C3A38" }}>
-                  <p><strong style={{ color: "var(--text-secondary)" }}>Quick Tips:</strong></p>
-                  <p>• Double-click text to edit inline</p>
-                  <p>• Drag elements to reposition</p>
-                  <p>• Use corner handles to resize</p>
-                  <p>• ⌘Z / ⌘⇧Z to undo / redo</p>
-                  <p>• Arrow keys to nudge (⇧ for 5px)</p>
-                  <p>• ⌘D to duplicate selected</p>
-                  <p>• Delete / Backspace to remove</p>
+              <div className="flex flex-col items-center justify-center h-full text-center px-6">
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                  <Layers size={20} style={{ color: "#6B6865" }} />
+                </div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "#9B9692" }}>Select a layer</p>
+                <p style={{ fontSize: 12, color: "#6B6865", marginTop: 6, lineHeight: 1.6 }}>Click an element on the canvas or in the layer list to edit it</p>
+                <div className="mt-8 text-left w-full space-y-1.5" style={{ fontSize: 12, color: "#4A4745", lineHeight: 1.6 }}>
+                  <p>Double-click text to edit</p>
+                  <p>Drag to move, handles to resize</p>
+                  <p>⌘Z undo · ⌘D duplicate</p>
+                  <p>Arrow keys to nudge</p>
                 </div>
               </div>
             )}
