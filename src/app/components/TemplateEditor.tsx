@@ -1355,8 +1355,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
      STYLES (reusable inline style objects)
      ═══════════════════════════════════════════════════════════════════════ */
   const inputStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.08)",
+    background: "var(--secondary)",
+    border: "1px solid var(--border)",
     color: "var(--foreground)",
     borderRadius: 6,
     fontSize: 12,
@@ -1365,17 +1365,17 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     outline: "none",
   };
 
-  const labelStyle: React.CSSProperties = { fontSize: 11, color: "#9B9692", display: "block", marginBottom: 2 };
+  const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--muted-foreground)", display: "block", marginBottom: 2 };
 
   const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 11, fontWeight: 600, color: "#9B9692",
+    fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)",
     letterSpacing: "0.3px", marginBottom: 8,
   };
 
   const smallBtnStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    color: "#B8B4B0",
+    background: "var(--secondary)",
+    border: "1px solid var(--border)",
+    color: "var(--foreground)",
     borderRadius: 6,
     fontSize: 12,
     padding: "5px 10px",
@@ -1393,8 +1393,8 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       <DialogContent
         className="flex flex-col p-0"
         style={{
-          background: "#151413",
-          border: "1px solid rgba(26,23,20,0.04)",
+          background: "var(--background)",
+          border: "1px solid var(--border)",
           maxWidth: "95vw",
           width: "95vw",
           height: "90vh",
@@ -1404,10 +1404,10 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         <DialogTitle className="sr-only">Visual Editor</DialogTitle>
 
         {/* ─── HEADER / TOOLBAR ─── */}
-        <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0" style={{ borderColor: "var(--border)" }}>
           <div className="flex items-center gap-3">
-            <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{template.name || "Editor"}</span>
-            <span style={{ fontSize: 12, color: "#6B6865" }}>{cw}×{ch}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--foreground)" }}>{template.name || "Editor"}</span>
+            <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{cw}×{ch}</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1418,23 +1418,23 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               <Redo2 size={14} />
             </button>
 
-            <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
 
             <button onClick={() => setStageScale(s => Math.max(0.2, s - 0.1))} style={smallBtnStyle} title="Zoom out">
               <ZoomOut size={14} />
             </button>
-            <span style={{ fontSize: 12, color: "#9B9692", minWidth: 40, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{Math.round(stageScale * 100)}%</span>
+            <span style={{ fontSize: 12, color: "var(--muted-foreground)", minWidth: 40, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{Math.round(stageScale * 100)}%</span>
             <button onClick={() => setStageScale(s => Math.min(2, s + 0.1))} style={smallBtnStyle} title="Zoom in">
               <ZoomIn size={14} />
             </button>
 
-            <div style={{ width: 1, height: 20, background: "rgba(255,255,255,0.08)", margin: "0 4px" }} />
+            <div style={{ width: 1, height: 20, background: "var(--border)", margin: "0 4px" }} />
 
-            <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "#B8B4B0", fontSize: 12, fontWeight: 500 }}>
+            <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--border)", border: "1px solid var(--border)", color: "var(--muted-foreground)", fontSize: 12, fontWeight: 500 }}>
               <Download size={14} /> Export
             </button>
 
-            <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg cursor-pointer" style={{ background: "#fff", color: "#111", fontSize: 12, fontWeight: 600 }}>
+            <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg cursor-pointer" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 12, fontWeight: 600 }}>
               <Save size={14} /> Save
             </button>
           </div>
@@ -1444,7 +1444,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         <div className="flex flex-1 overflow-hidden">
 
           {/* ═══ LEFT PANEL — Layers ═══ */}
-          <div className="flex-shrink-0 border-r p-3.5 overflow-y-auto" style={{ width: 220, borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex-shrink-0 border-r p-3.5 overflow-y-auto" style={{ width: 220, borderColor: "var(--border)" }}>
             {/* Add elements */}
             <div className="mb-5">
               <p style={sectionTitleStyle}>Add Element</p>
@@ -1481,23 +1481,23 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={addVaultLogo}
                       className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                      style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
                       title="Add logo"
                     >
                       <img
                         src={brandLogoUrl || vault?.logo_url || vault?.logoUrl}
                         alt="Logo"
                         className="w-8 h-8 rounded-md object-contain"
-                        style={{ background: "rgba(255,255,255,0.06)" }}
+                        style={{ background: "var(--border)" }}
                       />
-                      <span style={{ fontSize: 11, color: "#9B9692", fontWeight: 500 }}>Add Logo</span>
+                      <span style={{ fontSize: 11, color: "var(--muted-foreground)", fontWeight: 500 }}>Add Logo</span>
                     </button>
                   )}
 
                   {/* Colors */}
                   {vaultColors.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>Colors</span>
+                      <span style={{ fontSize: 11, color: "var(--muted-foreground)", display: "block", marginBottom: 5 }}>Colors</span>
                       <div className="flex flex-wrap gap-1.5">
                         {vaultColors.map((c, i) => (
                           <button
@@ -1506,7 +1506,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                             title={`${c.name || c.role}: ${c.hex}`}
                             style={{
                               width: 26, height: 26, borderRadius: 6, background: c.hex,
-                              border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer",
+                              border: "1px solid var(--border)", cursor: "pointer",
                             }}
                           />
                         ))}
@@ -1519,7 +1519,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={() => addVaultText(vault?.company_name || vault?.brandName || "", 5)}
                       className="w-full text-left px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "#9B9692" }}
+                      style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: 11, color: "var(--muted-foreground)" }}
                     >
                       + <strong style={{ color: "#C4BEB8" }}>{(vault?.company_name || vault?.brandName || "").slice(0, 20)}</strong>
                     </button>
@@ -1528,7 +1528,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     <button
                       onClick={() => addVaultText(vault.tagline, 3)}
                       className="w-full text-left px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-white/[0.06]"
-                      style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", fontSize: 11, color: "#9B9692" }}
+                      style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: 11, color: "var(--muted-foreground)" }}
                     >
                       + <em style={{ color: "#7A7572" }}>{(vault.tagline as string).slice(0, 30)}</em>
                     </button>
@@ -1537,7 +1537,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Vault fonts */}
                   {(vault?.fonts as string[])?.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>Fonts</span>
+                      <span style={{ fontSize: 11, color: "var(--muted-foreground)", display: "block", marginBottom: 5 }}>Fonts</span>
                       <div className="space-y-1">
                         {(vault.fonts as string[]).slice(0, 4).map((f, i) => (
                           <button
@@ -1551,7 +1551,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                               }
                             }}
                             className="w-full text-left px-2.5 py-1.5 rounded-md cursor-pointer transition-colors hover:bg-white/[0.06]"
-                            style={{ fontSize: 12, color: "#9B9692", fontFamily: `'${f}', sans-serif` }}
+                            style={{ fontSize: 12, color: "var(--muted-foreground)", fontFamily: `'${f}', sans-serif` }}
                             title={selectedId ? `Apply "${f}"` : f}
                           >
                             {f}
@@ -1564,7 +1564,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Brand Assets */}
                   {brandAssets.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted-foreground)", display: "block", marginBottom: 5 }}>
                         Assets ({brandAssets.length})
                       </span>
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1573,7 +1573,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                             key={asset.id}
                             onClick={() => addVaultAssetImage(asset.signedUrl!, asset.label, asset.role === "logo")}
                             className="relative rounded-md overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/20"
-                            style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }}
+                            style={{ aspectRatio: "1/1", background: "var(--secondary)" }}
                             title={asset.label}
                           >
                             <img src={asset.signedUrl!} alt={asset.label} className="w-full h-full object-contain p-0.5" />
@@ -1586,7 +1586,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   {/* Image Bank */}
                   {brandImages.length > 0 && (
                     <div>
-                      <span style={{ fontSize: 11, color: "#6B6865", display: "block", marginBottom: 5 }}>
+                      <span style={{ fontSize: 11, color: "var(--muted-foreground)", display: "block", marginBottom: 5 }}>
                         Images ({brandImages.length})
                       </span>
                       <div className="grid grid-cols-3 gap-1.5">
@@ -1595,7 +1595,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                             key={img.id}
                             onClick={() => addVaultAssetImage(img.signedUrl!, img.fileName)}
                             className="rounded-md overflow-hidden cursor-pointer transition-all hover:ring-1 hover:ring-white/20"
-                            style={{ aspectRatio: "1/1", background: "rgba(255,255,255,0.04)" }}
+                            style={{ aspectRatio: "1/1", background: "var(--secondary)" }}
                             title={img.fileName}
                           >
                             <img src={img.signedUrl!} alt={img.fileName} className="w-full h-full object-cover" />
@@ -1606,7 +1606,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                   )}
 
                   {vaultAssetsLoading && (
-                    <span style={{ fontSize: 11, color: "#6B6865" }}>Loading...</span>
+                    <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>Loading...</span>
                   )}
                 </div>
               </div>
@@ -1622,13 +1622,13 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                     onClick={() => setSelectedId(layer.id)}
                     className="flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer transition-colors"
                     style={{
-                      background: selectedId === layer.id ? "rgba(255,255,255,0.08)" : "transparent",
-                      border: `1px solid ${selectedId === layer.id ? "rgba(255,255,255,0.1)" : "transparent"}`,
+                      background: selectedId === layer.id ? "var(--border)" : "transparent",
+                      border: `1px solid ${selectedId === layer.id ? "var(--border)" : "transparent"}`,
                     }}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <button onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
-                        {hiddenLayers.has(layer.id) ? <EyeOff size={12} style={{ color: "#3C3A38" }} /> : <Eye size={12} style={{ color: "#6B6865" }} />}
+                        {hiddenLayers.has(layer.id) ? <EyeOff size={12} style={{ color: "#3C3A38" }} /> : <Eye size={12} style={{ color: "var(--muted-foreground)" }} />}
                       </button>
                       <span className="truncate" style={{ fontSize: 12, color: selectedId === layer.id ? "#fff" : "#9B9692", fontWeight: 500 }}>
                         {layer.type === "background-image" ? "Background"
@@ -1651,7 +1651,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           </div>
 
           {/* ═══ CENTER — Canvas ═══ */}
-          <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden relative" style={{ background: "#18171A" }}>
+          <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden relative" style={{ background: "var(--secondary)" }}>
             <div style={{ position: "relative" }}>
               <Stage
                 ref={stageRef}
@@ -1735,7 +1735,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           </div>
 
           {/* ═══ RIGHT PANEL — Properties ═══ */}
-          <div className="flex-shrink-0 border-l p-3.5 overflow-y-auto" style={{ width: 250, borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="flex-shrink-0 border-l p-3.5 overflow-y-auto" style={{ width: 250, borderColor: "var(--border)" }}>
             {selectedLayer ? (
               <div className="space-y-5">
 
@@ -1793,7 +1793,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                                 key={i}
                                 onClick={() => updateLayerStyle(selectedLayer.id, { fill: c.hex })}
                                 title={c.name || c.role}
-                                style={{ width: 18, height: 18, borderRadius: 4, background: c.hex, border: resolveColor(selectedLayer.style?.fill) === c.hex ? "2px solid #fff" : "1px solid rgba(255,255,255,0.15)", cursor: "pointer" }}
+                                style={{ width: 18, height: 18, borderRadius: 4, background: c.hex, border: resolveColor(selectedLayer.style?.fill) === c.hex ? "2px solid var(--foreground)" : "1px solid var(--border)", cursor: "pointer" }}
                               />
                             ))}
                           </div>
@@ -1825,7 +1825,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                                 key={i}
                                 onClick={() => updateLayerStyle(selectedLayer.id, { color: c.hex })}
                                 title={c.name || c.role}
-                                style={{ width: 18, height: 18, borderRadius: 4, background: c.hex, border: resolveColor(selectedLayer.style?.color) === c.hex ? "2px solid #fff" : "1px solid rgba(255,255,255,0.15)", cursor: "pointer" }}
+                                style={{ width: 18, height: 18, borderRadius: 4, background: c.hex, border: resolveColor(selectedLayer.style?.color) === c.hex ? "2px solid var(--foreground)" : "1px solid var(--border)", cursor: "pointer" }}
                               />
                             ))}
                           </div>
@@ -2152,168 +2152,6 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
                           Harmoniser (lumière & ombre)
                         </button>
 
-                        {/* Ideogram AI Tools separator */}
-                        <p style={{ ...sectionTitleStyle, marginTop: 10 }}>Advanced AI</p>
-
-                        {/* Inpaint / Edit button */}
-                        <button
-                          onClick={() => { setIdeogramMode(ideogramMode === "mask-draw" ? "idle" : "mask-draw"); setMaskLines([]); }}
-                          disabled={aiProcessing === selectedLayer.id}
-                          style={{
-                            ...smallBtnStyle,
-                            width: "100%",
-                            justifyContent: "center",
-                            background: ideogramMode === "mask-draw" ? "rgba(59,130,246,0.15)" : "rgba(59,130,246,0.08)",
-                            color: "#3B82F6",
-                            borderColor: ideogramMode === "mask-draw" ? "rgba(59,130,246,0.4)" : "rgba(59,130,246,0.2)",
-                          }}
-                        >
-                          <Paintbrush size={12} />
-                          {ideogramMode === "mask-draw" ? "Drawing mask..." : "Inpaint (draw mask)"}
-                        </button>
-
-                        {/* Remix button */}
-                        <button
-                          onClick={() => setIdeogramMode(ideogramMode === "remix" ? "idle" : "remix")}
-                          disabled={aiProcessing === selectedLayer.id}
-                          style={{
-                            ...smallBtnStyle,
-                            width: "100%",
-                            justifyContent: "center",
-                            background: ideogramMode === "remix" ? "rgba(16,185,129,0.15)" : "rgba(16,185,129,0.08)",
-                            color: "#10B981",
-                            borderColor: ideogramMode === "remix" ? "rgba(16,185,129,0.4)" : "rgba(16,185,129,0.2)",
-                          }}
-                        >
-                          <RefreshCw size={12} />
-                          Remix (varier le design)
-                        </button>
-
-                        {/* Reframe button */}
-                        <button
-                          onClick={() => setIdeogramMode(ideogramMode === "reframe" ? "idle" : "reframe")}
-                          disabled={aiProcessing === selectedLayer.id}
-                          style={{
-                            ...smallBtnStyle,
-                            width: "100%",
-                            justifyContent: "center",
-                            background: ideogramMode === "reframe" ? "rgba(168,85,247,0.15)" : "rgba(168,85,247,0.08)",
-                            color: "#A855F7",
-                            borderColor: ideogramMode === "reframe" ? "rgba(168,85,247,0.4)" : "rgba(168,85,247,0.2)",
-                          }}
-                        >
-                          <Maximize size={12} />
-                          Reframe (adapter le format)
-                        </button>
-
-                        {/* Replace Background button */}
-                        <button
-                          onClick={() => setIdeogramMode(ideogramMode === "replace-bg" ? "idle" : "replace-bg")}
-                          disabled={aiProcessing === selectedLayer.id}
-                          style={{
-                            ...smallBtnStyle,
-                            width: "100%",
-                            justifyContent: "center",
-                            background: ideogramMode === "replace-bg" ? "rgba(236,72,153,0.15)" : "rgba(236,72,153,0.08)",
-                            color: "#EC4899",
-                            borderColor: ideogramMode === "replace-bg" ? "rgba(236,72,153,0.4)" : "rgba(236,72,153,0.2)",
-                          }}
-                        >
-                          <Wand2 size={12} />
-                          Changer le fond (IA)
-                        </button>
-
-                        {/* Upscale button */}
-                        <button
-                          onClick={() => ideogramUpscale(selectedLayer.id)}
-                          disabled={aiProcessing === selectedLayer.id}
-                          style={{
-                            ...smallBtnStyle,
-                            width: "100%",
-                            justifyContent: "center",
-                            background: "rgba(234,179,8,0.08)",
-                            color: "#EAB308",
-                            borderColor: "rgba(234,179,8,0.2)",
-                          }}
-                        >
-                          {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <ZoomIn size={12} />}
-                          Upscale (haute résolution)
-                        </button>
-
-                        {/* Ideogram tool config panel */}
-                        {(ideogramMode === "mask-draw" || ideogramMode === "remix" || ideogramMode === "replace-bg") && (
-                          <div style={{ background: "rgba(0,0,0,0.03)", borderRadius: 6, padding: 8, marginTop: 4 }}>
-                            <input
-                              type="text"
-                              value={ideogramPrompt}
-                              onChange={e => setIdeogramPrompt(e.target.value)}
-                              placeholder={ideogramMode === "mask-draw" ? "Décrivez la modification..." : ideogramMode === "remix" ? "Nouveau prompt pour le remix..." : "Décrivez le nouveau fond..."}
-                              style={{ width: "100%", fontSize: 11, padding: "6px 8px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", background: "var(--bg-primary)", color: "var(--text-primary)", marginBottom: 6 }}
-                            />
-                            {ideogramMode === "remix" && (
-                              <div style={{ marginBottom: 6 }}>
-                                <label style={{ fontSize: 9, color: "var(--text-secondary)" }}>Fidélité à l&apos;original: {ideogramRemixWeight}%</label>
-                                <input type="range" min={10} max={90} value={ideogramRemixWeight} onChange={e => setIdeogramRemixWeight(Number(e.target.value))} style={{ width: "100%" }} />
-                              </div>
-                            )}
-                            <button
-                              onClick={() => {
-                                if (ideogramMode === "mask-draw") ideogramEdit(selectedLayer.id);
-                                else if (ideogramMode === "remix") ideogramRemix(selectedLayer.id);
-                                else if (ideogramMode === "replace-bg") ideogramReplaceBg(selectedLayer.id);
-                              }}
-                              disabled={aiProcessing === selectedLayer.id || !ideogramPrompt.trim()}
-                              style={{
-                                ...smallBtnStyle,
-                                width: "100%",
-                                justifyContent: "center",
-                                background: "linear-gradient(135deg, #3B82F6, #8B5CF6)",
-                                color: "#fff",
-                                border: "none",
-                                opacity: (aiProcessing === selectedLayer.id || !ideogramPrompt.trim()) ? 0.5 : 1,
-                              }}
-                            >
-                              {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
-                              Appliquer
-                            </button>
-                          </div>
-                        )}
-
-                        {ideogramMode === "reframe" && (
-                          <div style={{ background: "rgba(0,0,0,0.03)", borderRadius: 6, padding: 8, marginTop: 4 }}>
-                            <label style={{ fontSize: 9, color: "var(--text-secondary)" }}>Format cible:</label>
-                            <select
-                              value={ideogramReframeRes}
-                              onChange={e => setIdeogramReframeRes(e.target.value)}
-                              style={{ width: "100%", fontSize: 11, padding: "4px 6px", borderRadius: 4, border: "1px solid rgba(0,0,0,0.1)", marginBottom: 6, background: "var(--bg-primary)", color: "var(--text-primary)" }}
-                            >
-                              <option value="1024x1024">1:1 (1024x1024)</option>
-                              <option value="1280x768">16:9 (1280x768)</option>
-                              <option value="768x1280">9:16 (768x1280)</option>
-                              <option value="1152x896">4:3 (1152x896)</option>
-                              <option value="896x1152">3:4 (896x1152)</option>
-                              <option value="1280x800">16:10 (1280x800)</option>
-                              <option value="1344x768">Bannière (1344x768)</option>
-                              <option value="1536x640">Ultra-wide (1536x640)</option>
-                            </select>
-                            <button
-                              onClick={() => ideogramReframe(selectedLayer.id)}
-                              disabled={aiProcessing === selectedLayer.id}
-                              style={{
-                                ...smallBtnStyle,
-                                width: "100%",
-                                justifyContent: "center",
-                                background: "linear-gradient(135deg, #A855F7, #EC4899)",
-                                color: "#fff",
-                                border: "none",
-                                opacity: aiProcessing === selectedLayer.id ? 0.5 : 1,
-                              }}
-                            >
-                              {aiProcessing === selectedLayer.id ? <Loader2 size={12} className="animate-spin" /> : <Maximize size={12} />}
-                              Reframe
-                            </button>
-                          </div>
-                        )}
                       </div>
                     )}
 
@@ -2338,11 +2176,11 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center px-6">
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
-                  <Layers size={20} style={{ color: "#6B6865" }} />
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--secondary)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                  <Layers size={20} style={{ color: "var(--muted-foreground)" }} />
                 </div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: "#9B9692" }}>Select a layer</p>
-                <p style={{ fontSize: 12, color: "#6B6865", marginTop: 6, lineHeight: 1.6 }}>Click an element on the canvas or in the layer list to edit it</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: "var(--muted-foreground)" }}>Select a layer</p>
+                <p style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 6, lineHeight: 1.6 }}>Click an element on the canvas or in the layer list to edit it</p>
                 <div className="mt-8 text-left w-full space-y-1.5" style={{ fontSize: 12, color: "#4A4745", lineHeight: 1.6 }}>
                   <p>Double-click text to edit</p>
                   <p>Drag to move, handles to resize</p>
