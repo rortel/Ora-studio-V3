@@ -3965,7 +3965,8 @@ FORMAT REQUIREMENTS:
 
 CRITICAL — HEADLINE & CTA RULES (ALL FORMATS):
 - "headline": SHORT punchy title, 3-8 words max. REQUIRED for EVERY format. NEVER EMPTY. This is displayed as overlay text on the visual template.
-- "ctaText": Action phrase, 2-5 words (e.g. "Shop Now", "Discover More", "En savoir plus"). REQUIRED for EVERY format. NEVER EMPTY.
+- If the brief mentions a PROMOTION (%, off, -XX%, soldes, promo, réduction, offre), the headline MUST include the promotional offer (e.g. "-40% Parfum d'Exception", "Offre -50% — Sublimez-vous").
+- "ctaText": Action phrase, 2-5 words (e.g. "Shop Now", "Discover More", "En savoir plus", "Profiter de l'offre"). REQUIRED for EVERY format. NEVER EMPTY.
 - These fields are used to render branded visual templates. If empty, the visual output will look broken.
 ${targetAudience ? `TARGET AUDIENCE: ${targetAudience}` : ""}
 ${urlsShort ? `PRODUCT URLs: ${urlsShort}` : ""}
