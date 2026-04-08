@@ -999,38 +999,9 @@ export function StudioPage() {
             await Promise.all(videoPromises);
           }
 
-          // ── 4. COMPOSITE AD CREATIVES — overlay text + logo on generated images ──
+          // ── 4. SKIP AUTO-COMPOSITE — template is applied in the editor after generation ──
+          // The user clicks "Edit" on the generated image, picks a layout, adjusts, and saves.
           const compositeLogoUrl = vault?.logo_url || vault?.logoUrl || "";
-          const postsWithImages = posts.filter(p => p.imageUrl && (p.headline || p.cta));
-          if (postsWithImages.length > 0) {
-            console.log(`[studio] Compositing ${postsWithImages.length} ad creatives...`);
-            await Promise.all(
-              postsWithImages.map(async (post) => {
-                try {
-                  const userSelectedId = templateSelections?.[post.format];
-                  console.log(`[studio] Template selection for ${post.format}: userSelectedId=${userSelectedId}, templateSelections=`, templateSelections, `tplCategory=${tplCategory}`);
-                  const template = userSelectedId ? getTemplateById(userSelectedId) : selectTemplateForFormat(post.format, tplCategory);
-                  if (!template) { console.log(`[studio] No template for format ${post.format}, skipping composite`); return; }
-                  const compositeUrl = await compositeAdCreative({
-                    imageUrl: post.imageUrl!,
-                    headline: post.headline,
-                    ctaText: post.cta,
-                    subtitle: post.subtitle,
-                    caption: post.text?.slice(0, 80),
-                    price: post.price,
-                    featuresText: post.features?.length ? post.features.map(f => `✓ ${f}`).join("\n") : undefined,
-                    vault: vault,
-                    logoUrl: compositeLogoUrl,
-                    template,
-                  });
-                  post.compositeImageUrl = compositeUrl;
-                  console.log(`[studio] Composite OK [${post.format}]: ${compositeUrl.slice(0, 60)}...`);
-                } catch (err: any) {
-                  console.warn(`[studio] Composite failed [${post.format}]:`, err?.message);
-                }
-              })
-            );
-          }
 
           if (posts.length > 0) {
             result = {
@@ -3297,8 +3268,13 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
             brandLogoUrl={logoUrl || vault?.logo_url || vault?.logo?.url || ""}
             onSave={(updatedTemplate) => {
               registerTemplate(updatedTemplate);
-              setEditorPostIdx(null);
-              setEditorTemplateId(null);
+              // If switching to an SVG template, stay in the editor with the new template
+              if (updatedTemplate.figmaSvgTemplateId) {
+                setEditorTemplateId(updatedTemplate.id);
+              } else {
+                setEditorPostIdx(null);
+                setEditorTemplateId(null);
+              }
             }}
           />
         );
@@ -3956,52 +3932,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* Mise en page — vrais templates avec aperçu */}
-        {selectedFormats.length > 0 && (
-          <div>
-            <SectionLabel>Mise en page</SectionLabel>
-            {selectedFormats.map(formatId => {
-              const templates = getTemplatesForFormat(formatId);
-              if (templates.length === 0) return null;
-              const formatLabel = CONFIG_FORMATS.find(f => f.id === formatId)?.label || formatId;
-              return (
-                <div key={formatId} className="mb-3">
-                  {selectedFormats.length > 1 && (
-                    <div style={{ fontSize: "9px", fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{formatLabel}</div>
-                  )}
-                  <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "thin" }}>
-                    {templates.map(tmpl => {
-                      const isSelected = selectedTemplates[formatId] === tmpl.id;
-                      return (
-                        <button
-                          key={tmpl.id}
-                          onClick={() => setSelectedTemplates(prev => ({ ...prev, [formatId]: isSelected ? "" : tmpl.id }))}
-                          className="flex-shrink-0 rounded-lg overflow-hidden cursor-pointer transition-all hover:scale-[1.04]"
-                          style={{
-                            width: 72, height: 72,
-                            border: isSelected ? "2px solid var(--foreground)" : "2px solid var(--border)",
-                            background: "#1a1a1a",
-                            position: "relative",
-                          }}
-                        >
-                          <TemplateMiniature tmpl={tmpl} />
-                          {isSelected && (
-                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "var(--foreground)" }}>
-                              <Check size={9} strokeWidth={3} style={{ color: "var(--background)" }} />
-                            </div>
-                          )}
-                          <div className="absolute bottom-0 left-0 right-0 px-1 py-0.5" style={{ background: "rgba(0,0,0,0.65)" }}>
-                            <div style={{ fontSize: "6px", color: "#fff", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tmpl.name}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Mise en page removed — template selection now happens in the editor after generation */}
 
         {/* ═══ NIVEAU 3 — Audience, ton, CTA, moment, modèles IA ═══ */}
         <div className="space-y-4">

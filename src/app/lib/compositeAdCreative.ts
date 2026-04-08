@@ -34,9 +34,9 @@ export function selectTemplateForFormat(formatId: string, preferredCategory?: st
   const preferred = (preferredCategory
     ? templates.find(t => t.category === preferredCategory)
     : null) ||
-    templates.find(t => t.category === "ad-ready") ||
+    templates.find(t => t.category === "fashion") ||
+    templates.find(t => t.category === "corporate") ||
     templates.find(t => t.category === "bold") ||
-    templates.find(t => t.category === "editorial") ||
     templates[0];
   return preferred;
 }
