@@ -1519,19 +1519,7 @@ export function StudioPage() {
         <div className="flex-1 flex flex-col min-h-0">
           <div className="flex-1 overflow-y-auto">
             {showWelcome ? (
-              <WelcomeScreen onSend={handleSend} onFillInput={(text: string) => { setInput(text); setTimeout(() => inputRef.current?.focus(), 50); }} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} socialAccounts={socialAccounts} onAccountConnected={() => {
-                // Refresh social accounts after connection
-                setTimeout(() => {
-                  fetch(`${API_BASE}/zernio/accounts/list`, {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-                    body: JSON.stringify({ _token: `Bearer ${accessToken}` }),
-                  })
-                    .then(r => r.json())
-                    .then(data => { if (data.success && Array.isArray(data.accounts)) setSocialAccounts(data.accounts); })
-                    .catch(() => {});
-                }, 1500);
-              }} />
+              <WelcomeScreen onSend={handleSend} onFillInput={(text: string) => { setInput(text); setTimeout(() => inputRef.current?.focus(), 50); }} onSetMode={(mode: string) => setContext(prev => ({ ...prev, mode }))} vault={vault} products={products} />
             ) : (
               <div className="max-w-2xl mx-auto px-5 py-6 space-y-4">
                 {messages.map(msg => (
@@ -1801,39 +1789,11 @@ const SOCIAL_PLATFORMS_STUDIO = [
   { id: "twitter", label: "X", icon: Twitter },
 ];
 
-function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, socialAccounts, onAccountConnected }: { onSend: (text: string) => void; onFillInput: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[]; socialAccounts?: any[] | null; onAccountConnected?: () => void }) {
+function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products }: { onSend: (text: string) => void; onFillInput: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[] }) {
   const { t, locale } = useI18n();
-  const { session, accessToken } = useAuth();
-  const [connecting, setConnecting] = useState<string | null>(null);
+  const { session } = useAuth();
   const [inspiring, setInspiring] = useState(false);
   const [ideas, setIdeas] = useState<string[]>([]);
-
-  const hasConnectedAccounts = Array.isArray(socialAccounts) && socialAccounts.length > 0;
-  const accountsLoaded = socialAccounts !== null;
-
-  const handleConnect = useCallback(async (platform: string) => {
-    setConnecting(platform);
-    try {
-      const token = accessToken || "";
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: JSON.stringify({ _token: token, redirectUrl: `${API_BASE}/zernio/callback` }),
-      });
-      const data = await res.json();
-      if (!data.success || !data.authUrl) { setConnecting(null); return; }
-      const popup = window.open(data.authUrl, `connect_${platform}`, "width=600,height=700,left=200,top=100");
-      if (!popup) { setConnecting(null); return; }
-      const poll = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(poll);
-          setConnecting(null);
-          onAccountConnected?.();
-        }
-      }, 500);
-      setTimeout(() => { clearInterval(poll); if (!popup.closed) popup.close(); setConnecting(null); }, 300_000);
-    } catch { setConnecting(null); }
-  }, [onAccountConnected]);
 
   const brandName = vault?.brandName || vault?.brand_name || vault?.company_name || vault?.brand_platform?.brand_name || "";
 
@@ -1871,10 +1831,6 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
       if (prods.length > 0) {
         ctx.push(`Products: ${prods.map((p: any) => `${p.name}${p.tagline ? ` — ${p.tagline}` : ""}${p.price ? ` (${p.price})` : ""}`).join("; ")}`);
       }
-      // Connected platforms
-      const connectedPlatforms = (socialAccounts || []).map((a: any) => a.platform).filter(Boolean);
-      if (connectedPlatforms.length) ctx.push(`Connected platforms: ${connectedPlatforms.join(", ")}`);
-
       const brandContext = ctx.length > 0 ? ctx.join("\n") : "No brand context available.";
 
       const systemPrompt = `You are a senior social media strategist working for a creative agency. You have deep knowledge of this brand:\n\n${brandContext}\n\nGenerate exactly 3 different campaign ideas. Each idea = 1 short sentence (max 15 words), specific and actionable. Each must reference a concrete angle (product, event, value, audience). Format: one idea per line, numbered 1. 2. 3. — nothing else. Reply in ${locale === "fr" ? "French" : "English"}.`;
@@ -2040,61 +1996,45 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products, social
         </AnimatePresence>
       </motion.div>
 
-      {/* Social accounts bar */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.5 }}
-        className="flex items-center justify-center gap-2 flex-wrap"
-      >
-        {accountsLoaded && hasConnectedAccounts ? (
-          <>
-            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
-              {locale === "fr" ? "Comptes connectés :" : "Connected accounts:"}
-            </span>
-            {socialAccounts!.map((acc: any, i: number) => {
-              const plat = SOCIAL_PLATFORMS_STUDIO.find(p => p.id === acc.platform);
-              const Icon = plat?.icon;
-              return (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md"
-                  style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", color: "var(--muted-foreground)" }}>
-                  {Icon && <Icon size={11} />}
-                  {acc.username || acc.name || plat?.label || acc.platform}
-                </span>
-              );
-            })}
-          </>
-        ) : accountsLoaded && !hasConnectedAccounts ? (
-          <>
-            <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
-              {t("studio.connectAccountsCTA")}
-            </span>
-            {SOCIAL_PLATFORMS_STUDIO.map(p => {
-              const Icon = p.icon;
-              const isConnecting = connecting === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => handleConnect(p.id)}
-                  disabled={!!connecting}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md cursor-pointer transition-all hover:shadow-sm active:scale-95"
-                  style={{
-                    background: "var(--secondary)",
-                    border: "1px solid var(--border)",
-                    fontSize: "11px",
-                    fontWeight: 500,
-                    color: "var(--muted-foreground)",
-                    opacity: connecting && !isConnecting ? 0.4 : 1,
-                  }}
-                >
-                  {isConnecting ? <Loader2 size={11} className="animate-spin" /> : <Icon size={11} />}
-                  {p.label}
-                </button>
-              );
-            })}
-          </>
-        ) : null}
-      </motion.div>
+      {/* Products / Services — quick launch */}
+      {Array.isArray(products) && products.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.5 }}
+          className="flex items-center justify-center gap-2 flex-wrap"
+        >
+          <span style={{ fontSize: "11px", color: "var(--muted-foreground)", marginRight: 4 }}>
+            {locale === "fr" ? "Communiquer sur :" : "Promote:"}
+          </span>
+          {products.slice(0, 6).map((p: any) => (
+            <button
+              key={p.id}
+              onClick={() => onSend(locale === "fr"
+                ? `Crée une campagne pour mon produit "${p.name}"${p.tagline ? ` — ${p.tagline}` : ""}`
+                : `Create a campaign for my product "${p.name}"${p.tagline ? ` — ${p.tagline}` : ""}`)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg cursor-pointer transition-all hover:shadow-sm active:scale-95"
+              style={{
+                background: "var(--secondary)",
+                border: "1px solid var(--border)",
+                fontSize: "11px",
+                fontWeight: 500,
+                color: "var(--foreground)",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--foreground)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; }}
+            >
+              {p.image_url ? (
+                <img src={p.image_url} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+              ) : (
+                <Package size={11} className="flex-shrink-0" style={{ color: "var(--muted-foreground)" }} />
+              )}
+              <span className="truncate max-w-[120px]">{p.name}</span>
+              {p.price && <span style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{p.price}{p.currency ? ` ${p.currency}` : "€"}</span>}
+            </button>
+          ))}
+        </motion.div>
+      )}
     </div>
   );
 }
