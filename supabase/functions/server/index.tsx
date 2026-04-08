@@ -13560,7 +13560,9 @@ async function getOrCreateZernioProfile(userId: string, email: string): Promise<
     body: JSON.stringify({ name: brandName, description: `ORA user ${email} (${userId.slice(0, 8)})` }),
     signal: AbortSignal.timeout(10_000),
   });
-  const createData = await createRes.json();
+  const createText = await createRes.text();
+  let createData: any;
+  try { createData = JSON.parse(createText); } catch { throw new Error(`Zernio profile returned non-JSON (HTTP ${createRes.status}): ${createText.slice(0, 100)}`); }
   if (!createRes.ok || !createData.profile?._id) {
     console.log(`[zernio] Profile creation FAILED: ${JSON.stringify(createData).slice(0, 300)}`);
     throw new Error(`Failed to create social publishing profile: ${createData.error || `HTTP ${createRes.status}`}`);
@@ -13577,7 +13579,9 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
   const res = await fetch(`${ZERNIO_BASE}/accounts`, {
     headers: zernioHeaders(), signal: AbortSignal.timeout(10_000),
   });
-  const data = await res.json();
+  const rawText = await res.text();
+  let data: any;
+  try { data = JSON.parse(rawText); } catch { throw new Error(`Zernio accounts returned non-JSON (HTTP ${res.status}): ${rawText.slice(0, 100)}`); }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   const allAccounts = data.accounts || [];
   // Filter: only accounts belonging to this user's profile
@@ -18050,18 +18054,28 @@ app.post("/calendar/deploy", async (c) => {
       return c.json({ success: false, error: `Platform ${platform} is not yet supported for auto-deploy` }, 400);
     }
 
-    const profileId = await getOrCreateZernioProfile(user.id, user.email);
     const ZERNIO_KEY = Deno.env.get("ZERNIO_API_KEY");
     if (!ZERNIO_KEY) return c.json({ success: false, error: "ZERNIO_API_KEY not configured" }, 500);
 
-    const accountsRes = await fetch(`${ZERNIO_BASE}/profiles/${profileId}/accounts`, {
-      headers: { Authorization: `Bearer ${ZERNIO_KEY}` }, signal: AbortSignal.timeout(10_000),
-    });
-    const accountsData = await accountsRes.json();
-    const accounts = accountsData?.accounts || [];
-    const acct = accounts.find((a: any) => a.platform === zernioPlatform && a.status === "active");
+    let profileId: string;
+    try {
+      profileId = await getOrCreateZernioProfile(user.id, user.email);
+    } catch (err) {
+      console.log(`[calendar/deploy] Zernio profile failed: ${err}`);
+      return c.json({ success: false, error: `Social publishing setup failed: ${err}` }, 500);
+    }
+
+    let acct: any = null;
+    try {
+      // Use the shared helper which filters by profile
+      const { accounts } = await listZernioAccountsForUser(user.id, user.email);
+      acct = accounts.find((a: any) => a.platform === zernioPlatform && a.status === "active");
+    } catch (err) {
+      console.log(`[calendar/deploy] Zernio accounts list failed: ${err}`);
+      return c.json({ success: false, error: `Failed to check connected accounts: ${err}` }, 500);
+    }
     if (!acct) {
-      return c.json({ success: false, error: `No ${platform} account connected.`, needsConnect: true, platform: zernioPlatform });
+      return c.json({ success: false, error: `No ${platform} account connected. Connect your ${platform} account first.`, needsConnect: true, platform: zernioPlatform });
     }
 
     const contentText = [event.headline || "", event.copy || event.caption || "", event.hashtags || ""].filter(Boolean).join("\n\n");
@@ -18139,12 +18153,14 @@ app.post("/calendar/deploy-all", async (c) => {
     const ZERNIO_KEY = Deno.env.get("ZERNIO_API_KEY");
     if (!ZERNIO_KEY) return c.json({ success: false, error: "ZERNIO_API_KEY not configured" }, 500);
 
-    const profileId = await getOrCreateZernioProfile(user.id, user.email);
-    const accountsRes = await fetch(`${ZERNIO_BASE}/profiles/${profileId}/accounts`, {
-      headers: { Authorization: `Bearer ${ZERNIO_KEY}` }, signal: AbortSignal.timeout(10_000),
-    });
-    const accountsData = await accountsRes.json();
-    const accounts = accountsData?.accounts || [];
+    let accounts: any[] = [];
+    try {
+      const result = await listZernioAccountsForUser(user.id, user.email);
+      accounts = result.accounts;
+    } catch (err) {
+      console.log(`[calendar/deploy-all] Zernio accounts list failed: ${err}`);
+      return c.json({ success: false, error: `Failed to check connected accounts: ${err}` }, 500);
+    }
 
     const results: any[] = [];
     const now = new Date();
