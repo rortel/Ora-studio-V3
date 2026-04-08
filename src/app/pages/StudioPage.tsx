@@ -652,14 +652,22 @@ export function StudioPage() {
           const textResults = await Promise.all(
             textModelList.map(model =>
               serverPost("/campaign/generate-texts", { ...textGenPayload, model })
-                .then(res => ({ model, success: res.success, copyMap: res.copyMap || {} }))
-                .catch(() => ({ model, success: false, copyMap: {} }))
+                .then(res => {
+                  console.log(`[studio] generate-texts response [${model}]:`, JSON.stringify({ success: res.success, copyMapKeys: Object.keys(res.copyMap || {}), error: res.error }));
+                  return { model, success: res.success, copyMap: res.copyMap || {} };
+                })
+                .catch((err) => {
+                  console.error(`[studio] generate-texts FAILED [${model}]:`, err?.message || err);
+                  return { model, success: false, copyMap: {} };
+                })
             )
           );
 
           // Use first successful result as primary, others as variants
           const primaryText = textResults.find(r => r.success && Object.keys(r.copyMap).length > 0) || textResults[0];
           const variantTexts = textResults.filter(r => r !== primaryText && r.success && Object.keys(r.copyMap).length > 0);
+
+          console.log(`[studio] primaryText: model=${primaryText?.model}, success=${primaryText?.success}, copyMapKeys=${JSON.stringify(Object.keys(primaryText?.copyMap || {}))}`);
 
           const posts: CampaignPost[] = [];
           if (primaryText?.copyMap) {
@@ -768,6 +776,10 @@ export function StudioPage() {
           );
           const imageOnlyFormats = allVisualFormats.filter(p => !isVideoFormat(p.format));
           const videoFormats = allVisualFormats.filter(p => isVideoFormat(p.format));
+
+          console.log(`[studio] Posts: ${posts.length}, formats: ${posts.map(p => p.format).join(", ")}`);
+          console.log(`[studio] Visual: ${allVisualFormats.length}, Images: ${imageOnlyFormats.length}, Videos: ${videoFormats.length}`);
+          console.log(`[studio] productRefUrls: ${productRefUrls.length}, imageModelList: ${imageModelList.join(",")}`);
 
           // 3a. Generate IMAGES for image formats
           // PRODUCT PRESENT → Photoroom only (pixel-perfect product, multiple scene variants)
@@ -1031,9 +1043,13 @@ export function StudioPage() {
           m.id === msgId ? { ...m, result, isGenerating: false } : m
         ));
       } else if (action.type !== "start-campaign" && action.type !== "start-video-montage") {
+        console.warn(`[studio] Generation produced no results for action: ${action.type}`);
         setMessages(prev => prev.map(m =>
           m.id === msgId ? { ...m, isGenerating: false } : m
         ));
+        if (action.type === "generate-campaign") {
+          toast.error("Campaign text generation failed — check console for details");
+        }
       }
     } catch (err) {
       console.error("[studio] generation error:", err);

@@ -3732,12 +3732,28 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     ];
     for (let i = 0; i < strats.length; i++) { try { copyMap = strats[i](); if (Object.keys(copyMap).length > 0) break; } catch {} }
 
-    // ── FILTER: only keep requested formats (LLM sometimes generates extra) ──
+    // ── NORMALIZE: LLM may return keys with underscores or different casing ──
     const requestedSet = new Set(formatIds);
-    const extraKeys = Object.keys(copyMap).filter(k => !requestedSet.has(k));
-    if (extraKeys.length > 0) {
-      console.log(`[campaign-texts-POST] Removing ${extraKeys.length} unrequested formats: ${extraKeys.join(", ")}`);
-      for (const k of extraKeys) delete copyMap[k];
+    const normalizedMap: Record<string, any> = {};
+    for (const [key, val] of Object.entries(copyMap)) {
+      if (requestedSet.has(key)) {
+        normalizedMap[key] = val;
+      } else {
+        // Try to match: underscore→dash, lowercase
+        const normalized = key.replace(/_/g, "-").toLowerCase();
+        if (requestedSet.has(normalized)) {
+          normalizedMap[normalized] = val;
+        }
+      }
+    }
+    // If normalization left us empty but we had data, keep original keys and log warning
+    if (Object.keys(normalizedMap).length === 0 && Object.keys(copyMap).length > 0) {
+      console.warn(`[campaign-texts-POST] ⚠️ No format keys matched! requested=[${formatIds.join(",")}] got=[${Object.keys(copyMap).join(",")}] — keeping original`);
+      // Don't filter — let client handle mismatched keys
+    } else {
+      const removed = Object.keys(copyMap).length - Object.keys(normalizedMap).length;
+      if (removed > 0) console.log(`[campaign-texts-POST] Filtered ${removed} unrequested formats, kept: ${Object.keys(normalizedMap).join(", ")}`);
+      copyMap = normalizedMap;
     }
 
     // ── QUALITY LOOP: Brand compliance auto-check + regeneration ──
