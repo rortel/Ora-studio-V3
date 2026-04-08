@@ -5643,26 +5643,91 @@ app.post("/generate/image-beautify", async (c) => {
     const p = presets[preset] || presets["magazine-interior"];
     console.log(`[beautify] preset=${preset}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
 
-    const falKey = Deno.env.get("FAL_KEY");
+    // ── Strategy 1: Photoroom — NON-GENERATIVE relighting + color enhancement ──
+    // Photoroom does NOT generate pixels. It only adjusts lighting, color, shadows on the REAL photo.
+    // This is the ONLY reliable way to "beautify" without reinventing.
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (photoroomKey) {
+      try {
+        // Photoroom lighting modes per preset
+        const lightingMap: Record<string, string> = {
+          "magazine-interior": "ai.balanced",
+          "golden-hour": "ai.warm",
+          "luxury-feel": "ai.dramatic",
+          "food-styling": "ai.warm",
+          "storefront-chic": "ai.balanced",
+          "bright-airy": "ai.bright",
+          "moody-dramatic": "ai.dramatic",
+          "natural-fresh": "ai.balanced",
+          "sunset-terrace": "ai.warm",
+          "cozy-warmth": "ai.warm",
+          "pool-paradise": "ai.bright",
+          "boutique-hotel": "ai.balanced",
+        };
+        const lighting = lightingMap[preset] || "ai.balanced";
 
-    // ── Strategy 1: FAL Clarity Upscaler — enhances quality + applies style via prompt WITHOUT changing content ──
-    // This is NOT img2img — it's a super-resolution model that preserves 100% of the original content
-    // while enhancing sharpness, lighting, and applying subtle color grading from the prompt.
+        // Build Photoroom edit URL — NO background removal, just relighting
+        const params = new URLSearchParams();
+        params.set("imageUrl", imageUrl);
+        params.set("removeBackground", "false"); // KEEP EVERYTHING — no bg removal
+        params.set("lighting.mode", lighting);
+        // Output size from aspect ratio
+        const arSizeMap: Record<string, string> = {
+          "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+          "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+        };
+        params.set("outputSize", arSizeMap[aspectRatio] || "1200x900");
+        params.set("padding", "0");
+        params.set("export.format", "webp");
+
+        const prUrl = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
+        console.log(`[beautify] Photoroom relighting: mode=${lighting}, url=${prUrl.slice(0, 100)}...`);
+
+        const prRes = await fetch(prUrl, {
+          headers: { "x-api-key": photoroomKey },
+        });
+
+        if (prRes.ok) {
+          const imageBuffer = await prRes.arrayBuffer();
+          const fileName = `beautify-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+          const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
+          const sb = supabaseAdmin();
+          const { error: uploadError } = await sb.storage
+            .from("make-cad57f79-media")
+            .upload(storagePath, imageBuffer, { contentType: "image/webp", upsert: true });
+          if (!uploadError) {
+            const { data: signedData } = await sb.storage
+              .from("make-cad57f79-media")
+              .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+            const resultUrl = signedData?.signedUrl;
+            if (resultUrl) {
+              console.log(`[beautify] Photoroom OK in ${Date.now() - t0}ms`);
+              return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-photoroom", preset });
+            }
+          }
+        } else {
+          const errBody = await prRes.text();
+          console.log(`[beautify] Photoroom ${prRes.status}: ${errBody.slice(0, 200)}`);
+        }
+      } catch (err) { console.log(`[beautify] Photoroom error: ${err}`); }
+    }
+
+    // ── Strategy 2: FAL Clarity Upscaler — zero creativity, pure quality enhancement ──
+    const falKey = Deno.env.get("FAL_KEY");
     if (falKey) {
       try {
-        console.log(`[beautify] Trying FAL clarity-upscaler (prompt-guided enhancement)...`);
+        console.log(`[beautify] Fallback: FAL clarity-upscaler (creativity=0, resemblance=1.0)...`);
         const res = await fetch("https://queue.fal.run/fal-ai/clarity-upscaler", {
           method: "POST",
           headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             image_url: imageUrl,
-            prompt: p.prompt,
-            negative_prompt: p.negativePrompt,
-            scale: 1,  // 1x = same resolution, just enhance quality + apply style
-            creativity: p.strength, // 0.06-0.09 = very subtle style application
-            resemblance: 0.95, // 0.95 = keep 95% of original structure
-            guidance_scale: 4, // low guidance = subtle changes
-            num_inference_steps: 18,
+            prompt: "enhance photo quality, professional color correction, sharpen details",
+            scale: 1,
+            creativity: 0, // ZERO creativity = no generation, just enhance
+            resemblance: 1.0, // 100% resemblance = keep everything
+            guidance_scale: 2,
+            num_inference_steps: 12,
             enable_safety_checker: false,
           }),
         });
@@ -5678,67 +5743,6 @@ app.post("/generate/image-beautify", async (c) => {
           console.log(`[beautify] FAL clarity-upscaler ${res.status}: ${b.slice(0, 200)}`);
         }
       } catch (err) { console.log(`[beautify] FAL clarity-upscaler error: ${err}`); }
-    }
-
-    // ── Strategy 2: FAL Creative Upscaler — fallback, more creative but still preserves content ──
-    if (falKey) {
-      try {
-        console.log(`[beautify] Fallback: FAL creative-upscaler...`);
-        const res = await fetch("https://queue.fal.run/fal-ai/creative-upscaler", {
-          method: "POST",
-          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            prompt: p.prompt,
-            negative_prompt: p.negativePrompt,
-            scale: 1,
-            creativity: 0.3, // low creativity = preserve original
-            detail: 1.1,
-            shape_preservation: 0.95,
-            enable_safety_checker: false,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const resultUrl = data.image?.url || data.images?.[0]?.url;
-          if (resultUrl) {
-            console.log(`[beautify] FAL creative-upscaler OK in ${Date.now() - t0}ms`);
-            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-creative-upscaler", preset });
-          }
-        } else {
-          const b = await res.text();
-          console.log(`[beautify] FAL creative-upscaler ${res.status}: ${b.slice(0, 200)}`);
-        }
-      } catch (err) { console.log(`[beautify] FAL creative-upscaler error: ${err}`); }
-    }
-
-    // ── Strategy 3: FAL Flux img2img ultra-low strength as last resort ──
-    if (falKey) {
-      try {
-        console.log(`[beautify] Last resort: FAL Flux img2img (strength=0.04)...`);
-        const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
-        const res = await fetch("https://queue.fal.run/fal-ai/flux/dev/image-to-image", {
-          method: "POST",
-          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            prompt: p.prompt,
-            strength: 0.04,
-            image_size: falSizeMap[aspectRatio] || "landscape_4_3",
-            num_images: 1,
-            enable_safety_checker: false,
-            negative_prompt: p.negativePrompt,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const resultUrl = data.images?.[0]?.url;
-          if (resultUrl) {
-            console.log(`[beautify] FAL Flux img2img OK in ${Date.now() - t0}ms`);
-            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-flux-img2img", preset });
-          }
-        }
-      } catch (err) { console.log(`[beautify] Flux img2img error: ${err}`); }
     }
 
     return c.json({ success: false, error: "All beautify providers failed" }, 500);
