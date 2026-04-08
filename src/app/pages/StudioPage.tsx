@@ -152,6 +152,7 @@ export function StudioPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
+  const sendingRef = useRef(false); // Anti-double-send guard (ref = synchronous)
   const [isGenerating, setIsGenerating] = useState(false);
   const [context, setContext] = useState<Record<string, any>>({});
   const [vault, setVault] = useState<any>(undefined);
@@ -302,15 +303,22 @@ export function StudioPage() {
     }
   }, [accessToken]);
 
-  const serverPost = useCallback((path: string, body: any, timeoutMs = 90_000) => {
+  const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
     console.log(`[serverPost] ${path} token=${token ? token.slice(0, 20) + "..." : "EMPTY"}`);
-    return fetch(`${API_BASE}${path}`, {
+    const r = await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
       body: JSON.stringify({ ...body, _token: token }),
       signal: AbortSignal.timeout(timeoutMs),
-    }).then(r => r.json());
+    });
+    const text = await r.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      console.error(`[serverPost] ${path} non-JSON response (${r.status}):`, text.slice(0, 300));
+      return { success: false, error: `Server error (${r.status})` };
+    }
   }, [getAuthHeader]);
 
   const serverGet = useCallback((path: string) => {
@@ -1091,7 +1099,8 @@ export function StudioPage() {
   // ── Send message ──
   const handleSend = useCallback(async (text?: string) => {
     const msg = (text || input).trim();
-    if (!msg || isThinking) return;
+    if (!msg || isThinking || sendingRef.current) return;
+    sendingRef.current = true;
     if (!text) setInput("");
 
     // ── INSPIRE → CAMPAIGN: idea from welcome screen, switch to campaign mode and send ──
@@ -1150,6 +1159,7 @@ export function StudioPage() {
         }
       } catch { /* silent */ }
       setIsThinking(false);
+      sendingRef.current = false;
       return;
     }
 
@@ -1249,6 +1259,7 @@ export function StudioPage() {
       }]);
     }
     setIsThinking(false);
+    sendingRef.current = false;
   }, [input, isThinking, messages, context, vault, products, serverPost, serverGet, loadVault, executeAction, navigate, attachedImage]);
 
   // ── Compare handler — opens model picker ──
