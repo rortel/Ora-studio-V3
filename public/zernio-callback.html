@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ORA - Connect</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,sans-serif;background:#1a1918;color:#E8E4DF;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.container{width:100%;max-width:420px}
+.logo{text-align:center;margin-bottom:24px;font-size:22px;font-weight:700;letter-spacing:2px;color:#C8A97E}
+.card{background:#2a2928;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:32px 28px;text-align:center}
+h2{font-size:17px;font-weight:600;margin-bottom:4px}
+.subtitle{font-size:13px;color:#7A7572;margin-bottom:24px}
+.option{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid rgba(255,255,255,0.08);border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:10px;text-align:left}
+.option:hover{background:rgba(255,255,255,0.03)}
+.option.selected{border-color:#C8A97E;background:rgba(200,169,126,0.06)}
+.option-radio{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.option.selected .option-radio{border-color:#C8A97E}
+.option.selected .option-radio::after{content:'';width:8px;height:8px;border-radius:50%;background:#C8A97E}
+.option-label{font-size:14px;font-weight:500}
+.option-desc{font-size:12px;color:#7A7572;margin-top:2px}
+.btn{display:block;width:100%;padding:12px;margin-top:20px;border:none;border-radius:8px;background:#C8A97E;color:#1a1918;font-size:14px;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.success-icon{font-size:48px;color:#5E6AD2;margin-bottom:12px}
+.hidden{display:none}
+.error-msg{color:#E5534B;font-size:13px;margin-top:12px}
+.loading{color:#7A7572;font-size:14px;padding:30px 0}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">ORA</div>
+
+  <!-- Loading state -->
+  <div class="card" id="loadingCard">
+    <div class="loading">Connecting...</div>
+  </div>
+
+  <!-- Selection card (LinkedIn org / Facebook page) -->
+  <div class="card hidden" id="selectionCard">
+    <h2 id="selTitle">Connect</h2>
+    <p class="subtitle" id="selSubtitle">Choose how you want to post</p>
+    <div id="options"></div>
+    <button class="btn" id="connectBtn" disabled>Connect</button>
+    <div class="error-msg hidden" id="errorMsg"></div>
+  </div>
+
+  <!-- Success card -->
+  <div class="card hidden" id="successCard">
+    <div class="success-icon">&#10003;</div>
+    <h2>Account Connected</h2>
+    <p class="subtitle">You can close this window.</p>
+  </div>
+</div>
+
+<script>
+(function() {
+  var SERVER = "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
+  var params = new URLSearchParams(window.location.search);
+  var platform = params.get("platform") || params.get("connected") || "unknown";
+  var step = params.get("step") || "";
+  var tempToken = params.get("tempToken") || "";
+  var profileId = params.get("profileId") || "";
+  var connectToken = params.get("connect_token") || "";
+  var userProfileRaw = params.get("userProfile") || "{}";
+  var userProfile;
+  try { userProfile = JSON.parse(userProfileRaw); } catch(e) { userProfile = {}; }
+
+  // No selection needed — already connected
+  if (!step) {
+    document.getElementById("loadingCard").classList.add("hidden");
+    document.getElementById("successCard").classList.remove("hidden");
+    try { window.opener.postMessage({ type: "zernio-oauth-complete", platform: platform, status: "success" }, "*"); } catch(e) {}
+    setTimeout(function() { window.close(); }, 2000);
+    return;
+  }
+
+  // LinkedIn organization selection
+  if (step === "select_organization" && platform === "linkedin") {
+    var orgsRaw = params.get("organizations") || "[]";
+    var orgs;
+    try { orgs = JSON.parse(orgsRaw); } catch(e) { orgs = []; }
+
+    document.getElementById("loadingCard").classList.add("hidden");
+    document.getElementById("selectionCard").classList.remove("hidden");
+    document.getElementById("selTitle").textContent = "Connect LinkedIn";
+    document.getElementById("selSubtitle").textContent = "Choose how you want to post";
+
+    var selectedType = null;
+    var selectedOrg = null;
+    var optionsEl = document.getElementById("options");
+    var connectBtn = document.getElementById("connectBtn");
+    var errorMsg = document.getElementById("errorMsg");
+
+    function selectOption(type, org, el) {
+      document.querySelectorAll(".option").forEach(function(o) { o.classList.remove("selected"); });
+      el.classList.add("selected");
+      selectedType = type;
+      selectedOrg = org;
+      connectBtn.disabled = false;
+    }
+
+    // Personal option
+    var personalDiv = document.createElement("div");
+    personalDiv.className = "option";
+    personalDiv.innerHTML = '<div class="option-radio"></div><div><div class="option-label">' + (userProfile.displayName || userProfile.name || "Post as yourself") + '</div><div class="option-desc">Personal profile</div></div>';
+    personalDiv.onclick = function() { selectOption("personal", null, personalDiv); };
+    optionsEl.appendChild(personalDiv);
+
+    // Organization options
+    if (Array.isArray(orgs)) {
+      orgs.forEach(function(org) {
+        var div = document.createElement("div");
+        div.className = "option";
+        div.innerHTML = '<div class="option-radio"></div><div><div class="option-label">' + (org.name || org.localizedName || "Organization") + '</div><div class="option-desc">Organization</div></div>';
+        div.onclick = function() { selectOption("organization", org, div); };
+        optionsEl.appendChild(div);
+      });
+    }
+
+    connectBtn.onclick = function() {
+      connectBtn.disabled = true;
+      connectBtn.textContent = "Connecting...";
+      errorMsg.classList.add("hidden");
+      var payload = { profileId: profileId, tempToken: tempToken, userProfile: userProfile, accountType: selectedType };
+      if (selectedType === "organization" && selectedOrg) payload.selectedOrganization = selectedOrg;
+      fetch(SERVER + "/zernio/linkedin/select-organization", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(function(res) { return res.json().then(function(d) { return { ok: res.ok, data: d }; }); })
+        .then(function(r) {
+          if (!r.ok) throw new Error(r.data.error || "Connection failed");
+          document.getElementById("selectionCard").classList.add("hidden");
+          document.getElementById("successCard").classList.remove("hidden");
+          try { window.opener.postMessage({ type: "zernio-oauth-complete", platform: "linkedin", status: "success" }, "*"); } catch(e) {}
+          setTimeout(function() { window.close(); }, 2000);
+        }).catch(function(e) {
+          errorMsg.textContent = e.message || "Connection failed";
+          errorMsg.classList.remove("hidden");
+          connectBtn.disabled = false;
+          connectBtn.textContent = "Connect";
+        });
+    };
+    return;
+  }
+
+  // Facebook page selection
+  if (step === "select_page" && platform === "facebook") {
+    var pagesRaw = params.get("pages") || "[]";
+    var pages;
+    try { pages = JSON.parse(pagesRaw); } catch(e) { pages = []; }
+
+    document.getElementById("loadingCard").classList.add("hidden");
+    document.getElementById("selectionCard").classList.remove("hidden");
+    document.getElementById("selTitle").textContent = "Connect Facebook";
+    document.getElementById("selSubtitle").textContent = "Select a page to connect";
+
+    var selectedPage = null;
+    var optionsEl2 = document.getElementById("options");
+    var connectBtn2 = document.getElementById("connectBtn");
+    var errorMsg2 = document.getElementById("errorMsg");
+
+    if (!Array.isArray(pages) || pages.length === 0) {
+      optionsEl2.innerHTML = '<div class="loading">No pages found. Make sure you have admin access to a Facebook page.</div>';
+      return;
+    }
+
+    pages.forEach(function(page) {
+      var div = document.createElement("div");
+      div.className = "option";
+      div.innerHTML = '<div class="option-radio"></div><div><div class="option-label">' + (page.name || "Page") + '</div><div class="option-desc">' + (page.category || "Facebook Page") + '</div></div>';
+      div.onclick = function() {
+        document.querySelectorAll(".option").forEach(function(o) { o.classList.remove("selected"); });
+        div.classList.add("selected");
+        selectedPage = page;
+        connectBtn2.disabled = false;
+      };
+      optionsEl2.appendChild(div);
+    });
+
+    connectBtn2.onclick = function() {
+      connectBtn2.disabled = true;
+      connectBtn2.textContent = "Connecting...";
+      errorMsg2.classList.add("hidden");
+      fetch(SERVER + "/zernio/facebook/select-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: profileId, pageId: selectedPage.id, tempToken: tempToken, userProfile: userProfile })
+      }).then(function(res) { return res.json().then(function(d) { return { ok: res.ok, data: d }; }); })
+        .then(function(r) {
+          if (!r.ok) throw new Error(r.data.error || "Connection failed");
+          document.getElementById("selectionCard").classList.add("hidden");
+          document.getElementById("successCard").classList.remove("hidden");
+          try { window.opener.postMessage({ type: "zernio-oauth-complete", platform: "facebook", status: "success" }, "*"); } catch(e) {}
+          setTimeout(function() { window.close(); }, 2000);
+        }).catch(function(e) {
+          errorMsg2.textContent = e.message || "Connection failed";
+          errorMsg2.classList.remove("hidden");
+          connectBtn2.disabled = false;
+          connectBtn2.textContent = "Connect";
+        });
+    };
+    return;
+  }
+
+  // Unknown step — show success and close
+  document.getElementById("loadingCard").classList.add("hidden");
+  document.getElementById("successCard").classList.remove("hidden");
+  try { window.opener.postMessage({ type: "zernio-oauth-complete", platform: platform, status: "success" }, "*"); } catch(e) {}
+  setTimeout(function() { window.close(); }, 2000);
+})();
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ import { Link } from "react-router";
 import {
   ArrowLeft, TrendingUp, TrendingDown, Minus, Loader2, RefreshCw,
   Send, Eye, MousePointer, MessageSquare, ExternalLink, CheckCircle2, Clock, AlertCircle,
-  Heart, Share2, Bookmark, ThumbsUp,
+  Heart, Share2, Bookmark, ThumbsUp, Sparkles,
 } from "lucide-react";
 
 const defaultKpis = [
@@ -69,6 +69,8 @@ function AnalyticsPageContent() {
   const [socialLoading, setSocialLoading] = useState(false);
   const [postMetrics, setPostMetrics] = useState<any>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const { getAuthHeader } = useAuth();
 
@@ -172,9 +174,35 @@ function AnalyticsPageContent() {
     }
   }, [getAuthHeader]);
 
+  const loadAiInsights = useCallback(async (metricsData: any) => {
+    if (!metricsData?.posts?.length) return;
+    setAiLoading(true);
+    try {
+      const token = getAuthHeader();
+      const res = await fetch(apiUrl("/analytics/ai-insights"), {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: token, posts: metricsData.posts, totals: metricsData.totals, byPlatform: metricsData.byPlatform }),
+      });
+      const data = await res.json();
+      if (data.success) setAiInsights(data.analysis);
+    } catch (err) {
+      console.error("Failed to load AI insights:", err);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [getAuthHeader]);
+
   useEffect(() => { loadAnalytics(); loadSocialAnalytics(); }, [loadAnalytics, loadSocialAnalytics]);
 
-  const handleRefresh = () => { setRefreshing(true); loadAnalytics(); loadSocialAnalytics(); };
+  // Auto-load AI insights when post metrics arrive
+  useEffect(() => {
+    if (postMetrics?.posts?.length > 0 && !aiInsights && !aiLoading) {
+      loadAiInsights(postMetrics);
+    }
+  }, [postMetrics, aiInsights, aiLoading, loadAiInsights]);
+
+  const handleRefresh = () => { setRefreshing(true); setAiInsights(null); loadAnalytics(); loadSocialAnalytics(); };
 
   const maxPieces = Math.max(...weeklyData.map((d) => d.pieces), 1);
   const maxFormatScore = Math.max(...formatPerformance.map((f) => f.avgScore), 1);
@@ -518,6 +546,49 @@ function AnalyticsPageContent() {
             </div>
           </motion.div>
         )}
+
+        {/* AI Insights */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+          className="border border-border rounded-xl p-6 mb-10" style={{ background: "linear-gradient(135deg, var(--card) 0%, rgba(124,58,237,0.03) 100%)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-ora-signal" />
+              <h3 className="text-foreground" style={{ fontSize: "16px", fontWeight: 500 }}>AI Performance Insights</h3>
+            </div>
+            {postMetrics?.posts?.length > 0 && (
+              <button onClick={() => { setAiInsights(null); loadAiInsights(postMetrics); }} disabled={aiLoading}
+                className="flex items-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+                style={{ fontSize: "11px", fontWeight: 500 }}>
+                {aiLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                {aiLoading ? "Analyse en cours..." : "Relancer l'analyse"}
+              </button>
+            )}
+          </div>
+          {aiLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <Loader2 size={20} className="animate-spin text-ora-signal mx-auto mb-3" />
+                <p className="text-muted-foreground" style={{ fontSize: "13px" }}>L'IA analyse vos performances...</p>
+              </div>
+            </div>
+          ) : aiInsights ? (
+            <div className="prose prose-sm max-w-none" style={{ fontSize: "13px", lineHeight: 1.7, color: "var(--foreground)" }}
+              dangerouslySetInnerHTML={{ __html: aiInsights
+                .replace(/^## (.*$)/gm, '<h3 style="font-size:15px;font-weight:600;margin-top:20px;margin-bottom:8px;color:var(--foreground)">$1</h3>')
+                .replace(/^### (.*$)/gm, '<h4 style="font-size:13px;font-weight:600;margin-top:16px;margin-bottom:6px;color:var(--foreground)">$1</h4>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight:600">$1</strong>')
+                .replace(/^- (.*$)/gm, '<div style="display:flex;gap:6px;margin:4px 0"><span style="color:var(--ora-signal)">•</span><span>$1</span></div>')
+                .replace(/^(\d+)\. (.*$)/gm, '<div style="display:flex;gap:6px;margin:4px 0"><span style="font-weight:600;color:var(--ora-signal)">$1.</span><span>$2</span></div>')
+                .replace(/\n\n/g, '<br/>')
+              }} />
+          ) : (
+            <div className="text-center py-10">
+              <Sparkles size={22} className="mx-auto mb-3 text-muted-foreground/20" />
+              <p className="text-muted-foreground" style={{ fontSize: "13px" }}>Publiez du contenu pour obtenir une analyse IA de vos performances</p>
+              <p className="text-muted-foreground/60 mt-1" style={{ fontSize: "12px" }}>L'IA analysera vos posts et vous donnera des recommandations personnalisées</p>
+            </div>
+          )}
+        </motion.div>
 
         {/* Recent campaigns table */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
