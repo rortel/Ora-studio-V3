@@ -44,7 +44,7 @@ interface TemplateEditorProps {
   asset: Record<string, any>;
   vault: Record<string, any> | null;
   brandLogoUrl?: string | null;
-  onSave?: (template: TemplateDefinition) => void;
+  onSave?: (template: TemplateDefinition, exportedImageUrl?: string) => void;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -237,6 +237,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
         })
         .catch(() => {
           const img = new window.Image();
+          img.crossOrigin = "anonymous";
           img.onload = () => { loaded[id] = img; done(); };
           img.onerror = () => done();
           img.src = url;
@@ -923,6 +924,20 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
      SAVE & EXPORT
      ─────────────────────────────────────────────────────────────────────── */
   const handleSave = useCallback(() => {
+    // Export canvas as PNG to persist visual changes
+    let exportedImage: string | undefined;
+    if (stageRef.current) {
+      try {
+        exportedImage = stageRef.current.toDataURL({
+          pixelRatio: Math.max(1, Math.round(1 / stageScale)),
+          mimeType: "image/png",
+          quality: 1,
+        });
+      } catch {
+        // External images may block toDataURL — fallback: no export
+      }
+    }
+
     const customTemplate: TemplateDefinition = {
       ...template,
       id: `custom-${template.formatId}-${Date.now()}`,
@@ -933,9 +948,9 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       createdAt: new Date().toISOString(),
     };
     registerTemplate(customTemplate);
-    onSave?.(customTemplate);
+    onSave?.(customTemplate, exportedImage);
     onOpenChange(false);
-  }, [template, layers, onSave, onOpenChange]);
+  }, [template, layers, onSave, onOpenChange, stageScale]);
 
   const handleExport = useCallback(() => {
     if (!stageRef.current) return;
@@ -971,13 +986,33 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     const scaleY = node.scaleY();
     node.scaleX(1);
     node.scaleY(1);
+
+    const layer = layers.find(l => l.id === id);
+
+    // Circles are center-positioned — convert back to top-left box
+    if (layer?.type === "circle") {
+      const newRadius = (node.radius?.() || 0) * Math.max(scaleX, scaleY);
+      node.radius?.(newRadius);
+      const cx = node.x();
+      const cy = node.y();
+      const newW = newRadius * 2;
+      const newH = newRadius * 2;
+      updateLayer(id, {
+        x: ((cx - newRadius) / cw) * 100,
+        y: ((cy - newRadius) / ch) * 100,
+        width: (newW / cw) * 100,
+        height: (newH / ch) * 100,
+      });
+      return;
+    }
+
     updateLayer(id, {
       x: (node.x() / cw) * 100,
       y: (node.y() / ch) * 100,
       width: ((node.width() * scaleX) / cw) * 100,
       height: ((node.height() * scaleY) / ch) * 100,
     });
-  }, [cw, ch, updateLayer]);
+  }, [cw, ch, updateLayer, layers]);
 
   /* ───────────────────────────────────────────────────────────────────────
      RENDER LAYER (ported from TemplateEngine + interactive props)
