@@ -228,6 +228,134 @@ export const AMBIANCE_PRESETS: AmbianceDefinition[] = [
       "Dark reflective surface with holographic light strips, glass platform, and subtle volumetric neon glow.",
     templateCategory: "neon",
   },
+  {
+    id: "food-gastronomie",
+    label: "Food & gastronomie",
+    description:
+      "Lumière chaude, textures appétissantes, mise en scène culinaire.",
+    emoji: "🍽️",
+    gradient: "linear-gradient(135deg, #e65100 0%, #ff8a65 50%, #ffe0b2 100%)",
+    promptDirective:
+      "Warm overhead and side lighting with rich appetizing tones. Close-up macro details of textures, steam, and glistening surfaces. Earth-tone palette of burnt sienna, warm cream, olive green, and rustic wood. Overhead or 45° angle composition with artful food styling, fresh herbs, and linen napkins.",
+    textModels: ["gpt-4o"],
+    imageModels: ["ideogram-3-leo", "photon-1"],
+    videoModels: ["ray-2"],
+    photoroomScene:
+      "Rustic wooden table with linen cloth, terracotta plates, fresh herbs, and warm directional side light.",
+    templateCategory: "editorial",
+  },
+  {
+    id: "sport-energie",
+    label: "Sport & énergie",
+    description:
+      "Mouvement, contraste, dynamisme et adrénaline.",
+    emoji: "⚡",
+    gradient: "linear-gradient(135deg, #f12711 0%, #f5af19 100%)",
+    promptDirective:
+      "High-energy dynamic composition with motion blur and frozen action moments. Strong contrast with punchy saturated colors — electric orange, bold red, and deep black. Wide-angle or low-angle perspective, dramatic rim lighting highlighting sweat and movement. Sports photography aesthetic with fast shutter speed feel.",
+    textModels: ["gpt-4o"],
+    imageModels: ["flux-pro-2-leo", "gpt-image-leo"],
+    videoModels: ["seedance-v1"],
+    photoroomScene:
+      "Dark gym floor with dramatic side lighting, motion energy, and vibrant accent colors on athletic equipment.",
+    templateCategory: "bold",
+  },
+  {
+    id: "corporate-clean",
+    label: "Corporate clean",
+    description:
+      "Fond neutre, cadrage professionnel, rendu institutionnel.",
+    emoji: "🏢",
+    gradient: "linear-gradient(135deg, #2c3e50 0%, #3498db 100%)",
+    promptDirective:
+      "Clean professional corporate aesthetic with neutral backgrounds — soft grey, white, or muted blue. Even balanced lighting with no harsh shadows. Structured symmetrical composition, professional attire, modern office environments. Trust-building palette of navy, grey, and white with subtle brand accent colors.",
+    textModels: ["gpt-4o"],
+    imageModels: ["photon-1", "dall-e"],
+    videoModels: ["ray-flash-2"],
+    photoroomScene:
+      "Modern glass office desk with clean white background, soft overhead lighting, and minimal professional props.",
+    templateCategory: "corporate",
+  },
+  {
+    id: "festival-evenement",
+    label: "Festival & événement",
+    description:
+      "Lumières, foule, atmosphère live et énergie collective.",
+    emoji: "🎉",
+    gradient: "linear-gradient(135deg, #fc466b 0%, #3f5efb 100%)",
+    promptDirective:
+      "Live event atmosphere with crowd energy, colored stage lighting, and bokeh light effects. Vibrant saturated hues of magenta, electric blue, and golden spotlights. Wide and medium shots capturing movement and collective energy. Concert photography aesthetic with lens flare and atmospheric haze.",
+    textModels: ["gpt-4o"],
+    imageModels: ["flux-pro-2-leo", "ideogram-3-leo"],
+    videoModels: ["kling-v2.1"],
+    photoroomScene:
+      "Stage-lit environment with colored gel lights, atmospheric haze, and confetti on a dark reflective surface.",
+    templateCategory: "bold",
+  },
+  {
+    id: "wellness-spa",
+    label: "Wellness & spa",
+    description:
+      "Doux, aérien, tons neutres, sérénité et bien-être.",
+    emoji: "🧘",
+    gradient: "linear-gradient(135deg, #e8d5b7 0%, #f5efe0 50%, #d4e4d9 100%)",
+    promptDirective:
+      "Soft airy lighting with gentle diffusion and warm neutral tones. Calming palette of sand, warm white, sage green, and soft lavender. Serene spa-like composition with natural materials — stone, bamboo, cotton, water droplets. Shallow depth of field with peaceful negative space.",
+    textModels: ["claude-sonnet"],
+    imageModels: ["photon-1", "ideogram-3-leo"],
+    videoModels: ["ray-2"],
+    photoroomScene:
+      "Smooth stone surface with a white orchid, folded cotton towel, and soft diffused natural light through frosted glass.",
+    templateCategory: "minimal",
+  },
+  {
+    id: "dark-moody",
+    label: "Dark & moody",
+    description:
+      "Low-key, ombres profondes, mystère et intensité.",
+    emoji: "🖤",
+    gradient: "linear-gradient(135deg, #0d0d0d 0%, #1a1a2e 50%, #2d1b69 100%)",
+    promptDirective:
+      "Low-key dramatic lighting with deep shadows and selective illumination. Dark moody palette of charcoal, midnight blue, and deep plum with single accent highlights. Rembrandt or split lighting on subjects, negative space dominated by shadow. Mysterious atmospheric composition with intentional darkness.",
+    textModels: ["claude-sonnet"],
+    imageModels: ["flux-pro-2-leo", "leonardo-kino"],
+    videoModels: ["kling-v2.1"],
+    photoroomScene:
+      "Near-black backdrop with a single narrow spotlight creating a pool of light on a matte dark surface.",
+    templateCategory: "neon",
+  },
+  {
+    id: "tropical-soleil",
+    label: "Tropical & soleil",
+    description:
+      "Couleurs chaudes saturées, lumière directe, ambiance vacances.",
+    emoji: "🌴",
+    gradient: "linear-gradient(135deg, #f9d423 0%, #ff4e50 100%)",
+    promptDirective:
+      "Bright direct sunlight with strong warm tones and hard shadows. Tropical saturated palette of coral, turquoise, golden yellow, and lush green. Outdoor compositions with palm fronds, azure water, white sand, and vibrant florals. Sun-drenched vacation aesthetic with high contrast and vivid colors.",
+    textModels: ["gpt-4o"],
+    imageModels: ["gpt-image-leo", "ideogram-3-leo"],
+    videoModels: ["seedance-v1"],
+    photoroomScene:
+      "White sand surface with tropical palm leaf shadow, turquoise fabric accent, and bright direct overhead sunlight.",
+    templateCategory: "playful",
+  },
+  {
+    id: "artisanal-handmade",
+    label: "Artisanal & handmade",
+    description:
+      "Textures brutes, bois, cuir, matières nobles et authenticité.",
+    emoji: "🪵",
+    gradient: "linear-gradient(135deg, #8B6914 0%, #D2B48C 50%, #654321 100%)",
+    promptDirective:
+      "Warm directional side light emphasizing raw textures and craftsmanship details. Earthy artisanal palette of raw wood, aged leather, unbleached linen, hammered copper, and stone. Close-up detail shots showing hand-crafted imperfections, tool marks, and natural material grain. Workshop or atelier atmosphere with authentic maker aesthetic.",
+    textModels: ["claude-sonnet"],
+    imageModels: ["photon-1", "flux-pro"],
+    videoModels: ["ray-2"],
+    photoroomScene:
+      "Raw oak workbench with leather apron, artisan tools, and warm side light through a workshop window.",
+    templateCategory: "editorial",
+  },
 ];
 
 // ---------------------------------------------------------------------------
