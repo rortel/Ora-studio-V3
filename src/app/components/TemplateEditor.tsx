@@ -237,13 +237,27 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           img.src = objectUrl;
         })
         .catch(() => {
-          // Fallback: load directly with crossOrigin (may block toDataURL if server doesn't send CORS headers)
-          console.warn(`[editor] CORS fetch failed for ${id}, trying direct load`);
-          const img = new window.Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => { loaded[id] = img; done(); };
-          img.onerror = () => { console.warn(`[editor] Direct load also failed: ${id}`); done(); };
-          img.src = url;
+          // Fallback: proxy through backend to bypass CORS (DALL-E Azure Blob, etc.)
+          console.warn(`[editor] CORS fetch failed for ${id}, trying backend proxy`);
+          const proxyUrl = `${API_BASE}/image-proxy?url=${encodeURIComponent(url)}`;
+          fetch(proxyUrl)
+            .then(r => { if (!r.ok) throw new Error("proxy failed"); return r.blob(); })
+            .then(blob => {
+              const objectUrl = URL.createObjectURL(blob);
+              const img = new window.Image();
+              img.onload = () => { loaded[id] = img; console.log(`[editor] Image loaded via proxy: ${id}`); done(); };
+              img.onerror = () => { console.warn(`[editor] Proxy blob failed: ${id}`); done(); };
+              img.src = objectUrl;
+            })
+            .catch(() => {
+              // Last resort: direct load (won't support canvas export)
+              console.warn(`[editor] Proxy also failed for ${id}, trying direct load`);
+              const img = new window.Image();
+              img.crossOrigin = "anonymous";
+              img.onload = () => { loaded[id] = img; done(); };
+              img.onerror = () => { console.warn(`[editor] Direct load also failed: ${id}`); done(); };
+              img.src = url;
+            });
         });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

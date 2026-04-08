@@ -122,6 +122,27 @@ app.use("*", async (c, next) => {
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
 app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 202, audio: "suno-start-poll", credits: "tiered" }));
 
+// ── IMAGE PROXY — bypass CORS for external image URLs (DALL-E Azure Blob, etc.) ──
+app.get("/image-proxy", async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.text("Missing url param", 400);
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return c.text(`Upstream ${res.status}`, res.status as any);
+    const contentType = res.headers.get("content-type") || "image/png";
+    const body = await res.arrayBuffer();
+    return new Response(body, {
+      headers: {
+        "content-type": contentType,
+        "access-control-allow-origin": "*",
+        "cache-control": "public, max-age=3600",
+      },
+    });
+  } catch (err: any) {
+    return c.text(`Proxy error: ${err.message}`, 502);
+  }
+});
+
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({
