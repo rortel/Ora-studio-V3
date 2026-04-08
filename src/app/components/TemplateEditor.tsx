@@ -226,20 +226,23 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     for (const [id, url] of Object.entries(imageUrls)) {
       // Skip if already loaded with same URL
       if (loadedImages[id]?.src?.includes(url.slice(0, 40))) { remaining--; if (remaining === 0) setLoadedImages(prev => ({ ...prev, ...loaded })); continue; }
+      // Always fetch as blob first — this creates a local objectURL that won't cause CORS issues on canvas export
       fetch(url, { mode: "cors" })
         .then(r => { if (!r.ok) throw new Error("not ok"); return r.blob(); })
         .then(blob => {
           const objectUrl = URL.createObjectURL(blob);
           const img = new window.Image();
-          img.onload = () => { loaded[id] = img; done(); };
-          img.onerror = () => done();
+          img.onload = () => { loaded[id] = img; console.log(`[editor] Image loaded via blob: ${id}`); done(); };
+          img.onerror = () => { console.warn(`[editor] Blob image failed to render: ${id}`); done(); };
           img.src = objectUrl;
         })
         .catch(() => {
+          // Fallback: load directly with crossOrigin (may block toDataURL if server doesn't send CORS headers)
+          console.warn(`[editor] CORS fetch failed for ${id}, trying direct load`);
           const img = new window.Image();
           img.crossOrigin = "anonymous";
           img.onload = () => { loaded[id] = img; done(); };
-          img.onerror = () => done();
+          img.onerror = () => { console.warn(`[editor] Direct load also failed: ${id}`); done(); };
           img.src = url;
         });
     }
@@ -933,8 +936,16 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
           mimeType: "image/png",
           quality: 1,
         });
-      } catch {
-        // External images may block toDataURL — fallback: no export
+        console.log("[editor] Canvas exported:", exportedImage ? `${exportedImage.length} chars` : "empty");
+      } catch (err) {
+        console.warn("[editor] toDataURL failed (cross-origin):", err);
+        // Fallback: try without high pixelRatio
+        try {
+          exportedImage = stageRef.current.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+          console.log("[editor] Fallback export OK:", exportedImage?.length);
+        } catch {
+          console.warn("[editor] Fallback export also failed — image won't be saved");
+        }
       }
     }
 
@@ -948,9 +959,22 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       createdAt: new Date().toISOString(),
     };
     registerTemplate(customTemplate);
+
+    // If canvas export failed, fall back to the original image URL from the background layer
+    if (!exportedImage) {
+      const bgLayer = layers.find(l => l.type === "background-image");
+      if (bgLayer?.dataBinding) {
+        const resolvedUrl = resolveBinding(bgLayer.dataBinding);
+        if (resolvedUrl && typeof resolvedUrl === "string") {
+          exportedImage = resolvedUrl;
+          console.log("[editor] Using original image URL as fallback:", resolvedUrl.slice(0, 60));
+        }
+      }
+    }
+
     onSave?.(customTemplate, exportedImage);
     onOpenChange(false);
-  }, [template, layers, onSave, onOpenChange, stageScale]);
+  }, [template, layers, onSave, onOpenChange, stageScale, resolveBinding]);
 
   const handleExport = useCallback(() => {
     if (!stageRef.current) return;
