@@ -7,6 +7,7 @@
 import Konva from "konva";
 import type { TemplateDefinition, TemplateLayer } from "../components/templates/types";
 import { getTemplatesForFormat } from "../components/templates";
+import { getFigmaSvgTemplateById, compositeFigmaSvgTemplate } from "./figmaSvgEngine";
 
 // ── Format → template format mapping (campaign format IDs → template formatId) ──
 const FORMAT_TO_TEMPLATE: Record<string, string> = {
@@ -130,6 +131,26 @@ interface CompositeOptions {
  */
 export async function compositeAdCreative(opts: CompositeOptions): Promise<string> {
   const { imageUrl, headline, ctaText, caption, subtitle, price, featuresText, vault, logoUrl, template } = opts;
+
+  // ── Figma SVG template path — use SVG engine instead of Konva ──
+  if (template.figmaSvgTemplateId) {
+    const figmaTemplate = getFigmaSvgTemplateById(template.figmaSvgTemplateId);
+    if (figmaTemplate) {
+      console.log(`[composite] Using Figma SVG engine for "${template.figmaSvgTemplateId}"`);
+      return compositeFigmaSvgTemplate(figmaTemplate, {
+        imageUrl,
+        headline,
+        ctaText,
+        caption,
+        subtitle,
+        price,
+        brandName: vault?.name || vault?.brand_name || "",
+        vault,
+        logoUrl,
+      });
+    }
+    console.warn(`[composite] Figma SVG template "${template.figmaSvgTemplateId}" not found, falling back to Konva`);
+  }
 
   const asset: Record<string, any> = {
     imageUrl,

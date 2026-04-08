@@ -84,7 +84,7 @@ export interface TemplateDefinition {
   aspectRatio: string;
   canvasWidth: number;
   canvasHeight: number;
-  category: "minimal" | "bold" | "editorial" | "gradient" | "complex" | "ai-generated" | "magazine" | "corporate" | "neon" | "vintage" | "playful";
+  category: "minimal" | "bold" | "editorial" | "gradient" | "complex" | "ai-generated" | "magazine" | "corporate" | "neon" | "vintage" | "playful" | "fashion";
   layers: TemplateLayer[];
   /** Origin of the template */
   source?: "builtin" | "ai-generated";
@@ -94,4 +94,6 @@ export interface TemplateDefinition {
   svgTemplate?: string;
   /** HTML/CSS template string with placeholders (AI-generated templates, two-pass) */
   htmlTemplate?: string;
+  /** Figma SVG template ID — when set, compositing uses the Figma SVG engine instead of Konva */
+  figmaSvgTemplateId?: string;
 }
