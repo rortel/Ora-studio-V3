@@ -18031,6 +18031,46 @@ app.post("/analytics/all-posts-metrics", async (c) => {
   }
 });
 
+// POST /calendar/deploy-check — Diagnostic: test deploy readiness without actually posting
+app.post("/calendar/deploy-check", async (c) => {
+  const steps: Record<string, any> = {};
+  try {
+    const user = await requireAuth(c);
+    steps.auth = { ok: true, userId: user.id.slice(0, 8) };
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { eventId } = body;
+    steps.eventId = eventId;
+
+    const event = await kv.get(eventId);
+    steps.eventFound = !!event;
+    if (event) {
+      steps.eventKeys = Object.keys(event);
+      steps.hasContent = !!(event.copy || event.caption || event.headline || event.imageUrl || event.videoUrl);
+      steps.channel = event.channel || event.channelIcon || "unknown";
+      steps.platform = ZERNIO_PLATFORM_MAP[steps.channel] || `UNMAPPED:${steps.channel}`;
+    }
+
+    const ZERNIO_KEY = Deno.env.get("ZERNIO_API_KEY");
+    steps.hasZernioKey = !!ZERNIO_KEY;
+
+    try {
+      const profileId = await getOrCreateZernioProfile(user.id, user.email);
+      steps.profileId = profileId;
+    } catch (err) { steps.profileError = String(err); }
+
+    try {
+      const { accounts } = await listZernioAccountsForUser(user.id, user.email);
+      steps.accountsCount = accounts.length;
+      steps.accounts = accounts.map((a: any) => ({ platform: a.platform, status: a.status, id: a._id }));
+    } catch (err) { steps.accountsError = String(err); }
+
+    return c.json({ success: true, diagnostic: steps });
+  } catch (err) {
+    steps.fatalError = String(err);
+    return c.json({ success: false, diagnostic: steps, error: String(err) });
+  }
+});
+
 // POST /calendar/deploy — Deploy a single calendar event to its platform
 app.post("/calendar/deploy", async (c) => {
   const t0 = Date.now();
