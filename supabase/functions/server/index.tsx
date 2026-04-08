@@ -5641,81 +5641,104 @@ app.post("/generate/image-beautify", async (c) => {
     };
 
     const p = presets[preset] || presets["magazine-interior"];
-    console.log(`[beautify] preset=${preset}, strength=${p.strength}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
+    console.log(`[beautify] preset=${preset}, ar=${aspectRatio}, user=${user?.id?.slice(0, 8) || "anon"}, url=${imageUrl.slice(0, 60)}`);
 
-    // ── Strategy 1: FAL Flux img2img (best for low-strength, pixel-preserving enhancement) ──
     const falKey = Deno.env.get("FAL_KEY");
-    const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
-    const falImageSize = falSizeMap[aspectRatio] || "landscape_4_3";
 
+    // ── Strategy 1: FAL Clarity Upscaler — enhances quality + applies style via prompt WITHOUT changing content ──
+    // This is NOT img2img — it's a super-resolution model that preserves 100% of the original content
+    // while enhancing sharpness, lighting, and applying subtle color grading from the prompt.
     if (falKey) {
-      for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
-        try {
-          console.log(`[beautify] Trying FAL ${falModel} (strength=${p.strength})...`);
-          const res = await fetch(`https://queue.fal.run/${falModel}`, {
-            method: "POST",
-            headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image_url: imageUrl,
-              prompt: p.prompt,
-              strength: p.strength,
-              image_size: falImageSize,
-              num_images: 1,
-              enable_safety_checker: false,
-              ...(p.negativePrompt ? { negative_prompt: p.negativePrompt } : {}),
-            }),
-          });
-          if (!res.ok) { const b = await res.text(); console.log(`[beautify] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+      try {
+        console.log(`[beautify] Trying FAL clarity-upscaler (prompt-guided enhancement)...`);
+        const res = await fetch("https://queue.fal.run/fal-ai/clarity-upscaler", {
+          method: "POST",
+          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            prompt: p.prompt,
+            negative_prompt: p.negativePrompt,
+            scale: 1,  // 1x = same resolution, just enhance quality + apply style
+            creativity: p.strength, // 0.06-0.09 = very subtle style application
+            resemblance: 0.95, // 0.95 = keep 95% of original structure
+            guidance_scale: 4, // low guidance = subtle changes
+            num_inference_steps: 18,
+            enable_safety_checker: false,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const resultUrl = data.image?.url || data.images?.[0]?.url;
+          if (resultUrl) {
+            console.log(`[beautify] FAL clarity-upscaler OK in ${Date.now() - t0}ms`);
+            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-clarity-upscaler", preset });
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[beautify] FAL clarity-upscaler ${res.status}: ${b.slice(0, 200)}`);
+        }
+      } catch (err) { console.log(`[beautify] FAL clarity-upscaler error: ${err}`); }
+    }
+
+    // ── Strategy 2: FAL Creative Upscaler — fallback, more creative but still preserves content ──
+    if (falKey) {
+      try {
+        console.log(`[beautify] Fallback: FAL creative-upscaler...`);
+        const res = await fetch("https://queue.fal.run/fal-ai/creative-upscaler", {
+          method: "POST",
+          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            prompt: p.prompt,
+            negative_prompt: p.negativePrompt,
+            scale: 1,
+            creativity: 0.3, // low creativity = preserve original
+            detail: 1.1,
+            shape_preservation: 0.95,
+            enable_safety_checker: false,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const resultUrl = data.image?.url || data.images?.[0]?.url;
+          if (resultUrl) {
+            console.log(`[beautify] FAL creative-upscaler OK in ${Date.now() - t0}ms`);
+            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-creative-upscaler", preset });
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[beautify] FAL creative-upscaler ${res.status}: ${b.slice(0, 200)}`);
+        }
+      } catch (err) { console.log(`[beautify] FAL creative-upscaler error: ${err}`); }
+    }
+
+    // ── Strategy 3: FAL Flux img2img ultra-low strength as last resort ──
+    if (falKey) {
+      try {
+        console.log(`[beautify] Last resort: FAL Flux img2img (strength=0.04)...`);
+        const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
+        const res = await fetch("https://queue.fal.run/fal-ai/flux/dev/image-to-image", {
+          method: "POST",
+          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            prompt: p.prompt,
+            strength: 0.04,
+            image_size: falSizeMap[aspectRatio] || "landscape_4_3",
+            num_images: 1,
+            enable_safety_checker: false,
+            negative_prompt: p.negativePrompt,
+          }),
+        });
+        if (res.ok) {
           const data = await res.json();
           const resultUrl = data.images?.[0]?.url;
           if (resultUrl) {
-            console.log(`[beautify] FAL ${falModel} OK in ${Date.now() - t0}ms`);
-            return c.json({ success: true, imageUrl: resultUrl, provider: `beautify-fal/${falModel}`, preset });
-          }
-        } catch (err) { console.log(`[beautify] FAL ${falModel} error: ${err}`); }
-      }
-    }
-
-    // ── Strategy 2: Luma Photon modify_image_ref with high weight (keep original) ──
-    const lumaKey = Deno.env.get("LUMA_API_KEY");
-    if (lumaKey) {
-      try {
-        console.log(`[beautify] Fallback: Luma modify_image_ref (weight=0.90)...`);
-        const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
-        const lumaBody = {
-          prompt: p.prompt,
-          model: "photon-1",
-          aspect_ratio: lumaArMap[aspectRatio] || "4:3",
-          modify_image_ref: { url: imageUrl, weight: 0.90 },
-        };
-        const submitRes = await fetch("https://api.lumalabs.ai/dream-machine/v1/generations/image", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${lumaKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify(lumaBody),
-        });
-        if (submitRes.ok) {
-          const gen = await submitRes.json();
-          if (gen.id) {
-            let elapsed = 0;
-            while (elapsed < 90_000) {
-              await new Promise(r => setTimeout(r, 3_000)); elapsed += 3_000;
-              try {
-                const pollRes = await fetch(`https://api.lumalabs.ai/dream-machine/v1/generations/${gen.id}`, {
-                  headers: { Authorization: `Bearer ${lumaKey}` },
-                });
-                if (pollRes.ok) {
-                  const status = await pollRes.json();
-                  if (status.state === "completed" && status.assets?.image) {
-                    console.log(`[beautify] Luma OK in ${Date.now() - t0}ms`);
-                    return c.json({ success: true, imageUrl: status.assets.image, provider: "beautify-luma", preset });
-                  }
-                  if (status.state === "failed") { console.log(`[beautify] Luma failed: ${status.failure_reason}`); break; }
-                }
-              } catch { }
-            }
+            console.log(`[beautify] FAL Flux img2img OK in ${Date.now() - t0}ms`);
+            return c.json({ success: true, imageUrl: resultUrl, provider: "beautify-flux-img2img", preset });
           }
         }
-      } catch (err) { console.log(`[beautify] Luma error: ${err}`); }
+      } catch (err) { console.log(`[beautify] Flux img2img error: ${err}`); }
     }
 
     return c.json({ success: false, error: "All beautify providers failed" }, 500);
