@@ -14,7 +14,9 @@ import {
   Wand2, Scissors, Loader2, Sun, Paintbrush, Maximize, RefreshCw,
 } from "lucide-react";
 import type { TemplateDefinition, TemplateLayer } from "./templates/types";
-import { registerTemplate } from "./templates";
+import { registerTemplate, getTemplatesForFormat } from "./templates";
+import { compositeFigmaSvgTemplate, getFigmaSvgTemplateById } from "../lib/figmaSvgEngine";
+import type { SvgReplaceOptions } from "../lib/figmaSvgEngine";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 
@@ -100,6 +102,10 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
 
+  // ── SVG template composite preview ──
+  const [svgCompositeUrl, setSvgCompositeUrl] = useState<string | null>(null);
+  const [svgCompositing, setSvgCompositing] = useState(false);
+
   // ── Brand assets from vault ──
   const [brandAssets, setBrandAssets] = useState<VaultBrandAsset[]>([]);
   const [brandImages, setBrandImages] = useState<VaultBrandImage[]>([]);
@@ -175,6 +181,45 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
       setEditingTextId(null);
     }
   }, [template, open]);
+
+  /* ───────────────────────────────────────────────────────────────────────
+     SVG TEMPLATE COMPOSITE — render Figma SVG template as preview
+     ─────────────────────────────────────────────────────────────────────── */
+  const isSvgTemplate = !!template?.figmaSvgTemplateId;
+
+  const triggerSvgComposite = useCallback(async (tplId: string) => {
+    const figmaTemplate = getFigmaSvgTemplateById(tplId);
+    if (!figmaTemplate) return;
+    setSvgCompositing(true);
+    setSvgCompositeUrl(null);
+    try {
+      const opts: SvgReplaceOptions = {
+        imageUrl: asset?.imageUrl || "",
+        headline: asset?.headline || "",
+        ctaText: asset?.ctaText || "",
+        caption: asset?.caption || "",
+        subtitle: asset?.subtitle || "",
+        price: asset?.price || "",
+        brandName: vault?.name || vault?.brand_name || "",
+        vault,
+        logoUrl: brandLogoUrl || "",
+      };
+      const png = await compositeFigmaSvgTemplate(figmaTemplate, opts);
+      setSvgCompositeUrl(png);
+    } catch (err: any) {
+      console.warn("[TemplateEditor] SVG composite failed:", err?.message);
+    } finally {
+      setSvgCompositing(false);
+    }
+  }, [asset, vault, brandLogoUrl]);
+
+  // Auto-trigger SVG composite when opening with an SVG template
+  useEffect(() => {
+    if (open && isSvgTemplate && template.figmaSvgTemplateId) {
+      triggerSvgComposite(template.figmaSvgTemplateId);
+    }
+    if (!open) setSvgCompositeUrl(null);
+  }, [open, isSvgTemplate, template?.figmaSvgTemplateId, triggerSvgComposite]);
 
   /* ───────────────────────────────────────────────────────────────────────
      FETCH VAULT BRAND ASSETS + IMAGE BANK
@@ -938,6 +983,14 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
   }, [template, layers, onSave, onOpenChange]);
 
   const handleExport = useCallback(() => {
+    // SVG template: export the composite PNG
+    if (isSvgTemplate && svgCompositeUrl) {
+      const link = document.createElement("a");
+      link.download = `${template.name || "export"}.png`;
+      link.href = svgCompositeUrl;
+      link.click();
+      return;
+    }
     if (!stageRef.current) return;
     try {
       const dataUrl = stageRef.current.toDataURL({
@@ -952,7 +1005,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
     } catch {
       alert("Export not available for external CDN images.");
     }
-  }, [template, cw, stageScale]);
+  }, [template, cw, stageScale, isSvgTemplate, svgCompositeUrl]);
 
   /* ───────────────────────────────────────────────────────────────────────
      DRAG / TRANSFORM HANDLERS
@@ -1418,6 +1471,48 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
 
           {/* ═══ LEFT PANEL — Layers ═══ */}
           <div className="flex-shrink-0 border-r p-3 overflow-y-auto" style={{ width: 200, borderColor: "var(--border)" }}>
+            {/* ── Mise en page — Figma SVG templates ── */}
+            {(() => {
+              const formatId = asset?.formatId || template?.formatId || "instagram-post";
+              const available = getTemplatesForFormat(formatId).filter(t => !!t.figmaSvgTemplateId);
+              if (available.length === 0) return null;
+              return (
+                <div className="mb-4">
+                  <p style={sectionTitleStyle}>Mise en page</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {available.map(tmpl => {
+                      const isActive = template?.id === tmpl.id;
+                      return (
+                        <button
+                          key={tmpl.id}
+                          onClick={() => {
+                            if (tmpl.figmaSvgTemplateId && !isActive) {
+                              triggerSvgComposite(tmpl.figmaSvgTemplateId);
+                              // Update the template via onSave to switch
+                              if (onSave) onSave(tmpl);
+                            }
+                          }}
+                          className="rounded overflow-hidden cursor-pointer transition-all hover:scale-[1.06]"
+                          style={{
+                            border: isActive ? "2px solid var(--foreground)" : "2px solid transparent",
+                            background: "#1a1a1a",
+                            aspectRatio: "1",
+                          }}
+                          title={tmpl.name}
+                        >
+                          {tmpl.referenceImageUrl ? (
+                            <img src={tmpl.referenceImageUrl} alt={tmpl.name} className="w-full h-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center" style={{ fontSize: 8, color: "#666" }}>{tmpl.name}</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Add elements */}
             <div className="mb-4">
               <p style={sectionTitleStyle}>Add Element</p>
@@ -1632,6 +1727,23 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
 
           {/* ═══ CENTER — Canvas ═══ */}
           <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden relative" style={{ background: "#18171A" }}>
+            {/* SVG composite preview — shown instead of Konva when using Figma SVG template */}
+            {isSvgTemplate && (svgCompositeUrl || svgCompositing) ? (
+              <div className="flex items-center justify-center" style={{ width: cw * stageScale, height: ch * stageScale }}>
+                {svgCompositing ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={24} className="animate-spin" style={{ color: "var(--muted-foreground)" }} />
+                    <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>Applying layout...</span>
+                  </div>
+                ) : svgCompositeUrl ? (
+                  <img
+                    src={svgCompositeUrl}
+                    alt="SVG composite preview"
+                    style={{ width: cw * stageScale, height: ch * stageScale, objectFit: "contain" }}
+                  />
+                ) : null}
+              </div>
+            ) : (
             <div style={{ position: "relative" }}>
               <Stage
                 ref={stageRef}
@@ -1712,6 +1824,7 @@ export function TemplateEditor({ open, onOpenChange, template, asset, vault, bra
               </Stage>
               {textOverlay}
             </div>
+            )}
           </div>
 
           {/* ═══ RIGHT PANEL — Properties ═══ */}
