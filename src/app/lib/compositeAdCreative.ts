@@ -172,12 +172,28 @@ export async function compositeAdCreative(opts: CompositeOptions): Promise<strin
   // ── Render layers in zIndex order ──
   const sorted = [...template.layers].sort((a, b) => a.zIndex - b.zIndex);
 
+  console.log(`[composite] Template: ${template.id} (${template.name}), ${sorted.length} layers, canvas: ${cw}x${ch}`);
+  console.log(`[composite] Asset data:`, { headline: asset.headline, ctaText: asset.ctaText, subtitle: asset.subtitle, caption: asset.caption?.slice(0, 40) });
+  console.log(`[composite] Images loaded:`, Object.keys(loadedImages));
+
+  let nodesAdded = 0;
   for (const tl of sorted) {
-    if (!isVisible(tl, asset, vault)) continue;
+    const vis = isVisible(tl, asset, vault);
+    if (!vis) {
+      console.log(`[composite] Layer "${tl.id}" (${tl.type}) — HIDDEN (visible.when=${tl.visible?.when})`);
+      continue;
+    }
     const node = renderLayerImperative(tl, cw, ch, loadedImages, asset, vault, logoUrl);
-    if (node) layer.add(node);
+    if (node) {
+      layer.add(node);
+      nodesAdded++;
+      console.log(`[composite] Layer "${tl.id}" (${tl.type}) — RENDERED ✓`);
+    } else {
+      console.log(`[composite] Layer "${tl.id}" (${tl.type}) — visible but node=null (no data?)`);
+    }
   }
 
+  console.log(`[composite] Total nodes: ${nodesAdded}/${sorted.length}`);
   layer.draw();
 
   // ── Export to data URL ──
