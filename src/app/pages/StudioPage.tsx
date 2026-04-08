@@ -667,8 +667,21 @@ export function StudioPage() {
               const platform = formatId.split("-")[0];
               const extractText = (c: any) => c.caption || c.text || c.copy || c.body || c.content || c.message || "";
               const extractHashtags = (c: any) => Array.isArray(c.hashtags) ? c.hashtags.join(" ") : c.hashtags || "";
-              const extractHeadline = (c: any) => c.headline || c.subject || "";
-              const extractCta = (c: any) => c.ctaText || c.cta || "";
+              const extractHeadline = (c: any) => {
+                const h = c.headline || c.subject || "";
+                if (h) return h;
+                // Fallback: derive headline from caption (first sentence, max 8 words)
+                const txt = c.caption || c.text || c.copy || "";
+                if (!txt) return "";
+                const firstSentence = txt.split(/[.!?\n]/)[0]?.trim() || "";
+                const words = firstSentence.split(/\s+/).slice(0, 8);
+                return words.join(" ");
+              };
+              const extractCta = (c: any) => {
+                const cta = c.ctaText || c.cta || "";
+                if (cta) return cta;
+                return lang === "fr" ? "En savoir plus" : "Learn More";
+              };
               const extractSubtitle = (c: any) => c.subtitle || "";
               const extractPrice = (c: any) => c.price || "";
               const extractFeatures = (c: any): string[] => Array.isArray(c.features) ? c.features.filter(Boolean) : [];
