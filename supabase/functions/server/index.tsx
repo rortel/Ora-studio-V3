@@ -13584,10 +13584,27 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
   try { data = JSON.parse(rawText); } catch { throw new Error(`Zernio accounts returned non-JSON (HTTP ${res.status}): ${rawText.slice(0, 100)}`); }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   const allAccounts = data.accounts || [];
+  // Log raw account data to debug profile matching
+  if (allAccounts.length > 0) {
+    const sample = allAccounts[0];
+    console.log(`[zernio] Raw account sample keys: ${Object.keys(sample).join(",")}, profileId field="${sample.profileId || sample._profile || sample.profile || "NONE"}", our profileId="${profileId}"`);
+  }
   // Filter: only accounts belonging to this user's profile
+  // Try multiple possible field names that Zernio might use
   const userAccounts = allAccounts.filter((a: any) =>
-    a.profileId === profileId || a._profile === profileId || a.profile === profileId
+    a.profileId === profileId || a._profile === profileId || a.profile === profileId ||
+    a.profileId?._id === profileId || a._profileId === profileId
   );
+  // If no accounts matched by profile but we have accounts, log the mismatch
+  if (userAccounts.length === 0 && allAccounts.length > 0) {
+    console.log(`[zernio] WARNING: ${allAccounts.length} accounts found but NONE match profileId=${profileId}. Account profileIds: ${allAccounts.map((a: any) => JSON.stringify({ profileId: a.profileId, _profile: a._profile, profile: a.profile })).join(", ")}`);
+    // Fallback: if there's only one profile in the system, these accounts are probably ours
+    const uniqueProfiles = new Set(allAccounts.map((a: any) => a.profileId || a._profile || a.profile).filter(Boolean));
+    if (uniqueProfiles.size <= 1) {
+      console.log(`[zernio] Fallback: only ${uniqueProfiles.size} profile(s) found, assuming all ${allAccounts.length} accounts belong to this user`);
+      return { accounts: allAccounts, profileId };
+    }
+  }
   console.log(`[zernio] Accounts for profile=${profileId}: ${userAccounts.length}/${allAccounts.length} (${userAccounts.map((a: any) => a.platform).join(",")})`);
   // Cache in KV for fast lookup during deploy
   if (userAccounts.length > 0) {
@@ -18109,13 +18126,14 @@ app.post("/calendar/deploy", async (c) => {
     try {
       // Use the shared helper which filters by profile
       const { accounts } = await listZernioAccountsForUser(user.id, user.email);
-      acct = accounts.find((a: any) => a.platform === zernioPlatform && a.status === "active");
+      acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase() && (a.status === "active" || a.status === "connected"));
+      console.log(`[calendar/deploy] Looking for platform="${zernioPlatform}", found ${accounts.length} accounts: ${accounts.map((a: any) => `${a.platform}(${a.status})`).join(", ")}, match=${!!acct}`);
     } catch (err) {
       console.log(`[calendar/deploy] Zernio accounts list failed: ${err}`);
       return c.json({ success: false, error: `Failed to check connected accounts: ${err}` }, 500);
     }
     if (!acct) {
-      return c.json({ success: false, error: `No ${platform} account connected. Connect your ${platform} account first.`, needsConnect: true, platform: zernioPlatform });
+      return c.json({ success: false, error: `No ${platform} account connected. Connect your ${platform} account first in Campaign Lab.`, needsConnect: true, platform: zernioPlatform });
     }
 
     const contentText = [event.headline || "", event.copy || event.caption || "", event.hashtags || ""].filter(Boolean).join("\n\n");
@@ -18216,7 +18234,7 @@ app.post("/calendar/deploy-all", async (c) => {
         continue;
       }
 
-      const acct = accounts.find((a: any) => a.platform === zernioPlatform && a.status === "active");
+      const acct = accounts.find((a: any) => a.platform?.toLowerCase() === zernioPlatform?.toLowerCase() && (a.status === "active" || a.status === "connected"));
       if (!acct) {
         results.push({ eventId: eventKvKey, platform, success: false, error: `No ${platform} account connected`, needsConnect: true });
         continue;
