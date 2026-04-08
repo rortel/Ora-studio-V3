@@ -3320,6 +3320,90 @@ function CampaignFinalizer({ posts: initialPosts, logoUrl, brief, vault, serverP
   );
 }
 
+// ── Layout wireframe thumbnails — visual representation of each layout preset ──
+function LayoutWireframe({ layoutId, accent, fg }: { layoutId: string; accent: string; fg: string }) {
+  const w = 48, h = 48;
+  const imgColor = `${accent}33`; // 20% opacity
+  const barColor = accent;
+  const textColor = `${fg}99`; // 60% opacity
+  const lineH = 2;
+
+  const wireframes: Record<string, React.ReactNode> = {
+    // Produit + CTA: image top, headline, CTA button, price badge
+    "ad-ready": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="44" height="22" rx="2" fill={imgColor} stroke={barColor} strokeWidth="0.5" strokeDasharray="2 1" />
+        <rect x="14" y="8" width="20" height="10" rx="1" fill={imgColor} />
+        <rect x="2" y="27" width="28" height={lineH+1} rx="1" fill={fg} opacity="0.8" />
+        <rect x="2" y="32" width="20" height={lineH} rx="1" fill={textColor} />
+        <rect x="2" y="38" width="18" height="6" rx="3" fill={barColor} opacity="0.9" />
+        <rect x="34" y="26" width="12" height="8" rx="2" fill={barColor} opacity="0.25" />
+        <text x="40" y="32" textAnchor="middle" fontSize="5" fill={barColor} fontWeight="700">€</text>
+      </svg>
+    ),
+    // Editorial: full image + gradient bottom + text overlay
+    "editorial": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="44" height="44" rx="2" fill={imgColor} />
+        <defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity="0"/><stop offset="1" stopColor="#000" stopOpacity="0.6"/></linearGradient></defs>
+        <rect x="2" y="24" width="44" height="22" rx="0" fill="url(#eg)" />
+        <rect x="5" y="30" width="24" height={lineH+1} rx="1" fill="#fff" opacity="0.9" />
+        <rect x="5" y="35" width="18" height={lineH} rx="1" fill="#fff" opacity="0.6" />
+        <rect x="5" y="40" width="14" height={lineH} rx="1" fill="#fff" opacity="0.4" />
+      </svg>
+    ),
+    // Bold: large text, opaque shapes, high contrast
+    "bold": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="44" height="44" rx="2" fill={imgColor} />
+        <rect x="2" y="2" width="44" height="44" rx="2" fill="#000" opacity="0.3" />
+        <rect x="8" y="10" width="32" height="5" rx="1" fill="#fff" opacity="0.95" />
+        <rect x="10" y="17" width="28" height="4" rx="1" fill="#fff" opacity="0.95" />
+        <rect x="8" y="26" width="22" height={lineH} rx="1" fill="#fff" opacity="0.5" />
+        <rect x="14" y="36" width="20" height="7" rx="3.5" fill={barColor} opacity="0.9" />
+      </svg>
+    ),
+    // Minimal: lots of space, small text, subtle branding
+    "minimal": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="44" height="44" rx="2" fill={imgColor} />
+        <defs><linearGradient id="mg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity="0"/><stop offset="1" stopColor="#000" stopOpacity="0.5"/></linearGradient></defs>
+        <rect x="2" y="30" width="44" height="16" fill="url(#mg)" />
+        <rect x="6" y="35" width="20" height={lineH} rx="1" fill="#fff" opacity="0.8" />
+        <rect x="6" y="40" width="12" height={lineH} rx="1" fill="#fff" opacity="0.5" />
+        <circle cx="42" cy="6" r="3" fill={barColor} opacity="0.3" />
+      </svg>
+    ),
+    // Magazine: multi-zone grid layout
+    "magazine": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="21" height="44" rx="2" fill={barColor} opacity="0.85" />
+        <rect x="25" y="2" width="21" height="44" rx="2" fill={imgColor} />
+        <rect x="5" y="8" width="15" height="3" rx="1" fill="#fff" opacity="0.9" />
+        <rect x="5" y="13" width="15" height="3" rx="1" fill="#fff" opacity="0.9" />
+        <rect x="5" y="20" width="12" height={lineH} rx="1" fill="#fff" opacity="0.5" />
+        <rect x="5" y="24" width="10" height={lineH} rx="1" fill="#fff" opacity="0.5" />
+        <line x1="5" y1="32" x2="15" y2="32" stroke="#fff" strokeWidth="0.5" opacity="0.4" />
+        <rect x="5" y="36" width="13" height={lineH} rx="1" fill="#fff" opacity="0.4" />
+      </svg>
+    ),
+    // Corporate: structured, professional, brand forward
+    "corporate": (
+      <svg width={w} height={h} viewBox="0 0 48 48" fill="none">
+        <rect x="2" y="2" width="44" height="44" rx="2" fill={imgColor} />
+        <rect x="2" y="30" width="44" height="16" rx="0" fill="#111" opacity="0.85" />
+        <rect x="2" y="30" width="44" height="1" fill={barColor} opacity="0.9" />
+        <rect x="5" y="34" width="24" height="3" rx="1" fill="#fff" opacity="0.9" />
+        <rect x="5" y="39" width="16" height={lineH} rx="1" fill="#fff" opacity="0.5" />
+        <rect x="34" y="36" width="10" height="5" rx="2.5" fill={barColor} opacity="0.9" />
+        <rect x="5" y="5" width="8" height="8" rx="1" fill={barColor} opacity="0.3" />
+      </svg>
+    ),
+  };
+
+  return <div style={{ width: w, height: h }}>{wireframes[layoutId] || wireframes["editorial"]}</div>;
+}
+
 function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, serverPost }: {
   params: Record<string, any>;
   products: any[];
@@ -3838,23 +3922,25 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* Mise en page */}
+        {/* Mise en page — miniatures visuelles */}
         <div>
           <SectionLabel>Mise en page</SectionLabel>
           <div className="grid grid-cols-3 gap-1.5">
             {LAYOUT_PRESETS.map(layout => {
               const isSelected = selectedLayout === layout.id;
+              const fg = isSelected ? "var(--background)" : "var(--text-primary)";
+              const accent = isSelected ? "var(--background)" : "var(--foreground)";
               return (
                 <button key={layout.id} onClick={() => setSelectedLayout(layout.id)}
-                  className="flex flex-col items-center gap-1 px-2 py-2 rounded-xl transition-all cursor-pointer text-center"
+                  className="flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-xl transition-all cursor-pointer text-center"
                   style={{
                     background: isSelected ? "var(--foreground)" : "var(--secondary)",
-                    color: isSelected ? "var(--background)" : "var(--text-primary)",
+                    color: fg,
                     border: `1.5px solid ${isSelected ? "var(--foreground)" : "var(--border)"}`,
                   }}>
-                  <span style={{ fontSize: "16px" }}>{layout.emoji}</span>
+                  {/* Wireframe miniature */}
+                  <LayoutWireframe layoutId={layout.id} accent={accent} fg={fg} />
                   <span style={{ fontSize: "10px", fontWeight: 600, lineHeight: 1.2 }}>{layout.label}</span>
-                  <span style={{ fontSize: "8px", opacity: 0.6, lineHeight: 1.1 }}>{layout.description}</span>
                 </button>
               );
             })}
