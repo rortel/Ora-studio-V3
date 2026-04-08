@@ -1356,66 +1356,96 @@ export function StudioPage() {
     setIsGenerating(false);
   }, [comparePicker, serverGet]);
 
-  // ── "Plus de versions" — style-based variants (no technical model names) ──
-  const STYLE_VARIANTS = [
-    { id: "lifestyle", label: "Lifestyle", prompt: "Beautiful natural lifestyle environment, warm golden hour light, editorial photography, soft bokeh background" },
-    { id: "packshot", label: "Packshot", prompt: "Clean studio packshot, pure white background, professional product photography, perfect lighting" },
-    { id: "cinematic", label: "Cinématique", prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast, cinematic color grading, anamorphic feel" },
-    { id: "editorial", label: "Éditorial", prompt: "High-fashion editorial setting, clean minimal backdrop, dramatic directional lighting, magazine quality" },
-    { id: "natural", label: "Naturel", prompt: "Organic natural setting, soft diffused daylight, earthy tones, authentic lifestyle feel, gentle shadows" },
-  ];
-
+  // ── "Plus de versions" — fire all engines in parallel, user picks their favorite ──
+  // No model names, no style labels — just a grid of alternatives
   const handleMoreVersions = useCallback(async (postIdx: number, posts: CampaignPost[], refImageUrl?: string) => {
     const post = posts[postIdx];
     if (!post?.imageUrl) return;
     setIsGenerating(true);
-    const sourceUrl = refImageUrl || post.imageUrl;
+
+    const aspectRatio = post.format.includes("story") ? "9:16" : post.format.includes("post") ? "1:1" : "16:9";
+    const basePrompt = post.headline || post.text?.slice(0, 200) || "Professional product photography";
 
     try {
-      const results = await Promise.all(
-        STYLE_VARIANTS.map(async (style) => {
-          try {
-            // Use Photoroom (product-safe) when we have a product ref
-            if (refImageUrl) {
-              const res = await serverPost("/generate/image-start", {
-                prompt: style.prompt,
-                model: "photon-1",
-                aspectRatio: post.format.includes("story") ? "9:16" : post.format.includes("post") ? "1:1" : "16:9",
-                imageRefUrl: refImageUrl,
-                refSource: "upload",
-              }, 60_000);
-              if (res.success && (res.imageUrl || res.results?.[0]?.result?.imageUrl)) {
-                return { style: style.label, imageUrl: res.imageUrl || res.results[0].result.imageUrl };
-              }
-            } else {
-              // No product ref — use Ideogram Remix on the existing image
-              const res = await serverPost("/ideogram/remix", {
-                imageUrl: post.imageUrl,
-                prompt: style.prompt,
-                imageWeight: 50,
-                aspectRatio: post.format.includes("story") ? "9:16" : post.format.includes("post") ? "1:1" : "16:9",
-                styleType: "REALISTIC",
-              }, 90_000);
-              if (res.success && res.imageUrl) {
-                return { style: style.label, imageUrl: res.imageUrl };
-              }
-            }
-            return null;
-          } catch { return null; }
-        })
-      );
+      // Build an array of generation jobs — all in parallel, all product-safe
+      const jobs: Promise<string | null>[] = [];
 
-      const successful = results.filter(Boolean) as { style: string; imageUrl: string }[];
+      if (refImageUrl) {
+        // ── PRODUCT MODE: multiple engines that all respect the original product ──
+
+        // Photoroom with different scene prompts (keeps product pixel-perfect)
+        const scenePrompts = [
+          `${basePrompt}, beautiful lifestyle environment, warm natural light`,
+          `${basePrompt}, clean studio, professional product photography`,
+          `${basePrompt}, dramatic cinematic lighting, moody atmosphere`,
+          `${basePrompt}, elegant minimal setting, soft editorial light`,
+        ];
+        for (const prompt of scenePrompts) {
+          jobs.push(
+            serverPost("/generate/image-start", {
+              prompt, model: "photon-1", aspectRatio,
+              imageRefUrl: refImageUrl, refSource: "upload",
+            }, 60_000)
+              .then(res => res.success && (res.imageUrl || res.results?.[0]?.result?.imageUrl) ? (res.imageUrl || res.results[0].result.imageUrl) : null)
+              .catch(() => null)
+          );
+        }
+
+        // Ideogram Replace-BG (keeps product pixel-perfect, swaps background)
+        jobs.push(
+          serverPost("/ideogram/replace-background", {
+            imageUrl: refImageUrl,
+            prompt: `${basePrompt}, premium product staging, elegant background`,
+          }, 90_000)
+            .then(res => res.success && res.imageUrl ? res.imageUrl : null)
+            .catch(() => null)
+        );
+
+        // Ideogram Remix (high imageWeight to preserve product)
+        jobs.push(
+          serverPost("/ideogram/remix", {
+            imageUrl: refImageUrl,
+            prompt: `${basePrompt}, professional product photography, premium quality`,
+            imageWeight: 70, aspectRatio, styleType: "REALISTIC",
+          }, 90_000)
+            .then(res => res.success && res.imageUrl ? res.imageUrl : null)
+            .catch(() => null)
+        );
+      } else {
+        // ── NO PRODUCT: use multiple image models for diversity ──
+        const models = ["photon-1", "flux-pro", "dall-e", "seedream-v4"];
+        for (const model of models) {
+          jobs.push(
+            serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(basePrompt)}&models=${model}&aspectRatio=${aspectRatio}`)
+              .then(res => res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null)
+              .catch(() => null)
+          );
+        }
+
+        // Ideogram Remix on existing image
+        jobs.push(
+          serverPost("/ideogram/remix", {
+            imageUrl: post.imageUrl,
+            prompt: basePrompt,
+            imageWeight: 40, aspectRatio, styleType: "REALISTIC",
+          }, 90_000)
+            .then(res => res.success && res.imageUrl ? res.imageUrl : null)
+            .catch(() => null)
+        );
+      }
+
+      const results = await Promise.all(jobs);
+      const successful = results.filter(Boolean) as string[];
+
       if (successful.length > 0) {
-        // Add as a comparison result message
         const msg: ChatMessage = {
           id: `versions-${Date.now()}`, role: "assistant",
-          content: `${successful.length} versions de style différent :`,
+          content: `${successful.length + 1} versions — choisissez votre préférée :`,
           result: {
-            type: "image", prompt: post.text || "",
+            type: "image", prompt: basePrompt,
             items: [
               { url: post.imageUrl!, model: "Original", latencyMs: 0 },
-              ...successful.map(r => ({ url: r.imageUrl, model: r.style, latencyMs: 0 })),
+              ...successful.map((url, i) => ({ url, model: `Version ${i + 2}`, latencyMs: 0 })),
             ],
             refImageUrl: refImageUrl,
           },
@@ -1425,7 +1455,7 @@ export function StudioPage() {
         toast.error("Impossible de générer des variantes");
       }
     } catch {
-      toast.error("Erreur lors de la génération des variantes");
+      toast.error("Erreur lors de la génération");
     }
     setIsGenerating(false);
   }, [serverPost, serverGet]);
