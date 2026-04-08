@@ -1210,8 +1210,8 @@ const leonardoImageModelMap: Record<string, { leonardoModelId: string; aspectRat
 
 // --- Video models routed through secondary provider (submit + poll) ---
 const hfVideoModelMap: Record<string, { hfModelsI2v: string[]; hfModelsT2v: string[]; aspectRatio: string }> = {
-  "kling-v2.1":       { hfModelsI2v: ["kling-video/v2.1/pro/image-to-video"], hfModelsT2v: ["higgsfield-ai/dop/standard"], aspectRatio: "16:9" },
-  "seedance-v1":      { hfModelsI2v: ["bytedance/seedance/v1/pro/image-to-video"], hfModelsT2v: ["higgsfield-ai/dop/standard"], aspectRatio: "9:16" },
+  "kling-v2.1":       { hfModelsI2v: ["kling-video/v2.1/pro/image-to-video"], hfModelsT2v: [], aspectRatio: "16:9" },
+  "seedance-v1":      { hfModelsI2v: ["bytedance/seedance/v1/pro/image-to-video"], hfModelsT2v: [], aspectRatio: "9:16" },
   "dop":              { hfModelsI2v: ["higgsfield-ai/dop/standard"], hfModelsT2v: ["higgsfield-ai/dop/standard", "higgsfield-ai/dop/preview"], aspectRatio: "16:9" },
 };
 
@@ -1222,6 +1222,7 @@ const videoModelMap: Record<string, { lumaModel: string; aspectRatio: string }> 
   "ray-flash-2":      { lumaModel: "ray-flash-2", aspectRatio: "16:9" },
   "veo-3.1":          { lumaModel: "ray-2", aspectRatio: "16:9" },
   "sora-2":           { lumaModel: "ray-2", aspectRatio: "16:9" },
+  "seedance-v1":      { lumaModel: "ray-2", aspectRatio: "9:16" },
   "seedance-2.0":     { lumaModel: "ray-2", aspectRatio: "16:9" },
   "seedance-1.5-pro": { lumaModel: "ray-2", aspectRatio: "16:9" },
   "seedance-1.0":     { lumaModel: "ray-flash-2", aspectRatio: "16:9" },
