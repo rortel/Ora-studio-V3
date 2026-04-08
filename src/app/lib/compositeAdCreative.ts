@@ -222,7 +222,7 @@ export async function compositeAdCreative(opts: CompositeOptions): Promise<strin
 
     // Auto-design: transform full-bleed bg image into positioned product
     if (useAutoDesign && tl === bgLayer) {
-      const img = images[tl.id];
+      const img = loadedImages[tl.id];
       if (img) {
         // Position product: centered, top portion (leaving bottom for text)
         const prodW = Math.round(cw * 0.65);
@@ -296,7 +296,7 @@ function renderLayerImperative(
   switch (tl.type) {
     case "background-image":
     case "image": {
-      const img = images[tl.id];
+      const img = loadedImages[tl.id];
       if (!img) return null;
       const crop = coverCrop(img.width, img.height, w, h);
       return new Konva.Image({
@@ -363,7 +363,7 @@ function renderLayerImperative(
     }
 
     case "logo": {
-      const img = images[tl.id];
+      const img = loadedImages[tl.id];
       if (!img) return null;
       const imgRatio = img.width / img.height;
       const boxRatio = w / h;
