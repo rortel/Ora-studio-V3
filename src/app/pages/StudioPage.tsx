@@ -2148,6 +2148,10 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [variantSelections, setVariantSelections] = useState<Record<number, number>>({});
   const [slideIdx, setSlideIdx] = useState<Record<number, number>>({});
+  const [remixIdx, setRemixIdx] = useState<number | null>(null);
+  const [remixPrompt, setRemixPrompt] = useState("");
+  const [isRemixing, setIsRemixing] = useState(false);
+  const remixInputRef = useRef<HTMLInputElement>(null);
 
   const selectVariant = (postIdx: number, variantIdx: number) => {
     setVariantSelections(prev => ({ ...prev, [postIdx]: variantIdx }));
@@ -2444,8 +2448,48 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
                       <span style={{ fontSize: "12px", fontWeight: 600 }}>{post.cta}</span>
                     </div>
                   )}
-                  {/* Edit buttons */}
-                  <div className="flex items-center gap-2 pt-1">
+                  {/* Remix input — describe changes like Ideogram */}
+                  {onRemix && (post.imageUrl || post.slides?.some(s => s.imageUrl)) && (
+                    remixIdx === idx ? (
+                      <form onSubmit={async e => {
+                        e.preventDefault(); e.stopPropagation();
+                        if (!remixPrompt.trim() || isRemixing) return;
+                        const targetUrl = post.slides ? post.slides[slideIdx[idx] ?? 0]?.imageUrl : (post.compositeImageUrl || post.imageUrl);
+                        if (!targetUrl) return;
+                        setIsRemixing(true);
+                        try { await onRemix(targetUrl, remixPrompt.trim()); }
+                        finally { setIsRemixing(false); setRemixIdx(null); setRemixPrompt(""); }
+                      }} className="flex gap-1.5 pt-1" onClick={e => e.stopPropagation()}>
+                        <input ref={remixInputRef} value={remixPrompt} onChange={e => setRemixPrompt(e.target.value)}
+                          placeholder="Ex: change la femme en homme, fond bleu..."
+                          autoFocus disabled={isRemixing}
+                          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+                          style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}
+                          onKeyDown={e => { if (e.key === "Escape") { setRemixIdx(null); setRemixPrompt(""); } }} />
+                        {isRemixing ? (
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: "var(--secondary)" }}>
+                            <Loader2 size={14} className="animate-spin" />
+                          </div>
+                        ) : (
+                          <button type="submit" disabled={!remixPrompt.trim()}
+                            className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                            style={{ background: remixPrompt.trim() ? "var(--foreground)" : "var(--secondary)", color: remixPrompt.trim() ? "var(--background)" : "var(--muted-foreground)" }}>
+                            <Wand2 size={14} />
+                          </button>
+                        )}
+                      </form>
+                    ) : (
+                      <button
+                        onClick={e => { e.stopPropagation(); setRemixIdx(idx); setRemixPrompt(""); setTimeout(() => remixInputRef.current?.focus(), 100); }}
+                        className="flex items-center gap-1.5 w-full px-3 py-2 rounded-lg cursor-pointer transition-all"
+                        style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "12px", fontWeight: 600 }}>
+                        <Wand2 size={12} />
+                        Modifier ce visuel par texte
+                      </button>
+                    )
+                  )}
+                  {/* Other edit buttons */}
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
                     {onEdit && (
                       <button
                         onClick={e => { e.stopPropagation(); onEdit({ text: post.text, model: post.variants?.[0]?.model || "unknown" }, "text", post.text || ""); }}
@@ -2453,15 +2497,6 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
                         style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
                         <RefreshCw size={10} />
                         Réécrire le texte
-                      </button>
-                    )}
-                    {onEdit && (post.imageUrl || post.videoUrl) && (
-                      <button
-                        onClick={e => { e.stopPropagation(); onEdit({ url: post.imageUrl || post.videoUrl, model: post.variants?.[0]?.model || "unknown" }, "image", post.text || ""); }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500 }}>
-                        <RefreshCw size={10} />
-                        Régénérer le visuel
                       </button>
                     )}
                     {onMoreVersions && post.imageUrl && (
@@ -2479,9 +2514,9 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
                         onClick={e => { e.stopPropagation(); onAnimate(idx); }}
                         disabled={isGenerating}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                        style={{ background: "var(--foreground)", color: "var(--background)", border: "none", fontSize: "11px", fontWeight: 600, opacity: isGenerating ? 0.5 : 1 }}>
+                        style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "11px", fontWeight: 500, opacity: isGenerating ? 0.5 : 1 }}>
                         <Film size={10} />
-                        Animer cette création
+                        Animer
                       </button>
                     )}
                   </div>
