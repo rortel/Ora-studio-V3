@@ -1436,7 +1436,7 @@ async function generateImageDallE(req: { prompt: string; model: string; aspectRa
   return { model: req.model, provider: "openai/dall-e-3", imageUrl, latencyMs: Date.now() - start };
 }
 
-// ── FLUX PRO IMAGE GENERATION (FAL API) ──
+// ── FLUX PRO IMAGE GENERATION (FAL API — synchronous) ──
 async function generateImageFluxPro(req: { prompt: string; model: string; aspectRatio?: string }) {
   const start = Date.now();
   const key = Deno.env.get("FAL_API_KEY");
@@ -1451,56 +1451,21 @@ async function generateImageFluxPro(req: { prompt: string; model: string; aspect
   const dims = dimMap[ar] || { width: 1024, height: 768 };
   console.log(`[image-flux-pro] prompt="${req.prompt.slice(0, 60)}", dims=${dims.width}x${dims.height}`);
 
-  // Submit
-  const submitRes = await fetch("https://queue.fal.run/fal-ai/flux-pro/v1.1", {
+  // Synchronous call (fal.run blocks until result is ready, no polling needed)
+  const res = await fetch("https://fal.run/fal-ai/flux-pro/v1.1", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
     body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, safety_tolerance: "5" }),
   });
-  if (!submitRes.ok) {
-    const body = await submitRes.text();
-    throw new Error(`Flux Pro submit error ${submitRes.status}: ${body.slice(0, 200)}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Flux Pro error ${res.status}: ${body.slice(0, 200)}`);
   }
-  const submitData = await submitRes.json();
-  const requestId = submitData.request_id;
-  if (!requestId) {
-    // Synchronous response (images already in submitData)
-    const imageUrl = submitData.images?.[0]?.url;
-    if (imageUrl) return { model: req.model, provider: "fal/flux-pro", imageUrl, latencyMs: Date.now() - start };
-    throw new Error(`Flux Pro: no request_id or image in response`);
-  }
-  console.log(`[image-flux-pro] submitted requestId=${requestId}`);
-
-  // Poll
-  let elapsed = 0;
-  while (elapsed < 120_000) {
-    await new Promise(r => setTimeout(r, 3_000));
-    elapsed += 3_000;
-    try {
-      const pollRes = await fetch(`https://queue.fal.run/fal-ai/flux-pro/v1.1/requests/${requestId}/status`, {
-        headers: { Authorization: `Key ${key}` },
-      });
-      if (!pollRes.ok) { console.log(`[image-flux-pro] poll ${pollRes.status} (${elapsed / 1000}s)`); continue; }
-      const pollData = await pollRes.json();
-      if (pollData.status === "COMPLETED") {
-        // Fetch result
-        const resultRes = await fetch(`https://queue.fal.run/fal-ai/flux-pro/v1.1/requests/${requestId}`, {
-          headers: { Authorization: `Key ${key}` },
-        });
-        const resultData = await resultRes.json();
-        const imageUrl = resultData.images?.[0]?.url;
-        if (!imageUrl) throw new Error(`Flux Pro completed but no URL`);
-        console.log(`[image-flux-pro] OK (${Date.now() - start}ms)`);
-        return { model: req.model, provider: "fal/flux-pro", imageUrl, latencyMs: Date.now() - start };
-      }
-      if (pollData.status === "FAILED") throw new Error(`Flux Pro generation failed: ${pollData.error || "unknown"}`);
-      console.log(`[image-flux-pro] poll: status=${pollData.status} (${elapsed / 1000}s)`);
-    } catch (pollErr) {
-      if (pollErr instanceof Error && (pollErr.message.includes("completed") || pollErr.message.includes("failed"))) throw pollErr;
-      console.log(`[image-flux-pro] poll error: ${pollErr}`);
-    }
-  }
-  throw new Error(`Flux Pro timeout (120s), requestId=${requestId}`);
+  const data = await res.json();
+  const imageUrl = data.images?.[0]?.url;
+  if (!imageUrl) throw new Error(`Flux Pro: no image URL in response: ${JSON.stringify(data).slice(0, 300)}`);
+  console.log(`[image-flux-pro] OK (${Date.now() - start}ms)`);
+  return { model: req.model, provider: "fal/flux-pro", imageUrl, latencyMs: Date.now() - start };
 }
 
 // ── FLUX DEV IMAGE GENERATION (FAL API — synchronous call) ──
