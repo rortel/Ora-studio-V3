@@ -4,546 +4,87 @@ import {
   Zap, Clock, DollarSign, FileText, Image as ImageIcon, Video,
   Play, CheckCircle2, Circle, Loader2, Trophy, AlertTriangle,
   ChevronDown, ChevronRight, X, BarChart3, ArrowRight, Download,
-  Type, Hash, MessageSquare, Sparkles, Shield, Eye,
+  Type, Hash, MessageSquare, Sparkles, Shield, Eye, Save, Heart,
+  Maximize2, Minimize2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 
 /* ═══════════════════════════════════════════════════════════
-   COMPARE PAGE — ORA Intelligence Report (Yuka for AI)
-   43 AI models, real KPIs, deterministic scoring, cost transparency
+   CREATIVE LAB — Free creation playground with Yuka scoring
+   Generate · Compare · Save · Download
    ═══════════════════════════════════════════════════════════ */
 
 const API_BASE = import.meta.env.VITE_API_BASE || "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
 const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtidmtqYWZrenRic2V3dGFpanVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU2NDEzNjMsImV4cCI6MjA1MTIxNzM2M30.lGpbCMbfaFA77OdAkVMfIEJiKlhNOb9_el4MfW5hMsc";
 
-// ── Tier type ──
+// ── Types ──
 type ModelTier = "economy" | "standard" | "premium";
-
-// ── Model catalogs (enriched with providerCostEur, strengths, bestFor, tier) ──
-const TEXT_MODELS = [
-  { id: "gpt-4o", label: "GPT-4o", badge: "Fast", credits: 2, costEur: 0.20, providerCostEur: 0.008, strengths: ["speed", "instruction-following", "multilingual"], bestFor: "Fast multilingual content", tier: "standard" as ModelTier },
-  { id: "gpt-5", label: "GPT-5", badge: "Smart", credits: 3, costEur: 0.30, providerCostEur: 0.015, strengths: ["reasoning", "nuance", "quality"], bestFor: "Complex briefs, nuanced copy", tier: "premium" as ModelTier },
-  { id: "gpt-5.1", label: "GPT-5.1", badge: "Premium", credits: 3, costEur: 0.30, providerCostEur: 0.020, strengths: ["premium", "reasoning", "creativity"], bestFor: "Premium campaigns, top quality", tier: "premium" as ModelTier },
-  { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative", credits: 2, costEur: 0.20, providerCostEur: 0.012, strengths: ["creativity", "tone", "storytelling"], bestFor: "Creative storytelling, brand voice", tier: "standard" as ModelTier },
-  { id: "claude-haiku", label: "Claude Haiku", badge: "Ultra Fast", credits: 1, costEur: 0.10, providerCostEur: 0.002, strengths: ["ultra-fast", "concise", "affordable"], bestFor: "Quick drafts, high volume", tier: "economy" as ModelTier },
-  { id: "claude-opus", label: "Claude Opus", badge: "Best", credits: 5, costEur: 0.50, providerCostEur: 0.060, strengths: ["depth", "strategy", "premium"], bestFor: "Strategic content, long-form", tier: "premium" as ModelTier },
-  { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Multimodal", credits: 2, costEur: 0.20, providerCostEur: 0.010, strengths: ["multimodal", "analysis", "factual"], bestFor: "Data-driven content, analysis", tier: "standard" as ModelTier },
-  { id: "deepseek", label: "DeepSeek v3", badge: "Open Source", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["open-source", "affordable", "technical"], bestFor: "Technical content, budget-conscious", tier: "economy" as ModelTier },
-  { id: "ora-writer", label: "ORA Writer", badge: "Agence", credits: 2, costEur: 0.20, providerCostEur: 0.012, strengths: ["agency-tuned", "brand-aware", "balanced"], bestFor: "Brand-aligned campaigns", tier: "standard" as ModelTier },
-];
-
-const IMAGE_MODELS = [
-  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text", credits: 5, costEur: 0.50, providerCostEur: 0.074, strengths: ["text-rendering", "branding", "logos"], bestFor: "Logos, text on images, brand assets", tier: "premium" as ModelTier },
-  { id: "photon-1", label: "Luma Photon", badge: "Quality", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "lighting", "portraits"], bestFor: "Photo-realistic portraits, natural lighting", tier: "standard" as ModelTier },
-  { id: "photon-flash-1", label: "Photon Flash", badge: "Fast", credits: 3, costEur: 0.30, providerCostEur: 0.014, strengths: ["speed", "realism", "iteration"], bestFor: "Quick iterations, social media content", tier: "economy" as ModelTier },
-  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["instruction-following", "creative", "detail"], bestFor: "Complex prompts, creative concepts", tier: "premium" as ModelTier },
-  { id: "dall-e", label: "DALL-E 3", badge: "Precise", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["precision", "instruction-following", "compositions"], bestFor: "Precise compositions, editorial content", tier: "premium" as ModelTier },
-  { id: "flux-pro", label: "Flux Pro", badge: "Creative", credits: 8, costEur: 0.80, providerCostEur: 0.046, strengths: ["creative", "artistic", "detail"], bestFor: "Artistic visuals, creative campaigns", tier: "premium" as ModelTier },
-  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality", "detail", "creative"], bestFor: "High-end campaigns, premium content", tier: "premium" as ModelTier },
-  { id: "flux-dev-leo", label: "Flux Dev", badge: "Open", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["open-source", "flexible", "detail"], bestFor: "Flexible styling, custom workflows", tier: "standard" as ModelTier },
-  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast", "iteration", "drafts"], bestFor: "Rapid prototyping, draft concepts", tier: "economy" as ModelTier },
-  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency", "variations"], bestFor: "Image editing, maintaining consistency", tier: "standard" as ModelTier },
-  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism", "product-shots", "e-commerce"], bestFor: "Product photography, e-commerce", tier: "standard" as ModelTier },
-  { id: "leonardo-lightning", label: "Leonardo Lightning", badge: "Fast", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["speed", "drafts", "volume"], bestFor: "High-volume generation, fast drafts", tier: "economy" as ModelTier },
-  { id: "leonardo-kino", label: "Leonardo Kino", badge: "Cinema", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["cinematic", "mood", "storytelling"], bestFor: "Cinematic stills, mood boards", tier: "standard" as ModelTier },
-  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures", "environments"], bestFor: "Detailed environments, textures", tier: "standard" as ModelTier },
-  { id: "seedream-v4.5", label: "SeedDream v4.5", badge: "Latest", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "latest", "quality"], bestFor: "Latest quality, detailed scenes", tier: "standard" as ModelTier },
-  { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized", "creative"], bestFor: "Artistic interpretations, stylized content", tier: "standard" as ModelTier },
-  { id: "nano-banana", label: "Nano Banana", badge: "Fast", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["fast", "general", "versatile"], bestFor: "General purpose, fast generation", tier: "economy" as ModelTier },
-  { id: "nano-banana-2-leo", label: "Nano Banana 2", badge: "Upgraded", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["improved", "versatile", "quality"], bestFor: "Versatile content creation", tier: "standard" as ModelTier },
-  { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "balanced", "agency-tuned"], bestFor: "Agency-grade balanced output", tier: "standard" as ModelTier },
-];
-
-const VIDEO_MODELS = [
-  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "motion", "cinematic"], bestFor: "Cinematic quality, smooth motion", tier: "premium" as ModelTier },
-  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 20, costEur: 2.00, providerCostEur: 0.14, strengths: ["speed", "good-quality", "iteration"], bestFor: "Fast video iteration", tier: "economy" as ModelTier },
-  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["google", "quality", "latest"], bestFor: "Latest Google quality", tier: "premium" as ModelTier },
-  { id: "sora-2", label: "Sora 2", badge: "OpenAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["openai", "creative", "narrative"], bestFor: "Creative narratives", tier: "premium" as ModelTier },
-  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 40, costEur: 4.00, providerCostEur: 0.35, strengths: ["cinematic", "premium", "character"], bestFor: "Character-driven scenes", tier: "premium" as ModelTier },
-  { id: "seedance-v1", label: "Seedance v1", badge: "TikTok", credits: 40, costEur: 4.00, providerCostEur: 0.28, strengths: ["tiktok", "vertical", "dance"], bestFor: "Vertical/TikTok content", tier: "standard" as ModelTier },
-  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["improved", "versatile", "quality"], bestFor: "Versatile video content", tier: "standard" as ModelTier },
-  { id: "runway-gen3", label: "Runway Gen-3", badge: "Creative", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["creative", "artistic", "style"], bestFor: "Artistic video experiments", tier: "premium" as ModelTier },
-  { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "affordable", "quick"], bestFor: "Quick fun animations", tier: "economy" as ModelTier },
-  { id: "dop", label: "DOP", badge: "Artistic", credits: 20, costEur: 2.00, providerCostEur: 0.09, strengths: ["artistic", "experimental", "stylized"], bestFor: "Stylized artistic video", tier: "economy" as ModelTier },
-  { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "balanced", "campaign"], bestFor: "Campaign video content", tier: "standard" as ModelTier },
-];
-
-type CompareMode = "text" | "image" | "video";
+type CreativeMode = "text" | "image" | "video";
 type StepStatus = "pending" | "running" | "done" | "error";
 
-interface TextKPIs {
-  model: string;
+interface ModelDef {
+  id: string; label: string; badge: string; credits: number;
+  costEur: number; providerCostEur: number;
+  strengths: string[]; bestFor: string; tier: ModelTier;
+}
+
+// ── Model catalogs ──
+const TEXT_MODELS: ModelDef[] = [
+  { id: "gpt-4o", label: "GPT-4o", badge: "Fast", credits: 2, costEur: 0.20, providerCostEur: 0.008, strengths: ["speed", "multilingual"], bestFor: "Contenu rapide multilingue", tier: "standard" },
+  { id: "gpt-5", label: "GPT-5", badge: "Smart", credits: 3, costEur: 0.30, providerCostEur: 0.015, strengths: ["reasoning", "nuance"], bestFor: "Briefs complexes", tier: "premium" },
+  { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative", credits: 2, costEur: 0.20, providerCostEur: 0.012, strengths: ["creativity", "storytelling"], bestFor: "Storytelling créatif", tier: "standard" },
+  { id: "claude-opus", label: "Claude Opus", badge: "Best", credits: 5, costEur: 0.50, providerCostEur: 0.060, strengths: ["depth", "strategy"], bestFor: "Contenu stratégique", tier: "premium" },
+  { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Google", credits: 2, costEur: 0.20, providerCostEur: 0.010, strengths: ["multimodal", "factual"], bestFor: "Contenu data-driven", tier: "standard" },
+  { id: "deepseek", label: "DeepSeek v3", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["affordable", "technical"], bestFor: "Budget-friendly", tier: "economy" },
+];
+
+const IMAGE_MODELS: ModelDef[] = [
+  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text", credits: 5, costEur: 0.50, providerCostEur: 0.074, strengths: ["text-rendering", "branding"], bestFor: "Logos, texte sur images", tier: "premium" },
+  { id: "photon-1", label: "Luma Photon", badge: "Quality", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "lighting"], bestFor: "Portraits réalistes", tier: "standard" },
+  { id: "photon-flash-1", label: "Photon Flash", badge: "Fast", credits: 3, costEur: 0.30, providerCostEur: 0.014, strengths: ["speed", "iteration"], bestFor: "Itérations rapides", tier: "economy" },
+  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["creative", "detail"], bestFor: "Prompts complexes", tier: "premium" },
+  { id: "dall-e", label: "DALL-E 3", badge: "Precise", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["precision", "compositions"], bestFor: "Compositions précises", tier: "premium" },
+  { id: "flux-pro", label: "Flux Pro", badge: "Creative", credits: 8, costEur: 0.80, providerCostEur: 0.046, strengths: ["artistic", "detail"], bestFor: "Visuels artistiques", tier: "premium" },
+  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality"], bestFor: "Campagnes premium", tier: "premium" },
+  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast"], bestFor: "Brouillons rapides", tier: "economy" },
+  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency"], bestFor: "Édition, cohérence", tier: "standard" },
+  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism"], bestFor: "Photo produit", tier: "standard" },
+  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard" },
+  { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Style artistique", tier: "standard" },
+  { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["balanced", "agency"], bestFor: "Qualité agence", tier: "standard" },
+];
+
+const VIDEO_MODELS: ModelDef[] = [
+  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "cinematic"], bestFor: "Cinématique", tier: "premium" },
+  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 20, costEur: 2.00, providerCostEur: 0.14, strengths: ["speed"], bestFor: "Itération vidéo rapide", tier: "economy" },
+  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["google", "quality"], bestFor: "Qualité Google", tier: "premium" },
+  { id: "sora-2", label: "Sora 2", badge: "OpenAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["creative", "narrative"], bestFor: "Narrations créatives", tier: "premium" },
+  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 40, costEur: 4.00, providerCostEur: 0.35, strengths: ["cinematic", "character"], bestFor: "Scènes à personnages", tier: "premium" },
+  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["versatile"], bestFor: "Contenu vidéo polyvalent", tier: "standard" },
+  { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy" },
+  { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "campaign"], bestFor: "Vidéo campagne", tier: "standard" },
+];
+
+// ── Result types ──
+interface CreativeResult {
+  id: string;
+  modelId: string;
   label: string;
+  type: CreativeMode;
+  imageUrl?: string;
+  videoUrl?: string;
+  text?: string;
   timeMs: number;
-  costEur: number;
-  credits: number;
-  wordCount: number;
-  charCount: number;
-  sentenceCount: number;
-  avgSentenceLength: number;
-  fleschScore: number;
-  lexicalRichness: number; // TTR
-  repeatedWords: { word: string; count: number }[];
-  hasCTA: boolean;
-  hashtagCount: number;
-  emojiCount: number;
-  questionCount: number;
-  spamWords: string[];
-  languageMatch: boolean;
-  output: string;
   success: boolean;
   error?: string;
+  scores: { speed: number; value: number; quality: number; reliability: number; overall: number };
+  saved?: boolean;
 }
 
-interface ImageKPIs {
-  model: string;
-  label: string;
-  timeMs: number;
-  costEur: number;
-  credits: number;
-  resolution: string;
-  width: number;
-  height: number;
-  aspectRatio: string;
-  fileSizeKB: number;
-  format: string;
-  retries: number;
-  imageUrl: string;
-  success: boolean;
-  error?: string;
-}
-
-interface VideoKPIs {
-  model: string;
-  label: string;
-  timeMs: number;
-  costEur: number;
-  credits: number;
-  resolution: string;
-  durationSec: number;
-  fileSizeMB: number;
-  pollCount: number;
-  videoUrl: string;
-  success: boolean;
-  error?: string;
-}
-
-// ── Category scores for detailed breakdowns ──
-interface CategoryScores {
-  speed: number;
-  value: number;
-  quality: number;
-  reliability: number;
-  overall: number;
-}
-
-// ── Text analysis (pure computation, zero AI) ──
-function analyzeText(text: string, requestedLang: string): Omit<TextKPIs, "model" | "label" | "timeMs" | "costEur" | "credits" | "success" | "error"> {
-  const words = text.split(/\s+/).filter(Boolean);
-  const wordCount = words.length;
-  const charCount = text.length;
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const sentenceCount = sentences.length;
-  const avgSentenceLength = sentenceCount > 0 ? Math.round((wordCount / sentenceCount) * 10) / 10 : 0;
-
-  // Flesch Reading Ease (adapted)
-  const syllableCount = words.reduce((acc, w) => {
-    const s = w.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüÿæœç]/g, "");
-    let count = 0;
-    let prevVowel = false;
-    for (const ch of s) {
-      const isVowel = "aeiouyàâäéèêëïîôùûüÿæœ".includes(ch);
-      if (isVowel && !prevVowel) count++;
-      prevVowel = isVowel;
-    }
-    return acc + Math.max(1, count);
-  }, 0);
-  const fleschScore = sentenceCount > 0 && wordCount > 0
-    ? Math.round(Math.max(0, Math.min(100, 206.835 - 1.015 * (wordCount / sentenceCount) - 84.6 * (syllableCount / wordCount))))
-    : 0;
-
-  // Lexical richness (TTR - Type-Token Ratio)
-  const uniqueWords = new Set(words.map(w => w.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüÿæœç0-9]/g, "")));
-  const lexicalRichness = wordCount > 0 ? Math.round((uniqueWords.size / wordCount) * 100) / 100 : 0;
-
-  // Repeated words (>2 occurrences, excluding stop words)
-  const stopWords = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during", "before", "after", "above", "below", "between", "and", "but", "or", "nor", "not", "so", "yet", "both", "either", "neither", "each", "every", "all", "any", "few", "more", "most", "other", "some", "such", "no", "only", "own", "same", "than", "too", "very", "just", "because", "if", "when", "where", "how", "what", "which", "who", "whom", "this", "that", "these", "those", "it", "its", "my", "your", "his", "her", "our", "their", "me", "him", "us", "them", "i", "you", "he", "she", "we", "they",
-    "le", "la", "les", "un", "une", "des", "de", "du", "au", "aux", "et", "ou", "mais", "donc", "car", "ni", "que", "qui", "quoi", "dont", "ce", "cette", "ces", "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses", "notre", "votre", "leur", "nous", "vous", "ils", "elles", "je", "tu", "il", "elle", "on", "en", "dans", "par", "pour", "sur", "avec", "est", "sont", "être", "avoir", "fait", "plus", "pas"]);
-  const wordFreq: Record<string, number> = {};
-  for (const w of words) {
-    const lw = w.toLowerCase().replace(/[^a-zàâäéèêëïîôùûüÿæœç0-9]/g, "");
-    if (lw.length > 2 && !stopWords.has(lw)) wordFreq[lw] = (wordFreq[lw] || 0) + 1;
-  }
-  const repeatedWords = Object.entries(wordFreq)
-    .filter(([, c]) => c > 2)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word, count]) => ({ word, count }));
-
-  // CTA detection (imperative verbs at end)
-  const lastSentence = sentences[sentences.length - 1]?.trim().toLowerCase() || "";
-  const ctaVerbs = ["click", "buy", "shop", "order", "subscribe", "sign up", "join", "get", "start", "try", "discover", "learn", "download", "book", "reserve", "contact", "call", "visit", "apply",
-    "cliquez", "achetez", "commandez", "inscrivez", "rejoignez", "obtenez", "commencez", "essayez", "découvrez", "apprenez", "téléchargez", "réservez", "contactez", "appelez", "visitez"];
-  const hasCTA = ctaVerbs.some(v => lastSentence.includes(v)) || /👉|➡️|→|↗️/.test(text.slice(-100));
-
-  // Counts
-  const hashtagCount = (text.match(/#\w+/g) || []).length;
-  const emojiCount = (text.match(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu) || []).length;
-  const questionCount = (text.match(/\?/g) || []).length;
-
-  // Spam words
-  const spamList = ["gratuit", "free", "urgent", "incroyable", "amazing", "incredible", "exceptionnel", "exceptional", "révolutionnaire", "revolutionary", "meilleur", "best", "#1", "n°1", "garanti", "guaranteed", "offre limitée", "limited offer", "exclusif", "exclusive", "sensationnel", "leader"];
-  const spamWords = spamList.filter(sw => text.toLowerCase().includes(sw));
-
-  // Language match
-  const frPatterns = /\b(le|la|les|des|est|sont|nous|vous|avec|dans|pour|cette|votre|notre)\b/gi;
-  const enPatterns = /\b(the|is|are|this|that|with|your|our|their|have|from)\b/gi;
-  const frCount = (text.match(frPatterns) || []).length;
-  const enCount = (text.match(enPatterns) || []).length;
-  const detectedLang = frCount > enCount ? "fr" : "en";
-  const languageMatch = detectedLang === requestedLang;
-
-  return { output: text, wordCount, charCount, sentenceCount, avgSentenceLength, fleschScore, lexicalRichness, repeatedWords, hasCTA, hashtagCount, emojiCount, questionCount, spamWords, languageMatch };
-}
-
-// ── Scoring functions ──
-
-function scoreTextModel(kpi: TextKPIs, allKPIs: TextKPIs[]): CategoryScores {
-  if (!kpi.success) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-  const successfulKPIs = allKPIs.filter(k => k.success);
-  if (successfulKPIs.length === 0) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-
-  const maxTime = Math.max(...successfulKPIs.map(k => k.timeMs));
-  const minTime = Math.min(...successfulKPIs.map(k => k.timeMs));
-  const maxCost = Math.max(...successfulKPIs.map(k => k.costEur));
-  const minCost = Math.min(...successfulKPIs.map(k => k.costEur));
-
-  const speed = maxTime > minTime ? Math.round(((maxTime - kpi.timeMs) / (maxTime - minTime)) * 100) : 100;
-  const value = maxCost > minCost ? Math.round(((maxCost - kpi.costEur) / (maxCost - minCost)) * 100) : 100;
-  const readabilityScore = kpi.fleschScore;
-  const richnessScore = Math.min(100, Math.round(kpi.lexicalRichness * 200));
-  const ctaBonus = kpi.hasCTA ? 10 : 0;
-  const spamPenalty = kpi.spamWords.length * 5;
-  const langPenalty = kpi.languageMatch ? 0 : 20;
-  const repeatPenalty = Math.min(15, kpi.repeatedWords.length * 3);
-  const quality = Math.round(Math.max(0, Math.min(100,
-    (readabilityScore * 0.5) + (richnessScore * 0.5) + ctaBonus - spamPenalty - langPenalty - repeatPenalty
-  )));
-  const reliability = 100;
-
-  const overall = Math.round(Math.max(0, Math.min(100,
-    (speed * 0.25) + (value * 0.20) + (quality * 0.35) + (reliability * 0.20)
-  )));
-
-  return { speed, value, quality, reliability, overall };
-}
-
-function scoreImageModel(kpi: ImageKPIs, allKPIs: ImageKPIs[]): CategoryScores {
-  if (!kpi.success) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-  const successfulKPIs = allKPIs.filter(k => k.success);
-  if (successfulKPIs.length === 0) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-
-  const maxTime = Math.max(...successfulKPIs.map(k => k.timeMs));
-  const minTime = Math.min(...successfulKPIs.map(k => k.timeMs));
-  const maxCost = Math.max(...successfulKPIs.map(k => k.costEur));
-  const minCost = Math.min(...successfulKPIs.map(k => k.costEur));
-  const maxPixels = Math.max(...successfulKPIs.map(k => k.width * k.height));
-
-  const speed = maxTime > minTime ? Math.round(((maxTime - kpi.timeMs) / (maxTime - minTime)) * 100) : 100;
-
-  // Value: providerCostEur ratio — lower provider cost relative to ORA cost = better value
-  const modelInfo = IMAGE_MODELS.find(m => m.id === kpi.model);
-  const providerCost = modelInfo?.providerCostEur || 0;
-  const maxProviderCost = Math.max(...successfulKPIs.map(k => IMAGE_MODELS.find(m => m.id === k.model)?.providerCostEur || 0));
-  const minProviderCost = Math.min(...successfulKPIs.map(k => IMAGE_MODELS.find(m => m.id === k.model)?.providerCostEur || 0));
-  const value = maxCost > minCost ? Math.round(((maxCost - kpi.costEur) / (maxCost - minCost)) * 100) : 100;
-
-  // Resolution score
-  const resolutionScore = maxPixels > 0 ? Math.round(((kpi.width * kpi.height) / maxPixels) * 100) : 100;
-
-  // Reliability
-  const reliability = kpi.success ? 100 : 0;
-
-  // ORA margin score: higher margin = lower score for user (less value for money)
-  const marginPct = kpi.costEur > 0 ? (kpi.costEur - providerCost) / kpi.costEur : 0;
-  const marginScore = Math.round(Math.max(0, (1 - marginPct) * 100));
-
-  const overall = Math.round(Math.max(0, Math.min(100,
-    (speed * 0.30) + (value * 0.20) + (reliability * 0.20) + (resolutionScore * 0.15) + (marginScore * 0.15)
-  )));
-
-  // "quality" in the card will show resolution score
-  return { speed, value, quality: resolutionScore, reliability, overall };
-}
-
-function scoreVideoModel(kpi: VideoKPIs, allKPIs: VideoKPIs[]): CategoryScores {
-  if (!kpi.success) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-  const successfulKPIs = allKPIs.filter(k => k.success);
-  if (successfulKPIs.length === 0) return { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
-
-  const maxTime = Math.max(...successfulKPIs.map(k => k.timeMs));
-  const minTime = Math.min(...successfulKPIs.map(k => k.timeMs));
-  const maxCost = Math.max(...successfulKPIs.map(k => k.costEur));
-  const minCost = Math.min(...successfulKPIs.map(k => k.costEur));
-
-  const speed = maxTime > minTime ? Math.round(((maxTime - kpi.timeMs) / (maxTime - minTime)) * 100) : 100;
-  const value = maxCost > minCost ? Math.round(((maxCost - kpi.costEur) / (maxCost - minCost)) * 100) : 100;
-  const reliability = 100;
-  const quality = 80; // base for successful video
-
-  const overall = Math.round(Math.max(0, Math.min(100,
-    (speed * 0.30) + (value * 0.25) + (reliability * 0.25) + (quality * 0.20)
-  )));
-
-  return { speed, value, quality, reliability, overall };
-}
-
-// ── Helper: get model info from any catalog ──
-function getModelInfo(modelId: string, mode: CompareMode) {
-  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
-  return catalog.find(m => m.id === modelId);
-}
-
-// ── Recommendation engine ──
-interface Recommendation {
-  winnerId: string;
-  winnerLabel: string;
-  winnerScore: number;
-  winnerCategories: CategoryScores;
-  reason: string;
-  whyBullets: string[];
-  insights: string[];
-  useCaseInsights: string[];
-  allScores: { modelId: string; label: string; scores: CategoryScores }[];
-}
-
-function generateTextRecommendation(results: TextKPIs[], locale: string): Recommendation {
-  const isFr = locale === "fr";
-  const successful = results.filter(r => r.success);
-  if (successful.length === 0) return { winnerId: "", winnerLabel: "", winnerScore: 0, winnerCategories: { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 }, reason: isFr ? "Aucun modele n'a produit de resultat." : "No model produced a result.", whyBullets: [], insights: [], useCaseInsights: [], allScores: [] };
-
-  const allScores = results.map(r => ({ modelId: r.model, label: r.label, scores: scoreTextModel(r, results) }));
-  const scoredResults = successful.map(r => ({ ...r, scores: scoreTextModel(r, results) }));
-  scoredResults.sort((a, b) => b.scores.overall - a.scores.overall);
-  const winner = scoredResults[0];
-  const insights: string[] = [];
-  const whyBullets: string[] = [];
-
-  // Speed insight
-  const fastest = successful.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
-  const slowest = successful.reduce((a, b) => a.timeMs > b.timeMs ? a : b);
-  if (fastest.model !== slowest.model) {
-    const ratio = (slowest.timeMs / fastest.timeMs).toFixed(1);
-    insights.push(isFr
-      ? `**Vitesse** -- ${fastest.label} a genere en ${(fastest.timeMs / 1000).toFixed(1)}s, soit **${ratio}x plus rapide** que ${slowest.label} (${(slowest.timeMs / 1000).toFixed(1)}s).`
-      : `**Speed** -- ${fastest.label} generated in ${(fastest.timeMs / 1000).toFixed(1)}s, **${ratio}x faster** than ${slowest.label} (${(slowest.timeMs / 1000).toFixed(1)}s).`
-    );
-  }
-
-  // Cost insight
-  const cheapest = successful.reduce((a, b) => a.costEur < b.costEur ? a : b);
-  const priciest = successful.reduce((a, b) => a.costEur > b.costEur ? a : b);
-  if (cheapest.costEur !== priciest.costEur) {
-    const saving = ((priciest.costEur - cheapest.costEur) * 100).toFixed(0);
-    insights.push(isFr
-      ? `**Cout** -- ${cheapest.label} coute ${cheapest.costEur.toFixed(2)}EUR, contre ${priciest.costEur.toFixed(2)}EUR pour ${priciest.label}. Sur 100 textes/mois : **${saving}EUR d'economie**.`
-      : `**Cost** -- ${cheapest.label} costs EUR${cheapest.costEur.toFixed(2)}, vs EUR${priciest.costEur.toFixed(2)} for ${priciest.label}. Over 100 texts/month: **EUR${saving} saved**.`
-    );
-  }
-
-  // Richness insight
-  const richest = successful.reduce((a, b) => a.lexicalRichness > b.lexicalRichness ? a : b);
-  const poorest = successful.reduce((a, b) => a.lexicalRichness < b.lexicalRichness ? a : b);
-  if (richest.lexicalRichness - poorest.lexicalRichness > 0.05) {
-    insights.push(isFr
-      ? `**Richesse lexicale** -- ${richest.label} (TTR ${richest.lexicalRichness.toFixed(2)}) utilise un vocabulaire ${((richest.lexicalRichness / poorest.lexicalRichness - 1) * 100).toFixed(0)}% plus varie que ${poorest.label} (${poorest.lexicalRichness.toFixed(2)}).`
-      : `**Lexical richness** -- ${richest.label} (TTR ${richest.lexicalRichness.toFixed(2)}) uses ${((richest.lexicalRichness / poorest.lexicalRichness - 1) * 100).toFixed(0)}% more varied vocabulary than ${poorest.label} (${poorest.lexicalRichness.toFixed(2)}).`
-    );
-  }
-
-  // Readability insight
-  const mostReadable = successful.reduce((a, b) => a.fleschScore > b.fleschScore ? a : b);
-  insights.push(isFr
-    ? `**Lisibilite** -- ${mostReadable.label} produit des phrases de ${mostReadable.avgSentenceLength} mots en moyenne (Flesch: ${mostReadable.fleschScore}/100).`
-    : `**Readability** -- ${mostReadable.label} produces sentences of ${mostReadable.avgSentenceLength} words on average (Flesch: ${mostReadable.fleschScore}/100).`
-  );
-
-  // CTA insight
-  const withCTA = successful.filter(r => r.hasCTA);
-  const withoutCTA = successful.filter(r => !r.hasCTA);
-  if (withCTA.length > 0 && withoutCTA.length > 0) {
-    insights.push(isFr
-      ? `**Call-to-Action** -- ${withCTA.map(r => r.label).join(", ")} ${withCTA.length === 1 ? "inclut" : "incluent"} un CTA. ${withoutCTA.map(r => r.label).join(", ")} n'en ${withoutCTA.length === 1 ? "a" : "ont"} pas.`
-      : `**Call-to-Action** -- ${withCTA.map(r => r.label).join(", ")} ${withCTA.length === 1 ? "includes" : "include"} a CTA. ${withoutCTA.map(r => r.label).join(", ")} ${withoutCTA.length === 1 ? "does" : "do"} not.`
-    );
-  }
-
-  // Spam words
-  const spammy = successful.filter(r => r.spamWords.length > 0);
-  if (spammy.length > 0) {
-    insights.push(isFr
-      ? `**Mots spam** -- ${spammy.map(r => `${r.label} (${r.spamWords.join(", ")})`).join(" / ")} -- risque de filtrage email.`
-      : `**Spam words** -- ${spammy.map(r => `${r.label} (${r.spamWords.join(", ")})`).join(" / ")} -- email filtering risk.`
-    );
-  }
-
-  // Language match
-  const langMismatch = successful.filter(r => !r.languageMatch);
-  if (langMismatch.length > 0) {
-    insights.push(isFr
-      ? `**Langue** -- ${langMismatch.map(r => r.label).join(", ")} ${langMismatch.length === 1 ? "a repondu" : "ont repondu"} dans une langue differente de celle demandee.`
-      : `**Language** -- ${langMismatch.map(r => r.label).join(", ")} responded in a different language than requested.`
-    );
-  }
-
-  // Why bullets for winner
-  if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide du test" : "Fastest in this test");
-  if (winner.model === richest.model) whyBullets.push(isFr ? "Vocabulaire le plus riche" : "Richest vocabulary");
-  if (winner.model === mostReadable.model) whyBullets.push(isFr ? "Meilleure lisibilite" : "Best readability");
-  if (winner.hasCTA) whyBullets.push(isFr ? "CTA present" : "CTA included");
-  if (winner.spamWords.length === 0) whyBullets.push(isFr ? "Zero mot spam" : "Zero spam words");
-  if (whyBullets.length === 0) whyBullets.push(isFr ? "Meilleur equilibre global" : "Best overall balance");
-
-  // Use-case insights for text
-  const useCaseInsights: string[] = [];
-  // Instagram: hashtags + emoji + CTA
-  const bestInstagram = [...scoredResults].sort((a, b) => (b.hashtagCount + b.emojiCount + (b.hasCTA ? 5 : 0)) - (a.hashtagCount + a.emojiCount + (a.hasCTA ? 5 : 0)))[0];
-  if (bestInstagram) useCaseInsights.push(isFr ? `Pour les captions Instagram -> **${bestInstagram.label}** (hashtags, emoji, CTA)` : `For Instagram captions -> **${bestInstagram.label}** (hashtags, emoji, CTA)`);
-  // LinkedIn: readability + no spam
-  const bestLinkedIn = [...scoredResults].sort((a, b) => (b.fleschScore + (b.spamWords.length === 0 ? 20 : 0)) - (a.fleschScore + (a.spamWords.length === 0 ? 20 : 0)))[0];
-  if (bestLinkedIn) useCaseInsights.push(isFr ? `Pour les posts LinkedIn -> **${bestLinkedIn.label}** (lisibilite + zero spam)` : `For LinkedIn posts -> **${bestLinkedIn.label}** (readability + no spam)`);
-  // Email: no spam + CTA + readability
-  const bestEmail = [...scoredResults].sort((a, b) => ((b.spamWords.length === 0 ? 30 : 0) + (b.hasCTA ? 20 : 0) + b.fleschScore) - ((a.spamWords.length === 0 ? 30 : 0) + (a.hasCTA ? 20 : 0) + a.fleschScore))[0];
-  if (bestEmail) useCaseInsights.push(isFr ? `Pour les campagnes email -> **${bestEmail.label}** (zero spam + CTA + lisibilite)` : `For email campaigns -> **${bestEmail.label}** (no spam + CTA + readability)`);
-
-  const reason = isFr
-    ? `Meilleur equilibre vitesse/qualite${winner.hasCTA ? ", CTA present" : ""}${winner.spamWords.length === 0 ? ", zero mot spam" : ""}.`
-    : `Best speed/quality balance${winner.hasCTA ? ", CTA included" : ""}${winner.spamWords.length === 0 ? ", zero spam words" : ""}.`;
-
-  return { winnerId: winner.model, winnerLabel: winner.label, winnerScore: winner.scores.overall, winnerCategories: winner.scores, reason, whyBullets, insights, useCaseInsights, allScores };
-}
-
-function generateImageRecommendation(results: ImageKPIs[], locale: string): Recommendation {
-  const isFr = locale === "fr";
-  const successful = results.filter(r => r.success);
-  if (successful.length === 0) return { winnerId: "", winnerLabel: "", winnerScore: 0, winnerCategories: { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 }, reason: isFr ? "Aucun modele n'a produit de resultat." : "No model produced a result.", whyBullets: [], insights: [], useCaseInsights: [], allScores: [] };
-
-  const allScores = results.map(r => ({ modelId: r.model, label: r.label, scores: scoreImageModel(r, results) }));
-  const scoredResults = successful.map(r => ({ ...r, scores: scoreImageModel(r, results) }));
-  scoredResults.sort((a, b) => b.scores.overall - a.scores.overall);
-  const winner = scoredResults[0];
-  const insights: string[] = [];
-  const whyBullets: string[] = [];
-
-  const fastest = successful.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
-  const slowest = successful.reduce((a, b) => a.timeMs > b.timeMs ? a : b);
-  if (fastest.model !== slowest.model) {
-    insights.push(isFr
-      ? `**Vitesse** -- ${fastest.label} en ${(fastest.timeMs / 1000).toFixed(1)}s, **${(slowest.timeMs / fastest.timeMs).toFixed(1)}x plus rapide** que ${slowest.label} (${(slowest.timeMs / 1000).toFixed(1)}s).`
-      : `**Speed** -- ${fastest.label} in ${(fastest.timeMs / 1000).toFixed(1)}s, **${(slowest.timeMs / fastest.timeMs).toFixed(1)}x faster** than ${slowest.label} (${(slowest.timeMs / 1000).toFixed(1)}s).`
-    );
-  }
-
-  const highestRes = successful.reduce((a, b) => (a.width * a.height) > (b.width * b.height) ? a : b);
-  const lowestRes = successful.reduce((a, b) => (a.width * a.height) < (b.width * b.height) ? a : b);
-  if (highestRes.resolution !== lowestRes.resolution) {
-    insights.push(isFr
-      ? `**Resolution** -- ${highestRes.label} (${highestRes.resolution}) vs ${lowestRes.label} (${lowestRes.resolution}).`
-      : `**Resolution** -- ${highestRes.label} (${highestRes.resolution}) vs ${lowestRes.label} (${lowestRes.resolution}).`
-    );
-  }
-
-  const failed = results.filter(r => !r.success);
-  if (failed.length > 0) {
-    insights.push(isFr
-      ? `**Fiabilite** -- ${failed.map(r => r.label).join(", ")} ${failed.length === 1 ? "a echoue" : "ont echoue"} sur ce brief.`
-      : `**Reliability** -- ${failed.map(r => r.label).join(", ")} failed on this brief.`
-    );
-  }
-
-  // Why bullets
-  if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide" : "Fastest");
-  if (winner.model === highestRes.model) whyBullets.push(isFr ? "Meilleure resolution" : "Best resolution");
-  const winnerInfo = IMAGE_MODELS.find(m => m.id === winner.model);
-  if (winnerInfo) whyBullets.push(winnerInfo.bestFor);
-  if (whyBullets.length === 0) whyBullets.push(isFr ? "Meilleur equilibre global" : "Best overall balance");
-
-  // Use-case insights
-  const useCaseInsights: string[] = [];
-  const productModel = scoredResults.find(r => IMAGE_MODELS.find(m => m.id === r.model)?.strengths.includes("product-shots"));
-  if (productModel) useCaseInsights.push(isFr ? `Pour les photos produit e-commerce -> **${productModel.label}**` : `For e-commerce product shots -> **${productModel.label}**`);
-  const fastModel = [...scoredResults].sort((a, b) => a.timeMs - b.timeMs)[0];
-  if (fastModel) useCaseInsights.push(isFr ? `Pour la rapidite social media -> **${fastModel.label}** (${(fastModel.timeMs / 1000).toFixed(1)}s)` : `For social media speed -> **${fastModel.label}** (${(fastModel.timeMs / 1000).toFixed(1)}s)`);
-  const premiumModel = scoredResults.find(r => IMAGE_MODELS.find(m => m.id === r.model)?.tier === "premium");
-  if (premiumModel) useCaseInsights.push(isFr ? `Pour les campagnes premium -> **${premiumModel.label}**` : `For premium campaigns -> **${premiumModel.label}**`);
-  const cheapModel = [...scoredResults].sort((a, b) => a.costEur - b.costEur)[0];
-  if (cheapModel) useCaseInsights.push(isFr ? `Pour les budgets serres -> **${cheapModel.label}** (${cheapModel.costEur.toFixed(2)}EUR)` : `For budget-conscious -> **${cheapModel.label}** (EUR${cheapModel.costEur.toFixed(2)})`);
-
-  const reason = isFr
-    ? `${winner.resolution}, ${(winner.timeMs / 1000).toFixed(1)}s, ${winner.costEur.toFixed(2)}EUR.`
-    : `${winner.resolution}, ${(winner.timeMs / 1000).toFixed(1)}s, EUR${winner.costEur.toFixed(2)}.`;
-
-  return { winnerId: winner.model, winnerLabel: winner.label, winnerScore: winner.scores.overall, winnerCategories: winner.scores, reason, whyBullets, insights, useCaseInsights, allScores };
-}
-
-function generateVideoRecommendation(results: VideoKPIs[], locale: string): Recommendation {
-  const isFr = locale === "fr";
-  const successful = results.filter(r => r.success);
-  if (successful.length === 0) return { winnerId: "", winnerLabel: "", winnerScore: 0, winnerCategories: { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 }, reason: isFr ? "Aucun modele n'a produit de resultat." : "No model produced a result.", whyBullets: [], insights: [], useCaseInsights: [], allScores: [] };
-
-  const allScores = results.map(r => ({ modelId: r.model, label: r.label, scores: scoreVideoModel(r, results) }));
-  const scoredResults = successful.map(r => ({ ...r, scores: scoreVideoModel(r, results) }));
-  scoredResults.sort((a, b) => b.scores.overall - a.scores.overall);
-  const winner = scoredResults[0];
-  const insights: string[] = [];
-  const whyBullets: string[] = [];
-
-  const fastest = successful.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
-  const slowest = successful.reduce((a, b) => a.timeMs > b.timeMs ? a : b);
-  if (fastest.model !== slowest.model) {
-    insights.push(isFr
-      ? `**Vitesse** -- ${fastest.label} en ${(fastest.timeMs / 1000).toFixed(0)}s, **${(slowest.timeMs / fastest.timeMs).toFixed(1)}x plus rapide** que ${slowest.label} (${(slowest.timeMs / 1000).toFixed(0)}s).`
-      : `**Speed** -- ${fastest.label} in ${(fastest.timeMs / 1000).toFixed(0)}s, **${(slowest.timeMs / fastest.timeMs).toFixed(1)}x faster** than ${slowest.label} (${(slowest.timeMs / 1000).toFixed(0)}s).`
-    );
-  }
-
-  const failed = results.filter(r => !r.success);
-  if (failed.length > 0) {
-    insights.push(isFr
-      ? `**Fiabilite** -- ${failed.map(r => r.label).join(", ")} ${failed.length === 1 ? "a echoue" : "ont echoue"}.`
-      : `**Reliability** -- ${failed.map(r => r.label).join(", ")} failed.`
-    );
-  }
-
-  // Why bullets
-  if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide" : "Fastest");
-  const winnerInfo = VIDEO_MODELS.find(m => m.id === winner.model);
-  if (winnerInfo) whyBullets.push(winnerInfo.bestFor);
-  if (whyBullets.length === 0) whyBullets.push(isFr ? "Meilleur equilibre global" : "Best overall balance");
-
-  // Use-case insights
-  const useCaseInsights: string[] = [];
-  const tiktokModel = scoredResults.find(r => VIDEO_MODELS.find(m => m.id === r.model)?.strengths.includes("tiktok"));
-  if (tiktokModel) useCaseInsights.push(isFr ? `Pour TikTok/vertical -> **${tiktokModel.label}**` : `For TikTok/vertical -> **${tiktokModel.label}**`);
-  const cinematicModel = scoredResults.find(r => VIDEO_MODELS.find(m => m.id === r.model)?.strengths.includes("cinematic"));
-  if (cinematicModel) useCaseInsights.push(isFr ? `Pour les scenes cinematiques -> **${cinematicModel.label}**` : `For cinematic scenes -> **${cinematicModel.label}**`);
-  const budgetModel = [...scoredResults].sort((a, b) => a.costEur - b.costEur)[0];
-  if (budgetModel) useCaseInsights.push(isFr ? `Pour les budgets serres -> **${budgetModel.label}** (${budgetModel.costEur.toFixed(2)}EUR)` : `For budget-conscious -> **${budgetModel.label}** (EUR${budgetModel.costEur.toFixed(2)})`);
-
-  return {
-    winnerId: winner.model, winnerLabel: winner.label, winnerScore: winner.scores.overall, winnerCategories: winner.scores,
-    reason: isFr ? `${(winner.timeMs / 1000).toFixed(0)}s, ${winner.costEur.toFixed(2)}EUR.` : `${(winner.timeMs / 1000).toFixed(0)}s, EUR${winner.costEur.toFixed(2)}.`,
-    whyBullets, insights, useCaseInsights, allScores,
-  };
-}
-
-/* ═══════════════════════════════════════════════════════════
-   SCORE GAUGE SVG COMPONENT
-   ═══════════════════════════════════════════════════════════ */
-
-// Yuka-style grade labels
+// ── Scoring ──
 function getGradeLabel(score: number, isFr: boolean): { label: string; color: string } {
   if (score >= 80) return { label: isFr ? "Excellent" : "Excellent", color: "#22c55e" };
   if (score >= 60) return { label: isFr ? "Bon" : "Good", color: "#84cc16" };
@@ -551,848 +92,699 @@ function getGradeLabel(score: number, isFr: boolean): { label: string; color: st
   return { label: isFr ? "Insuffisant" : "Poor", color: "#ef4444" };
 }
 
-function ScoreGauge({ score, size = 100, isFr = false, showLabel = false }: { score: number; size?: number; isFr?: boolean; showLabel?: boolean }) {
-  const radius = (size - 10) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0, Math.min(100, score)) / 100;
-  const strokeDashoffset = circumference * (1 - progress);
+function computeScores(results: { modelId: string; timeMs: number; success: boolean }[], mode: CreativeMode): Map<string, CreativeResult["scores"]> {
+  const map = new Map<string, CreativeResult["scores"]>();
+  const ok = results.filter(r => r.success);
+  if (!ok.length) return map;
+
+  const maxT = Math.max(...ok.map(r => r.timeMs));
+  const minT = Math.min(...ok.map(r => r.timeMs));
+  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
+
+  for (const r of results) {
+    if (!r.success) { map.set(r.modelId, { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 }); continue; }
+    const m = catalog.find(c => c.id === r.modelId);
+    const speed = maxT > minT ? Math.round(((maxT - r.timeMs) / (maxT - minT)) * 100) : 100;
+    const maxC = Math.max(...ok.map(s => catalog.find(c => c.id === s.modelId)?.costEur || 1));
+    const minC = Math.min(...ok.map(s => catalog.find(c => c.id === s.modelId)?.costEur || 0));
+    const value = maxC > minC ? Math.round(((maxC - (m?.costEur || 0.5)) / (maxC - minC)) * 100) : 100;
+    const quality = m?.tier === "premium" ? 90 : m?.tier === "standard" ? 75 : 60;
+    const overall = Math.round(Math.max(0, Math.min(100, speed * 0.25 + value * 0.20 + 100 * 0.20 + quality * 0.35)));
+    map.set(r.modelId, { speed, value, quality, reliability: 100, overall });
+  }
+  return map;
+}
+
+// ── Score Gauge ──
+function ScoreGauge({ score, size = 80, isFr = false }: { score: number; size?: number; isFr?: boolean }) {
+  const radius = (size - 8) / 2;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ * (1 - Math.max(0, Math.min(100, score)) / 100);
   const { label, color } = getGradeLabel(score, isFr);
-  const bgColor = `${color}15`;
-  const fontSize = size >= 100 ? 28 : size >= 70 ? 20 : 16;
-  const labelSize = size >= 100 ? 11 : 9;
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+    <div className="flex flex-col items-center gap-1">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill={bgColor} stroke="var(--border)" strokeWidth={2} />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={color} strokeWidth={4}
-          strokeDasharray={circumference} strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: "stroke-dashoffset 0.6s ease" }}
-        />
-        <text x={size / 2} y={size / 2 - 2} textAnchor="middle" dominantBaseline="central" fill={color} fontSize={fontSize} fontWeight={700}>
-          {score}
-        </text>
-        <text x={size / 2} y={size / 2 + fontSize / 2 + 4} textAnchor="middle" dominantBaseline="central" fill="var(--text-tertiary)" fontSize={labelSize - 2}>
-          /100
-        </text>
+        <circle cx={size / 2} cy={size / 2} r={radius} fill={`${color}12`} stroke="var(--border)" strokeWidth={1.5} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={3.5}
+          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset 0.8s ease" }} />
+        <text x={size / 2} y={size / 2 - 2} textAnchor="middle" dominantBaseline="central" fill={color} fontSize={size >= 80 ? 24 : 18} fontWeight={700}>{score}</text>
+        <text x={size / 2} y={size / 2 + 14} textAnchor="middle" dominantBaseline="central" fill="var(--muted-foreground)" fontSize={9}>/100</text>
       </svg>
-      {showLabel && (
-        <span style={{ fontSize: labelSize, fontWeight: 700, color, letterSpacing: "0.02em" }}>
-          {label}
-        </span>
-      )}
+      <span style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: "0.02em" }}>{label}</span>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CATEGORY BAR COMPONENT
-   ═══════════════════════════════════════════════════════════ */
-
-function CategoryBar({ label, value, color, hint }: { label: string; value: number; color?: string; hint?: string }) {
-  const barColor = color || (value >= 70 ? "#22c55e" : value >= 50 ? "#f59e0b" : "#ef4444");
+function CategoryBar({ label, value }: { label: string; value: number }) {
+  const c = value >= 70 ? "#22c55e" : value >= 50 ? "#f59e0b" : "#ef4444";
   return (
-    <div style={{ fontSize: 11 }}>
-      <div className="flex items-center gap-2">
-        <span style={{ width: 70, color: "var(--text-tertiary)", flexShrink: 0, fontWeight: 500 }}>{label}</span>
-        <div style={{ flex: 1, height: 6, borderRadius: 3, background: "var(--secondary)" }}>
-          <div style={{ width: `${Math.max(2, value)}%`, height: "100%", borderRadius: 3, background: barColor, transition: "width 0.5s ease" }} />
-        </div>
-        <span style={{ width: 28, textAlign: "right", color: "var(--text-secondary)", fontWeight: 600 }}>{value}</span>
+    <div className="flex items-center gap-2" style={{ fontSize: 11 }}>
+      <span style={{ width: 56, color: "var(--muted-foreground)", flexShrink: 0, fontWeight: 500 }}>{label}</span>
+      <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--secondary)" }}>
+        <div style={{ width: `${Math.max(2, value)}%`, height: "100%", borderRadius: 3, background: c, transition: "width 0.6s ease" }} />
       </div>
-      {hint && <div style={{ fontSize: 9.5, color: "var(--text-tertiary)", marginLeft: 72, marginTop: 1, lineHeight: 1.3 }}>{hint}</div>}
+      <span style={{ width: 24, textAlign: "right", color: "var(--foreground)", fontWeight: 600, fontSize: 10 }}>{value}</span>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   STRENGTH TAG COMPONENT
+   MAIN: Creative Lab
    ═══════════════════════════════════════════════════════════ */
-
-function StrengthTag({ label }: { label: string }) {
-  return (
-    <span style={{
-      display: "inline-block", padding: "2px 8px", borderRadius: 99, fontSize: 10, fontWeight: 500,
-      background: "var(--accent-warm-light)", color: "var(--accent)", whiteSpace: "nowrap",
-    }}>
-      {label}
-    </span>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/* MAIN COMPONENT                                            */
-/* ═══════════════════════════════════════════════════════════ */
 
 export function ComparePage() {
   const { t, locale } = useI18n();
   const { getAuthHeader } = useAuth();
   const isFr = locale === "fr";
 
-  const [mode, setMode] = useState<CompareMode>("text");
+  const [mode, setMode] = useState<CreativeMode>("image");
   const [prompt, setPrompt] = useState("");
-  const [language, setLanguage] = useState(locale === "fr" ? "fr" : "en");
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [steps, setSteps] = useState<{ label: string; status: StepStatus; timeMs?: number }[]>([]);
+  const [results, setResults] = useState<CreativeResult[]>([]);
+  const [lightbox, setLightbox] = useState<CreativeResult | null>(null);
+  const [showScores, setShowScores] = useState(true);
 
-  const [textResults, setTextResults] = useState<TextKPIs[]>([]);
-  const [imageResults, setImageResults] = useState<ImageKPIs[]>([]);
-  const [videoResults, setVideoResults] = useState<VideoKPIs[]>([]);
-  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ outputs: true, insights: true, usecases: true });
+  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
+  const maxModels = mode === "text" ? 4 : mode === "image" ? 6 : 4;
 
-  const abortRef = useRef<AbortController | null>(null);
-
-  const maxModels = mode === "text" ? 4 : mode === "image" ? 6 : 3;
-  const modelCatalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
-
-  // Reset selection when switching mode
-  useEffect(() => {
-    setSelectedModels([]);
-    setTextResults([]);
-    setImageResults([]);
-    setVideoResults([]);
-    setRecommendation(null);
-    setSteps([]);
-  }, [mode]);
+  useEffect(() => { setSelectedModels([]); setResults([]); setSteps([]); }, [mode]);
 
   const toggleModel = (id: string) => {
-    setSelectedModels(prev => {
-      if (prev.includes(id)) return prev.filter(m => m !== id);
-      if (prev.length >= maxModels) return prev;
-      return [...prev, id];
-    });
+    setSelectedModels(prev => prev.includes(id) ? prev.filter(m => m !== id) : prev.length >= maxModels ? prev : [...prev, id]);
   };
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
-    const r = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-      body: JSON.stringify({ ...body, _token: token }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const r = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" }, body: JSON.stringify({ ...body, _token: token }), signal: AbortSignal.timeout(timeoutMs) });
     const text = await r.text();
     try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
   }, [getAuthHeader]);
 
   const serverGet = useCallback(async (path: string) => {
-    const r = await fetch(`${API_BASE}${path}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-      signal: AbortSignal.timeout(120_000),
-    });
+    const r = await fetch(`${API_BASE}${path}`, { method: "GET", headers: { Authorization: `Bearer ${publicAnonKey}` }, signal: AbortSignal.timeout(180_000) });
     return r.json();
   }, []);
 
-  // ── Poll video helper ──
-  const pollVideo = useCallback(async (genId: string, maxPolls = 60): Promise<{ url: string; pollCount: number } | null> => {
-    for (let i = 0; i < maxPolls; i++) {
+  const pollVideo = useCallback(async (genId: string): Promise<string | null> => {
+    for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 5000));
       try {
         const res = await serverGet(`/generate/video-status?id=${genId}`);
-        if (res.state === "completed" && res.videoUrl) return { url: res.videoUrl, pollCount: i + 1 };
+        if (res.state === "completed" && res.videoUrl) return res.videoUrl;
         if (res.state === "failed") return null;
       } catch { /* continue */ }
     }
     return null;
   }, [serverGet]);
 
-  // ── LAUNCH ANALYSIS ──
-  const runAnalysis = useCallback(async () => {
-    if (!prompt.trim() || selectedModels.length < 2 || isRunning) return;
+  // ── Generate ──
+  const runGeneration = useCallback(async () => {
+    if (!prompt.trim() || selectedModels.length < 1 || isRunning) return;
     setIsRunning(true);
-    setTextResults([]);
-    setImageResults([]);
-    setVideoResults([]);
-    setRecommendation(null);
+    setResults([]);
 
-    const briefStep = { label: isFr ? "Brief analyse" : "Brief analyzed", status: "done" as StepStatus, timeMs: 0 };
-    const modelSteps = selectedModels.map(id => ({
-      label: modelCatalog.find(m => m.id === id)?.label || id,
-      status: "pending" as StepStatus,
-    }));
-    const analysisStep = { label: isFr ? "Analyse comparative" : "Comparative analysis", status: "pending" as StepStatus };
-    setSteps([briefStep, ...modelSteps, analysisStep]);
+    const modelSteps = selectedModels.map(id => ({ label: catalog.find(m => m.id === id)?.label || id, status: "pending" as StepStatus }));
+    setSteps(modelSteps);
 
-    try {
-      if (mode === "text") {
-        // ── TEXT COMPARISON ──
-        const results = await Promise.all(selectedModels.map(async (modelId, idx) => {
-          setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "running" } : s));
-          const modelInfo = modelCatalog.find(m => m.id === modelId)!;
-          const start = Date.now();
+    const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; text?: string; error?: string }[] = [];
+
+    if (mode === "image") {
+      const BATCH = 3;
+      for (let b = 0; b < selectedModels.length; b += BATCH) {
+        const batch = selectedModels.slice(b, b + BATCH);
+        const batchRes = await Promise.all(batch.map(async (modelId) => {
+          const idx = selectedModels.indexOf(modelId);
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
+          const t0 = Date.now();
           try {
-            const res = await serverPost("/campaign/generate-texts", {
-              brief: prompt,
-              formats: "instagram-post",
-              model: modelId,
-              language,
-              targetAudience: "",
-              campaignObjective: "",
-              toneOfVoice: "",
-            }, 60_000);
-            const timeMs = Date.now() - start;
-            const copyMap = res.copyMap || {};
-            const firstFormat = Object.values(copyMap)[0] as any;
-            const text = firstFormat?.caption || firstFormat?.text || firstFormat?.copy || firstFormat?.body || "";
-            const analysis = analyzeText(text, language);
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "done", timeMs } : s));
-            return { model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits, success: !!text, ...analysis } as TextKPIs;
+            const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
+            const timeMs = Date.now() - t0;
+            const url = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : "";
+            setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: url ? "done" : "error", timeMs } : s));
+            return { modelId, timeMs, success: !!url, imageUrl: url || undefined };
           } catch (err: any) {
-            const timeMs = Date.now() - start;
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "error", timeMs } : s));
-            return { model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits, success: false, error: err?.message || "Timeout", output: "", wordCount: 0, charCount: 0, sentenceCount: 0, avgSentenceLength: 0, fleschScore: 0, lexicalRichness: 0, repeatedWords: [], hasCTA: false, hashtagCount: 0, emojiCount: 0, questionCount: 0, spamWords: [], languageMatch: true } as TextKPIs;
+            const timeMs = Date.now() - t0;
+            setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+            return { modelId, timeMs, success: false, error: err?.message };
           }
         }));
-        setTextResults(results);
-
-        // Analysis step
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "running" } : s));
-        const reco = generateTextRecommendation(results, locale);
-        setRecommendation(reco);
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "done" } : s));
-
-      } else if (mode === "image") {
-        // ── IMAGE COMPARISON ──
-        // Launch in batches of 3 to avoid overwhelming Supabase edge functions (503 on too many concurrent)
-        const BATCH_SIZE = 3;
-        const results: ImageKPIs[] = [];
-        for (let b = 0; b < selectedModels.length; b += BATCH_SIZE) {
-          const batch = selectedModels.slice(b, b + BATCH_SIZE);
-          const batchResults = await Promise.all(batch.map(async (modelId) => {
-            const idx = selectedModels.indexOf(modelId);
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "running" } : s));
-            const modelInfo = modelCatalog.find(m => m.id === modelId)!;
-            const start = Date.now();
-            let retries = 0;
-            try {
-              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
-              const timeMs = Date.now() - start;
-              const imageUrl = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : "";
-              const imgMeta = res.results?.[0]?.result || {};
-
-              let fileSizeKB = 0;
-              let width = imgMeta.width || 1024;
-              let height = imgMeta.height || 1024;
-
-              setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: imageUrl ? "done" : "error", timeMs } : s));
-              return {
-                model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-                resolution: `${width}x${height}`, width, height, aspectRatio: "1:1",
-                fileSizeKB, format: "webp", retries, imageUrl, success: !!imageUrl,
-              } as ImageKPIs;
-            } catch (err: any) {
-              const timeMs = Date.now() - start;
-              setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "error", timeMs } : s));
-              return {
-                model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-                resolution: "0x0", width: 0, height: 0, aspectRatio: "1:1",
-                fileSizeKB: 0, format: "", retries, imageUrl: "", success: false, error: err?.message,
-              } as ImageKPIs;
-            }
-          }));
-          results.push(...batchResults);
-        }
-        setImageResults(results);
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "running" } : s));
-        const reco = generateImageRecommendation(results, locale);
-        setRecommendation(reco);
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "done" } : s));
-
-      } else {
-        // ── VIDEO COMPARISON ──
-        const results = await Promise.all(selectedModels.map(async (modelId, idx) => {
-          setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "running" } : s));
-          const modelInfo = modelCatalog.find(m => m.id === modelId)!;
-          const start = Date.now();
-          try {
-            const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${modelId}&aspectRatio=16:9&duration=5`);
-            if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
-            const pollResult = await pollVideo(startRes.generationId, 60);
-            const timeMs = Date.now() - start;
-            if (!pollResult) throw new Error("Timeout");
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "done", timeMs } : s));
-            return {
-              model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-              resolution: "1080p", durationSec: 5, fileSizeMB: 0, pollCount: pollResult.pollCount,
-              videoUrl: pollResult.url, success: true,
-            } as VideoKPIs;
-          } catch (err: any) {
-            const timeMs = Date.now() - start;
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "error", timeMs } : s));
-            return {
-              model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-              resolution: "", durationSec: 0, fileSizeMB: 0, pollCount: 0,
-              videoUrl: "", success: false, error: err?.message,
-            } as VideoKPIs;
-          }
-        }));
-        setVideoResults(results);
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "running" } : s));
-        const reco = generateVideoRecommendation(results, locale);
-        setRecommendation(reco);
-        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "done" } : s));
+        rawResults.push(...batchRes);
       }
-    } catch (err: any) {
-      console.error("[compare] Error:", err);
-    } finally {
-      setIsRunning(false);
+    } else if (mode === "text") {
+      const batchRes = await Promise.all(selectedModels.map(async (modelId, idx) => {
+        setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
+        const t0 = Date.now();
+        try {
+          const res = await serverPost("/campaign/generate-texts", { brief: prompt, formats: "instagram-post", model: modelId, language: locale }, 60_000);
+          const timeMs = Date.now() - t0;
+          const copyMap = res.copyMap || {};
+          const first = Object.values(copyMap)[0] as any;
+          const text = first?.caption || first?.text || first?.copy || first?.body || "";
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: text ? "done" : "error", timeMs } : s));
+          return { modelId, timeMs, success: !!text, text: text || undefined };
+        } catch (err: any) {
+          const timeMs = Date.now() - t0;
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+          return { modelId, timeMs, success: false, error: err?.message };
+        }
+      }));
+      rawResults.push(...batchRes);
+    } else {
+      // Video — sequential to avoid overload
+      for (const modelId of selectedModels) {
+        const idx = selectedModels.indexOf(modelId);
+        setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
+        const t0 = Date.now();
+        try {
+          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${modelId}&aspectRatio=16:9&duration=5`);
+          if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
+          const videoUrl = await pollVideo(startRes.generationId);
+          const timeMs = Date.now() - t0;
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: videoUrl ? "done" : "error", timeMs } : s));
+          rawResults.push({ modelId, timeMs, success: !!videoUrl, videoUrl: videoUrl || undefined });
+        } catch (err: any) {
+          const timeMs = Date.now() - t0;
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+          rawResults.push({ modelId, timeMs, success: false, error: err?.message });
+        }
+      }
     }
-  }, [prompt, selectedModels, mode, isRunning, locale, language, serverPost, serverGet, pollVideo, isFr, modelCatalog]);
 
-  const hasResults = textResults.length > 0 || imageResults.length > 0 || videoResults.length > 0;
+    // Compute scores
+    const scoreMap = computeScores(rawResults, mode);
+    const creativeResults: CreativeResult[] = rawResults.map(r => {
+      const m = catalog.find(c => c.id === r.modelId);
+      return {
+        id: `${r.modelId}-${Date.now()}`,
+        modelId: r.modelId,
+        label: m?.label || r.modelId,
+        type: mode,
+        imageUrl: r.imageUrl,
+        videoUrl: r.videoUrl,
+        text: r.text,
+        timeMs: r.timeMs,
+        success: r.success,
+        error: r.error,
+        scores: scoreMap.get(r.modelId) || { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 },
+      };
+    });
 
-  const totalCredits = selectedModels.reduce((sum, id) => {
-    const m = modelCatalog.find(c => c.id === id);
-    return sum + (m?.credits || 0);
-  }, 0);
+    setResults(creativeResults);
+    setIsRunning(false);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo]);
 
-  const toggleSection = (key: string) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
-  // Format markdown-style bold
-  const renderInsight = (text: string) => {
-    return text.split(/(\*\*[^*]+\*\*)/).map((part, i) =>
-      part.startsWith("**") && part.endsWith("**")
-        ? <strong key={i} style={{ color: "var(--text-primary)" }}>{part.slice(2, -2)}</strong>
-        : <span key={i}>{part}</span>
-    );
-  };
-
-  // Get all scored results for card display
-  const getScoredModels = () => {
-    if (mode === "text") return textResults.map(r => ({ id: r.model, label: r.label, scores: scoreTextModel(r, textResults), success: r.success, costEur: r.costEur, timeMs: r.timeMs }));
-    if (mode === "image") return imageResults.map(r => ({ id: r.model, label: r.label, scores: scoreImageModel(r, imageResults), success: r.success, costEur: r.costEur, timeMs: r.timeMs }));
-    return videoResults.map(r => ({ id: r.model, label: r.label, scores: scoreVideoModel(r, videoResults), success: r.success, costEur: r.costEur, timeMs: r.timeMs }));
-  };
+  const totalCredits = selectedModels.reduce((s, id) => s + (catalog.find(c => c.id === id)?.credits || 0), 0);
 
   return (
     <RouteGuard>
       <div className="min-h-screen" style={{ background: "var(--background)", paddingLeft: 52 }}>
-        <div className="max-w-6xl mx-auto px-6 py-8">
 
-          {/* ── HEADER ── */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "var(--accent-warm-light)" }}>
-                <BarChart3 size={18} style={{ color: "var(--accent)" }} />
+        {/* ═══ HEADER ═══ */}
+        <div style={{ borderBottom: "1px solid var(--border)", background: "#FFFFFF" }}>
+          <div className="max-w-7xl mx-auto px-6 py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)" }}>
+                  <Sparkles size={18} style={{ color: "#fff" }} />
+                </div>
+                <div>
+                  <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>Creative Lab</h1>
+                  <p style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
+                    {isFr ? "Créez librement · Comparez les IA · Sauvegardez vos favoris" : "Create freely · Compare AI · Save favorites"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-                  {isFr ? "Comparateur IA" : "AI Compare"}
-                </h1>
-                <p style={{ fontSize: 13, color: "var(--text-tertiary)" }}>
-                  {isFr ? "Analysez et comparez les modeles IA sur des KPIs reels." : "Analyze and compare AI models on real KPIs."}
-                </p>
+
+              {/* Mode tabs */}
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "var(--secondary)" }}>
+                {([
+                  { id: "image" as CreativeMode, icon: ImageIcon, label: "Image", count: IMAGE_MODELS.length },
+                  { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text", count: TEXT_MODELS.length },
+                  { id: "video" as CreativeMode, icon: Video, label: "Vidéo", count: VIDEO_MODELS.length },
+                ] as const).map(tab => (
+                  <button key={tab.id} onClick={() => setMode(tab.id)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
+                    style={{
+                      background: mode === tab.id ? "#FFFFFF" : "transparent",
+                      color: mode === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
+                      fontWeight: mode === tab.id ? 600 : 400, fontSize: 13,
+                      boxShadow: mode === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    }}>
+                    <tab.icon size={14} /> {tab.label}
+                    <span style={{ fontSize: 10, opacity: 0.5 }}>{tab.count}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
+        </div>
 
-          {/* ── MODE TABS ── */}
-          <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "var(--secondary)", width: "fit-content" }}>
-            {([
-              { id: "text" as CompareMode, icon: Type, label: isFr ? "Texte" : "Text", count: TEXT_MODELS.length },
-              { id: "image" as CompareMode, icon: ImageIcon, label: "Image", count: IMAGE_MODELS.length },
-              { id: "video" as CompareMode, icon: Video, label: isFr ? "Video" : "Video", count: VIDEO_MODELS.length },
-            ]).map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setMode(tab.id)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
-                style={{
-                  background: mode === tab.id ? "#FFFFFF" : "transparent",
-                  color: mode === tab.id ? "var(--text-primary)" : "var(--text-tertiary)",
-                  fontWeight: mode === tab.id ? 600 : 400,
-                  fontSize: 13,
-                  boxShadow: mode === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                }}
-              >
-                <tab.icon size={14} />
-                {tab.label}
-                <span style={{ fontSize: 11, opacity: 0.6 }}>{tab.count}</span>
-              </button>
-            ))}
-          </div>
+        <div className="max-w-7xl mx-auto px-6 py-6">
 
-          {/* ── PROMPT INPUT ── */}
-          <div className="mb-6">
-            <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {isFr ? "Votre brief" : "Your brief"}
-              </label>
+          {/* ═══ PROMPT + MODELS — Side by side ═══ */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+            {/* Prompt */}
+            <div className="lg:col-span-2 rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
               <textarea
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
-                placeholder={mode === "text"
-                  ? (isFr ? "Ex: Un post Instagram pour promouvoir notre nouvelle gamme de soins naturels..." : "Ex: An Instagram post to promote our new natural skincare line...")
-                  : mode === "image"
-                    ? (isFr ? "Ex: Produit cosmetique sur fond de nature, lumiere doree, style editorial..." : "Ex: Cosmetic product on nature background, golden light, editorial style...")
-                    : (isFr ? "Ex: Sequence cinematique d'un fleuriste arrangeant un bouquet, lumiere naturelle..." : "Ex: Cinematic sequence of a florist arranging a bouquet, natural light...")}
-                className="w-full mt-2 resize-none outline-none"
+                placeholder={mode === "image"
+                  ? (isFr ? "Décrivez votre visuel... Ex: Produit cosmétique sur fond de nature, lumière dorée" : "Describe your visual...")
+                  : mode === "text"
+                    ? (isFr ? "Décrivez votre contenu... Ex: Post Instagram pour lancement gamme soins naturels" : "Describe your content...")
+                    : (isFr ? "Décrivez votre vidéo... Ex: Séquence cinématique d'un fleuriste, lumière naturelle" : "Describe your video...")}
+                className="w-full resize-none outline-none"
                 rows={3}
-                style={{ fontSize: 14, color: "var(--text-primary)", background: "transparent", lineHeight: 1.6 }}
+                style={{ fontSize: 15, color: "var(--foreground)", background: "transparent", lineHeight: 1.6 }}
               />
-              {mode === "text" && (
-                <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-                  <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>{isFr ? "Langue :" : "Language:"}</span>
-                  {["fr", "en"].map(l => (
-                    <button key={l} onClick={() => setLanguage(l)}
-                      className="px-2.5 py-1 rounded-md transition-all" style={{
-                        fontSize: 12, fontWeight: language === l ? 600 : 400,
-                        background: language === l ? "var(--accent-warm-light)" : "transparent",
-                        color: language === l ? "var(--accent)" : "var(--text-tertiary)",
-                      }}>
-                      {l === "fr" ? "Francais" : "English"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── MODEL SELECTION ── */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                {isFr ? `Modeles (${selectedModels.length}/${maxModels})` : `Models (${selectedModels.length}/${maxModels})`}
-              </span>
-              {selectedModels.length > 0 && (
-                <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
-                  {totalCredits} {isFr ? "credits" : "credits"} · {selectedModels.reduce((s, id) => s + (modelCatalog.find(m => m.id === id)?.costEur || 0), 0).toFixed(2)}EUR
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {modelCatalog.map(m => {
-                const selected = selectedModels.includes(m.id);
-                const disabled = !selected && selectedModels.length >= maxModels;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => !disabled && toggleModel(m.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all"
-                    style={{
-                      background: selected ? "var(--accent)" : "#FFFFFF",
-                      color: selected ? "#FFFFFF" : disabled ? "var(--text-tertiary)" : "var(--text-primary)",
-                      border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                      fontSize: 12,
-                      fontWeight: selected ? 600 : 400,
-                      opacity: disabled ? 0.4 : 1,
-                      cursor: disabled ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {m.label}
-                    <span style={{ fontSize: 10, opacity: 0.7, background: selected ? "rgba(255,255,255,0.2)" : "var(--secondary)", padding: "1px 5px", borderRadius: 4 }}>
-                      {m.badge}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── LAUNCH BUTTON ── */}
-          <div className="mb-8">
-            <button
-              onClick={runAnalysis}
-              disabled={!prompt.trim() || selectedModels.length < 2 || isRunning}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl transition-all"
-              style={{
-                background: (!prompt.trim() || selectedModels.length < 2 || isRunning)
-                  ? "var(--secondary)" : "var(--accent)",
-                color: (!prompt.trim() || selectedModels.length < 2 || isRunning)
-                  ? "var(--text-tertiary)" : "#FFFFFF",
-                fontWeight: 600,
-                fontSize: 14,
-                cursor: (!prompt.trim() || selectedModels.length < 2 || isRunning) ? "not-allowed" : "pointer",
-              }}
-            >
-              {isRunning ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {isRunning
-                ? (isFr ? "Analyse en cours..." : "Analyzing...")
-                : (isFr ? "Lancer l'analyse" : "Run analysis")}
-            </button>
-          </div>
-
-          {/* ── TIMELINE (during generation) ── */}
-          <AnimatePresence>
-            {steps.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-8 rounded-2xl p-5"
-                style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}
-              >
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock size={14} style={{ color: "var(--accent)" }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                    {isFr ? "Progression" : "Progress"}
+              <div className="flex items-center justify-between mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                    {selectedModels.length} {isFr ? "modèle(s)" : "model(s)"} · {totalCredits} {isFr ? "crédits" : "credits"}
                   </span>
                 </div>
-                <div className="space-y-2.5">
-                  {steps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      {step.status === "done" ? <CheckCircle2 size={15} style={{ color: "#22c55e" }} />
-                        : step.status === "running" ? <Loader2 size={15} className="animate-spin" style={{ color: "var(--accent)" }} />
-                          : step.status === "error" ? <AlertTriangle size={15} style={{ color: "var(--destructive)" }} />
-                            : <Circle size={15} style={{ color: "var(--border)" }} />}
-                      <span style={{ fontSize: 13, color: step.status === "pending" ? "var(--text-tertiary)" : "var(--text-primary)", fontWeight: step.status === "running" ? 600 : 400 }}>
-                        {step.label}
-                      </span>
-                      {step.timeMs !== undefined && (
-                        <span style={{ fontSize: 11, color: "var(--text-tertiary)", marginLeft: "auto" }}>
-                          {(step.timeMs / 1000).toFixed(1)}s
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <button onClick={runGeneration}
+                  disabled={!prompt.trim() || selectedModels.length < 1 || isRunning}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 13, fontWeight: 600 }}>
+                  {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {isRunning ? (isFr ? "Génération..." : "Generating...") : (isFr ? "Générer" : "Generate")}
+                </button>
+              </div>
+            </div>
+
+            {/* Model picker */}
+            <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid var(--border)", maxHeight: 180, overflowY: "auto" }}>
+              <div className="flex items-center justify-between mb-2">
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
+                  {isFr ? "Modèles" : "Models"} ({selectedModels.length}/{maxModels})
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {catalog.map(m => {
+                  const on = selectedModels.includes(m.id);
+                  const dis = !on && selectedModels.length >= maxModels;
+                  const tierC = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
+                  return (
+                    <button key={m.id} onClick={() => !dis && toggleModel(m.id)}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer transition-all"
+                      style={{
+                        fontSize: 10, fontWeight: on ? 700 : 500,
+                        background: on ? "var(--foreground)" : "var(--secondary)",
+                        color: on ? "var(--background)" : "var(--foreground)",
+                        border: `1px solid ${on ? "var(--foreground)" : "var(--border)"}`,
+                        opacity: dis ? 0.3 : 1, cursor: dis ? "not-allowed" : "pointer",
+                      }}>
+                      {on && <CheckCircle2 size={9} />}
+                      {m.label}
+                      <span style={{ fontSize: 7, color: on ? "var(--background)" : tierC, opacity: on ? 0.7 : 1, fontWeight: 700 }}>{m.credits}cr</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ PROGRESS ═══ */}
+          <AnimatePresence>
+            {isRunning && steps.length > 0 && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="mb-6 rounded-xl px-5 py-4 flex items-center gap-4 flex-wrap"
+                style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
+                {steps.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    {s.status === "done" ? <CheckCircle2 size={14} style={{ color: "#22c55e" }} />
+                      : s.status === "running" ? <Loader2 size={14} className="animate-spin" style={{ color: "var(--accent)" }} />
+                        : s.status === "error" ? <AlertTriangle size={14} style={{ color: "#ef4444" }} />
+                          : <Circle size={14} style={{ color: "var(--border)" }} />}
+                    <span style={{ fontSize: 12, fontWeight: s.status === "running" ? 600 : 400, color: s.status === "pending" ? "var(--muted-foreground)" : "var(--foreground)" }}>
+                      {s.label}
+                    </span>
+                    {s.timeMs && <span style={{ fontSize: 10, color: "var(--muted-foreground)" }}>{(s.timeMs / 1000).toFixed(1)}s</span>}
+                  </div>
+                ))}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* ═══ RESULTS: ORA INTELLIGENCE REPORT (Yuka for AI) ═══ */}
-          {hasResults && recommendation && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              {/* Report header */}
-              <div className="mb-6 pb-4" style={{ borderBottom: "2px solid var(--text-primary)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--text-tertiary)" }}>
-                  ORA INTELLIGENCE REPORT
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 4 }}>
-                  {new Date().toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })} · {new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} · {mode === "text" ? (isFr ? "Texte" : "Text") : mode === "image" ? "Image" : (isFr ? "Video" : "Video")} · {selectedModels.length} {isFr ? "modeles" : "models"}
-                </div>
-              </div>
+          {/* ═══ RESULTS — Full-screen visual grid ═══ */}
+          {results.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
 
-              {/* ── WINNER SECTION ── */}
-              <div className="mb-8 rounded-2xl p-6" style={{ background: "linear-gradient(135deg, var(--accent-warm-light), #FFFFFF)", border: "2px solid var(--accent)" }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Trophy size={18} style={{ color: "var(--accent)" }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)" }}>
-                    {isFr ? "Recommande pour votre usage" : "Recommended for your use"}
+              {/* Results header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>
+                    {results.filter(r => r.success).length} {isFr ? "créations" : "creations"}
                   </span>
+                  {bestResult && (
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{ background: "#22c55e15", fontSize: 11, fontWeight: 600, color: "#22c55e" }}>
+                      <Trophy size={11} /> {isFr ? "Meilleur :" : "Best:"} {bestResult.label} ({bestResult.scores.overall}/100)
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-start gap-6">
-                  <ScoreGauge score={recommendation.winnerScore} size={120} isFr={isFr} showLabel={true} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-                      {recommendation.winnerLabel}
-                    </div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-                      {recommendation.reason}
-                    </div>
-                    {/* Winner strengths */}
-                    {(() => {
-                      const winnerModel = getModelInfo(recommendation.winnerId, mode);
-                      return winnerModel ? (
-                        <>
-                          <div className="flex flex-wrap gap-1.5 mt-3">
-                            {winnerModel.strengths.map(s => <StrengthTag key={s} label={s} />)}
-                          </div>
-                          <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 8 }}>
-                            {isFr ? "Ideal pour : " : "Best for: "}{winnerModel.bestFor}
-                          </div>
-                        </>
-                      ) : null;
-                    })()}
-                    {/* Why this model? */}
-                    {recommendation.whyBullets.length > 0 && (
-                      <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
-                          {isFr ? "Pourquoi ce modele ?" : "Why this model?"}
-                        </div>
-                        {recommendation.whyBullets.slice(0, 3).map((b, i) => (
-                          <div key={i} className="flex items-center gap-2" style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.8 }}>
-                            <span style={{ color: "var(--accent)" }}>-</span> {b}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <button onClick={() => setShowScores(!showScores)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                  style={{ background: showScores ? "var(--foreground)" : "var(--secondary)", color: showScores ? "var(--background)" : "var(--foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
+                  <BarChart3 size={12} />
+                  {isFr ? "Scores" : "Scores"}
+                </button>
               </div>
 
-              {/* ── EDUCATION: COMPRENDRE LES SCORES ── */}
-              <div className="mb-6 rounded-xl p-5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Eye size={14} style={{ color: "var(--accent)" }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                    {isFr ? "Comment lire ce rapport ?" : "How to read this report?"}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4" style={{ fontSize: 11, lineHeight: 1.6 }}>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>80-100 · {isFr ? "Excellent" : "Excellent"}</span>
-                    </div>
-                    <span style={{ color: "var(--text-tertiary)" }}>{isFr ? "Performances de premier plan. Idéal pour du contenu professionnel." : "Top-tier performance. Ideal for professional content."}</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#84cc16" }} />
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>60-79 · {isFr ? "Bon" : "Good"}</span>
-                    </div>
-                    <span style={{ color: "var(--text-tertiary)" }}>{isFr ? "Solide pour la plupart des usages. Bon compromis." : "Solid for most uses. Good compromise."}</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f59e0b" }} />
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>40-59 · {isFr ? "Médiocre" : "Mediocre"}</span>
-                    </div>
-                    <span style={{ color: "var(--text-tertiary)" }}>{isFr ? "Des limites sur certains critères. À utiliser en complément." : "Limited on some criteria. Best as a complement."}</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>0-39 · {isFr ? "Insuffisant" : "Poor"}</span>
-                    </div>
-                    <span style={{ color: "var(--text-tertiary)" }}>{isFr ? "Ne convient pas pour ce type de brief. Testez un autre modèle." : "Not suited for this brief. Try another model."}</span>
-                  </div>
-                </div>
-                <div className="mt-4 pt-3 grid grid-cols-2 md:grid-cols-4 gap-3" style={{ borderTop: "1px solid var(--border)", fontSize: 10.5, color: "var(--text-tertiary)" }}>
-                  <div><strong style={{ color: "var(--text-secondary)" }}>{isFr ? "Rapidité" : "Speed"}</strong> — {isFr ? "Combien de temps vous attendez. Plus c'est rapide, plus vous êtes productif." : "How long you wait. Faster means more productive."}</div>
-                  <div><strong style={{ color: "var(--text-secondary)" }}>{isFr ? "Rapport Q/P" : "Value"}</strong> — {isFr ? "Ce que vous obtenez par rapport à ce que vous payez. Comme le rapport qualité-prix d'un produit." : "What you get vs. what you pay. Like a product's value for money."}</div>
-                  <div><strong style={{ color: "var(--text-secondary)" }}>{isFr ? "Qualité" : "Quality"}</strong> — {isFr ? (mode === "text" ? "Richesse du vocabulaire, lisibilité, et pertinence du texte." : mode === "image" ? "Résolution, détail et fidélité au brief demandé." : "Résolution et fluidité de la vidéo.") : (mode === "text" ? "Vocabulary richness, readability, and relevance." : mode === "image" ? "Resolution, detail and brief adherence." : "Resolution and video smoothness.")}</div>
-                  <div><strong style={{ color: "var(--text-secondary)" }}>{isFr ? "Fiabilité" : "Reliability"}</strong> — {isFr ? "Est-ce que le modèle a fonctionné sans bug ? Un modèle fiable = moins de frustration." : "Did the model work without errors? Reliable model = less frustration."}</div>
-                </div>
-              </div>
-
-              {/* ── MODEL SCORE CARDS ── */}
-              <div className="mb-8">
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginBottom: 12 }}>
-                  {isFr ? "Scores par modèle" : "Scores by model"}
-                </div>
-                <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(getScoredModels().length, 3)}, 1fr)` }}>
-                  {getScoredModels().map(m => {
-                    const modelInfo = getModelInfo(m.id, mode);
-                    const isWinner = m.id === recommendation.winnerId;
+              {/* ── VISUAL GRID — hero display ── */}
+              {mode === "image" && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : results.length <= 4 ? "repeat(2, 1fr)" : "repeat(3, 1fr)" }}>
+                  {results.map(r => {
+                    const isBest = r.modelId === bestResult?.modelId;
+                    const { label: grade, color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
+                    const mInfo = catalog.find(c => c.id === r.modelId);
                     return (
-                      <div key={m.id} className="rounded-xl p-4" style={{
-                        background: "#FFFFFF",
-                        border: isWinner ? "2px solid var(--accent)" : "1px solid var(--border)",
-                        boxShadow: isWinner ? "0 4px 12px rgba(0,0,0,0.06)" : "none",
-                      }}>
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{m.label}</span>
-                            {modelInfo && (
-                              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--secondary)", color: "var(--text-tertiary)" }}>
-                                {modelInfo.badge}
-                              </span>
+                      <motion.div key={r.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                        className="rounded-2xl overflow-hidden group relative cursor-pointer"
+                        style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}
+                        onClick={() => r.success && setLightbox(r)}>
+
+                        {/* Image — full width, no crop */}
+                        {r.success && r.imageUrl ? (
+                          <div className="relative" style={{ aspectRatio: "1" }}>
+                            <img src={r.imageUrl} className="w-full h-full object-cover" alt={r.label} />
+
+                            {/* Hover overlay */}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                                <button className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.95)" }}
+                                  onClick={e => { e.stopPropagation(); setLightbox(r); }}>
+                                  <Maximize2 size={16} />
+                                </button>
+                                <a href={r.imageUrl} download target="_blank" rel="noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                                  style={{ background: "rgba(255,255,255,0.95)" }}>
+                                  <Download size={16} />
+                                </a>
+                              </div>
+                            </div>
+
+                            {/* Best badge */}
+                            {isBest && (
+                              <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-lg"
+                                style={{ background: gradeColor, color: "#fff", fontSize: 10, fontWeight: 700 }}>
+                                <Trophy size={10} /> {isFr ? "Recommandé" : "Best"}
+                              </div>
+                            )}
+
+                            {/* Score overlay — bottom right */}
+                            {showScores && (
+                              <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl"
+                                style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
+                                <span style={{ fontSize: 16, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>
+                                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)" }}>/100</span>
+                              </div>
                             )}
                           </div>
-                          {isWinner && (
-                            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "var(--accent)", color: "#FFF" }}>
-                              {isFr ? "RECOMMANDE" : "RECOMMENDED"}
-                            </span>
+                        ) : (
+                          <div className="flex items-center justify-center" style={{ aspectRatio: "1", background: "var(--secondary)" }}>
+                            <div className="text-center">
+                              <AlertTriangle size={24} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
+                              <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{r.error || "Failed"}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Footer — model name + score bars */}
+                        <div className="px-4 py-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
+                              {mInfo && (
+                                <span style={{
+                                  fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 600,
+                                  background: mInfo.tier === "premium" ? "#7C3AED15" : mInfo.tier === "economy" ? "#22c55e15" : "var(--secondary)",
+                                  color: mInfo.tier === "premium" ? "#7C3AED" : mInfo.tier === "economy" ? "#22c55e" : "var(--muted-foreground)",
+                                }}>{mInfo.tier}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {r.success && (
+                                <button onClick={e => { e.stopPropagation(); setResults(prev => prev.map(x => x.id === r.id ? { ...x, saved: !x.saved } : x)); toast.success(r.saved ? (isFr ? "Retiré des favoris" : "Removed") : (isFr ? "Sauvegardé !" : "Saved!")); }}
+                                  className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                                  style={{ background: r.saved ? "#ef444415" : "var(--secondary)" }}>
+                                  <Heart size={13} fill={r.saved ? "#ef4444" : "none"} style={{ color: r.saved ? "#ef4444" : "var(--muted-foreground)" }} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Score bars — compact */}
+                          {showScores && r.success && (
+                            <div className="space-y-0.5 mt-2">
+                              <CategoryBar label={isFr ? "Vitesse" : "Speed"} value={r.scores.speed} />
+                              <CategoryBar label={isFr ? "Valeur" : "Value"} value={r.scores.value} />
+                              <CategoryBar label={isFr ? "Qualité" : "Quality"} value={r.scores.quality} />
+                            </div>
+                          )}
+
+                          {/* Strengths */}
+                          {mInfo && r.success && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {mInfo.strengths.slice(0, 3).map(s => (
+                                <span key={s} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 99, background: "var(--secondary)", color: "var(--muted-foreground)", fontWeight: 500 }}>{s}</span>
+                              ))}
+                            </div>
                           )}
                         </div>
-                        {/* Score gauge + category bars */}
-                        {m.success ? (
-                          <div className="flex items-start gap-4">
-                            <ScoreGauge score={m.scores.overall} size={70} isFr={isFr} showLabel={true} />
-                            <div style={{ flex: 1 }} className="space-y-2">
-                              <CategoryBar label={isFr ? "Rapidité" : "Speed"} value={m.scores.speed}
-                                hint={m.scores.speed >= 70 ? (isFr ? "Génère vite — idéal pour du volume" : "Fast generation — ideal for volume") : m.scores.speed >= 40 ? (isFr ? "Temps de génération moyen" : "Average generation time") : (isFr ? "Lent — mieux pour du contenu premium" : "Slow — better for premium content")} />
-                              <CategoryBar label={isFr ? "Rapport Q/P" : "Value"} value={m.scores.value}
-                                hint={m.scores.value >= 70 ? (isFr ? "Bon rapport qualité-prix" : "Great quality-price ratio") : m.scores.value >= 40 ? (isFr ? "Prix correct pour la qualité" : "Fair price for quality") : (isFr ? "Coûteux — à réserver aux projets clés" : "Expensive — reserve for key projects")} />
-                              <CategoryBar label={isFr ? "Qualité" : "Quality"} value={m.scores.quality}
-                                hint={mode === "text" ? (isFr ? "Richesse du vocabulaire et lisibilité" : "Vocabulary richness and readability") : (isFr ? "Résolution et niveau de détail" : "Resolution and detail level")} />
-                              <CategoryBar label={isFr ? "Fiabilité" : "Reliability"} value={m.scores.reliability}
-                                hint={m.scores.reliability >= 100 ? (isFr ? "A fonctionné sans erreur" : "Worked without errors") : (isFr ? "Échec sur ce test" : "Failed on this test")} />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 py-4" style={{ color: "var(--destructive)", fontSize: 12 }}>
-                            <AlertTriangle size={14} /> {isFr ? "Echec" : "Failed"}
-                          </div>
-                        )}
-                        {/* Strengths */}
-                        {modelInfo && m.success && (
-                          <div className="flex flex-wrap gap-1 mt-3">
-                            {modelInfo.strengths.map(s => <StrengthTag key={s} label={s} />)}
-                          </div>
-                        )}
-                        {/* Best for + practical explanation */}
-                        {modelInfo && m.success && (
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 6, lineHeight: 1.5 }}>
-                            <div style={{ fontWeight: 500 }}>{isFr ? "💡 Idéal pour : " : "💡 Best for: "}{modelInfo.bestFor}</div>
-                            <div style={{ marginTop: 3 }}>
-                              {(() => {
-                                const timeSec = (m.timeMs / 1000).toFixed(0);
-                                if (m.scores.speed >= 70 && m.scores.value >= 60) return isFr ? `Génère en ${timeSec}s avec un bon rapport qualité-prix — parfait pour du contenu quotidien.` : `Generates in ${timeSec}s with good value — perfect for daily content.`;
-                                if (m.scores.speed >= 70) return isFr ? `Génère en seulement ${timeSec}s — idéal quand vous avez besoin de volume.` : `Generates in just ${timeSec}s — ideal when you need volume.`;
-                                if (m.scores.quality >= 70) return isFr ? `Qualité supérieure, prend ${timeSec}s — privilégiez-le pour vos campagnes clés.` : `Superior quality, takes ${timeSec}s — prioritize for key campaigns.`;
-                                if (m.scores.value >= 70) return isFr ? `Très bon rapport qualité-prix à ${m.costEur.toFixed(2)}€ par génération.` : `Great value at €${m.costEur.toFixed(2)} per generation.`;
-                                return isFr ? `Génère en ${timeSec}s à ${m.costEur.toFixed(2)}€ par utilisation.` : `Generates in ${timeSec}s at €${m.costEur.toFixed(2)} per use.`;
-                              })()}
-                            </div>
-                          </div>
-                        )}
-                        {/* Credits */}
-                        {m.success && (
-                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                            {m.costEur.toFixed(2)}€ · {modelCatalog.find(c => c.id === m.id)?.credits || 0} {isFr ? "crédits" : "credits"}
-                          </div>
-                        )}
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
-              </div>
+              )}
 
-              {/* ── OUTPUTS SIDE BY SIDE ── */}
-              <div className="mb-6">
-                <button onClick={() => toggleSection("outputs")} className="flex items-center gap-2 mb-4 cursor-pointer">
-                  {expandedSections.outputs ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                    {isFr ? "Resultats cote a cote" : "Side-by-side results"}
-                  </span>
-                </button>
-                <AnimatePresence>
-                  {expandedSections.outputs && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-                      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(selectedModels.length, 4)}, 1fr)` }}>
-                        {mode === "text" && textResults.map(r => (
-                          <div key={r.model} className="rounded-xl p-4" style={{
-                            background: "#FFFFFF", border: `1.5px solid ${r.model === recommendation.winnerId ? "var(--accent)" : "var(--border)"}`,
-                          }}>
-                            <div className="flex items-center gap-2 mb-3">
-                              <span style={{ fontSize: 13, fontWeight: 600 }}>{r.label}</span>
-                              {r.model === recommendation.winnerId && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "var(--accent)", color: "#FFF" }}>
-                                  {isFr ? "RECOMMANDE" : "RECOMMENDED"}
-                                </span>
-                              )}
-                            </div>
-                            {r.success ? (
-                              <div style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", maxHeight: 300, overflow: "auto" }}>
-                                {r.output}
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2" style={{ color: "var(--destructive)", fontSize: 12 }}>
-                                <AlertTriangle size={13} /> {r.error || "Failed"}
-                              </div>
-                            )}
+              {/* ── TEXT RESULTS ── */}
+              {mode === "text" && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : "repeat(2, 1fr)" }}>
+                  {results.map(r => {
+                    const isBest = r.modelId === bestResult?.modelId;
+                    const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
+                    return (
+                      <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}>
+                        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                          <div className="flex items-center gap-2">
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
+                            {isBest && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: gradeColor, color: "#fff" }}>{isFr ? "MEILLEUR" : "BEST"}</span>}
                           </div>
-                        ))}
-                        {mode === "image" && imageResults.map(r => (
-                          <div key={r.model} className="rounded-xl overflow-hidden" style={{
-                            border: `1.5px solid ${r.model === recommendation.winnerId ? "var(--accent)" : "var(--border)"}`,
-                          }}>
-                            {r.success && r.imageUrl ? (
-                              <img src={r.imageUrl} alt={r.label} className="w-full aspect-square object-cover" />
-                            ) : (
-                              <div className="w-full aspect-square flex items-center justify-center" style={{ background: "var(--secondary)" }}>
-                                <AlertTriangle size={24} style={{ color: "var(--destructive)" }} />
-                              </div>
-                            )}
-                            <div className="p-3 flex items-center gap-2" style={{ background: "#FFFFFF" }}>
-                              <span style={{ fontSize: 12, fontWeight: 600 }}>{r.label}</span>
-                              {r.model === recommendation.winnerId && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "var(--accent)", color: "#FFF" }}>BEST</span>
-                              )}
-                            </div>
+                          {showScores && <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>}
+                        </div>
+                        <div className="px-4 py-3" style={{ fontSize: 13, lineHeight: 1.7, maxHeight: 300, overflowY: "auto", whiteSpace: "pre-wrap" }}>
+                          {r.success ? r.text : <span style={{ color: "#ef4444" }}>{r.error || "Failed"}</span>}
+                        </div>
+                        {r.success && (
+                          <div className="px-4 py-2 flex items-center gap-2" style={{ borderTop: "1px solid var(--border)" }}>
+                            <button onClick={() => { navigator.clipboard.writeText(r.text || ""); toast.success(isFr ? "Copié !" : "Copied!"); }}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
+                              style={{ background: "var(--secondary)", fontSize: 11, fontWeight: 500 }}>
+                              <FileText size={10} /> {isFr ? "Copier" : "Copy"}
+                            </button>
+                            <button onClick={() => setResults(prev => prev.map(x => x.id === r.id ? { ...x, saved: !x.saved } : x))}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
+                              style={{ background: r.saved ? "#ef444415" : "var(--secondary)", fontSize: 11, fontWeight: 500 }}>
+                              <Heart size={10} fill={r.saved ? "#ef4444" : "none"} style={{ color: r.saved ? "#ef4444" : "var(--muted-foreground)" }} /> {r.saved ? (isFr ? "Favori" : "Saved") : (isFr ? "Sauvegarder" : "Save")}
+                            </button>
                           </div>
-                        ))}
-                        {mode === "video" && videoResults.map(r => (
-                          <div key={r.model} className="rounded-xl overflow-hidden" style={{
-                            border: `1.5px solid ${r.model === recommendation.winnerId ? "var(--accent)" : "var(--border)"}`,
-                          }}>
-                            {r.success && r.videoUrl ? (
-                              <video src={r.videoUrl} controls className="w-full aspect-video" />
-                            ) : (
-                              <div className="w-full aspect-video flex items-center justify-center" style={{ background: "var(--secondary)" }}>
-                                <AlertTriangle size={24} style={{ color: "var(--destructive)" }} />
-                              </div>
-                            )}
-                            <div className="p-3 flex items-center gap-2" style={{ background: "#FFFFFF" }}>
-                              <span style={{ fontSize: 12, fontWeight: 600 }}>{r.label}</span>
-                              {r.model === recommendation.winnerId && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "var(--accent)", color: "#FFF" }}>BEST</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* ── INSIGHTS ── */}
-              {recommendation.insights.length > 0 && (
-                <div className="mb-6">
-                  <button onClick={() => toggleSection("insights")} className="flex items-center gap-2 mb-4 cursor-pointer">
-                    {expandedSections.insights ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                      {isFr ? "Insights" : "Insights"}
-                    </span>
-                  </button>
-                  <AnimatePresence>
-                    {expandedSections.insights && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="space-y-3">
-                        {recommendation.insights.map((insight, i) => (
-                          <div key={i} className="rounded-xl px-5 py-3.5" style={{ background: "#FFFFFF", border: "1px solid var(--border)", fontSize: 13, lineHeight: 1.7, color: "var(--text-secondary)" }}>
-                            {renderInsight(insight)}
-                          </div>
-                        ))}
+                        )}
                       </motion.div>
-                    )}
-                  </AnimatePresence>
+                    );
+                  })}
                 </div>
               )}
 
-              {/* ── USE-CASE INSIGHTS ── */}
-              {recommendation.useCaseInsights.length > 0 && (
-                <div className="mb-6">
-                  <button onClick={() => toggleSection("usecases")} className="flex items-center gap-2 mb-4 cursor-pointer">
-                    {expandedSections.usecases ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                      {isFr ? "Recommandations par usage" : "Use-case recommendations"}
-                    </span>
-                  </button>
-                  <AnimatePresence>
-                    {expandedSections.usecases && (
-                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-                        <div className="rounded-xl p-4 space-y-2.5" style={{ background: "#FFFFFF", border: "1px solid var(--border)" }}>
-                          {recommendation.useCaseInsights.map((uc, i) => (
-                            <div key={i} className="flex items-start gap-2" style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text-secondary)" }}>
-                              <ArrowRight size={13} style={{ color: "var(--accent)", marginTop: 4, flexShrink: 0 }} />
-                              <span>{renderInsight(uc)}</span>
-                            </div>
-                          ))}
+              {/* ── VIDEO RESULTS ── */}
+              {mode === "video" && (
+                <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : "repeat(2, 1fr)" }}>
+                  {results.map(r => {
+                    const isBest = r.modelId === bestResult?.modelId;
+                    const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
+                    return (
+                      <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}>
+                        {r.success && r.videoUrl ? (
+                          <video src={r.videoUrl} controls className="w-full" style={{ aspectRatio: "16/9" }} />
+                        ) : (
+                          <div className="flex items-center justify-center" style={{ aspectRatio: "16/9", background: "var(--secondary)" }}>
+                            <AlertTriangle size={24} style={{ color: "#ef4444" }} />
+                          </div>
+                        )}
+                        <div className="px-4 py-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
+                            {isBest && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: gradeColor, color: "#fff" }}>BEST</span>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {showScores && <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>}
+                            {r.success && (
+                              <a href={r.videoUrl} download target="_blank" rel="noreferrer"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                style={{ background: "var(--secondary)" }}>
+                                <Download size={14} />
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </motion.div>
-                    )}
-                  </AnimatePresence>
+                    );
+                  })}
                 </div>
               )}
-
-              {/* ── FOOTER ── */}
-              <div className="py-6" style={{ borderTop: "2px solid var(--text-primary)" }}>
-                <div style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.8 }}>
-                  {isFr
-                    ? "Généré par ORA Studio · Analyse basée sur des KPIs mesurés (temps, coût, comptage). Aucune donnée subjective."
-                    : "Generated by ORA Studio · Analysis based on measured KPIs (time, cost, counts). No subjective data."}
-                </div>
-              </div>
-
             </motion.div>
+          )}
+
+          {/* ═══ EMPTY STATE ═══ */}
+          {results.length === 0 && !isRunning && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: "linear-gradient(135deg, #7C3AED15, #EC489915)" }}>
+                <Sparkles size={28} style={{ color: "#7C3AED" }} />
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+                {isFr ? "Votre atelier créatif" : "Your creative workshop"}
+              </h2>
+              <p style={{ fontSize: 13, color: "var(--muted-foreground)", maxWidth: 400, lineHeight: 1.6 }}>
+                {isFr
+                  ? "Décrivez votre idée, choisissez vos IA, et comparez les résultats. Sauvegardez et téléchargez vos créations."
+                  : "Describe your idea, pick your AIs, and compare results. Save and download your creations."}
+              </p>
+            </div>
           )}
         </div>
       </div>
+
+      {/* ═══ LIGHTBOX — Full-screen image with KPI panel ═══ */}
+      <AnimatePresence>
+        {lightbox && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex"
+            style={{ background: "rgba(0,0,0,0.92)" }}
+            onClick={() => setLightbox(null)}
+          >
+            {/* Image — takes most of the screen */}
+            <div className="flex-1 flex items-center justify-center p-8" onClick={e => e.stopPropagation()}>
+              {lightbox.imageUrl && (
+                <motion.img
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  src={lightbox.imageUrl}
+                  className="max-w-full max-h-full object-contain rounded-2xl"
+                  style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}
+                  alt={lightbox.label}
+                />
+              )}
+              {lightbox.videoUrl && (
+                <video src={lightbox.videoUrl} controls autoPlay className="max-w-full max-h-full rounded-2xl" />
+              )}
+            </div>
+
+            {/* KPI Panel — right side */}
+            <motion.div
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 300, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-80 flex-shrink-0 overflow-y-auto"
+              style={{ background: "#FFFFFF", borderLeft: "1px solid var(--border)" }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Close */}
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>{lightbox.label}</span>
+                <button onClick={() => setLightbox(null)} className="cursor-pointer" style={{ color: "var(--muted-foreground)" }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="px-5 py-5 space-y-6">
+                {/* Score gauge */}
+                <div className="flex justify-center">
+                  <ScoreGauge score={lightbox.scores.overall} size={120} isFr={isFr} />
+                </div>
+
+                {/* Category scores */}
+                <div className="space-y-2">
+                  <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
+                    {isFr ? "Détail des scores" : "Score breakdown"}
+                  </span>
+                  <CategoryBar label={isFr ? "Vitesse" : "Speed"} value={lightbox.scores.speed} />
+                  <CategoryBar label={isFr ? "Valeur" : "Value"} value={lightbox.scores.value} />
+                  <CategoryBar label={isFr ? "Qualité" : "Quality"} value={lightbox.scores.quality} />
+                  <CategoryBar label={isFr ? "Fiabilité" : "Rely."} value={lightbox.scores.reliability} />
+                </div>
+
+                {/* Model info */}
+                {(() => {
+                  const mInfo = catalog.find(c => c.id === lightbox.modelId);
+                  if (!mInfo) return null;
+                  return (
+                    <div className="space-y-3">
+                      <div>
+                        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
+                          {isFr ? "À propos de ce modèle" : "About this model"}
+                        </span>
+                        <div style={{ fontSize: 12, color: "var(--foreground)", marginTop: 4, lineHeight: 1.5 }}>
+                          {mInfo.bestFor}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {mInfo.strengths.map(s => (
+                          <span key={s} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "var(--secondary)", color: "var(--foreground)", fontWeight: 500 }}>{s}</span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3" style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+                        <span>{mInfo.credits} {isFr ? "crédits" : "credits"}</span>
+                        <span>·</span>
+                        <span>{(lightbox.timeMs / 1000).toFixed(1)}s</span>
+                        <span>·</span>
+                        <span style={{
+                          padding: "1px 6px", borderRadius: 4, fontWeight: 600,
+                          background: mInfo.tier === "premium" ? "#7C3AED15" : mInfo.tier === "economy" ? "#22c55e15" : "var(--secondary)",
+                          color: mInfo.tier === "premium" ? "#7C3AED" : mInfo.tier === "economy" ? "#22c55e" : "var(--muted-foreground)",
+                        }}>{mInfo.tier}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Actions */}
+                <div className="space-y-2">
+                  {lightbox.imageUrl && (
+                    <a href={lightbox.imageUrl} download target="_blank" rel="noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all"
+                      style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 13, fontWeight: 600 }}>
+                      <Download size={14} /> {isFr ? "Télécharger" : "Download"}
+                    </a>
+                  )}
+                  <button
+                    onClick={() => {
+                      setResults(prev => prev.map(x => x.id === lightbox.id ? { ...x, saved: !x.saved } : x));
+                      setLightbox(prev => prev ? { ...prev, saved: !prev.saved } : null);
+                      toast.success(lightbox.saved ? (isFr ? "Retiré des favoris" : "Removed") : (isFr ? "Sauvegardé !" : "Saved!"));
+                    }}
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all cursor-pointer"
+                    style={{ background: lightbox.saved ? "#ef444415" : "var(--secondary)", color: lightbox.saved ? "#ef4444" : "var(--foreground)", fontSize: 13, fontWeight: 600, border: "1px solid var(--border)" }}>
+                    <Heart size={14} fill={lightbox.saved ? "#ef4444" : "none"} /> {lightbox.saved ? (isFr ? "Favori ❤️" : "Saved ❤️") : (isFr ? "Sauvegarder" : "Save to Library")}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </RouteGuard>
   );
 }

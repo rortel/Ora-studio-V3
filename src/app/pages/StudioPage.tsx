@@ -9,6 +9,7 @@ import {
   BookOpen, LayoutGrid, Megaphone, Smartphone, Target, Check,
   ChevronDown, Lightbulb, Package, Globe, Languages,
   Calendar, Save, Pencil, CheckCircle2, Clock, Camera, Settings,
+  Trophy, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
@@ -27,6 +28,252 @@ import { AMBIANCE_PRESETS, LAYOUT_PRESETS, getModelsForAmbiances, getPromptDirec
    "Aussi simple qu'un SMS"
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
+/* ═══ YUKA SCORING COMPONENTS (reused from ComparePage) ═══ */
+
+type ModelTier = "economy" | "standard" | "premium";
+
+interface StudioModelInfo {
+  id: string;
+  label: string;
+  badge: string;
+  credits: number;
+  costEur: number;
+  providerCostEur: number;
+  strengths: string[];
+  bestFor: string;
+  tier: ModelTier;
+}
+
+const STUDIO_IMAGE_MODELS: StudioModelInfo[] = [
+  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text", credits: 5, costEur: 0.50, providerCostEur: 0.074, strengths: ["text-rendering", "branding", "logos"], bestFor: "Logos, texte sur images", tier: "premium" },
+  { id: "photon-1", label: "Luma Photon", badge: "Quality", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "lighting", "portraits"], bestFor: "Portraits photo-réalistes", tier: "standard" },
+  { id: "photon-flash-1", label: "Photon Flash", badge: "Fast", credits: 3, costEur: 0.30, providerCostEur: 0.014, strengths: ["speed", "realism", "iteration"], bestFor: "Itérations rapides", tier: "economy" },
+  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["instruction-following", "creative", "detail"], bestFor: "Prompts complexes", tier: "premium" },
+  { id: "dall-e", label: "DALL-E 3", badge: "Precise", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["precision", "compositions"], bestFor: "Compositions précises", tier: "premium" },
+  { id: "flux-pro", label: "Flux Pro", badge: "Creative", credits: 8, costEur: 0.80, providerCostEur: 0.046, strengths: ["creative", "artistic", "detail"], bestFor: "Visuels artistiques", tier: "premium" },
+  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality", "detail"], bestFor: "Campagnes premium", tier: "premium" },
+  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast", "drafts"], bestFor: "Prototypage rapide", tier: "economy" },
+  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency"], bestFor: "Édition, cohérence", tier: "standard" },
+  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism", "e-commerce"], bestFor: "Photo produit, e-commerce", tier: "standard" },
+  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard" },
+  { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Interprétations artistiques", tier: "standard" },
+  { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["balanced", "agency-tuned"], bestFor: "Qualité agence équilibrée", tier: "standard" },
+];
+
+interface CompareImageResult {
+  modelId: string;
+  label: string;
+  imageUrl: string;
+  latencyMs: number;
+  success: boolean;
+  scores: { speed: number; value: number; quality: number; reliability: number; overall: number };
+  strengths: string[];
+  bestFor: string;
+  tier: ModelTier;
+  recommended?: boolean;
+}
+
+function computeCompareScores(results: { modelId: string; latencyMs: number; success: boolean }[]): Map<string, { speed: number; value: number; quality: number; reliability: number; overall: number }> {
+  const scores = new Map<string, { speed: number; value: number; quality: number; reliability: number; overall: number }>();
+  const successful = results.filter(r => r.success);
+  if (successful.length === 0) return scores;
+
+  const maxTime = Math.max(...successful.map(r => r.latencyMs));
+  const minTime = Math.min(...successful.map(r => r.latencyMs));
+
+  for (const r of results) {
+    if (!r.success) {
+      scores.set(r.modelId, { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 });
+      continue;
+    }
+    const modelInfo = STUDIO_IMAGE_MODELS.find(m => m.id === r.modelId);
+    const speed = maxTime > minTime ? Math.round(((maxTime - r.latencyMs) / (maxTime - minTime)) * 100) : 100;
+    const costEur = modelInfo?.costEur || 0.50;
+    const providerCost = modelInfo?.providerCostEur || 0.02;
+    const maxCost = Math.max(...successful.map(s => STUDIO_IMAGE_MODELS.find(m => m.id === s.modelId)?.costEur || 0.50));
+    const minCost = Math.min(...successful.map(s => STUDIO_IMAGE_MODELS.find(m => m.id === s.modelId)?.costEur || 0.50));
+    const value = maxCost > minCost ? Math.round(((maxCost - costEur) / (maxCost - minCost)) * 100) : 100;
+    const quality = modelInfo?.tier === "premium" ? 90 : modelInfo?.tier === "standard" ? 75 : 60;
+    const reliability = 100;
+    const overall = Math.round(Math.max(0, Math.min(100, (speed * 0.30) + (value * 0.20) + (reliability * 0.20) + (quality * 0.30))));
+    scores.set(r.modelId, { speed, value, quality, reliability, overall });
+  }
+  return scores;
+}
+
+function getGradeLabel(score: number, isFr: boolean): { label: string; color: string } {
+  if (score >= 80) return { label: isFr ? "Excellent" : "Excellent", color: "#22c55e" };
+  if (score >= 60) return { label: isFr ? "Bon" : "Good", color: "#84cc16" };
+  if (score >= 40) return { label: isFr ? "Médiocre" : "Mediocre", color: "#f59e0b" };
+  return { label: isFr ? "Insuffisant" : "Poor", color: "#ef4444" };
+}
+
+function MiniScoreGauge({ score, size = 64, isFr = false }: { score: number; size?: number; isFr?: boolean }) {
+  const radius = (size - 8) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.max(0, Math.min(100, score)) / 100;
+  const strokeDashoffset = circumference * (1 - progress);
+  const { color } = getGradeLabel(score, isFr);
+  const bgColor = `${color}15`;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={radius} fill={bgColor} stroke="var(--border)" strokeWidth={1.5} />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={3}
+        strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+      <text x={size / 2} y={size / 2 - 1} textAnchor="middle" dominantBaseline="central" fill={color} fontSize={size >= 64 ? 18 : 14} fontWeight={700}>
+        {score}
+      </text>
+      <text x={size / 2} y={size / 2 + 11} textAnchor="middle" dominantBaseline="central" fill="var(--muted-foreground)" fontSize={8}>
+        /100
+      </text>
+    </svg>
+  );
+}
+
+function MiniCategoryBar({ label, value }: { label: string; value: number }) {
+  const barColor = value >= 70 ? "#22c55e" : value >= 50 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="flex items-center gap-1.5" style={{ fontSize: 10 }}>
+      <span style={{ width: 50, color: "var(--muted-foreground)", flexShrink: 0, fontWeight: 500 }}>{label}</span>
+      <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--secondary)" }}>
+        <div style={{ width: `${Math.max(2, value)}%`, height: "100%", borderRadius: 2, background: barColor, transition: "width 0.5s ease" }} />
+      </div>
+      <span style={{ width: 22, textAlign: "right", color: "var(--foreground)", fontWeight: 600, fontSize: 9 }}>{value}</span>
+    </div>
+  );
+}
+
+function CompareResultView({ results, isFr, onSelect }: {
+  results: CompareImageResult[];
+  isFr: boolean;
+  onSelect: (modelId: string, imageUrl: string) => void;
+}) {
+  const best = results.reduce((a, b) => (a.scores.overall > b.scores.overall ? a : b), results[0]);
+
+  return (
+    <div className="space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "var(--secondary)" }}>
+        <BarChart3 size={14} style={{ color: "var(--accent)" }} />
+        <span style={{ fontSize: "13px", fontWeight: 700 }}>
+          {isFr ? "Comparaison IA" : "AI Comparison"} — {results.filter(r => r.success).length} {isFr ? "modèles" : "models"}
+        </span>
+      </div>
+
+      {/* Cards grid */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(results.length, 2)}, 1fr)` }}>
+        {results.map((r) => {
+          const isRecommended = r.modelId === best.modelId && r.success;
+          const { label: gradeLabel, color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
+
+          return (
+            <motion.div
+              key={r.modelId}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl overflow-hidden relative"
+              style={{
+                background: "var(--card)",
+                border: isRecommended ? `2px solid ${gradeColor}` : "1px solid var(--border)",
+              }}
+            >
+              {/* Recommended badge */}
+              {isRecommended && (
+                <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-1 rounded-lg"
+                  style={{ background: gradeColor, color: "#fff", fontSize: "10px", fontWeight: 700 }}>
+                  <Trophy size={10} /> {isFr ? "Recommandé" : "Recommended"}
+                </div>
+              )}
+
+              {/* Image */}
+              {r.success && r.imageUrl ? (
+                <div className="relative" style={{ aspectRatio: "1" }}>
+                  <img src={r.imageUrl} className="w-full h-full object-cover" alt={r.label} />
+                  {/* Tier badge */}
+                  <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md"
+                    style={{
+                      background: r.tier === "premium" ? "rgba(124,58,237,0.85)" : r.tier === "economy" ? "rgba(34,197,94,0.85)" : "rgba(0,0,0,0.6)",
+                      color: "#fff", fontSize: "9px", fontWeight: 700, backdropFilter: "blur(4px)",
+                    }}>
+                    {r.tier === "premium" ? "Premium" : r.tier === "economy" ? "Éco" : "Standard"}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center" style={{ aspectRatio: "1", background: "var(--secondary)" }}>
+                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+                    {isFr ? "Échec" : "Failed"}
+                  </span>
+                </div>
+              )}
+
+              {/* Score + info */}
+              <div className="px-3 py-2.5 space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <MiniScoreGauge score={r.scores.overall} size={56} isFr={isFr} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span style={{ fontSize: "13px", fontWeight: 700 }}>{r.label}</span>
+                    </div>
+                    <span className="px-1.5 py-0.5 rounded" style={{ fontSize: "9px", fontWeight: 600, background: gradeColor + "20", color: gradeColor }}>
+                      {gradeLabel}
+                    </span>
+                    <div style={{ fontSize: "10px", color: "var(--muted-foreground)", marginTop: 3, lineHeight: 1.3 }}>
+                      {r.bestFor}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category bars */}
+                <div className="space-y-1">
+                  <MiniCategoryBar label={isFr ? "Vitesse" : "Speed"} value={r.scores.speed} />
+                  <MiniCategoryBar label={isFr ? "Valeur" : "Value"} value={r.scores.value} />
+                  <MiniCategoryBar label={isFr ? "Qualité" : "Quality"} value={r.scores.quality} />
+                  <MiniCategoryBar label={isFr ? "Fiabilité" : "Reliability"} value={r.scores.reliability} />
+                </div>
+
+                {/* Strengths */}
+                <div className="flex flex-wrap gap-1">
+                  {r.strengths.slice(0, 3).map(s => (
+                    <span key={s} style={{
+                      display: "inline-block", padding: "1px 6px", borderRadius: 99, fontSize: 9, fontWeight: 500,
+                      background: "var(--accent-warm-light)", color: "var(--accent)", whiteSpace: "nowrap",
+                    }}>
+                      {s}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Select button */}
+                {r.success && (
+                  <button
+                    onClick={() => onSelect(r.modelId, r.imageUrl)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg cursor-pointer transition-all"
+                    style={{
+                      background: isRecommended ? "var(--foreground)" : "var(--secondary)",
+                      color: isRecommended ? "var(--background)" : "var(--foreground)",
+                      border: isRecommended ? "none" : "1px solid var(--border)",
+                      fontSize: "11px", fontWeight: 700,
+                    }}
+                    onMouseEnter={e => { if (!isRecommended) e.currentTarget.style.borderColor = "var(--foreground)"; }}
+                    onMouseLeave={e => { if (!isRecommended) e.currentTarget.style.borderColor = "var(--border)"; }}
+                  >
+                    <CheckCircle2 size={12} />
+                    {isFr ? "Choisir ce visuel" : "Select this visual"}
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ END YUKA SCORING COMPONENTS ═══ */
+
 type ActionType =
   | "generate-image"
   | "generate-text"
@@ -43,6 +290,15 @@ interface StudioAction {
   compare?: boolean;
 }
 
+/** Context needed to regenerate per-format images after user picks a compare winner */
+interface CompareRegenContext {
+  brief: string;
+  brandVisualSuffix: string;
+  campaignVisualStyle: string;
+  productRefUrls: string[];
+  imageOnlyFormats: { format: string; platform: string; aspectRatio: string; promptHint: string }[];
+}
+
 interface GeneratedResult {
   type: "image" | "text" | "music" | "video" | "campaign";
   items: { url?: string; text?: string; model: string; latencyMs?: number }[];
@@ -52,6 +308,8 @@ interface GeneratedResult {
   logoUrl?: string;
   campaignStartDate?: string;
   campaignDuration?: string;
+  compareResults?: CompareImageResult[];
+  compareRegenContext?: CompareRegenContext;
 }
 
 interface CampaignPostVariant {
@@ -815,8 +1073,112 @@ export function StudioPage() {
             }));
           })();
 
+          // ═══ COMPARE MODE: generate with ALL compare models in parallel ═══
+          const isCompareMode = action.params.compareMode && Array.isArray(action.params.compareModels) && action.params.compareModels.length >= 2;
+          let compareResults: CompareImageResult[] = [];
+
+          if (isCompareMode && imageOnlyFormats.length > 0) {
+            const compareModelIds: string[] = action.params.compareModels;
+            const firstFmt = imageOnlyFormats[0];
+            const copyEntry = (primaryText.copyMap as any)?.[firstFmt.format];
+            const basePrompt = copyEntry?.imagePrompt || `${brief}, ${firstFmt.platform} ${firstFmt.format}, professional`;
+            const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
+            const comparePrompt = `${basePrompt}${visualStyleDirective}${brandVisualSuffix}`;
+            const compareAspectRatio = firstFmt.format.includes("story") ? "9:16"
+              : firstFmt.format.includes("post") && firstFmt.platform === "instagram" ? "1:1" : "16:9";
+
+            const hasProductRef = productRefUrls.length > 0;
+            console.log(`[studio] COMPARE MODE: ${compareModelIds.length} models, product=${hasProductRef}, prompt="${comparePrompt.slice(0, 80)}..."`);
+
+            // Generate with all compare models in parallel (batch of 3 to avoid 503)
+            const COMPARE_BATCH = 3;
+            const compareRawResults: { modelId: string; imageUrl: string | null; latencyMs: number; success: boolean }[] = [];
+
+            if (hasProductRef) {
+              // ── PRODUCT MODE: Use Photoroom for pixel-perfect product + different scenes ──
+              const SCENE_LABELS = ["Lifestyle", "Studio", "Packshot", "Cinématique"];
+              const SCENE_PROMPTS = [
+                `${comparePrompt}, beautiful lifestyle environment, warm natural light`,
+                `${comparePrompt}, clean white studio background, professional product photography`,
+                `${comparePrompt}, packshot, minimalist, e-commerce ready`,
+                `${comparePrompt}, dramatic cinematic lighting, moody atmosphere`,
+              ];
+              const refUrl = productRefUrls[0];
+              const scenesToUse = SCENE_PROMPTS.slice(0, compareModelIds.length);
+
+              const sceneResults = await Promise.all(scenesToUse.map(async (scenePrompt, si) => {
+                const t0 = Date.now();
+                const fakeModelId = compareModelIds[si] || `scene-${si}`;
+                try {
+                  const r = await serverPost("/generate/image-start", {
+                    prompt: scenePrompt.slice(0, 500), model: "photon-1", aspectRatio: compareAspectRatio,
+                    imageRefUrl: refUrl, refSource: "upload",
+                  }, 60_000);
+                  const latencyMs = Date.now() - t0;
+                  const url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null;
+                  console.log(`[studio] Compare Photoroom scene ${SCENE_LABELS[si]}: ${url ? "OK" : "FAIL"} (${latencyMs}ms)`);
+                  return { modelId: fakeModelId, imageUrl: url, latencyMs, success: !!url };
+                } catch {
+                  return { modelId: fakeModelId, imageUrl: null, latencyMs: Date.now() - t0, success: false };
+                }
+              }));
+              compareRawResults.push(...sceneResults);
+            } else {
+              // ── NO PRODUCT: Compare real AI models head-to-head ──
+              for (let bi = 0; bi < compareModelIds.length; bi += COMPARE_BATCH) {
+                const batch = compareModelIds.slice(bi, bi + COMPARE_BATCH);
+                const batchResults = await Promise.all(batch.map(async (modelId) => {
+                  const t0 = Date.now();
+                  try {
+                    const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(comparePrompt)}&models=${modelId}&aspectRatio=${compareAspectRatio}`);
+                    const latencyMs = Date.now() - t0;
+                    const url = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null;
+                    console.log(`[studio] Compare model ${modelId}: ${url ? "OK" : "FAIL"} (${latencyMs}ms)`);
+                    return { modelId, imageUrl: url, latencyMs, success: !!url };
+                  } catch (err: any) {
+                    console.warn(`[studio] Compare model ${modelId} failed:`, err?.message);
+                    return { modelId, imageUrl: null, latencyMs: Date.now() - t0, success: false };
+                  }
+                }));
+                compareRawResults.push(...batchResults);
+              }
+            }
+
+            // Compute Yuka scores
+            const scoreMap = computeCompareScores(compareRawResults);
+
+            compareResults = compareRawResults.map(r => {
+              const modelInfo = STUDIO_IMAGE_MODELS.find(m => m.id === r.modelId);
+              const scores = scoreMap.get(r.modelId) || { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 };
+              return {
+                modelId: r.modelId,
+                label: modelInfo?.label || r.modelId,
+                imageUrl: r.imageUrl || "",
+                latencyMs: r.latencyMs,
+                success: r.success,
+                scores,
+                strengths: modelInfo?.strengths || [],
+                bestFor: modelInfo?.bestFor || "",
+                tier: modelInfo?.tier || "standard",
+              };
+            });
+
+            // Mark recommended
+            const bestScore = Math.max(...compareResults.filter(r => r.success).map(r => r.scores.overall));
+            compareResults = compareResults.map(r => ({ ...r, recommended: r.success && r.scores.overall === bestScore }));
+
+            // DON'T auto-apply any image to formats — wait for user to pick a winner
+            // The CompareResultViewWrapper will regenerate per-format with the chosen model
+            const recommended = compareResults.find(r => r.recommended);
+
+            console.log(`[studio] Compare complete: ${compareResults.filter(r => r.success).length}/${compareResults.length} succeeded, best=${recommended?.label} (${bestScore})`);
+          }
+
           // ── IMAGE JOBS: all formats launch at once ──
-          const imageJobPromises = imageOnlyFormats.slice(0, 4).map(async (fmt, i) => {
+          // In compare mode, SKIP all image generation — wait for user to pick a winner, then regen per-format
+          const imageFormatsToGenerate = isCompareMode ? [] : imageOnlyFormats.slice(0, 4);
+          const imageJobPromises = imageFormatsToGenerate.map(async (fmt, i) => {
+            const actualIdx = isCompareMode ? i + 1 : i;
             const copyEntry = (primaryText.copyMap as any)?.[fmt.format];
             const basePrompt = copyEntry?.imagePrompt || `${brief}, ${fmt.platform} ${fmt.format}, professional`;
             const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
@@ -829,7 +1191,7 @@ export function StudioPage() {
 
             if (productRefUrls.length > 0) {
               // ── PRODUCT: 1 Photoroom call (fastest) ──
-              const refUrl = productRefUrls[i % productRefUrls.length];
+              const refUrl = productRefUrls[actualIdx % productRefUrls.length];
               const scenePrompt = campaignVisualStyle || enrichedPrompt;
               try {
                 const r = await serverPost("/generate/image-start", {
@@ -904,6 +1266,25 @@ export function StudioPage() {
               refImageUrl: productRefUrls[0] || undefined,
               campaignStartDate: campaignStartDate as string | undefined,
               campaignDuration: campaignDuration as string | undefined,
+              ...(compareResults.length > 0 ? { compareResults } : {}),
+              // Store regen context so the user can pick a winner and we regenerate per-format
+              ...(isCompareMode && imageOnlyFormats.length > 0 ? {
+                compareRegenContext: {
+                  brief: brief || "",
+                  brandVisualSuffix,
+                  campaignVisualStyle: campaignVisualStyle || "",
+                  productRefUrls,
+                  imageOnlyFormats: imageOnlyFormats.slice(0, 4).map((fmt) => {
+                    const copyEntry = (primaryText.copyMap as any)?.[fmt.format];
+                    const basePrompt = copyEntry?.imagePrompt || `${brief}, ${fmt.platform} ${fmt.format}, professional`;
+                    const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
+                    const promptHint = `${basePrompt}${visualStyleDirective}${brandVisualSuffix}`;
+                    const aspectRatio = fmt.format.includes("story") ? "9:16"
+                      : fmt.format.includes("post") && fmt.platform === "instagram" ? "1:1" : "16:9";
+                    return { format: fmt.format, platform: fmt.platform, aspectRatio, promptHint };
+                  }),
+                } satisfies CompareRegenContext,
+              } : {}),
             };
           }
           break;
@@ -2364,6 +2745,163 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
   );
 }
 
+/* ── Compare Result View Wrapper — handles selection + per-format regeneration ── */
+function CompareResultViewWrapper({ compareResults, posts, regenContext }: {
+  compareResults: CompareImageResult[];
+  posts: CampaignPost[];
+  regenContext?: CompareRegenContext;
+}) {
+  const { locale } = useI18n();
+  const { getAuthHeader } = useAuth();
+  const isFr = locale === "fr";
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [regenProgress, setRegenProgress] = useState<number>(0);
+  const [regenTotal, setRegenTotal] = useState<number>(0);
+  const [dismissed, setDismissed] = useState(false);
+
+  if (dismissed) return null;
+
+  const handleSelect = async (modelId: string, imageUrl: string) => {
+    setSelectedModel(modelId);
+    const modelLabel = STUDIO_IMAGE_MODELS.find(m => m.id === modelId)?.label || modelId;
+    const authToken = getAuthHeader();
+
+    // Identify image posts (not video-only, not text-only)
+    const imagePosts = posts.filter(p =>
+      !p.videoUrl && !p.format.includes("text") && !p.format.includes("article")
+    );
+
+    // If no regen context or no image posts → fallback: apply compare image to first, leave others
+    if (!regenContext || imagePosts.length === 0) {
+      if (imagePosts.length > 0) imagePosts[0].imageUrl = imageUrl;
+      toast.success(isFr ? `${modelLabel} sélectionné` : `${modelLabel} selected`);
+      setTimeout(() => setDismissed(true), 1500);
+      return;
+    }
+
+    // ── Start per-format regeneration with chosen model ──
+    const hasProduct = regenContext.productRefUrls.length > 0;
+    const fmtInfos = regenContext.imageOnlyFormats;
+    setRegenTotal(imagePosts.length);
+    setRegenProgress(0);
+
+    toast(
+      isFr
+        ? `${modelLabel} choisi — déclinaison en cours pour ${imagePosts.length} formats…`
+        : `${modelLabel} selected — generating ${imagePosts.length} format variations…`,
+      { icon: "🎨" }
+    );
+
+    // Regenerate each format in parallel (max 3 at a time)
+    const BATCH = 3;
+    for (let bi = 0; bi < imagePosts.length; bi += BATCH) {
+      const batch = imagePosts.slice(bi, bi + BATCH);
+      await Promise.all(batch.map(async (post, batchIdx) => {
+        const globalIdx = bi + batchIdx;
+        const fmtInfo = fmtInfos.find(f => f.format === post.format) || fmtInfos[globalIdx % fmtInfos.length];
+        const prompt = fmtInfo?.promptHint || `${regenContext.brief}, ${post.platform} ${post.format}, professional`;
+        const aspectRatio = fmtInfo?.aspectRatio || (post.format.includes("story") ? "9:16" : "16:9");
+
+        try {
+          let url: string | null = null;
+          if (hasProduct) {
+            // Product mode → Photoroom with format-specific prompt + aspect ratio
+            const refUrl = regenContext.productRefUrls[globalIdx % regenContext.productRefUrls.length];
+            const r = await fetch(`${API_BASE}/generate/image-start`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+              body: JSON.stringify({
+                prompt: prompt.slice(0, 500),
+                model: "photon-1",
+                aspectRatio,
+                imageRefUrl: refUrl,
+                refSource: "upload",
+                _token: authToken,
+              }),
+              signal: AbortSignal.timeout(60_000),
+            }).then(r => r.json());
+            url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null;
+          } else {
+            // Non-product → chosen AI model with format-specific prompt + aspect ratio
+            const r = await fetch(`${API_BASE}/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=${aspectRatio}`, {
+              method: "GET",
+              headers: { Authorization: `Bearer ${publicAnonKey}` },
+              signal: AbortSignal.timeout(60_000),
+            }).then(r => r.json());
+            url = r.success && r.results?.[0]?.result?.imageUrl ? r.results[0].result.imageUrl : null;
+          }
+          if (url) {
+            post.imageUrl = url;
+            console.log(`[compare-regen] ${post.format} (${aspectRatio}): OK — unique image`);
+          } else {
+            // Fallback: use the compare preview image
+            post.imageUrl = imageUrl;
+            console.log(`[compare-regen] ${post.format}: FAIL, using compare preview`);
+          }
+        } catch (err: any) {
+          post.imageUrl = imageUrl; // fallback
+          console.warn(`[compare-regen] ${post.format}: error`, err?.message);
+        }
+        setRegenProgress(prev => prev + 1);
+      }));
+    }
+
+    toast.success(
+      isFr
+        ? `${modelLabel} décliné sur ${imagePosts.length} formats ✨`
+        : `${modelLabel} applied to ${imagePosts.length} formats ✨`
+    );
+    setTimeout(() => setDismissed(true), 2000);
+  };
+
+  return (
+    <div className="space-y-2">
+      <CompareResultView
+        results={compareResults}
+        isFr={isFr}
+        onSelect={handleSelect}
+      />
+      {selectedModel && regenTotal > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+          style={{ background: regenProgress >= regenTotal ? "#22c55e15" : "var(--accent-warm-light)", border: `1px solid ${regenProgress >= regenTotal ? "#22c55e40" : "var(--accent-warm)"}` }}
+        >
+          {regenProgress < regenTotal ? (
+            <>
+              <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }} />
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--accent)" }}>
+                {isFr ? `Déclinaison en cours… ${regenProgress}/${regenTotal}` : `Generating variations… ${regenProgress}/${regenTotal}`}
+              </span>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={14} style={{ color: "#22c55e" }} />
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "#22c55e" }}>
+                {STUDIO_IMAGE_MODELS.find(m => m.id === selectedModel)?.label} — {isFr ? `${regenTotal} déclinaisons uniques générées` : `${regenTotal} unique variations generated`}
+              </span>
+            </>
+          )}
+        </motion.div>
+      )}
+      {selectedModel && regenTotal === 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
+          style={{ background: "#22c55e15", border: "1px solid #22c55e40" }}
+        >
+          <CheckCircle2 size={14} style={{ color: "#22c55e" }} />
+          <span style={{ fontSize: "12px", fontWeight: 600, color: "#22c55e" }}>
+            {STUDIO_IMAGE_MODELS.find(m => m.id === selectedModel)?.label} {isFr ? "sélectionné" : "selected"}
+          </span>
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 /* ── Result card ── */
 function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVersions, onAnimate, isGenerating, logoUrl }: {
   result: GeneratedResult;
@@ -2708,6 +3246,15 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVers
     };
     return (
       <div className="space-y-3">
+        {/* ═══ COMPARE MODE RESULTS — Yuka-style analysis ═══ */}
+        {result.compareResults && result.compareResults.length > 0 && (
+          <CompareResultViewWrapper
+            compareResults={result.compareResults}
+            posts={result.campaignPosts}
+            regenContext={result.compareRegenContext}
+          />
+        )}
+
         <CampaignCarousel posts={result.campaignPosts} logoUrl={logoUrl || result.logoUrl} onEdit={onEdit} onEditVisual={openKonvaForPost} onRemix={onRemix}
           onMoreVersions={onMoreVersions ? (idx) => onMoreVersions(idx, result.campaignPosts!, result.refImageUrl) : undefined}
           onAnimate={onAnimate ? (idx) => onAnimate(idx, result.campaignPosts!) : undefined}
@@ -3728,6 +4275,9 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>(["ora-vision"]);
   const [selectedTextModels, setSelectedTextModels] = useState<string[]>(["claude-sonnet"]);
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>(["ora-motion"]);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareModels, setCompareModels] = useState<string[]>(["ora-vision", "flux-pro"]);
+  const MAX_COMPARE = 4;
 
   // Visual scene presets
   const SCENE_PRESETS = [
@@ -3835,6 +4385,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
       ...(startDate ? { startDate } : {}),
       ...(duration ? { duration } : {}),
       ...(moment ? { theme: moment } : {}),
+      ...(compareMode ? { compareMode: true, compareModels } : {}),
     });
   };
 
@@ -4038,6 +4589,90 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
               Comparez et choisissez la meilleure
             </span>
           </div>
+        </div>
+
+        {/* ═══ COMPARE MODE — Yuka-style AI comparison ═══ */}
+        <div className="rounded-xl overflow-hidden" style={{ border: compareMode ? "2px solid var(--accent)" : "1px solid var(--border)", background: compareMode ? "var(--accent-warm-light)" : "var(--secondary)" }}>
+          <button
+            onClick={() => setCompareMode(!compareMode)}
+            className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer transition-all"
+          >
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: compareMode ? "var(--accent)" : "var(--border)" }}>
+              <BarChart3 size={14} style={{ color: compareMode ? "#fff" : "var(--muted-foreground)" }} />
+            </div>
+            <div className="flex-1 text-left">
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--foreground)" }}>
+                Mode Comparaison
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--muted-foreground)", lineHeight: 1.3 }}>
+                Comparez 2 à 4 IA — scores Yuka, choisissez le meilleur visuel
+              </div>
+            </div>
+            <div className="w-10 h-5 rounded-full flex-shrink-0 relative transition-all"
+              style={{ background: compareMode ? "var(--accent)" : "var(--border)" }}>
+              <div className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                style={{
+                  background: "#fff",
+                  left: compareMode ? 22 : 2,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+            </div>
+          </button>
+
+          {/* Compare model picker */}
+          <AnimatePresence>
+            {compareMode && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="px-4 pb-3 space-y-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--muted-foreground)" }}>
+                    Choisissez {MAX_COMPARE} IA max ({compareModels.length} sélectionnées)
+                  </span>
+                  <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--accent)" }}>
+                    ~{compareModels.reduce((sum, id) => sum + (STUDIO_IMAGE_MODELS.find(m => m.id === id)?.credits || 5), 0)} crédits
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {STUDIO_IMAGE_MODELS.map(m => {
+                    const isOn = compareModels.includes(m.id);
+                    const tierColor = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          if (isOn) {
+                            if (compareModels.length > 2) setCompareModels(prev => prev.filter(id => id !== m.id));
+                          } else if (compareModels.length < MAX_COMPARE) {
+                            setCompareModels(prev => [...prev, m.id]);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer transition-all"
+                        style={{
+                          fontSize: "10px", fontWeight: isOn ? 700 : 500, whiteSpace: "nowrap",
+                          background: isOn ? "var(--foreground)" : "var(--card)",
+                          color: isOn ? "var(--background)" : "var(--foreground)",
+                          border: `1.5px solid ${isOn ? "var(--foreground)" : "var(--border)"}`,
+                          opacity: !isOn && compareModels.length >= MAX_COMPARE ? 0.4 : 1,
+                        }}
+                      >
+                        {isOn && <Check size={9} />}
+                        {m.label}
+                        <span style={{ fontSize: "7px", color: isOn ? "var(--background)" : tierColor, opacity: isOn ? 0.7 : 1, fontWeight: 700 }}>
+                          {m.credits}cr
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* ═══ ADVANCED TOGGLE ═══ */}
@@ -4365,6 +5000,11 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
         <div style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
           {selectedFormats.length} format{selectedFormats.length > 1 ? "s" : ""}
           {selectedProduct && ` · ${products.find((p: any) => p.id === selectedProduct)?.name || "Produit"}`}
+          {compareMode && (
+            <span style={{ color: "var(--accent)", fontWeight: 600 }}>
+              {" "}· Comparaison {compareModels.length} IA (~{compareModels.reduce((s, id) => s + (STUDIO_IMAGE_MODELS.find(m => m.id === id)?.credits || 5), 0)} cr)
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onCancel}
@@ -4376,9 +5016,12 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </button>
           <button onClick={handleGenerate} disabled={!selectedFormats.length}
             className="flex items-center gap-2 px-5 py-2 rounded-xl cursor-pointer transition-all disabled:opacity-40"
-            style={{ background: "var(--foreground)", color: "var(--background)", fontSize: "13px", fontWeight: 600 }}>
-            <Sparkles size={14} />
-            {t("studio.generateCampaign")}
+            style={{
+              background: compareMode ? "linear-gradient(135deg, #7C3AED, var(--foreground))" : "var(--foreground)",
+              color: "var(--background)", fontSize: "13px", fontWeight: 600,
+            }}>
+            {compareMode ? <BarChart3 size={14} /> : <Sparkles size={14} />}
+            {compareMode ? `Comparer ${compareModels.length} IA` : t("studio.generateCampaign")}
           </button>
         </div>
       </div>

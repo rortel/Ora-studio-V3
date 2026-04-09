@@ -716,7 +716,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
     profile: "Profile",
     admin: "Admin",
     signOut: "Sign out",
-    compare: "Compare",
+    compare: "Creative Lab",
   },
   credits: {
     insufficient: "Credits insufficient",
@@ -1501,7 +1501,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
   hub: {
     generate: "Generate",
     library: "Library",
-    compare: "Compare",
+    compare: "Creative Lab",
     generating: "Generating",
     motionLab: "Motion Lab",
     visualLab: "Visual Lab",
@@ -2315,7 +2315,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
     profile: "Profil",
     admin: "Admin",
     signOut: "Déconnexion",
-    compare: "Comparer",
+    compare: "Creative Lab",
   },
   credits: {
     insufficient: "Crédits insuffisants",
@@ -3100,7 +3100,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
   hub: {
     generate: "Générer",
     library: "Bibliothèque",
-    compare: "Comparer",
+    compare: "Creative Lab",
     generating: "Génération",
     motionLab: "Labo Motion",
     visualLab: "Labo Visuel",

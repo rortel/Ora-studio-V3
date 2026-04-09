@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Home, FolderOpen, Calendar, Palette, BarChart3,
+  Home, FolderOpen, Calendar, Palette, Sparkles,
   User, LogOut, Shield, Zap, CreditCard,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
@@ -36,7 +36,7 @@ export function AppSidebar() {
     { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
     { icon: Palette, label: t("sidebar.brandKit"), href: "/hub/vault" },
-    { icon: BarChart3, label: t("sidebar.compare"), href: "/hub/compare" },
+    { icon: Sparkles, label: t("sidebar.compare"), href: "/hub/compare" },
   ];
 
   const mobileNavItems = [
