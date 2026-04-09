@@ -802,150 +802,93 @@ export function StudioPage() {
             console.log(`[studio] Carousel ${carouselPost.format}: ${slideResults.filter(Boolean).length}/${carouselPost.slides.length} slides generated`);
           }
 
-          // 3a. Generate IMAGES for image formats
-          // PRODUCT PRESENT → Photoroom only (pixel-perfect product, multiple scene variants)
-          // NO PRODUCT → AI generative models (text-to-image)
-          const PHOTOROOM_SCENE_VARIANTS = [
-            { id: "lifestyle", label: "Lifestyle", prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography" },
-            { id: "packshot", label: "Packshot", prompt: "packshot" },
-            { id: "cinematic", label: "Cinématique", prompt: "Dramatic cinematic scene, moody atmospheric lighting, deep contrast, cinematic color grading" },
-            { id: "editorial", label: "Editorial", prompt: "High-fashion editorial setting, clean minimal studio, dramatic directional lighting" },
-          ];
+          // 3a. Generate IMAGES + VIDEOS in FULL PARALLEL (all formats at once)
+          // PRODUCT → Photoroom (pixel-perfect) | NO PRODUCT → AI text-to-image
 
-          for (let i = 0; i < Math.min(imageOnlyFormats.length, 4); i++) {
-            const copyEntry = (primaryText.copyMap as any)?.[imageOnlyFormats[i].format];
-            const basePrompt = copyEntry?.imagePrompt || `${brief}, ${imageOnlyFormats[i].platform} ${imageOnlyFormats[i].format}, professional`;
+          const ideogramColorPalette: { color_hex: string; color_weight: number }[] = (() => {
+            const rawColors = vault?.colors || [];
+            if (!Array.isArray(rawColors)) return [];
+            const hexes = rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || c?.color_hex || "").filter(Boolean).slice(0, 4);
+            return hexes.map((hex: string, idx: number) => ({
+              color_hex: hex.startsWith("#") ? hex : `#${hex}`,
+              color_weight: idx === 0 ? 0.5 : idx === 1 ? 0.3 : 0.1,
+            }));
+          })();
+
+          // ── IMAGE JOBS: all formats launch at once ──
+          const imageJobPromises = imageOnlyFormats.slice(0, 4).map(async (fmt, i) => {
+            const copyEntry = (primaryText.copyMap as any)?.[fmt.format];
+            const basePrompt = copyEntry?.imagePrompt || `${brief}, ${fmt.platform} ${fmt.format}, professional`;
             const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
             const enrichedPrompt = `${basePrompt}${visualStyleDirective}${brandVisualSuffix}`;
-            const aspectRatio = imageOnlyFormats[i].format.includes("story")
+            const aspectRatio = fmt.format.includes("story")
               ? "9:16"
-              : imageOnlyFormats[i].format.includes("post") && imageOnlyFormats[i].platform === "instagram"
+              : fmt.format.includes("post") && fmt.platform === "instagram"
                 ? "1:1"
                 : "16:9";
 
-            // ── Build a pool of generation jobs, limited to versionCount ──
-            const jobs: Promise<{ imageUrl: string | null }>[] = [];
-
             if (productRefUrls.length > 0) {
-              // ── PRODUCT MODE: all engines receive the product ref → product always respected ──
+              // ── PRODUCT: 1 Photoroom call (fastest) ──
               const refUrl = productRefUrls[i % productRefUrls.length];
-              const primaryScenePrompt = campaignVisualStyle || enrichedPrompt;
-              const ideogramColorPalette: { color_hex: string; color_weight: number }[] = (() => {
-                const rawColors = vault?.colors || [];
-                if (!Array.isArray(rawColors)) return [];
-                const hexes = rawColors.map((c: any) => typeof c === "string" ? c : c?.hex || c?.color_hex || "").filter(Boolean).slice(0, 4);
-                return hexes.map((hex: string, idx: number) => ({
-                  color_hex: hex.startsWith("#") ? hex : `#${hex}`,
-                  color_weight: idx === 0 ? 0.5 : idx === 1 ? 0.3 : 0.1,
-                }));
-              })();
-
-              // ── PERF: 3 fast engines max (was 7) — more versions via Compare ──
-              const productEnginePool = [
-                // 1. Photoroom primary scene (fastest, always first)
-                () => serverPost("/generate/image-start", {
-                  prompt: primaryScenePrompt.slice(0, 500), model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 45_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-
-                // 2. Ideogram Replace-BG (good quality, different look)
-                () => serverPost("/ideogram/replace-background", {
-                  imageUrl: refUrl,
-                  prompt: campaignVisualStyle ? `${campaignVisualStyle}, elegant background, professional product staging` : "Beautiful lifestyle environment, warm soft lighting, premium product staging",
-                }, 45_000).then(r => ({ imageUrl: r.success && r.imageUrl ? r.imageUrl : null })).catch(() => ({ imageUrl: null })),
-
-                // 3. Photoroom lifestyle variant
-                () => serverPost("/generate/image-start", {
-                  prompt: "Beautiful natural lifestyle environment, warm golden hour, editorial photography", model: "photon-1", aspectRatio,
-                  imageRefUrl: refUrl, refSource: "upload",
-                }, 45_000).then(r => ({ imageUrl: r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null })).catch(() => ({ imageUrl: null })),
-              ];
-
-              // Launch only what's needed (1 per format by default, more via versionCount)
-              const maxEngines = Math.min(versionCount, productEnginePool.length);
-              for (let j = 0; j < maxEngines; j++) {
-                jobs.push(productEnginePool[j]());
-              }
-            } else {
-              // ── NO PRODUCT: 1 image per format with primary model (fast) ──
-              const primaryImgModel = imageModelList[0] || "photon-1";
-              const modelsToUse = versionCount > 1
-                ? [primaryImgModel, ...imageModelList.slice(1)].slice(0, Math.min(versionCount, 3))
-                : [primaryImgModel];
-              for (const model of modelsToUse) {
-                jobs.push(
-                  serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${model}&aspectRatio=${aspectRatio}`)
-                    .then(res => ({ imageUrl: res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null }))
-                    .catch(() => ({ imageUrl: null }))
-                );
-              }
-            }
-
-            console.log(`[studio] Generating ${jobs.length} versions for ${imageOnlyFormats[i].format} (versionCount=${versionCount})`);
-            const allResults = await Promise.all(jobs);
-            const successful = allResults.filter(r => r.imageUrl);
-
-            if (successful.length > 0) {
-              imageOnlyFormats[i].imageUrl = successful[0].imageUrl!;
-            }
-            // Store ALL successful results as selectable variants (labeled "Version 1", "Version 2"...)
-            if (successful.length > 1) {
-              imageOnlyFormats[i].variants = successful.map((r, idx) => ({
-                model: `v${idx + 1}`,
-                text: imageOnlyFormats[i].text,
-                imageUrl: r.imageUrl!,
-                imageModel: `Version ${idx + 1}`,
-              }));
-              imageOnlyFormats[i].selectedVariant = 0;
-            }
-          }
-
-          // 3b. Generate VIDEOS for video formats (reel, tiktok-video, linkedin-video, youtube-short, facebook-video)
-          if (videoFormats.length > 0) {
-            console.log(`[studio] Generating ${videoFormats.length} video(s) for formats: ${videoFormats.map(v => v.format).join(", ")}`);
-
-            // Launch all video generations in parallel (start + poll)
-            const videoPromises = videoFormats.slice(0, 3).map(async (vf, i) => {
-              const copyEntry = (primaryText.copyMap as any)?.[vf.format];
-              const videoPrompt = copyEntry?.videoPrompt || copyEntry?.imagePrompt || `${brief}, ${vf.platform} ${vf.format}, professional cinematic`;
-              const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
-              const fullVideoPrompt = `${videoPrompt}${visualStyleDirective}${brandVisualSuffix}`.slice(0, 500);
-              const aspectRatio = vf.format.includes("reel") || vf.format.includes("short") || vf.format.includes("tiktok")
-                ? "9:16" : "16:9";
-
-              // If we have a product image, use it as image-to-video source
-              const imageUrlForVideo = productRefUrls.length > 0 ? productRefUrls[i % productRefUrls.length] : undefined;
-
+              const scenePrompt = campaignVisualStyle || enrichedPrompt;
               try {
-                console.log(`[studio] Video START [${vf.format}]: prompt="${fullVideoPrompt.slice(0, 80)}...", imageRef=${imageUrlForVideo ? "yes" : "no"}`);
-                const videoModel = Array.isArray(vidModels) && vidModels.length > 0 ? vidModels[0] : "ora-motion";
-                const startRes = await serverGet(
-                  `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=${videoModel}${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}&duration=${vidDuration}`
-                );
-                if (startRes.success && startRes.generationId) {
-                  console.log(`[studio] Video POLLING [${vf.format}]: genId=${startRes.generationId}`);
-                  const videoUrl = await pollVideo(startRes.generationId);
-                  if (videoUrl) {
-                    console.log(`[studio] Video OK [${vf.format}]: ${videoUrl.slice(0, 80)}`);
-                    vf.videoUrl = videoUrl;
-                  } else {
-                    console.warn(`[studio] Video TIMEOUT/FAIL [${vf.format}]`);
-                  }
+                const r = await serverPost("/generate/image-start", {
+                  prompt: scenePrompt.slice(0, 500), model: "photon-1", aspectRatio,
+                  imageRefUrl: refUrl, refSource: "upload",
+                }, 45_000);
+                const url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null;
+                if (url) fmt.imageUrl = url;
+              } catch { /* silent */ }
+            } else {
+              // ── NO PRODUCT: 1 fast call ──
+              const primaryImgModel = imageModelList[0] || "photon-1";
+              try {
+                const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt)}&models=${primaryImgModel}&aspectRatio=${aspectRatio}`);
+                const url = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : null;
+                if (url) fmt.imageUrl = url;
+              } catch { /* silent */ }
+            }
+            console.log(`[studio] Image done [${fmt.format}]: ${fmt.imageUrl ? "OK" : "FAIL"}`);
+          });
+
+          // ── VIDEO JOBS: launch at the same time as images ──
+          const videoJobPromises = videoFormats.slice(0, 2).map(async (vf, i) => {
+            const copyEntry = (primaryText.copyMap as any)?.[vf.format];
+            const videoPrompt = copyEntry?.videoPrompt || copyEntry?.imagePrompt || `${brief}, ${vf.platform} ${vf.format}, professional cinematic`;
+            const visualStyleDirective = campaignVisualStyle ? ` Visual style: ${campaignVisualStyle}.` : "";
+            const fullVideoPrompt = `${videoPrompt}${visualStyleDirective}${brandVisualSuffix}`.slice(0, 500);
+            const aspectRatio = vf.format.includes("reel") || vf.format.includes("short") || vf.format.includes("tiktok")
+              ? "9:16" : "16:9";
+            const imageUrlForVideo = productRefUrls.length > 0 ? productRefUrls[i % productRefUrls.length] : undefined;
+
+            try {
+              console.log(`[studio] Video START [${vf.format}]: prompt="${fullVideoPrompt.slice(0, 80)}..."`);
+              const videoModel = Array.isArray(vidModels) && vidModels.length > 0 ? vidModels[0] : "ora-motion";
+              const startRes = await serverGet(
+                `/generate/video-start?prompt=${encodeURIComponent(fullVideoPrompt)}&model=${videoModel}${imageUrlForVideo ? `&imageUrl=${encodeURIComponent(imageUrlForVideo)}` : ""}&aspectRatio=${aspectRatio}&duration=${vidDuration}`
+              );
+              if (startRes.success && startRes.generationId) {
+                console.log(`[studio] Video POLLING [${vf.format}]: genId=${startRes.generationId}`);
+                const videoUrl = await pollVideo(startRes.generationId);
+                if (videoUrl) {
+                  vf.videoUrl = videoUrl;
+                  console.log(`[studio] Video OK [${vf.format}]`);
                 } else {
-                  console.warn(`[studio] Video START failed [${vf.format}]:`, startRes.error || "no generationId");
+                  console.warn(`[studio] Video TIMEOUT/FAIL [${vf.format}]`);
                 }
-              } catch (e: any) {
-                console.warn(`[studio] Video error [${vf.format}]:`, e?.message);
               }
+            } catch (e: any) {
+              console.warn(`[studio] Video error [${vf.format}]:`, e?.message);
+            }
+            // Thumbnail = product ref (no extra generation)
+            if (productRefUrls.length > 0) {
+              vf.imageUrl = productRefUrls[i % productRefUrls.length];
+            }
+          });
 
-              // Skip thumbnail generation — use product ref or first frame from video
-              if (productRefUrls.length > 0) {
-                vf.imageUrl = productRefUrls[i % productRefUrls.length];
-              }
-            });
-
-            await Promise.all(videoPromises);
-          }
+          // ── WAIT for ALL images + videos in parallel ──
+          console.log(`[studio] Launching ${imageJobPromises.length} image + ${videoJobPromises.length} video jobs in parallel`);
+          await Promise.all([...imageJobPromises, ...videoJobPromises]);
 
           // ── 4. SKIP AUTO-COMPOSITE — template is applied in the editor after generation ──
           // The user clicks "Edit" on the generated image, picks a layout, adjusts, and saves.
