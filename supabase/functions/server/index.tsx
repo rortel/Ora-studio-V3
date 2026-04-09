@@ -1208,6 +1208,9 @@ const directApiModels = new Set(["dall-e", "flux-pro", "flux-dev-leo"]);
 
 // --- Image models routed through secondary provider (submit + poll) ---
 const hfImageModelMap: Record<string, { hfModels: string[]; aspectRatio: string }> = {
+  // NOTE: Higgsfield provider is unreliable (frequent 500s).
+  // These models are also routed via Leonardo v2 as primary (see leonardoV2ModelMap).
+  // HF map kept as last-resort fallback only.
   "soul":            { hfModels: ["higgsfield-ai/soul/standard"], aspectRatio: "4:3" },
   "seedream-v4":     { hfModels: ["bytedance/seedream/v4/text-to-image", "higgsfield-ai/soul/standard"], aspectRatio: "4:3" },
   "seedream-v4.5":   { hfModels: ["bytedance/seedream/v4/text-to-image", "higgsfield-ai/soul/standard"], aspectRatio: "4:3" },
@@ -1681,6 +1684,11 @@ const leonardoV2ModelMap: Record<string, { modelSlug: string; aspectRatio: strin
   "ideogram-3-leo":    { modelSlug: "ideogram-v3.0", aspectRatio: "1:1", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
   "seedream-4-leo":    { modelSlug: "seedream-4.0", aspectRatio: "16:9", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
   "flux-pro-2-leo":    { modelSlug: "flux-pro-2.0", aspectRatio: "1:1" },
+  // Rerouted from Higgsfield (unreliable 500s) → Leonardo v2 equivalents
+  "seedream-v4":       { modelSlug: "seedream-4.0", aspectRatio: "16:9", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
+  "seedream-v4.5":     { modelSlug: "seedream-4.0", aspectRatio: "16:9", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
+  "soul":              { modelSlug: "gemini-2.5-flash-image", aspectRatio: "1:1", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
+  "nano-banana":       { modelSlug: "nano-banana-2", aspectRatio: "1:1", defaultStyle: "111dc692-d470-4eec-b791-3475abac4c46" },
 };
 
 // Add Phoenix 1.0 and 0.9 to v1 map (real IDs from docs)

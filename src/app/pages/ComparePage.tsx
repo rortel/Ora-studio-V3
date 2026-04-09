@@ -494,11 +494,11 @@ export function ComparePage() {
   // ── Poll video helper ──
   const pollVideo = useCallback(async (genId: string, maxPolls = 60): Promise<{ url: string; pollCount: number } | null> => {
     for (let i = 0; i < maxPolls; i++) {
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 5000));
       try {
-        const res = await serverGet(`/generate/video-poll?generationId=${genId}`);
-        if (res.success && res.videoUrl) return { url: res.videoUrl, pollCount: i + 1 };
-        if (res.status === "failed") return null;
+        const res = await serverGet(`/generate/video-status?id=${genId}`);
+        if (res.state === "completed" && res.videoUrl) return { url: res.videoUrl, pollCount: i + 1 };
+        if (res.state === "failed") return null;
       } catch { /* continue */ }
     }
     return null;
