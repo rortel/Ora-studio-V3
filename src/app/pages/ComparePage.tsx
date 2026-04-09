@@ -306,12 +306,30 @@ export function ComparePage() {
     setAttachedImage(null);
   }, [attachedImage]);
 
-  // ── Server calls ──
+  // ── Server calls (CORS-safe: text/plain avoids preflight for most browsers) ──
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
-    const r = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" }, body: JSON.stringify({ ...body, _token: token }), signal: AbortSignal.timeout(timeoutMs) });
-    const text = await r.text();
-    try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
+    // Retry once on network/CORS failure
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(`${API_BASE}${path}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ ...body, _token: token }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        const text = await r.text();
+        try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
+      } catch (err: any) {
+        if (attempt === 0) {
+          console.warn(`[serverPost] ${path} attempt 1 failed (${err?.message}), retrying...`);
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        return { success: false, error: err?.message || "Network error" };
+      }
+    }
+    return { success: false, error: "Request failed" };
   }, [getAuthHeader]);
 
   const serverGet = useCallback(async (path: string) => {
@@ -454,7 +472,7 @@ export function ComparePage() {
     <RouteGuard>
       <div className="h-screen flex flex-col" style={{ background: "var(--background)", paddingLeft: 52 }}>
 
-        {/* ═══ HEADER — compact ═══ */}
+        {/* ═══ HEADER — minimal, just branding + score toggle ═══ */}
         <div className="flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "#FFFFFF" }}>
           <div className="max-w-7xl mx-auto px-6 py-3">
             <div className="flex items-center justify-between">
@@ -471,27 +489,7 @@ export function ComparePage() {
                 </div>
               </div>
 
-              {/* Mode tabs */}
-              <div className="flex gap-1 p-1 rounded-xl" style={{ background: "var(--secondary)" }}>
-                {([
-                  { id: "image" as CreativeMode, icon: ImageIcon, label: "Image" },
-                  { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text" },
-                  { id: "video" as CreativeMode, icon: Video, label: "Vidéo" },
-                ] as const).map(tab => (
-                  <button key={tab.id} onClick={() => setMode(tab.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-                    style={{
-                      background: mode === tab.id ? "#FFFFFF" : "transparent",
-                      color: mode === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
-                      fontWeight: mode === tab.id ? 600 : 400, fontSize: 12,
-                      boxShadow: mode === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                    }}>
-                    <tab.icon size={13} /> {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Score toggle */}
+              {/* Score toggle (only when results exist) */}
               {results.length > 0 && (
                 <button onClick={() => setShowScores(!showScores)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
@@ -778,8 +776,30 @@ export function ComparePage() {
                 )}
               </AnimatePresence>
 
-              {/* Model pills row */}
+              {/* Mode tabs + Model pills — all in one row */}
               <div className="px-4 pt-3 pb-1 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                {/* Mode tabs — inline in bottom bar */}
+                <div className="flex gap-0.5 p-0.5 rounded-lg flex-shrink-0" style={{ background: "var(--secondary)" }}>
+                  {([
+                    { id: "image" as CreativeMode, icon: ImageIcon, label: "Image" },
+                    { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text" },
+                    { id: "video" as CreativeMode, icon: Video, label: "Vidéo" },
+                  ] as const).map(tab => (
+                    <button key={tab.id} onClick={() => setMode(tab.id)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer"
+                      style={{
+                        background: mode === tab.id ? "#FFFFFF" : "transparent",
+                        color: mode === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
+                        fontWeight: mode === tab.id ? 600 : 400, fontSize: 11,
+                        boxShadow: mode === tab.id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                      }}>
+                      <tab.icon size={11} /> {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Separator */}
+                <div className="w-px h-5 flex-shrink-0" style={{ background: "var(--border)" }} />
                 <button onClick={() => setShowModelPicker(!showModelPicker)}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
                   style={{ background: showModelPicker ? "var(--foreground)" : "var(--secondary)", color: showModelPicker ? "var(--background)" : "var(--muted-foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
