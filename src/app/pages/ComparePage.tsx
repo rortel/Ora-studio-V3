@@ -483,15 +483,13 @@ export function ComparePage() {
   }, [getAuthHeader]);
 
   const serverGet = useCallback(async (path: string) => {
-    const token = getAuthHeader();
     const r = await fetch(`${API_BASE}${path}`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${publicAnonKey}`, "x-token": token || "" },
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
       signal: AbortSignal.timeout(120_000),
     });
-    const text = await r.text();
-    try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
-  }, [getAuthHeader]);
+    return r.json();
+  }, []);
 
   // ── Poll video helper ──
   const pollVideo = useCallback(async (genId: string, maxPolls = 60): Promise<{ url: string; pollCount: number } | null> => {
