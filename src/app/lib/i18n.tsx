@@ -716,6 +716,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
     profile: "Profile",
     admin: "Admin",
     signOut: "Sign out",
+    compare: "Compare",
   },
   credits: {
     insufficient: "Credits insufficient",
@@ -2314,6 +2315,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
     profile: "Profil",
     admin: "Admin",
     signOut: "Déconnexion",
+    compare: "Comparer",
   },
   credits: {
     insufficient: "Crédits insuffisants",
