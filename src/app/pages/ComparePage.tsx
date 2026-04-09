@@ -398,19 +398,6 @@ function generateTextRecommendation(results: TextKPIs[], locale: string): Recomm
     );
   }
 
-  // Margin transparency
-  const providerCosts = successful.map(r => TEXT_MODELS.find(m => m.id === r.model)?.providerCostEur || 0);
-  const minProvider = Math.min(...providerCosts);
-  const maxProvider = Math.max(...providerCosts);
-  const avgMargin = successful.reduce((sum, r) => {
-    const prov = TEXT_MODELS.find(m => m.id === r.model)?.providerCostEur || 0;
-    return sum + (r.costEur > 0 ? ((r.costEur - prov) / r.costEur) * 100 : 0);
-  }, 0) / successful.length;
-  insights.push(isFr
-    ? `**Transparence cout** -- Cout fournisseur de ${minProvider.toFixed(3)}EUR a ${maxProvider.toFixed(3)}EUR. Marge ORA moyenne : ${avgMargin.toFixed(0)}%.`
-    : `**Cost transparency** -- Provider cost ranges from EUR${minProvider.toFixed(3)} to EUR${maxProvider.toFixed(3)}. Average ORA margin: ${avgMargin.toFixed(0)}%.`
-  );
-
   // Why bullets for winner
   if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide du test" : "Fastest in this test");
   if (winner.model === richest.model) whyBullets.push(isFr ? "Vocabulaire le plus riche" : "Richest vocabulary");
@@ -476,19 +463,6 @@ function generateImageRecommendation(results: ImageKPIs[], locale: string): Reco
     );
   }
 
-  // Margin transparency
-  const providerCosts = successful.map(r => IMAGE_MODELS.find(m => m.id === r.model)?.providerCostEur || 0);
-  const minProvider = Math.min(...providerCosts);
-  const maxProvider = Math.max(...providerCosts);
-  const avgMargin = successful.reduce((sum, r) => {
-    const prov = IMAGE_MODELS.find(m => m.id === r.model)?.providerCostEur || 0;
-    return sum + (r.costEur > 0 ? ((r.costEur - prov) / r.costEur) * 100 : 0);
-  }, 0) / successful.length;
-  insights.push(isFr
-    ? `**Transparence cout** -- Cout fournisseur de ${minProvider.toFixed(3)}EUR a ${maxProvider.toFixed(3)}EUR. Marge ORA moyenne : ${avgMargin.toFixed(0)}%.`
-    : `**Cost transparency** -- Provider cost ranges from EUR${minProvider.toFixed(3)} to EUR${maxProvider.toFixed(3)}. Average ORA margin: ${avgMargin.toFixed(0)}%.`
-  );
-
   // Why bullets
   if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide" : "Fastest");
   if (winner.model === highestRes.model) whyBullets.push(isFr ? "Meilleure resolution" : "Best resolution");
@@ -542,19 +516,6 @@ function generateVideoRecommendation(results: VideoKPIs[], locale: string): Reco
       : `**Reliability** -- ${failed.map(r => r.label).join(", ")} failed.`
     );
   }
-
-  // Margin transparency
-  const providerCosts = successful.map(r => VIDEO_MODELS.find(m => m.id === r.model)?.providerCostEur || 0);
-  const minProvider = Math.min(...providerCosts);
-  const maxProvider = Math.max(...providerCosts);
-  const avgMargin = successful.reduce((sum, r) => {
-    const prov = VIDEO_MODELS.find(m => m.id === r.model)?.providerCostEur || 0;
-    return sum + (r.costEur > 0 ? ((r.costEur - prov) / r.costEur) * 100 : 0);
-  }, 0) / successful.length;
-  insights.push(isFr
-    ? `**Transparence cout** -- Cout fournisseur de ${minProvider.toFixed(2)}EUR a ${maxProvider.toFixed(2)}EUR. Marge ORA moyenne : ${avgMargin.toFixed(0)}%.`
-    : `**Cost transparency** -- Provider cost ranges from EUR${minProvider.toFixed(2)} to EUR${maxProvider.toFixed(2)}. Average ORA margin: ${avgMargin.toFixed(0)}%.`
-  );
 
   // Why bullets
   if (winner.model === fastest.model) whyBullets.push(isFr ? "Le plus rapide" : "Fastest");
@@ -663,18 +624,6 @@ function StrengthTag({ label }: { label: string }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   VALUE GRADE HELPER
-   ═══════════════════════════════════════════════════════════ */
-
-function getValueGrade(marginPct: number): { grade: string; color: string } {
-  if (marginPct <= 50) return { grade: "A+", color: "#22c55e" };
-  if (marginPct <= 70) return { grade: "A", color: "#22c55e" };
-  if (marginPct <= 85) return { grade: "B", color: "#f59e0b" };
-  if (marginPct <= 92) return { grade: "C", color: "#f59e0b" };
-  return { grade: "D", color: "#ef4444" };
-}
-
 /* ═══════════════════════════════════════════════════════════ */
 /* MAIN COMPONENT                                            */
 /* ═══════════════════════════════════════════════════════════ */
@@ -695,7 +644,7 @@ export function ComparePage() {
   const [imageResults, setImageResults] = useState<ImageKPIs[]>([]);
   const [videoResults, setVideoResults] = useState<VideoKPIs[]>([]);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ outputs: true, insights: true, costs: true, usecases: true });
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ outputs: true, insights: true, usecases: true });
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -1227,8 +1176,6 @@ export function ComparePage() {
                   {getScoredModels().map(m => {
                     const modelInfo = getModelInfo(m.id, mode);
                     const isWinner = m.id === recommendation.winnerId;
-                    const providerCost = modelInfo?.providerCostEur || 0;
-                    const marginPct = m.costEur > 0 ? ((m.costEur - providerCost) / m.costEur) * 100 : 0;
                     return (
                       <div key={m.id} className="rounded-xl p-4" style={{
                         background: "#FFFFFF",
@@ -1293,14 +1240,10 @@ export function ComparePage() {
                             </div>
                           </div>
                         )}
-                        {/* Cost breakdown */}
+                        {/* Credits */}
                         {m.success && (
-                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                            <span>ORA: {m.costEur.toFixed(2)}EUR</span>
-                            <span style={{ margin: "0 6px", color: "var(--border)" }}>|</span>
-                            <span>{isFr ? "Fournisseur" : "Provider"}: {providerCost.toFixed(3)}EUR</span>
-                            <span style={{ margin: "0 6px", color: "var(--border)" }}>|</span>
-                            <span style={{ color: "var(--text-tertiary)" }}>{isFr ? "Marge" : "Margin"}: {marginPct.toFixed(0)}%</span>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                            {m.costEur.toFixed(2)}€ · {modelCatalog.find(c => c.id === m.id)?.credits || 0} {isFr ? "crédits" : "credits"}
                           </div>
                         )}
                       </div>
@@ -1437,65 +1380,12 @@ export function ComparePage() {
                 </div>
               )}
 
-              {/* ── COST TRANSPARENCY TABLE ── */}
-              <div className="mb-8">
-                <button onClick={() => toggleSection("costs")} className="flex items-center gap-2 mb-4 cursor-pointer">
-                  {expandedSections.costs ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
-                    {isFr ? "Transparence des couts" : "Cost transparency"}
-                  </span>
-                </button>
-                <AnimatePresence>
-                  {expandedSections.costs && (
-                    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-                      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                        <table className="w-full" style={{ fontSize: 12 }}>
-                          <thead>
-                            <tr style={{ background: "var(--secondary)" }}>
-                              <th className="text-left px-4 py-2.5" style={{ fontWeight: 600, color: "var(--text-tertiary)" }}>{isFr ? "Modele" : "Model"}</th>
-                              <th className="text-center px-3 py-2.5" style={{ fontWeight: 600, color: "var(--text-tertiary)" }}>{isFr ? "Prix ORA" : "ORA Price"}</th>
-                              <th className="text-center px-3 py-2.5" style={{ fontWeight: 600, color: "var(--text-tertiary)" }}>{isFr ? "Cout fournisseur" : "Provider Cost"}</th>
-                              <th className="text-center px-3 py-2.5" style={{ fontWeight: 600, color: "var(--text-tertiary)" }}>{isFr ? "Marge ORA" : "ORA Margin"}</th>
-                              <th className="text-center px-3 py-2.5" style={{ fontWeight: 600, color: "var(--text-tertiary)" }}>{isFr ? "Valeur" : "Value"}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedModels.map(id => {
-                              const modelInfo = getModelInfo(id, mode);
-                              if (!modelInfo) return null;
-                              const providerCost = modelInfo.providerCostEur;
-                              const marginPct = modelInfo.costEur > 0 ? ((modelInfo.costEur - providerCost) / modelInfo.costEur) * 100 : 0;
-                              const { grade, color } = getValueGrade(marginPct);
-                              const isWinner = id === recommendation.winnerId;
-                              return (
-                                <tr key={id} style={{ borderTop: "1px solid var(--border)", background: isWinner ? "var(--accent-warm-light)" : "transparent" }}>
-                                  <td className="px-4 py-2.5" style={{ fontWeight: isWinner ? 600 : 400, color: isWinner ? "var(--accent)" : "var(--text-primary)" }}>
-                                    {modelInfo.label}
-                                    {isWinner && <span style={{ fontSize: 10, marginLeft: 6, color: "var(--accent)" }}>BEST</span>}
-                                  </td>
-                                  <td className="text-center px-3 py-2.5" style={{ color: "var(--text-primary)" }}>{modelInfo.costEur.toFixed(2)}EUR</td>
-                                  <td className="text-center px-3 py-2.5" style={{ color: "var(--text-secondary)" }}>{providerCost.toFixed(3)}EUR</td>
-                                  <td className="text-center px-3 py-2.5" style={{ color: "var(--text-tertiary)" }}>{marginPct.toFixed(0)}%</td>
-                                  <td className="text-center px-3 py-2.5">
-                                    <span style={{ fontWeight: 700, color, fontSize: 13 }}>{grade}</span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
               {/* ── FOOTER ── */}
               <div className="py-6" style={{ borderTop: "2px solid var(--text-primary)" }}>
                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.8 }}>
                   {isFr
-                    ? "Genere par ORA Studio · Analyse basee sur des KPIs mesures (temps, cout, comptage). Aucune donnee subjective. Couts fournisseur bases sur les tarifs publics API."
-                    : "Generated by ORA Studio · Analysis based on measured KPIs (time, cost, counts). No subjective data. Provider costs based on public API pricing."}
+                    ? "Généré par ORA Studio · Analyse basée sur des KPIs mesurés (temps, coût, comptage). Aucune donnée subjective."
+                    : "Generated by ORA Studio · Analysis based on measured KPIs (time, cost, counts). No subjective data."}
                 </div>
               </div>
 
