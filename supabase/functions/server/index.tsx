@@ -1609,8 +1609,8 @@ async function generateImageLeonardo(req: { prompt: string; model: string; aspec
   const ar = req.aspectRatio || mapping.aspectRatio;
   const dims = leonardoAspectToDims(ar);
   const isLucid = mapping.leonardoModelId.startsWith("7b5922") || mapping.leonardoModelId.startsWith("05ce00");
-  // Alchemy NOT supported on: Lucid Origin, Lucid Realism, Flux Dev, Flux Schnell
-  const noAlchemy = isLucid || req.model.includes("flux-dev") || req.model.includes("flux-schnell");
+  // Alchemy NOT supported on: Lucid Origin, Lucid Realism, Flux Dev, Flux Schnell, Leonardo Lightning (same underlying model)
+  const noAlchemy = isLucid || req.model.includes("flux-dev") || req.model.includes("flux-schnell") || req.model === "leonardo-lightning";
   console.log(`[image-leonardo] model=${req.model} → Leonardo ${mapping.leonardoModelId.slice(0, 8)}, aspect=${ar}, dims=${dims.width}x${dims.height}, alchemy=${!noAlchemy}`);
 
   // Step 1: Submit generation (v1 API)

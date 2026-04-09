@@ -561,39 +561,45 @@ export function ComparePage() {
 
       } else if (mode === "image") {
         // ── IMAGE COMPARISON ──
-        const results = await Promise.all(selectedModels.map(async (modelId, idx) => {
-          setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "running" } : s));
-          const modelInfo = modelCatalog.find(m => m.id === modelId)!;
-          const start = Date.now();
-          let retries = 0;
-          try {
-            const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
-            const timeMs = Date.now() - start;
-            const imageUrl = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : "";
-            const imgMeta = res.results?.[0]?.result || {};
+        // Launch in batches of 3 to avoid overwhelming Supabase edge functions (503 on too many concurrent)
+        const BATCH_SIZE = 3;
+        const results: ImageKPIs[] = [];
+        for (let b = 0; b < selectedModels.length; b += BATCH_SIZE) {
+          const batch = selectedModels.slice(b, b + BATCH_SIZE);
+          const batchResults = await Promise.all(batch.map(async (modelId) => {
+            const idx = selectedModels.indexOf(modelId);
+            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "running" } : s));
+            const modelInfo = modelCatalog.find(m => m.id === modelId)!;
+            const start = Date.now();
+            let retries = 0;
+            try {
+              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
+              const timeMs = Date.now() - start;
+              const imageUrl = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : "";
+              const imgMeta = res.results?.[0]?.result || {};
 
-            // Probe image for size
-            let fileSizeKB = 0;
-            let width = imgMeta.width || 1024;
-            let height = imgMeta.height || 1024;
-            // Skip HEAD probe — many image hosts (OpenAI, Leonardo) block CORS HEAD requests
+              let fileSizeKB = 0;
+              let width = imgMeta.width || 1024;
+              let height = imgMeta.height || 1024;
 
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: imageUrl ? "done" : "error", timeMs } : s));
-            return {
-              model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-              resolution: `${width}×${height}`, width, height, aspectRatio: "1:1",
-              fileSizeKB, format: "webp", retries, imageUrl, success: !!imageUrl,
-            } as ImageKPIs;
-          } catch (err: any) {
-            const timeMs = Date.now() - start;
-            setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "error", timeMs } : s));
-            return {
-              model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
-              resolution: "0×0", width: 0, height: 0, aspectRatio: "1:1",
-              fileSizeKB: 0, format: "", retries, imageUrl: "", success: false, error: err?.message,
-            } as ImageKPIs;
-          }
-        }));
+              setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: imageUrl ? "done" : "error", timeMs } : s));
+              return {
+                model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
+                resolution: `${width}×${height}`, width, height, aspectRatio: "1:1",
+                fileSizeKB, format: "webp", retries, imageUrl, success: !!imageUrl,
+              } as ImageKPIs;
+            } catch (err: any) {
+              const timeMs = Date.now() - start;
+              setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: "error", timeMs } : s));
+              return {
+                model: modelId, label: modelInfo.label, timeMs, costEur: modelInfo.costEur, credits: modelInfo.credits,
+                resolution: "0×0", width: 0, height: 0, aspectRatio: "1:1",
+                fileSizeKB: 0, format: "", retries, imageUrl: "", success: false, error: err?.message,
+              } as ImageKPIs;
+            }
+          }));
+          results.push(...batchResults);
+        }
         setImageResults(results);
         setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: "running" } : s));
         const reco = generateImageRecommendation(results, locale);
