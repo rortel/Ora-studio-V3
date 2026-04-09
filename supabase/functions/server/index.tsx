@@ -1204,7 +1204,7 @@ const imageModelMap: Record<string, { lumaModel: string; aspectRatio: string }> 
 };
 
 // --- Direct API models (DALL-E via OpenAI, Flux via FAL) ---
-const directApiModels = new Set(["dall-e", "flux-pro"]);
+const directApiModels = new Set(["dall-e", "flux-pro", "flux-dev-leo"]);
 
 // --- Image models routed through secondary provider (submit + poll) ---
 const hfImageModelMap: Record<string, { hfModels: string[]; aspectRatio: string }> = {
@@ -1500,10 +1500,38 @@ async function generateImageFluxPro(req: { prompt: string; model: string; aspect
   throw new Error(`Flux Pro timeout (120s), requestId=${requestId}`);
 }
 
+// ── FLUX DEV IMAGE GENERATION (FAL API — synchronous call) ──
+async function generateImageFluxDev(req: { prompt: string; model: string; aspectRatio?: string }) {
+  const start = Date.now();
+  const key = Deno.env.get("FAL_API_KEY");
+  if (!key) throw new Error("FAL_API_KEY not configured");
+  const ar = req.aspectRatio || "4:3";
+  const dimMap: Record<string, { width: number; height: number }> = {
+    "1:1": { width: 1024, height: 1024 }, "4:3": { width: 1024, height: 768 },
+    "3:4": { width: 768, height: 1024 }, "16:9": { width: 1344, height: 768 },
+    "9:16": { width: 768, height: 1344 },
+  };
+  const dims = dimMap[ar] || { width: 1024, height: 768 };
+  console.log(`[image-flux-dev] prompt="${req.prompt.slice(0, 60)}", dims=${dims.width}x${dims.height}`);
+  // Use fal.run (synchronous) — blocks until image is ready
+  const res = await fetch("https://fal.run/fal-ai/flux/dev", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
+    body: JSON.stringify({ prompt: req.prompt, image_size: dims, num_images: 1, num_inference_steps: 28 }),
+  });
+  if (!res.ok) { const b = await res.text(); throw new Error(`Flux Dev error ${res.status}: ${b.slice(0, 200)}`); }
+  const data = await res.json();
+  const imageUrl = data.images?.[0]?.url;
+  if (!imageUrl) throw new Error(`Flux Dev: no image in response: ${JSON.stringify(data).slice(0, 200)}`);
+  console.log(`[image-flux-dev] OK (${Date.now() - start}ms)`);
+  return { model: req.model, provider: "fal/flux-dev", imageUrl, latencyMs: Date.now() - start };
+}
+
 // ── DIRECT API IMAGE ROUTING ──
 async function generateImageDirect(req: { prompt: string; model: string; aspectRatio?: string }) {
   if (req.model === "dall-e") return generateImageDallE(req);
   if (req.model === "flux-pro") return generateImageFluxPro(req);
+  if (req.model === "flux-dev-leo") return generateImageFluxDev(req);
   throw new Error(`Unknown direct API model: ${req.model}`);
 }
 
@@ -1578,11 +1606,12 @@ async function generateImageLeonardo(req: { prompt: string; model: string; aspec
   const ar = req.aspectRatio || mapping.aspectRatio;
   const dims = leonardoAspectToDims(ar);
   const isLucid = mapping.leonardoModelId.startsWith("7b5922") || mapping.leonardoModelId.startsWith("05ce00");
-  console.log(`[image-leonardo] model=${req.model} → Leonardo ${mapping.leonardoModelId.slice(0, 8)}, aspect=${ar}, dims=${dims.width}x${dims.height}, lucid=${isLucid}`);
+  // Alchemy NOT supported on: Lucid Origin, Lucid Realism, Flux Dev, Flux Schnell
+  const noAlchemy = isLucid || req.model.includes("flux-dev") || req.model.includes("flux-schnell");
+  console.log(`[image-leonardo] model=${req.model} → Leonardo ${mapping.leonardoModelId.slice(0, 8)}, aspect=${ar}, dims=${dims.width}x${dims.height}, alchemy=${!noAlchemy}`);
 
   // Step 1: Submit generation (v1 API)
   // contrast is REQUIRED (3=Low, 3.5=Medium, 4=High)
-  // alchemy is NOT supported on Lucid Origin/Lucid Realism
   const submitBody: any = {
     prompt: req.prompt,
     modelId: mapping.leonardoModelId,
@@ -1592,8 +1621,8 @@ async function generateImageLeonardo(req: { prompt: string; model: string; aspec
     contrast: 3.5,
     styleUUID: mapping.styleUUID || "111dc692-d470-4eec-b791-3475abac4c46",
   };
-  // Only add alchemy for non-Lucid models (FLUX, etc.)
-  if (!isLucid) {
+  // Only add alchemy for models that support it
+  if (!noAlchemy) {
     submitBody.alchemy = true;
   }
   const submitRes = await fetch(`${LEONARDO_BASE}/generations`, {
@@ -1629,7 +1658,8 @@ async function generateImageLeonardo(req: { prompt: string; model: string; aspec
         return { model: req.model, provider: `leonardo/${mapping.leonardoModelId.slice(0, 8)}`, imageUrl, latencyMs: Date.now() - start };
       }
       if (status === "FAILED") {
-        throw new Error(`Leonardo generation failed`);
+        const failReason = gen.generated_images?.[0]?.failReason || gen.failReason || "unknown";
+        throw new Error(`Leonardo generation failed: ${failReason}`);
       }
       // PENDING → continue polling
     } catch (pollErr) {
