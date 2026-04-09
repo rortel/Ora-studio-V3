@@ -576,13 +576,7 @@ export function ComparePage() {
             let fileSizeKB = 0;
             let width = imgMeta.width || 1024;
             let height = imgMeta.height || 1024;
-            if (imageUrl) {
-              try {
-                const probe = await fetch(imageUrl, { method: "HEAD" });
-                const cl = probe.headers.get("content-length");
-                if (cl) fileSizeKB = Math.round(parseInt(cl) / 1024);
-              } catch { /* skip */ }
-            }
+            // Skip HEAD probe — many image hosts (OpenAI, Leonardo) block CORS HEAD requests
 
             setSteps(prev => prev.map((s, i) => i === idx + 1 ? { ...s, status: imageUrl ? "done" : "error", timeMs } : s));
             return {

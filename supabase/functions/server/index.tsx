@@ -1747,7 +1747,7 @@ async function generateImageLeonardoV2(req: { prompt: string; model: string; asp
   });
   if (!submitRes.ok) { const b = await submitRes.text(); throw new Error(`Leonardo v2 submit ${submitRes.status}: ${b}`); }
   const submitData = await submitRes.json();
-  const generationId = submitData.sdGenerationJob?.generationId;
+  const generationId = submitData.sdGenerationJob?.generationId || submitData.generate?.generationId;
   if (!generationId) throw new Error(`Leonardo v2: no generationId: ${JSON.stringify(submitData).slice(0, 300)}`);
   console.log(`[image-leonardo-v2] submitted generationId=${generationId}`);
 
