@@ -6439,6 +6439,76 @@ app.post("/generate/audio-multi", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// ELEVENLABS MUSIC — synchronous compose → storage → signed URL
+// ══════════════════════════════════════════════════════════════
+
+async function elevenLabsCompose(opts: {
+  prompt: string;
+  durationMs: number;
+  instrumental?: boolean;
+}): Promise<{ audioUrl: string; durationMs: number; storagePath: string }> {
+  const key = Deno.env.get("ELEVENLABS_API_KEY");
+  if (!key) throw new Error("ELEVENLABS_API_KEY not set");
+
+  const duration = Math.max(3000, Math.min(600000, opts.durationMs || 20000));
+  const body: Record<string, unknown> = {
+    prompt: opts.prompt,
+    music_length_ms: duration,
+    model_id: "music_v1",
+  };
+  if (opts.instrumental) body.force_instrumental = true;
+
+  console.log(`[elevenlabs/music] POST /v1/music duration=${duration}ms prompt="${opts.prompt.slice(0, 80)}"`);
+  const res = await fetch("https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128", {
+    method: "POST",
+    headers: { "xi-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.log(`[elevenlabs/music] error ${res.status}: ${errText.slice(0, 300)}`);
+    // Try to extract bad_prompt suggestion
+    try {
+      const errJson = JSON.parse(errText);
+      const detail = errJson?.detail;
+      if (detail?.status === "bad_prompt" && detail?.data?.prompt_suggestion) {
+        throw new Error(`ElevenLabs rejected prompt (likely copyrighted). Suggestion: ${detail.data.prompt_suggestion}`);
+      }
+    } catch { /* fallthrough */ }
+    throw new Error(`ElevenLabs error ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const path = `elevenlabs-music/${Date.now()}-${crypto.randomUUID()}.mp3`;
+  const { error: upErr } = await supabase.storage.from("generations").upload(path, bytes, { contentType: "audio/mpeg", upsert: false });
+  if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
+  const { data: pubData } = supabase.storage.from("generations").getPublicUrl(path);
+  console.log(`[elevenlabs/music] uploaded ${bytes.length} bytes → ${pubData.publicUrl}`);
+  return { audioUrl: pubData.publicUrl, durationMs: duration, storagePath: path };
+}
+
+app.post("/generate/music-elevenlabs", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch { }
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const { prompt, durationMs, instrumental } = body || {};
+    if (!prompt || typeof prompt !== "string") return c.json({ success: false, error: "prompt required" }, 400);
+
+    if (user) deductCredit(user.id, 3).catch(() => {});
+    const result = await elevenLabsCompose({ prompt: prompt.slice(0, 2000), durationMs: durationMs ?? 20000, instrumental: !!instrumental });
+    if (user) logEvent("generation", { userId: user.id, type: "music", model: "elevenlabs-music-v1" }).catch(() => {});
+    console.log(`[music-elevenlabs] done in ${Date.now() - t0}ms`);
+    return c.json({ success: true, audioUrl: result.audioUrl, durationMs: result.durationMs, provider: "elevenlabs/music_v1", latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[music-elevenlabs] FATAL:`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // BRAND VAULT v2 — Clean rebuild (March 2026)
 // ═══════════════════════════════════════════════════════════��══
 

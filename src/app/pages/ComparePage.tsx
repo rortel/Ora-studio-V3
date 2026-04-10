@@ -5,7 +5,7 @@ import {
   Play, CheckCircle2, Circle, Loader2, Trophy, AlertTriangle,
   ChevronDown, ChevronRight, X, BarChart3, ArrowRight, Download,
   Type, Hash, MessageSquare, Sparkles, Shield, Eye, Save, Heart,
-  Maximize2, Minimize2, Mic, Square, Paperclip, Send,
+  Maximize2, Minimize2, Mic, Square, Paperclip, Send, Music,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../lib/auth-context";
@@ -23,7 +23,7 @@ const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI
 
 // ── Types ──
 type ModelTier = "economy" | "standard" | "premium";
-type CreativeMode = "text" | "image" | "video";
+type CreativeMode = "text" | "image" | "video" | "music";
 type StepStatus = "pending" | "running" | "done" | "error";
 
 interface ModelDef {
@@ -82,6 +82,11 @@ const VIDEO_MODELS: ModelDef[] = [
   { id: "kling-2.5", label: "Kling 2.5 Turbo Pro", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium" },
 ];
 
+const MUSIC_MODELS: ModelDef[] = [
+  { id: "suno-v5", label: "Suno v5", badge: "Vocals", credits: 3, costEur: 0.30, providerCostEur: 0.08, strengths: ["vocals", "lyrics", "versatile"], bestFor: "Chansons avec voix & paroles", tier: "premium" },
+  { id: "elevenlabs-music-v1", label: "ElevenLabs Music", badge: "Studio", credits: 3, costEur: 0.30, providerCostEur: 0.09, strengths: ["studio-grade", "brand-safe", "multilingual"], bestFor: "Pistes studio cleared commercial", tier: "premium" },
+];
+
 // ── Result types ──
 interface CreativeResult {
   id: string;
@@ -90,6 +95,7 @@ interface CreativeResult {
   type: CreativeMode;
   imageUrl?: string;
   videoUrl?: string;
+  audioUrl?: string;
   text?: string;
   timeMs: number;
   success: boolean;
@@ -113,7 +119,7 @@ function computeScores(results: { modelId: string; timeMs: number; success: bool
 
   const maxT = Math.max(...ok.map(r => r.timeMs));
   const minT = Math.min(...ok.map(r => r.timeMs));
-  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
+  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : mode === "video" ? VIDEO_MODELS : MUSIC_MODELS;
 
   for (const r of results) {
     if (!r.success) { map.set(r.modelId, { speed: 0, value: 0, quality: 0, reliability: 0, overall: 0 }); continue; }
@@ -207,6 +213,18 @@ function computeKpis(r: CreativeResult, mInfo: ModelDef | undefined, mode: Creat
         { key: "audio", label: "Audio", value: clamp(tier === "premium" && has("quality") ? 70 : 35) },
       ],
     });
+  } else if (mode === "music") {
+    cats.push({
+      id: "rendu-music",
+      label: isFr ? "Rendu Audio" : "Audio Output",
+      usage: isFr ? "Qualité studio & richesse sonore" : "Studio quality & sonic depth",
+      items: [
+        { key: "fidelity", label: isFr ? "Fidélité" : "Fidelity", value: clamp(tierBase + (has("studio-grade") ? 10 : 0) + (has("vocals") ? 6 : 0)) },
+        { key: "vocals", label: isFr ? "Voix" : "Vocals", value: clamp(tierBase + (has("vocals") ? 14 : 0) + (has("lyrics") ? 6 : 0) - (has("studio-grade") && !has("vocals") ? 6 : 0)) },
+        { key: "versat", label: isFr ? "Styles" : "Versatility", value: clamp(tierBase + (has("versatile") ? 10 : 0) + (has("multilingual") ? 6 : 0)) },
+        { key: "clear", label: "Commercial", value: clamp(tierBase + (has("brand-safe") ? 14 : 0)) },
+      ],
+    });
   } else {
     cats.push({
       id: "rendu-texte",
@@ -290,6 +308,11 @@ function buildUsageAnalysis(r: CreativeResult, mInfo: ModelDef | undefined, mode
     return isFr
       ? `${mInfo.bestFor}. ${tier === "premium" ? `Rendu cinématique en ${t}s — ads, formats longs.` : tier === "standard" ? `Polyvalent (${t}s), social organique & storyboards animés.` : `Itération rapide (${t}s), concepts & previews.`}`
       : `${mInfo.bestFor}. ${tier === "premium" ? `Cinematic grade in ${t}s — ads & long formats.` : tier === "standard" ? `Versatile (${t}s), organic social & animated boards.` : `Fast iteration (${t}s), concepts & previews.`}`;
+  }
+  if (mode === "music") {
+    return isFr
+      ? `${mInfo.bestFor}. Piste générée en ${t}s, qualité studio prête pour pub, film, podcast ou social.`
+      : `${mInfo.bestFor}. Track generated in ${t}s, studio quality ready for ads, film, podcast or social.`;
   }
   return isFr
     ? `${mInfo.bestFor}. ${tier === "premium" ? `Raisonnement profond pour briefs stratégiques (${t}s).` : tier === "standard" ? `Production quotidienne social/web (${t}s).` : `Copies volume low-cost (${t}s).`}`
@@ -407,8 +430,8 @@ export function ComparePage() {
   const resultsEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
-  const maxModels = mode === "text" ? 4 : mode === "image" ? 6 : 4;
+  const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : mode === "video" ? VIDEO_MODELS : MUSIC_MODELS;
+  const maxModels = mode === "text" ? 4 : mode === "image" ? 6 : mode === "video" ? 4 : 2;
 
   useEffect(() => { setSelectedModels([]); setResults([]); setSteps([]); }, [mode]);
 
@@ -573,6 +596,18 @@ export function ComparePage() {
     return null;
   }, [serverGet]);
 
+  const pollSuno = useCallback(async (taskId: string): Promise<string | null> => {
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try {
+        const res = await serverGet(`/generate/audio-poll?taskId=${taskId}`);
+        if (res.status === "DONE" && res.track?.audioUrl) return res.track.audioUrl;
+        if (res.status === "FAILED") return null;
+      } catch { /* continue */ }
+    }
+    return null;
+  }, [serverGet]);
+
   // ── Generate ──
   const runGeneration = useCallback(async () => {
     if (!prompt.trim() || selectedModels.length < 1 || isRunning) return;
@@ -582,7 +617,7 @@ export function ComparePage() {
     const modelSteps = selectedModels.map(id => ({ label: catalog.find(m => m.id === id)?.label || id, status: "pending" as StepStatus }));
     setSteps(modelSteps);
 
-    const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; text?: string; error?: string }[] = [];
+    const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
     // If product photo attached (image mode only), use Photoroom for each model slot
     const hasProductRef = mode === "image" && attachedImage?.signedUrl;
@@ -648,7 +683,7 @@ export function ComparePage() {
         }
       }));
       rawResults.push(...batchRes);
-    } else {
+    } else if (mode === "video") {
       // Video — sequential to avoid overload
       for (const modelId of selectedModels) {
         const idx = selectedModels.indexOf(modelId);
@@ -667,6 +702,35 @@ export function ComparePage() {
           rawResults.push({ modelId, timeMs, success: false, error: err?.message });
         }
       }
+    } else {
+      // Music — parallel, each model has its own provider flow
+      const batchRes = await Promise.all(selectedModels.map(async (modelId, idx) => {
+        setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
+        const t0 = Date.now();
+        try {
+          let audioUrl: string | null = null;
+          if (modelId === "suno-v5") {
+            // Suno: start → poll
+            const startRes = await serverPost("/generate/audio-start", { prompt, models: ["suno"] }, 30_000);
+            const first = startRes?.results?.[0];
+            if (!first?.success || !first?.taskId) throw new Error(first?.error || startRes?.error || "Suno start failed");
+            audioUrl = await pollSuno(first.taskId);
+          } else if (modelId === "elevenlabs-music-v1") {
+            // ElevenLabs: synchronous compose
+            const res = await serverPost("/generate/music-elevenlabs", { prompt, durationMs: 20000 }, 120_000);
+            if (!res.success || !res.audioUrl) throw new Error(res.error || "ElevenLabs compose failed");
+            audioUrl = res.audioUrl;
+          }
+          const timeMs = Date.now() - t0;
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: audioUrl ? "done" : "error", timeMs } : s));
+          return { modelId, timeMs, success: !!audioUrl, audioUrl: audioUrl || undefined };
+        } catch (err: any) {
+          const timeMs = Date.now() - t0;
+          setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+          return { modelId, timeMs, success: false, error: err?.message || "Generation failed" };
+        }
+      }));
+      rawResults.push(...batchRes);
     }
 
     // Compute scores
@@ -680,6 +744,7 @@ export function ComparePage() {
         type: mode,
         imageUrl: r.imageUrl,
         videoUrl: r.videoUrl,
+        audioUrl: r.audioUrl,
         text: r.text,
         timeMs: r.timeMs,
         success: r.success,
@@ -690,7 +755,7 @@ export function ComparePage() {
 
     setResults(creativeResults);
     setIsRunning(false);
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, attachedImage]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
@@ -821,11 +886,11 @@ export function ComparePage() {
                         animate={{ opacity: 1, scale: 1 }}
                         className="relative rounded-2xl overflow-hidden group cursor-pointer"
                         style={{
-                          background: mode === "text" ? "#FFFFFF" : "#0a0a0a",
+                          background: mode === "text" ? "#FFFFFF" : mode === "music" ? "linear-gradient(135deg, #1a0a2e 0%, #2d1a3e 50%, #4a1a3a 100%)" : "#0a0a0a",
                           border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)",
                           boxShadow: isBest ? `0 0 0 3px ${gradeColor}22` : "0 1px 3px rgba(0,0,0,0.04)",
                         }}
-                        onClick={() => r.success && (mode !== "text") && setLightbox(r)}
+                        onClick={() => r.success && (mode !== "text" && mode !== "music") && setLightbox(r)}
                       >
                         {/* ── Media / Text content (absolute fill) ── */}
                         {r.success && mode === "image" && r.imageUrl && (
@@ -840,6 +905,42 @@ export function ComparePage() {
                             playsInline
                             className="absolute inset-0 w-full h-full object-cover"
                           />
+                        )}
+                        {r.success && mode === "music" && r.audioUrl && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center px-6 py-5 gap-4" onClick={e => e.stopPropagation()}>
+                            {/* Animated waveform visual */}
+                            <div className="flex items-end gap-1 h-20">
+                              {Array.from({ length: 24 }).map((_, i) => (
+                                <motion.div
+                                  key={i}
+                                  className="w-1.5 rounded-full"
+                                  style={{ background: `linear-gradient(to top, ${gradeColor}, #EC4899)` }}
+                                  animate={{ height: ["20%", "90%", "40%", "70%", "30%"] }}
+                                  transition={{ duration: 1.2 + (i % 5) * 0.15, repeat: Infinity, delay: i * 0.05, ease: "easeInOut" }}
+                                />
+                              ))}
+                            </div>
+                            <div className="text-center">
+                              <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>{r.label}</div>
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>{(r.timeMs / 1000).toFixed(1)}s · {mInfo?.badge}</div>
+                            </div>
+                            <audio
+                              src={r.audioUrl}
+                              controls
+                              className="w-full max-w-xs"
+                              style={{ height: 36 }}
+                            />
+                            <a
+                              href={r.audioUrl}
+                              download
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                              style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", fontSize: 11, fontWeight: 600, color: "#fff" }}
+                            >
+                              <Download size={12} /> {isFr ? "Télécharger" : "Download"}
+                            </a>
+                          </div>
                         )}
                         {r.success && mode === "text" && (
                           <div className="absolute inset-0 overflow-y-auto px-5 py-4">
@@ -935,6 +1036,7 @@ export function ComparePage() {
                     { id: "image" as CreativeMode, icon: ImageIcon, label: "Image" },
                     { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text" },
                     { id: "video" as CreativeMode, icon: Video, label: "Vidéo" },
+                    { id: "music" as CreativeMode, icon: Music, label: isFr ? "Musique" : "Music" },
                   ] as const).map(tab => (
                     <button key={tab.id} onClick={() => setMode(tab.id)}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer"
@@ -1031,7 +1133,9 @@ export function ComparePage() {
                       ? (isFr ? "Décrivez votre visuel... (ou dictez avec le micro)" : "Describe your visual... (or dictate)")
                       : mode === "text"
                         ? (isFr ? "Décrivez votre contenu..." : "Describe your content...")
-                        : (isFr ? "Décrivez votre vidéo..." : "Describe your video...")}
+                        : mode === "video"
+                          ? (isFr ? "Décrivez votre vidéo..." : "Describe your video...")
+                          : (isFr ? "Décrivez votre musique... (genre, tempo, mood, instruments)" : "Describe your music... (genre, tempo, mood, instruments)")}
                     className="w-full resize-none outline-none"
                     rows={2}
                     style={{ fontSize: 14, color: "var(--foreground)", background: "transparent", lineHeight: 1.5 }}
