@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Stage, Layer, Image as KonvaImage, Line, Rect, Text as KonvaText, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Line, Rect, Text as KonvaText, Transformer, Circle as KonvaCircle, Star as KonvaStar } from "react-konva";
 import Konva from "konva";
 import {
   Eraser, Paintbrush, ImageIcon, Expand, Sparkles,
@@ -9,6 +9,8 @@ import {
   Minus, Plus, FlipHorizontal2, MousePointer2,
   Layers, SlidersHorizontal, Upload, Share2, Save, Check,
   Type, Image as ImageLucide, Trash2, Film, X as XIcon,
+  Shapes, Square as SquareIcon, Circle as CircleIcon, Star as StarIcon,
+  ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
@@ -58,7 +60,34 @@ interface EditorLogoLayer {
   imageUrl: string; // data URL (source of truth for export)
 }
 
-type EditorLayer = EditorTextLayer | EditorLogoLayer;
+type ShapeKind = "rect" | "patch" | "circle" | "star";
+
+interface EditorShapeLayer {
+  id: string;
+  type: "shape";
+  shape: ShapeKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  // Fill
+  fillType: "solid" | "gradient";
+  fill: string;
+  gradientStart: string;
+  gradientEnd: string;
+  gradientAngle: number; // 0 = left->right, 90 = top->bottom
+  // Stroke
+  stroke: string;
+  strokeWidth: number;
+  // Rect/patch specific
+  cornerRadius: number;
+  // Star specific
+  numPoints: number;
+  innerRadiusRatio: number; // 0..1
+}
+
+type EditorLayer = EditorTextLayer | EditorLogoLayer | EditorShapeLayer;
 
 interface AnimateState {
   prompt: string;
@@ -549,6 +578,7 @@ function EditorPageContent() {
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const textLayerInputRef = useRef<HTMLInputElement>(null);
   const [pendingTextFocus, setPendingTextFocus] = useState<string | null>(null);
+  const [shapesOpen, setShapesOpen] = useState(false);
 
   const selectedLayer = useMemo(
     () => layers.find(l => l.id === selectedLayerId) || null,
@@ -575,12 +605,78 @@ function EditorPageContent() {
         ctx.textBaseline = "top";
         // Konva.Text has a slight padding; mimic by drawing at 0,0 with topline
         ctx.fillText(layer.text, 0, 0);
-      } else {
+      } else if (layer.type === "logo") {
         const logoImg = logoImagesRef.current[layer.id];
         if (logoImg) {
           ctx.translate(layer.x, layer.y);
           ctx.rotate((layer.rotation * Math.PI) / 180);
           ctx.drawImage(logoImg, 0, 0, layer.width, layer.height);
+        }
+      } else if (layer.type === "shape") {
+        ctx.translate(layer.x + layer.width / 2, layer.y + layer.height / 2);
+        ctx.rotate((layer.rotation * Math.PI) / 180);
+        ctx.translate(-layer.width / 2, -layer.height / 2);
+
+        // Build path
+        ctx.beginPath();
+        if (layer.shape === "rect" || layer.shape === "patch") {
+          const r = Math.min(layer.cornerRadius, layer.width / 2, layer.height / 2);
+          const w = layer.width;
+          const h = layer.height;
+          ctx.moveTo(r, 0);
+          ctx.lineTo(w - r, 0);
+          ctx.quadraticCurveTo(w, 0, w, r);
+          ctx.lineTo(w, h - r);
+          ctx.quadraticCurveTo(w, h, w - r, h);
+          ctx.lineTo(r, h);
+          ctx.quadraticCurveTo(0, h, 0, h - r);
+          ctx.lineTo(0, r);
+          ctx.quadraticCurveTo(0, 0, r, 0);
+          ctx.closePath();
+        } else if (layer.shape === "circle") {
+          const rx = layer.width / 2;
+          const ry = layer.height / 2;
+          ctx.ellipse(rx, ry, rx, ry, 0, 0, Math.PI * 2);
+        } else if (layer.shape === "star") {
+          const cx = layer.width / 2;
+          const cy = layer.height / 2;
+          const outer = Math.min(layer.width, layer.height) / 2;
+          const inner = outer * layer.innerRadiusRatio;
+          const points = layer.numPoints;
+          for (let i = 0; i < points * 2; i++) {
+            const r = i % 2 === 0 ? outer : inner;
+            const a = (Math.PI * i) / points - Math.PI / 2;
+            const x = cx + Math.cos(a) * r;
+            const y = cy + Math.sin(a) * r;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.closePath();
+        }
+
+        // Fill (solid or linear gradient)
+        if (layer.fillType === "gradient") {
+          const a = (layer.gradientAngle * Math.PI) / 180;
+          const cx = layer.width / 2;
+          const cy = layer.height / 2;
+          const diag = Math.sqrt(layer.width * layer.width + layer.height * layer.height) / 2;
+          const x0 = cx - Math.cos(a) * diag;
+          const y0 = cy - Math.sin(a) * diag;
+          const x1 = cx + Math.cos(a) * diag;
+          const y1 = cy + Math.sin(a) * diag;
+          const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+          grad.addColorStop(0, layer.gradientStart);
+          grad.addColorStop(1, layer.gradientEnd);
+          ctx.fillStyle = grad;
+        } else {
+          ctx.fillStyle = layer.fill;
+        }
+        ctx.fill();
+
+        if (layer.strokeWidth > 0) {
+          ctx.lineWidth = layer.strokeWidth;
+          ctx.strokeStyle = layer.stroke;
+          ctx.stroke();
         }
       }
       ctx.restore();
@@ -635,6 +731,64 @@ function EditorPageContent() {
       if (raf2) cancelAnimationFrame(raf2);
     };
   }, [pendingTextFocus]);
+
+  const addShapeLayer = useCallback(
+    (shape: ShapeKind) => {
+      if (!image) {
+        toast.error(isFr ? "Chargez d'abord une image" : "Load an image first");
+        return;
+      }
+      const id = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      // Default size: ~25% of image's shorter side
+      const base = Math.min(image.width, image.height) * 0.25;
+      const w = shape === "rect" || shape === "patch" ? base * 1.4 : base;
+      const h = base;
+      const cornerRadius = shape === "patch" ? base * 0.35 : shape === "rect" ? 0 : 0;
+      setLayers(prev => [
+        ...prev,
+        {
+          id,
+          type: "shape",
+          shape,
+          x: image.width * 0.1,
+          y: image.height * 0.1,
+          width: w,
+          height: h,
+          rotation: 0,
+          fillType: "gradient",
+          fill: "#EC4899",
+          gradientStart: "#7C3AED",
+          gradientEnd: "#EC4899",
+          gradientAngle: 135,
+          stroke: "#ffffff",
+          strokeWidth: 0,
+          cornerRadius,
+          numPoints: 5,
+          innerRadiusRatio: 0.5,
+        },
+      ]);
+      setSelectedLayerId(id);
+    },
+    [image, isFr],
+  );
+
+  // --- Layer z-order (array order = paint order; last = top) ---
+  const moveLayer = useCallback(
+    (id: string, direction: "up" | "down" | "top" | "bottom") => {
+      setLayers(prev => {
+        const idx = prev.findIndex(l => l.id === id);
+        if (idx < 0) return prev;
+        const next = [...prev];
+        const [item] = next.splice(idx, 1);
+        if (direction === "up") next.splice(Math.min(idx + 1, next.length), 0, item);
+        else if (direction === "down") next.splice(Math.max(idx - 1, 0), 0, item);
+        else if (direction === "top") next.push(item);
+        else next.unshift(item);
+        return next;
+      });
+    },
+    [],
+  );
 
   const handleLogoFileChosen = useCallback(
     (file: File) => {
@@ -1261,6 +1415,64 @@ function EditorPageContent() {
           }}
         />
 
+        {/* Shapes popover trigger */}
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => { if (image) setShapesOpen(o => !o); }}
+            disabled={!image}
+            title={isFr ? "Ajouter une forme" : "Add shape"}
+            style={{
+              width: 40, height: 40, borderRadius: 10, border: "none",
+              background: shapesOpen ? "#2a2a40" : "transparent",
+              color: image ? "#888" : "#444",
+              cursor: image ? "pointer" : "default",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+            onMouseEnter={e => { if (image && !shapesOpen) e.currentTarget.style.background = "#2a2a40"; }}
+            onMouseLeave={e => { if (!shapesOpen) e.currentTarget.style.background = "transparent"; }}
+          >
+            <Shapes size={18} />
+          </button>
+          <AnimatePresence>
+            {shapesOpen && (
+              <motion.div
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -6 }}
+                style={{
+                  position: "absolute", left: 48, top: 0,
+                  background: "#16162a", border: "1px solid #2a2a40", borderRadius: 10,
+                  padding: 6, display: "flex", flexDirection: "column", gap: 2,
+                  zIndex: 40, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                }}
+              >
+                {([
+                  { kind: "rect" as ShapeKind, icon: SquareIcon, label: isFr ? "Rectangle" : "Rectangle" },
+                  { kind: "patch" as ShapeKind, icon: SquareIcon, label: isFr ? "Patch" : "Patch" },
+                  { kind: "circle" as ShapeKind, icon: CircleIcon, label: isFr ? "Pastille" : "Pastille" },
+                  { kind: "star" as ShapeKind, icon: StarIcon, label: isFr ? "Étoile" : "Star" },
+                ]).map(({ kind, icon: Icon, label }) => (
+                  <button
+                    key={kind}
+                    onClick={() => { addShapeLayer(kind); setShapesOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "6px 12px", borderRadius: 6, border: "none",
+                      background: "transparent", color: "#ccc", cursor: "pointer",
+                      fontSize: 12, whiteSpace: "nowrap",
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "#2a2a40"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <Icon size={14} style={{ color: "#7C3AED" }} />
+                    {label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         {/* Animate (image-to-video) */}
         <button
           onClick={() => { if (image) setAnimateOpen(true); }}
@@ -1499,11 +1711,144 @@ function EditorPageContent() {
                         I
                       </button>
                     </>
-                  ) : (
+                  ) : selectedLayer.type === "logo" ? (
                     <span style={{ fontSize: 11, color: "#888" }}>
                       {isFr ? "Logo — glissez pour déplacer, coins pour redimensionner" : "Logo — drag to move, corners to resize"}
                     </span>
+                  ) : (
+                    /* Shape layer controls */
+                    <>
+                      <button
+                        onClick={() => updateLayer(selectedLayer.id, { fillType: "solid" })}
+                        title={isFr ? "Couleur unie" : "Solid"}
+                        style={{
+                          padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
+                          background: selectedLayer.fillType === "solid" ? "#7C3AED" : "transparent",
+                          color: selectedLayer.fillType === "solid" ? "#fff" : "#888",
+                          fontSize: 11, cursor: "pointer",
+                        }}
+                      >
+                        {isFr ? "Uni" : "Solid"}
+                      </button>
+                      <button
+                        onClick={() => updateLayer(selectedLayer.id, { fillType: "gradient" })}
+                        title={isFr ? "Dégradé" : "Gradient"}
+                        style={{
+                          padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
+                          background: selectedLayer.fillType === "gradient" ? "#7C3AED" : "transparent",
+                          color: selectedLayer.fillType === "gradient" ? "#fff" : "#888",
+                          fontSize: 11, cursor: "pointer",
+                        }}
+                      >
+                        {isFr ? "Dégradé" : "Gradient"}
+                      </button>
+                      {selectedLayer.fillType === "solid" ? (
+                        <input
+                          type="color"
+                          value={selectedLayer.fill}
+                          onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                          title={isFr ? "Couleur" : "Color"}
+                          style={{
+                            width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
+                            background: "transparent", cursor: "pointer", padding: 0,
+                          }}
+                        />
+                      ) : (
+                        <>
+                          <input
+                            type="color"
+                            value={selectedLayer.gradientStart}
+                            onChange={e => updateLayer(selectedLayer.id, { gradientStart: e.target.value })}
+                            title={isFr ? "Couleur début" : "Start color"}
+                            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                          />
+                          <input
+                            type="color"
+                            value={selectedLayer.gradientEnd}
+                            onChange={e => updateLayer(selectedLayer.id, { gradientEnd: e.target.value })}
+                            title={isFr ? "Couleur fin" : "End color"}
+                            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                          />
+                          <input
+                            type="range"
+                            min={0}
+                            max={360}
+                            value={selectedLayer.gradientAngle}
+                            onChange={e => updateLayer(selectedLayer.id, { gradientAngle: Number(e.target.value) })}
+                            title={`${isFr ? "Angle" : "Angle"}: ${selectedLayer.gradientAngle}°`}
+                            style={{ width: 70, accentColor: "#7C3AED" }}
+                          />
+                        </>
+                      )}
+                      {/* Stroke width */}
+                      <input
+                        type="number"
+                        min={0}
+                        max={40}
+                        value={selectedLayer.strokeWidth}
+                        onChange={e => updateLayer(selectedLayer.id, { strokeWidth: Math.max(0, Number(e.target.value) || 0) })}
+                        title={isFr ? "Contour" : "Stroke"}
+                        style={{
+                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
+                          padding: "4px 6px", color: "#fff", fontSize: 11, width: 44, outline: "none",
+                        }}
+                      />
+                      {selectedLayer.strokeWidth > 0 && (
+                        <input
+                          type="color"
+                          value={selectedLayer.stroke}
+                          onChange={e => updateLayer(selectedLayer.id, { stroke: e.target.value })}
+                          title={isFr ? "Couleur contour" : "Stroke color"}
+                          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                        />
+                      )}
+                      {/* Corner radius for rect/patch */}
+                      {(selectedLayer.shape === "rect" || selectedLayer.shape === "patch") && (
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.min(selectedLayer.width, selectedLayer.height) / 2}
+                          value={selectedLayer.cornerRadius}
+                          onChange={e => updateLayer(selectedLayer.id, { cornerRadius: Number(e.target.value) })}
+                          title={`${isFr ? "Arrondi" : "Radius"}: ${Math.round(selectedLayer.cornerRadius)}`}
+                          style={{ width: 70, accentColor: "#7C3AED" }}
+                        />
+                      )}
+                    </>
                   )}
+
+                  {/* Z-order controls (all layers) */}
+                  <div style={{ display: "flex", gap: 2, marginLeft: 4, paddingLeft: 8, borderLeft: "1px solid #2a2a40" }}>
+                    <button
+                      onClick={() => moveLayer(selectedLayer.id, "top")}
+                      title={isFr ? "Premier plan" : "To front"}
+                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <ArrowUpToLine size={13} />
+                    </button>
+                    <button
+                      onClick={() => moveLayer(selectedLayer.id, "up")}
+                      title={isFr ? "Avancer" : "Bring forward"}
+                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <ArrowUp size={13} />
+                    </button>
+                    <button
+                      onClick={() => moveLayer(selectedLayer.id, "down")}
+                      title={isFr ? "Reculer" : "Send backward"}
+                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <ArrowDown size={13} />
+                    </button>
+                    <button
+                      onClick={() => moveLayer(selectedLayer.id, "bottom")}
+                      title={isFr ? "Arrière-plan" : "To back"}
+                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <ArrowDownToLine size={13} />
+                    </button>
+                  </div>
+
                   <button
                     onClick={() => deleteLayer(selectedLayer.id)}
                     title={isFr ? "Supprimer le calque" : "Delete layer"}
@@ -1759,33 +2104,162 @@ function EditorPageContent() {
                     />
                   );
                 }
-                const logoImg = logoImagesRef.current[layer.id];
-                if (!logoImg) return null;
+                if (layer.type === "logo") {
+                  const logoImg = logoImagesRef.current[layer.id];
+                  if (!logoImg) return null;
+                  return (
+                    <KonvaImage
+                      key={layer.id}
+                      ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
+                      image={logoImg}
+                      x={layer.x}
+                      y={layer.y}
+                      width={layer.width}
+                      height={layer.height}
+                      rotation={layer.rotation}
+                      draggable={!isBrushTool}
+                      listening={!isBrushTool}
+                      onMouseDown={(e) => { e.cancelBubble = true; setSelectedLayerId(layer.id); }}
+                      onTap={() => setSelectedLayerId(layer.id)}
+                      onDragEnd={(e) => updateLayer(layer.id, { x: e.target.x(), y: e.target.y() })}
+                      onTransformEnd={(e) => {
+                        const n = e.target;
+                        const sx = n.scaleX();
+                        const sy = n.scaleY();
+                        updateLayer(layer.id, {
+                          x: n.x(),
+                          y: n.y(),
+                          rotation: n.rotation(),
+                          width: Math.max(10, layer.width * sx),
+                          height: Math.max(10, layer.height * sy),
+                        });
+                        n.scaleX(1);
+                        n.scaleY(1);
+                      }}
+                    />
+                  );
+                }
+                // Shape layer
+                const commonShapeProps = {
+                  ref: (node: Konva.Node | null) => { if (node) layerNodesRef.current[layer.id] = node; },
+                  x: layer.x,
+                  y: layer.y,
+                  rotation: layer.rotation,
+                  draggable: !isBrushTool,
+                  listening: !isBrushTool,
+                  stroke: layer.strokeWidth > 0 ? layer.stroke : undefined,
+                  strokeWidth: layer.strokeWidth,
+                  onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => { e.cancelBubble = true; setSelectedLayerId(layer.id); },
+                  onTap: () => setSelectedLayerId(layer.id),
+                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => updateLayer(layer.id, { x: e.target.x(), y: e.target.y() }),
+                };
+
+                // Gradient direction vector for Konva (expects startPoint/endPoint in local coords)
+                const gradAngleRad = (layer.gradientAngle * Math.PI) / 180;
+                const diag = Math.sqrt(layer.width * layer.width + layer.height * layer.height) / 2;
+                const gradCenter = { x: layer.width / 2, y: layer.height / 2 };
+                const gradStart = {
+                  x: gradCenter.x - Math.cos(gradAngleRad) * diag,
+                  y: gradCenter.y - Math.sin(gradAngleRad) * diag,
+                };
+                const gradEnd = {
+                  x: gradCenter.x + Math.cos(gradAngleRad) * diag,
+                  y: gradCenter.y + Math.sin(gradAngleRad) * diag,
+                };
+                const fillProps = layer.fillType === "gradient"
+                  ? {
+                      fillLinearGradientStartPoint: gradStart,
+                      fillLinearGradientEndPoint: gradEnd,
+                      fillLinearGradientColorStops: [0, layer.gradientStart, 1, layer.gradientEnd],
+                    }
+                  : { fill: layer.fill };
+
+                if (layer.shape === "rect" || layer.shape === "patch") {
+                  return (
+                    <Rect
+                      key={layer.id}
+                      {...commonShapeProps}
+                      width={layer.width}
+                      height={layer.height}
+                      cornerRadius={layer.cornerRadius}
+                      {...fillProps}
+                      onTransformEnd={(e) => {
+                        const n = e.target;
+                        const sx = n.scaleX();
+                        const sy = n.scaleY();
+                        updateLayer(layer.id, {
+                          x: n.x(),
+                          y: n.y(),
+                          rotation: n.rotation(),
+                          width: Math.max(10, layer.width * sx),
+                          height: Math.max(10, layer.height * sy),
+                        });
+                        n.scaleX(1);
+                        n.scaleY(1);
+                      }}
+                    />
+                  );
+                }
+                if (layer.shape === "circle") {
+                  // Konva Circle is center-based, use offset trick to keep x/y as top-left like other layers
+                  return (
+                    <KonvaCircle
+                      key={layer.id}
+                      {...commonShapeProps}
+                      x={layer.x + layer.width / 2}
+                      y={layer.y + layer.height / 2}
+                      radius={Math.min(layer.width, layer.height) / 2}
+                      {...fillProps}
+                      onDragEnd={(e) => updateLayer(layer.id, {
+                        x: e.target.x() - layer.width / 2,
+                        y: e.target.y() - layer.height / 2,
+                      })}
+                      onTransformEnd={(e) => {
+                        const n = e.target;
+                        const sx = n.scaleX();
+                        const sy = n.scaleY();
+                        const newW = Math.max(10, layer.width * sx);
+                        const newH = Math.max(10, layer.height * sy);
+                        updateLayer(layer.id, {
+                          x: n.x() - newW / 2,
+                          y: n.y() - newH / 2,
+                          rotation: n.rotation(),
+                          width: newW,
+                          height: newH,
+                        });
+                        n.scaleX(1);
+                        n.scaleY(1);
+                      }}
+                    />
+                  );
+                }
+                // Star
                 return (
-                  <KonvaImage
+                  <KonvaStar
                     key={layer.id}
-                    ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
-                    image={logoImg}
-                    x={layer.x}
-                    y={layer.y}
-                    width={layer.width}
-                    height={layer.height}
-                    rotation={layer.rotation}
-                    draggable={!isBrushTool}
-                    listening={!isBrushTool}
-                    onMouseDown={(e) => { e.cancelBubble = true; setSelectedLayerId(layer.id); }}
-                    onTap={() => setSelectedLayerId(layer.id)}
-                    onDragEnd={(e) => updateLayer(layer.id, { x: e.target.x(), y: e.target.y() })}
+                    {...commonShapeProps}
+                    x={layer.x + layer.width / 2}
+                    y={layer.y + layer.height / 2}
+                    numPoints={layer.numPoints}
+                    outerRadius={Math.min(layer.width, layer.height) / 2}
+                    innerRadius={(Math.min(layer.width, layer.height) / 2) * layer.innerRadiusRatio}
+                    {...fillProps}
+                    onDragEnd={(e) => updateLayer(layer.id, {
+                      x: e.target.x() - layer.width / 2,
+                      y: e.target.y() - layer.height / 2,
+                    })}
                     onTransformEnd={(e) => {
                       const n = e.target;
                       const sx = n.scaleX();
                       const sy = n.scaleY();
+                      const newW = Math.max(10, layer.width * sx);
+                      const newH = Math.max(10, layer.height * sy);
                       updateLayer(layer.id, {
-                        x: n.x(),
-                        y: n.y(),
+                        x: n.x() - newW / 2,
+                        y: n.y() - newH / 2,
                         rotation: n.rotation(),
-                        width: Math.max(10, layer.width * sx),
-                        height: Math.max(10, layer.height * sy),
+                        width: newW,
+                        height: newH,
                       });
                       n.scaleX(1);
                       n.scaleY(1);
