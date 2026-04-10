@@ -1042,6 +1042,181 @@ const LUMA_BASE = "https://api.lumalabs.ai/dream-machine/v1";
 const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
 const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 const LEONARDO_V2_BASE = "https://cloud.leonardo.ai/api/rest/v2";
+const TOGETHER_BASE = "https://api.together.xyz/v1";
+
+// ══════════════════════════════════════════════════════════════
+// TOGETHER AI — Open-source models (Llama, DeepSeek, Qwen, Kimi, GLM, Flux)
+// OpenAI-compatible API. Costs 5-30× less than proprietary providers.
+// ══════════════════════════════════════════════════════════════
+
+// Map ORA model IDs → Together API model slugs + metadata
+// Pricing in EUR per 1M tokens (text) or per image (images)
+const TOGETHER_MODELS: Record<string, {
+  apiModel: string;
+  type: "text" | "image";
+  pricePerMTokens?: number; // EUR per 1M output tokens (approximate)
+  pricePerImage?: number;   // EUR per image
+  capabilities?: string[];
+}> = {
+  // ── Text models ──
+  "together-llama-3.3-70b": { apiModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", type: "text", pricePerMTokens: 0.80, capabilities: ["general", "multilingual", "fast"] },
+  "together-deepseek-v3":   { apiModel: "deepseek-ai/DeepSeek-V3", type: "text", pricePerMTokens: 1.10, capabilities: ["reasoning", "code", "fast"] },
+  "together-deepseek-r1":   { apiModel: "deepseek-ai/DeepSeek-R1", type: "text", pricePerMTokens: 6.50, capabilities: ["reasoning", "deep-think"] },
+  "together-qwen-2.5-72b":  { apiModel: "Qwen/Qwen2.5-72B-Instruct-Turbo", type: "text", pricePerMTokens: 1.10, capabilities: ["multilingual", "french", "creative"] },
+  "together-kimi-k2":       { apiModel: "moonshotai/Kimi-K2-Instruct", type: "text", pricePerMTokens: 2.20, capabilities: ["long-context", "reasoning"] },
+  "together-glm-4.5":       { apiModel: "zai-org/GLM-4.5", type: "text", pricePerMTokens: 1.80, capabilities: ["creative", "copywriting"] },
+  "together-gpt-oss-120b":  { apiModel: "openai/gpt-oss-120b", type: "text", pricePerMTokens: 1.40, capabilities: ["general", "open-weights"] },
+
+  // ── Image models ──
+  "together-flux-schnell":  { apiModel: "black-forest-labs/FLUX.1-schnell", type: "image", pricePerImage: 0.003, capabilities: ["ultra-fast", "draft"] },
+  "together-flux-dev":      { apiModel: "black-forest-labs/FLUX.1-dev", type: "image", pricePerImage: 0.025, capabilities: ["quality", "balanced"] },
+  "together-flux-pro-1.1":  { apiModel: "black-forest-labs/FLUX.1.1-pro", type: "image", pricePerImage: 0.040, capabilities: ["premium", "photorealism"] },
+};
+
+function togetherHeaders(): Record<string, string> {
+  const key = Deno.env.get("TOGETHER_API_KEY") || "";
+  return { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
+}
+
+// Call Together AI for text generation (OpenAI-compatible)
+async function callTogetherText(
+  oraModelId: string,
+  messages: { role: string; content: string }[],
+  opts: { maxTokens?: number; temperature?: number; timeoutMs?: number } = {}
+): Promise<{ text: string; apiModel: string; latencyMs: number }> {
+  const t0 = Date.now();
+  const key = Deno.env.get("TOGETHER_API_KEY");
+  if (!key) throw new Error("TOGETHER_API_KEY not set");
+  const entry = TOGETHER_MODELS[oraModelId];
+  if (!entry || entry.type !== "text") throw new Error(`Unknown Together text model: ${oraModelId}`);
+
+  const res = await fetch(`${TOGETHER_BASE}/chat/completions`, {
+    method: "POST",
+    headers: togetherHeaders(),
+    body: JSON.stringify({
+      model: entry.apiModel,
+      messages,
+      max_tokens: opts.maxTokens || 4096,
+      temperature: opts.temperature ?? 0.7,
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs || 60_000),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Together ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  return { text, apiModel: entry.apiModel, latencyMs: Date.now() - t0 };
+}
+
+// Call Together AI for image generation
+async function callTogetherImage(
+  oraModelId: string,
+  prompt: string,
+  opts: { width?: number; height?: number; steps?: number; timeoutMs?: number } = {}
+): Promise<{ imageUrl: string; apiModel: string; latencyMs: number }> {
+  const t0 = Date.now();
+  const key = Deno.env.get("TOGETHER_API_KEY");
+  if (!key) throw new Error("TOGETHER_API_KEY not set");
+  const entry = TOGETHER_MODELS[oraModelId];
+  if (!entry || entry.type !== "image") throw new Error(`Unknown Together image model: ${oraModelId}`);
+
+  // Flux schnell: 4 steps max. Flux dev/pro: up to 28 steps.
+  const steps = opts.steps ?? (oraModelId === "together-flux-schnell" ? 4 : 28);
+
+  const res = await fetch(`${TOGETHER_BASE}/images/generations`, {
+    method: "POST",
+    headers: togetherHeaders(),
+    body: JSON.stringify({
+      model: entry.apiModel,
+      prompt: prompt.slice(0, 2000),
+      width: opts.width || 1024,
+      height: opts.height || 1024,
+      steps,
+      n: 1,
+      response_format: "url",
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs || 60_000),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Together image ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const imageUrl = data.data?.[0]?.url || "";
+  if (!imageUrl) throw new Error("Together returned no image URL");
+  return { imageUrl, apiModel: entry.apiModel, latencyMs: Date.now() - t0 };
+}
+
+// Helper: is this an ORA model ID routed to Together?
+function isTogetherModel(oraModelId: string): boolean {
+  return oraModelId.startsWith("together-") && !!TOGETHER_MODELS[oraModelId];
+}
+
+// Raw Together call using an arbitrary API model slug (e.g. a fine-tuned model)
+async function callTogetherTextRaw(
+  apiModel: string,
+  messages: { role: string; content: string }[],
+  opts: { maxTokens?: number; temperature?: number; timeoutMs?: number } = {}
+): Promise<{ text: string; apiModel: string; latencyMs: number }> {
+  const t0 = Date.now();
+  const key = Deno.env.get("TOGETHER_API_KEY");
+  if (!key) throw new Error("TOGETHER_API_KEY not set");
+  const res = await fetch(`${TOGETHER_BASE}/chat/completions`, {
+    method: "POST",
+    headers: togetherHeaders(),
+    body: JSON.stringify({
+      model: apiModel,
+      messages,
+      max_tokens: opts.maxTokens || 4096,
+      temperature: opts.temperature ?? 0.7,
+    }),
+    signal: AbortSignal.timeout(opts.timeoutMs || 60_000),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Together ${res.status}: ${body.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  return { text, apiModel, latencyMs: Date.now() - t0 };
+}
+
+// ── SMART ROUTER ──
+// Picks the cheapest Together text model capable of the task.
+// Used when no explicit model is requested, to save 90%+ on inference costs
+// silently compared to routing everything through GPT-4o.
+type RoutingNeed = "simple" | "reasoning" | "long-context" | "multilingual" | "creative";
+
+function pickCheapestTogetherText(need: RoutingNeed): string | null {
+  if (!Deno.env.get("TOGETHER_API_KEY")) return null;
+  // Map need → preferred model (cheapest that fits the job)
+  const routes: Record<RoutingNeed, string> = {
+    "simple":        "together-llama-3.3-70b", // €0.0008/run — default for social posts
+    "reasoning":     "together-deepseek-v3",   // €0.0011/run — general reasoning, fast
+    "long-context":  "together-kimi-k2",       // €0.0022/run — 2M tokens
+    "multilingual":  "together-qwen-2.5-72b",  // €0.0011/run — strong FR/multilingual
+    "creative":      "together-glm-4.5",       // €0.0018/run — copywriting
+  };
+  return routes[need];
+}
+
+// Infer routing need from brief + format characteristics
+function inferRoutingNeed(brief: string, formatIds: string[], lang: string): RoutingNeed {
+  const hasLongForm = formatIds.some(id =>
+    id === "blog-article" || id === "linkedin-article" || id === "newsletter" || id === "press-release"
+  );
+  const isFrench = lang === "fr";
+  const briefLen = brief.length;
+  const hasStrategicKeywords = /\b(strategy|strategie|positionnement|complex|concurrent|analysis|analyse|roadmap)\b/i.test(brief);
+
+  if (hasStrategicKeywords) return "reasoning";
+  if (hasLongForm && briefLen > 1000) return "long-context";
+  if (hasLongForm) return "creative";
+  if (isFrench) return "multilingual";
+  return "simple";
+}
 
 // ── PROMPT ENHANCER — translates any language to English + produces cinematic photorealistic prompts ──
 async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean = false, brandCtx?: BrandContext | null): Promise<string> {
@@ -3703,6 +3878,7 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
 
     const userPrompt = brief || `Create campaign for: ${productUrls}`;
 
+    const requestedModel = ((body.model || "") as string).trim();
     const APIPOD_KEY = Deno.env.get("APIPOD_API_KEY");
     const apipodModels = APIPOD_KEY ? ["gpt-4o", "gpt-5"] : [];
     let resultText = "";
@@ -3712,7 +3888,62 @@ DON'T write like: ${vp.dont_patterns?.join(' | ') || "N/A"}`;
     const hasArticleFormat = formatIds.some((id: string) => id === "blog-article" || id === "linkedin-article" || id === "newsletter" || id === "press-release");
     const maxTokens = hasArticleFormat ? 8192 : 4096;
 
+    // ── ORA VOICE: if user has a trained fine-tuned model, use it FIRST ──
+    const oraVoice = brandVault?.ora_voice;
+    const oraVoiceModel = (oraVoice?.status === "completed" || oraVoice?.status === "succeeded") && oraVoice?.fineTunedModel;
+    if (oraVoiceModel && !requestedModel) {
+      try {
+        console.log(`[campaign-texts-POST] ORA Voice → ${oraVoiceModel}`);
+        const r = await callTogetherTextRaw(
+          oraVoiceModel,
+          [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }],
+          { maxTokens, temperature: 0.7, timeoutMs: hasArticleFormat ? 90_000 : 60_000 }
+        );
+        if (r.text) {
+          resultText = r.text;
+          usedProvider = `together/ora-voice/${oraVoiceModel}`;
+          console.log(`[campaign-texts-POST] ORA Voice OK: ${resultText.length}c (${Date.now()-t0}ms)`);
+        }
+      } catch (err) {
+        console.log(`[campaign-texts-POST] ORA Voice FAILED: ${err} — falling back`);
+      }
+    }
+
+    // ── TOGETHER AI ROUTE ──
+    // (1) Explicit: ComparePage requests a together-* model → use it
+    // (2) Smart routing: no model specified and TOGETHER_API_KEY present → auto-pick cheapest capable Together model
+    //     This silently saves 90%+ on inference cost vs GPT-4o baseline.
+    let togetherModelToTry: string | null = null;
+    if (requestedModel && isTogetherModel(requestedModel)) {
+      togetherModelToTry = requestedModel;
+    } else if (!requestedModel && !resultText) {
+      const need = inferRoutingNeed(brief, formatIds, lang);
+      togetherModelToTry = pickCheapestTogetherText(need);
+      if (togetherModelToTry) {
+        console.log(`[campaign-texts-POST] Smart router: need=${need} → ${togetherModelToTry}`);
+      }
+    }
+
+    if (togetherModelToTry && !resultText) {
+      try {
+        console.log(`[campaign-texts-POST] Together ${togetherModelToTry}... maxTokens=${maxTokens}`);
+        const r = await callTogetherText(
+          togetherModelToTry,
+          [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }],
+          { maxTokens, temperature: 0.7, timeoutMs: hasArticleFormat ? 90_000 : 60_000 }
+        );
+        if (r.text) {
+          resultText = r.text;
+          usedProvider = `together/${togetherModelToTry}`;
+          console.log(`[campaign-texts-POST] Together ${togetherModelToTry} OK: ${resultText.length}c (${Date.now()-t0}ms)`);
+        }
+      } catch (err) {
+        console.log(`[campaign-texts-POST] Together ${togetherModelToTry} FAILED: ${err} — falling back to APIPod`);
+      }
+    }
+
     for (const mdl of apipodModels) {
+      if (resultText) break;
       try {
         console.log(`[campaign-texts-POST] APIPod ${mdl}... maxTokens=${maxTokens}`);
         const fetchP = fetch(`${APIPOD_BASE}/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${APIPOD_KEY}` }, body: JSON.stringify({ model: mdl, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: userPrompt }], max_tokens: maxTokens, temperature: 0.7 }) }).then(async (res) => { if (!res.ok) { const b = await res.text(); throw new Error(`APIPod ${res.status}: ${b.slice(0, 300)}`); } const d = await res.json(); return d.choices?.[0]?.message?.content || ""; });
@@ -9072,6 +9303,1411 @@ CRITICAL RULES:
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// POST /vault/analyze-visual — Campaign Visual Blueprint Analyzer
+// Takes a campaign image → returns structured JSON blueprint
+// (layout, text elements, logos, subjects, colors, composition)
+// ══════════════════════════════════════════════════════════════
+app.post("/vault/analyze-visual", async (c) => {
+  const t0 = Date.now();
+  try {
+    const formData = await c.req.formData();
+    const tokenField = formData.get("_token") as string || "";
+    const file = formData.get("file") as File;
+    const contextNote = (formData.get("context") as string) || "";
+    if (!file) return c.json({ success: false, error: "No image file provided" }, 400);
+    if (!tokenField) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const jwt = decodeJwtPayload(tokenField);
+    if (!jwt?.sub) return c.json({ success: false, error: "Invalid token" }, 401);
+    const userId = jwt.sub;
+
+    const fileName = file.name || "campaign.png";
+    const fileType = file.type || "image/png";
+    const fileSize = file.size || 0;
+    console.log(`[vault/analyze-visual] user=${userId}, file="${fileName}" (${fileType}, ${(fileSize / 1024).toFixed(1)}KB)`);
+
+    if (fileSize > 20 * 1024 * 1024) return c.json({ success: false, error: "File too large (max 20MB)" }, 400);
+    if (!fileType.startsWith("image/")) return c.json({ success: false, error: "Only image files accepted" }, 400);
+
+    // Convert to base64 data URI
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const imageBase64 = btoa(binary);
+    const dataUri = `data:${fileType};base64,${imageBase64}`;
+
+    // Load vault for brand context
+    const vault: any = await kv.get(`vault:${userId}`) || {};
+    let brandContextBlock = "";
+    if (vault.brandName || vault.company_name) {
+      const parts: string[] = [];
+      if (vault.brandName || vault.company_name) parts.push(`Brand: ${vault.brandName || vault.company_name}`);
+      if (vault.colors?.length) parts.push(`Brand colors: ${vault.colors.map((c: any) => `${c.hex} (${c.name || c.role})`).join(", ")}`);
+      if (vault.logo_url) parts.push(`Brand has a logo stored in vault`);
+      if (vault.fonts?.length) parts.push(`Brand fonts: ${vault.fonts.map((f: any) => typeof f === "string" ? f : f.family).join(", ")}`);
+      brandContextBlock = `\n\nBRAND CONTEXT (from user's vault — use this to identify brand elements):\n${parts.join("\n")}`;
+    }
+
+    const systemPrompt = `You are an elite visual campaign analyst — 15 years at Publicis, TBWA, and Wieden+Kennedy. You reverse-engineer campaign visuals into precise, structured JSON blueprints that can be used to recreate or declinate the campaign across formats.
+
+YOUR MISSION: Analyze this campaign image with forensic precision. Extract EVERY visual element, text, logo, graphic, subject, and composition detail into a structured JSON blueprint.${brandContextBlock}
+
+${contextNote ? `USER CONTEXT: ${contextNote}\n` : ""}
+METHODOLOGY — LAYER-BY-LAYER DECOMPOSITION:
+
+1. METADATA: Project name, dimensions estimation, overall style description, branding colors (extract ALL hex codes visible)
+2. LAYOUT: Identify the layer stack order from back to front. Every campaign is built in layers:
+   - Background (solid, gradient, texture, photo)
+   - Photo/collage layers (background imagery)
+   - Graphic elements (shapes, badges, bubbles, decorative elements)
+   - Main subject (person, product, hero element)
+   - Text elements (headlines, subheads, body, CTAs)
+   - Logo elements (brand logos, partner logos, certifications)
+3. ELEMENTS EXTRACTION:
+   - graphics_elements: Every shape, bubble, badge, decorative element. Include type, estimated color (hex), position (x, y as % of width/height for responsiveness), size
+   - text_elements: EVERY text string — VERBATIM, exact as displayed. Include font style (serif/sans-serif, weight), color (hex), relative size (1.0 = body text, 2.0 = subhead, 4.0 = headline), position, alignment. For multi-color text, use prefix/suffix objects
+   - logos_elements: Every logo with description, position, estimated size
+4. SUBJECTS: For each person/product/object in the foreground:
+   - Type (person, product, object)
+   - For persons: age estimate, gender, expression, pose, clothing (DETAIL every garment), objects held, hair, accessories
+   - For products: shape, color, material, brand visible, packaging details
+   - Position in the composition
+5. COMPOSITION ANALYSIS:
+   - composition_style: collage, centered, split, editorial, grid, layered, etc.
+   - visual_flow: how the eye moves through the image (Z-pattern, F-pattern, circular, diagonal)
+   - color_harmony: the dominant color scheme and how colors interact
+   - mood: emotional tone conveyed by the visual
+
+CRITICAL RULES:
+- Extract text EXACTLY as displayed — never paraphrase, never translate
+- All colors MUST be hex codes — estimate precisely from what you see
+- Positions use coordinates where (0,0) is top-left, values are in pixels for a normalized 1000-wide canvas (scale height proportionally)
+- Size values are relative to canvas (e.g., width: 300 means 30% of canvas width)
+- NEVER invent elements that aren't visible — only describe what EXISTS in the image
+- If you can't read text clearly, indicate with [illegible] but try your best
+- Layer order matters: list from BACK to FRONT
+
+OUTPUT: Return ONLY a valid JSON object. No markdown backticks, no explanation, no preamble. The JSON must follow this exact structure:
+
+{
+  "metadata": {
+    "project_name": "string — descriptive campaign name",
+    "estimated_dimensions": { "width": 1000, "height": number },
+    "aspect_ratio": "string — e.g. 2:3, 1:1, 9:16, 16:9",
+    "style": "string — overall visual style description",
+    "branding_colors": { "color_name": "#hex", ... },
+    "mood": "string — emotional tone",
+    "composition_style": "string — layout approach"
+  },
+  "layout": {
+    "dimensions": { "width": 1000, "height": number },
+    "layers": [
+      { "id": "string", "type": "background|collage|graphics_elements|foreground_element|text_elements|logos_elements", "children": [...] }
+    ]
+  },
+  "elements": {
+    "graphics_elements": [
+      { "id": "string", "type": "shape|badge|bubble|line|border|overlay", "description": "string", "color": "#hex", "position": { "x": number, "y": number, "width": number, "height": number }, "opacity": number }
+    ],
+    "text_elements": [
+      { "id": "string", "text": "EXACT TEXT", "font_style": "sans-serif|serif|handwritten|monospace", "font_weight": "regular|medium|bold|black", "color": "#hex", "size_relative": number, "position": { "x": number, "y": number, "align": "left|center|right" }, "transform": "uppercase|lowercase|capitalize|none", "effects": "string or null — shadow, outline, glow, etc." }
+    ],
+    "logos_elements": [
+      { "id": "string", "type": "logo", "description": "string — visual description of the logo", "brand_name": "string", "position": { "x": number, "y": number, "width": number, "height": number } }
+    ]
+  },
+  "subjects": {
+    "main_subject": {
+      "type": "person|product|object|scene",
+      "description": "string — detailed description for image generation",
+      "attributes": { ... },
+      "clothing": { ... },
+      "objects_held": { ... },
+      "position": { "x": number, "y": number, "align": "center|left|right" },
+      "scale": "string — e.g. full-body, half-body, close-up, medium-shot"
+    },
+    "secondary_subjects": [ ... ]
+  },
+  "generation_prompt": "string — a COMPLETE, hyper-detailed image generation prompt that recreates the ENTIRE visual composition: background (color, gradient, texture, photo), ALL graphic elements (colored shapes, circles, rectangles, lines, badges, decorative elements with their exact colors and positions), subjects (people, products with exact clothing, poses, expressions), composition style, lighting, mood, color palette. Include EVERYTHING VISIBLE except text strings and logos. Describe graphic shapes precisely: 'a large green circle (#00A651) in the upper-left quadrant, a horizontal green brush stroke across the lower third'. This prompt must reproduce the visual identity faithfully when used with Flux, DALL-E, or Midjourney."
+}`;
+
+    // Call GPT-4o Vision via APIPod
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) return c.json({ success: false, error: "API key not configured" }, 500);
+
+    let blueprint: any = null;
+    const models = ["gpt-4o", "gpt-5"];
+
+    for (const model of models) {
+      try {
+        console.log(`[vault/analyze-visual] Trying ${model}...`);
+        const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Analyze this campaign visual and return the complete JSON blueprint." },
+                  { type: "image_url", image_url: { url: dataUri } },
+                ],
+              },
+            ],
+            max_tokens: 4000,
+            temperature: 0.1,
+          }),
+          signal: AbortSignal.timeout(90_000),
+        });
+
+        if (!vRes.ok) {
+          console.log(`[vault/analyze-visual] ${model} returned ${vRes.status}`);
+          continue;
+        }
+
+        const vData = await vRes.json();
+        let content = vData.choices?.[0]?.message?.content || "";
+        console.log(`[vault/analyze-visual] ${model} returned ${content.length} chars`);
+
+        // Clean JSON — remove markdown fences if present
+        content = content.trim();
+        if (content.startsWith("```json")) content = content.slice(7);
+        else if (content.startsWith("```")) content = content.slice(3);
+        if (content.endsWith("```")) content = content.slice(0, -3);
+        content = content.trim();
+
+        try {
+          blueprint = JSON.parse(content);
+          console.log(`[vault/analyze-visual] JSON parsed OK via ${model}`);
+          break;
+        } catch (parseErr) {
+          console.log(`[vault/analyze-visual] JSON parse failed for ${model}: ${parseErr}`);
+          // Try to extract JSON from content
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              blueprint = JSON.parse(jsonMatch[0]);
+              console.log(`[vault/analyze-visual] JSON extracted via regex from ${model}`);
+              break;
+            } catch { /* continue to next model */ }
+          }
+        }
+      } catch (err) {
+        console.log(`[vault/analyze-visual] ${model} error: ${err}`);
+      }
+    }
+
+    if (!blueprint) {
+      return c.json({ success: false, error: "Could not analyze image — all models failed" }, 500);
+    }
+
+    // Store blueprint in KV for reuse
+    const blueprintId = `bp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await kv.set(`blueprint:${userId}:${blueprintId}`, {
+      ...blueprint,
+      _id: blueprintId,
+      _sourceImage: fileName,
+      _createdAt: new Date().toISOString(),
+      _userId: userId,
+    });
+
+    // Also store in user's blueprint list
+    const existingList: any[] = (await kv.get(`blueprints:${userId}`)) || [];
+    existingList.unshift({
+      id: blueprintId,
+      name: blueprint.metadata?.project_name || fileName,
+      style: blueprint.metadata?.style || "",
+      createdAt: new Date().toISOString(),
+      sourceImage: fileName,
+    });
+    // Keep last 50 blueprints
+    await kv.set(`blueprints:${userId}`, existingList.slice(0, 50));
+
+    console.log(`[vault/analyze-visual] DONE in ${Date.now() - t0}ms, blueprintId=${blueprintId}`);
+    return c.json({ success: true, blueprint, blueprintId });
+
+  } catch (err: any) {
+    console.log(`[vault/analyze-visual] ERROR: ${err?.message || err}`);
+    return c.json({ success: false, error: `Visual analysis failed: ${err?.message || err}` }, 500);
+  }
+});
+
+// GET /vault/blueprints — List user's saved campaign blueprints
+app.post("/vault/blueprints", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const list: any[] = (await kv.get(`blueprints:${jwt.sub}`)) || [];
+    return c.json({ success: true, blueprints: list });
+  } catch (err: any) {
+    return c.json({ success: false, error: err?.message || "Failed to list blueprints" }, 500);
+  }
+});
+
+// POST /vault/blueprint/:id — Get a specific blueprint
+app.post("/vault/blueprint/:id", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const id = c.req.param("id");
+    const bp = await kv.get(`blueprint:${jwt.sub}:${id}`);
+    if (!bp) return c.json({ success: false, error: "Blueprint not found" }, 404);
+    return c.json({ success: true, blueprint: bp });
+  } catch (err: any) {
+    return c.json({ success: false, error: err?.message || "Failed to load blueprint" }, 500);
+  }
+});
+
+// POST /vault/tokens — Save design tokens for a brand
+app.post("/vault/tokens", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    const { tokens, name, blueprintId } = body;
+    if (!tokens) return c.json({ success: false, error: "No tokens provided" }, 400);
+
+    const tokenId = `tk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tokenData = {
+      _id: tokenId,
+      name: name || "Brand Tokens",
+      tokens,
+      blueprintId: blueprintId || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Save token set
+    await kv.set(`tokens:${userId}:${tokenId}`, tokenData);
+
+    // Also save as "active" tokens for this user (the one used for generation)
+    await kv.set(`tokens:${userId}:active`, tokenData);
+
+    // Update token list
+    const existingList: any[] = (await kv.get(`tokens-list:${userId}`)) || [];
+    existingList.unshift({ id: tokenId, name: tokenData.name, createdAt: tokenData.createdAt });
+    await kv.set(`tokens-list:${userId}`, existingList.slice(0, 20));
+
+    console.log(`[vault/tokens] Saved token set ${tokenId} for user ${userId}`);
+    return c.json({ success: true, tokenId, tokens: tokenData });
+  } catch (err: any) {
+    return c.json({ success: false, error: err?.message || "Failed to save tokens" }, 500);
+  }
+});
+
+// POST /vault/tokens/load — Load active design tokens
+app.post("/vault/tokens/load", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+
+    const active = await kv.get(`tokens:${jwt.sub}:active`);
+    const list: any[] = (await kv.get(`tokens-list:${jwt.sub}`)) || [];
+    return c.json({ success: true, active: active || null, list });
+  } catch (err: any) {
+    return c.json({ success: false, error: err?.message || "Failed to load tokens" }, 500);
+  }
+});
+
+// POST /vault/tokens/from-blueprint — Auto-generate design tokens from a blueprint
+app.post("/vault/tokens/from-blueprint", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    const { blueprintId } = body;
+    if (!blueprintId) return c.json({ success: false, error: "No blueprintId" }, 400);
+
+    const blueprint = await kv.get(`blueprint:${userId}:${blueprintId}`);
+    if (!blueprint) return c.json({ success: false, error: "Blueprint not found" }, 404);
+
+    // Extract tokens from blueprint
+    const bp = blueprint as any;
+    const colors: Record<string, string> = {};
+    const textStyles: any[] = [];
+
+    // Extract colors from metadata
+    if (bp.metadata?.branding_colors) {
+      Object.entries(bp.metadata.branding_colors).forEach(([name, hex]: [string, any]) => {
+        colors[name] = hex;
+      });
+    }
+
+    // Determine primary/secondary from text elements
+    const textColors = new Map<string, number>();
+    if (bp.elements?.text_elements) {
+      for (const te of bp.elements.text_elements) {
+        if (te.color) {
+          textColors.set(te.color, (textColors.get(te.color) || 0) + 1);
+        }
+        textStyles.push({
+          id: te.id,
+          text: te.text,
+          fontStyle: te.font_style || te.font || "sans-serif",
+          fontWeight: te.font_weight || (te.font?.includes("bold") ? "bold" : "regular"),
+          color: te.color,
+          sizeRelative: te.size_relative || 1.0,
+          transform: te.transform || "none",
+          position: te.position || null,
+          effects: te.effects || null,
+        });
+      }
+    }
+
+    // Build token structure
+    const tokens = {
+      brand: {
+        name: bp.metadata?.project_name || "Campaign",
+        style: bp.metadata?.style || "",
+        mood: bp.metadata?.mood || "",
+        compositionStyle: bp.metadata?.composition_style || "",
+        aspectRatio: bp.metadata?.aspect_ratio || "1:1",
+        colors: {
+          ...colors,
+          // Infer roles if not already named
+          ...(Object.keys(colors).length === 0 ? {} : {}),
+        },
+      },
+      typography: {
+        fontFamily: {
+          base: (() => {
+            // Detect dominant font style from text elements
+            const fontStyles = textStyles.map((t: any) => t.fontStyle).filter(Boolean);
+            const hasSerif = fontStyles.some((f: string) => f.includes("serif") && !f.includes("sans"));
+            const hasHandwritten = fontStyles.some((f: string) => f.includes("handwrit") || f.includes("script") || f.includes("cursive"));
+            if (hasHandwritten) return "'Caveat', 'Dancing Script', cursive";
+            if (hasSerif) return "'Playfair Display', 'Georgia', serif";
+            return "'Inter', 'Helvetica Neue', sans-serif";
+          })(),
+          heading: (() => {
+            // Use the heaviest/largest text's font style for headings
+            const headlineStyle = textStyles.sort((a: any, b: any) => (b.sizeRelative || 1) - (a.sizeRelative || 1))[0];
+            const fs = headlineStyle?.fontStyle || "sans-serif";
+            if (fs.includes("serif") && !fs.includes("sans")) return "'Playfair Display', 'Georgia', serif";
+            if (fs.includes("handwrit") || fs.includes("script")) return "'Caveat', 'Dancing Script', cursive";
+            if (fs.includes("mono")) return "'JetBrains Mono', 'Courier New', monospace";
+            return "'Inter', 'Helvetica Neue', sans-serif";
+          })(),
+        },
+        styles: textStyles,
+      },
+      spacing: {
+        xxs: "4px",
+        xs: "8px",
+        sm: "12px",
+        base: "16px",
+        lg: "24px",
+        xl: "32px",
+      },
+      layout: {
+        dimensions: bp.layout?.dimensions || { width: 1000, height: 1000 },
+        layers: bp.layout?.layers?.map((l: any) => l.id || l.type) || [],
+      },
+      subjects: bp.subjects || {},
+      graphics: bp.elements?.graphics_elements || [],
+      logos: bp.elements?.logos_elements || [],
+      generationPrompt: bp.generation_prompt || "",
+    };
+
+    // Auto-save
+    const tokenId = `tk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tokenData = {
+      _id: tokenId,
+      name: `${bp.metadata?.project_name || "Campaign"} Tokens`,
+      tokens,
+      blueprintId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await kv.set(`tokens:${userId}:${tokenId}`, tokenData);
+    await kv.set(`tokens:${userId}:active`, tokenData);
+
+    const existingList: any[] = (await kv.get(`tokens-list:${userId}`)) || [];
+    existingList.unshift({ id: tokenId, name: tokenData.name, createdAt: tokenData.createdAt });
+    await kv.set(`tokens-list:${userId}`, existingList.slice(0, 20));
+
+    console.log(`[vault/tokens/from-blueprint] Generated tokens ${tokenId} from blueprint ${blueprintId}`);
+    return c.json({ success: true, tokenId, tokens: tokenData });
+  } catch (err: any) {
+    return c.json({ success: false, error: err?.message || "Failed to generate tokens" }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// POST /vault/extract-layers — Extract each element from original as PNG
+//
+// Uses FAL Qwen-Image-Layered for subject isolation, Photoroom for bg removal,
+// and the blueprint positions to crop graphic/logo regions.
+// Returns an array of layers with URLs, each independently editable.
+// ══════════════════════════════════════════════════════════════════════
+app.post("/vault/extract-layers", async (c) => {
+  const t0 = Date.now();
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    const { blueprintId, originalImageUrl: rawImageUrl } = body;
+    if (!blueprintId) return c.json({ success: false, error: "No blueprintId" }, 400);
+    if (!rawImageUrl) return c.json({ success: false, error: "No originalImageUrl" }, 400);
+
+    const blueprint = await kv.get(`blueprint:${userId}:${blueprintId}`) as any;
+    if (!blueprint) return c.json({ success: false, error: "Blueprint not found" }, 404);
+
+    // ── Convert data URI to public URL via Supabase Storage ──
+    let originalImageUrl = rawImageUrl;
+    if (typeof rawImageUrl === "string" && rawImageUrl.startsWith("data:")) {
+      console.log(`[extract-layers] Data URI detected — uploading to storage...`);
+      try {
+        const match = rawImageUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+        if (!match) throw new Error("Invalid data URI format");
+        const contentType = match[1];
+        const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+        const b64 = match[2];
+        const binaryStr = atob(b64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        const fileName = `extract-layers/${userId}/${blueprintId}-original.${ext}`;
+        await ensureGenerationsBucket();
+        const { data: upData, error: upErr } = await supabase.storage
+          .from("generations")
+          .upload(fileName, bytes, { contentType, upsert: true });
+        if (upErr) throw upErr;
+        const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+        originalImageUrl = pubData.publicUrl;
+        console.log(`[extract-layers] Uploaded to storage: ${originalImageUrl}`);
+      } catch (err: any) {
+        console.log(`[extract-layers] Storage upload failed: ${err?.message || err}`);
+        return c.json({ success: false, error: "Failed to upload image to storage" }, 500);
+      }
+    }
+
+    const falKey = Deno.env.get("FAL_API_KEY");
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    const layers: any[] = [];
+    const dims = blueprint.layout?.dimensions || { width: 1000, height: 1000 };
+
+    console.log(`[extract-layers] Starting extraction for blueprint ${blueprintId}...`);
+
+    // ── Layer 0: Full original (background reference) ──
+    layers.push({
+      id: "original",
+      type: "background",
+      label: "Image originale complète",
+      imageUrl: originalImageUrl,
+      position: { x: 0, y: 0, width: dims.width, height: dims.height },
+      zIndex: 0,
+      editable: true,
+      extractionMethod: "original",
+    });
+
+    // ── Layer 1: Subject extraction (person/product without background) ──
+    if (blueprint.subjects?.main_subject) {
+      console.log(`[extract-layers] Extracting subject...`);
+      let subjectUrl: string | null = null;
+
+      // Try Qwen-Image-Layered first (semantic decomposition)
+      if (falKey) {
+        try {
+          const submitRes = await fetch("https://queue.fal.run/fal-ai/qwen-image-layered", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+            body: JSON.stringify({
+              image_url: originalImageUrl,
+              prompt: "Isolate the main person or subject. Separate from background.",
+              num_layers: 2,
+              num_inference_steps: 28,
+              guidance_scale: 5,
+              output_format: "png",
+            }),
+          });
+
+          if (submitRes.ok) {
+            const submitData = await submitRes.json();
+
+            // Sync result
+            if (submitData.images?.[0]?.url) {
+              subjectUrl = submitData.images[0].url;
+              console.log(`[extract-layers] Qwen sync OK: subject extracted`);
+            } else if (submitData.request_id) {
+              // Poll
+              const requestId = submitData.request_id;
+              let elapsed = 0;
+              while (elapsed < 60_000) {
+                await new Promise(r => setTimeout(r, 3_000));
+                elapsed += 3_000;
+                const statusRes = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${requestId}/status`, {
+                  headers: { Authorization: `Key ${falKey}` },
+                });
+                if (!statusRes.ok) continue;
+                const statusData = await statusRes.json();
+                if (statusData.status === "COMPLETED") {
+                  const resultRes = await fetch(`https://queue.fal.run/fal-ai/qwen-image-layered/requests/${requestId}`, {
+                    headers: { Authorization: `Key ${falKey}` },
+                  });
+                  const resultData = await resultRes.json();
+                  subjectUrl = resultData.images?.[0]?.url || null;
+                  if (subjectUrl) console.log(`[extract-layers] Qwen poll OK: subject extracted in ${elapsed / 1000}s`);
+                  break;
+                }
+                if (statusData.status === "FAILED") break;
+              }
+            }
+          }
+        } catch (err) {
+          console.log(`[extract-layers] Qwen failed: ${err}`);
+        }
+      }
+
+      // Fallback to Photoroom remove-bg
+      if (!subjectUrl && photoroomKey) {
+        try {
+          console.log(`[extract-layers] Fallback to Photoroom remove-bg...`);
+          const params = new URLSearchParams();
+          params.set("imageUrl", originalImageUrl);
+          params.set("removeBackground", "true");
+          params.set("outputSize", "1024x1024");
+          params.set("padding", "0.01");
+          params.set("format", "png");
+
+          const prRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+            headers: { "x-api-key": photoroomKey },
+          });
+
+          if (prRes.ok) {
+            const blob = await prRes.blob();
+            const fileName = `layer-subject-${Date.now()}.png`;
+            await ensureGenerationsBucket();
+            const { data, error } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: "image/png" });
+            if (!error && data?.path) {
+              const { data: pubData } = supabase.storage.from("generations").getPublicUrl(data.path);
+              subjectUrl = pubData.publicUrl;
+              console.log(`[extract-layers] Photoroom remove-bg OK`);
+            }
+          }
+        } catch (err) {
+          console.log(`[extract-layers] Photoroom failed: ${err}`);
+        }
+      }
+
+      // Fallback to BiRefNet
+      if (!subjectUrl && falKey) {
+        try {
+          console.log(`[extract-layers] Fallback to BiRefNet...`);
+          const res = await fetch("https://fal.run/fal-ai/birefnet", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+            body: JSON.stringify({ image_url: originalImageUrl }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            subjectUrl = data.image?.url || null;
+            if (subjectUrl) console.log(`[extract-layers] BiRefNet OK`);
+          }
+        } catch (err) {
+          console.log(`[extract-layers] BiRefNet failed: ${err}`);
+        }
+      }
+
+      if (subjectUrl) {
+        const subPos = blueprint.subjects.main_subject.position || { x: 0, y: 0 };
+        layers.push({
+          id: "subject-main",
+          type: "subject",
+          label: blueprint.subjects.main_subject.description?.slice(0, 60) || "Sujet principal",
+          imageUrl: subjectUrl,
+          position: { x: subPos.x || 0, y: subPos.y || 0, width: dims.width, height: dims.height },
+          zIndex: 10,
+          editable: true,
+          extractionMethod: "ai-isolation",
+          transparent: true,
+        });
+      }
+    }
+
+    // ── Layer 2+: Graphic elements (from blueprint positions) ──
+    if (blueprint.elements?.graphics_elements?.length) {
+      blueprint.elements.graphics_elements.forEach((g: any, i: number) => {
+        layers.push({
+          id: g.id || `graphic-${i}`,
+          type: "graphic",
+          label: g.description || `Élément graphique ${i + 1}`,
+          // Not an extracted image — rendered as SVG/CSS by the compositor
+          shape: {
+            type: g.type || "rectangle",
+            color: g.color || "#000",
+            opacity: g.opacity ?? 0.8,
+            description: g.description,
+          },
+          position: g.position || { x: 0, y: 0, width: 100, height: 100 },
+          zIndex: 5 + i,
+          editable: true,
+          extractionMethod: "blueprint-shape",
+        });
+      });
+    }
+
+    // ── Layer N: Text elements (rendered by compositor, not extracted) ──
+    if (blueprint.elements?.text_elements?.length) {
+      blueprint.elements.text_elements.forEach((t: any, i: number) => {
+        layers.push({
+          id: t.id || `text-${i}`,
+          type: "text",
+          label: t.text?.slice(0, 40) || `Texte ${i + 1}`,
+          textData: {
+            text: t.text,
+            fontStyle: t.font_style,
+            fontWeight: t.font_weight,
+            color: t.color,
+            sizeRelative: t.size_relative,
+            transform: t.transform,
+            effects: t.effects,
+          },
+          position: t.position || { x: 0, y: 0 },
+          zIndex: 20 + i,
+          editable: true,
+          extractionMethod: "text-overlay",
+        });
+      });
+    }
+
+    // ── Layer N+: Logo elements ──
+    if (blueprint.elements?.logos_elements?.length) {
+      // Check if user has a logo in vault
+      const vault: any = await kv.get(`vault:${userId}`) || {};
+      const vaultLogoUrl = vault.logo_url || vault.logoUrl || null;
+
+      blueprint.elements.logos_elements.forEach((l: any, i: number) => {
+        layers.push({
+          id: l.id || `logo-${i}`,
+          type: "logo",
+          label: l.brand_name || `Logo ${i + 1}`,
+          imageUrl: vaultLogoUrl || null, // Will use vault logo if available
+          description: l.description,
+          position: l.position || { x: 0, y: 0, width: 100, height: 50 },
+          zIndex: 25 + i,
+          editable: true,
+          extractionMethod: vaultLogoUrl ? "vault" : "placeholder",
+        });
+      });
+    }
+
+    // Sort by zIndex
+    layers.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+
+    // Store extraction result
+    await kv.set(`layers:${userId}:${blueprintId}`, {
+      layers,
+      blueprintId,
+      extractedAt: new Date().toISOString(),
+    });
+
+    console.log(`[extract-layers] Done in ${Date.now() - t0}ms — ${layers.length} layers extracted`);
+    return c.json({
+      success: true,
+      layers,
+      totalLayers: layers.length,
+      extractionTimeMs: Date.now() - t0,
+    });
+
+  } catch (err: any) {
+    console.log(`[extract-layers] ERROR: ${err?.message || err}`);
+    return c.json({ success: false, error: `Extraction failed: ${err?.message || err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// POST /vault/inpaint-zone — Replace a zone in campaign image via inpainting
+//
+// Input:
+//   originalImageDataUri: string (data URI or public URL of current image)
+//   zone: { type: "text"|"photo", rect: {x,y,w,h} in %, newText?, newPhotoDataUri? }
+//
+// Process:
+//   1. Upload image to storage if data URI
+//   2. Generate a white-on-black mask from the rect (white = area to replace)
+//   3. Build prompt: for text → "Replace text with [newText]", for photo → "Replace with [description]"
+//   4. Call Ideogram V3 edit (inpainting) or GPT Image edit
+//   5. Return new full image URL
+// ══════════════════════════════════════════════════════════════════════
+app.post("/vault/inpaint-zone", async (c) => {
+  const t0 = Date.now();
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    const { originalImageDataUri, zone } = body;
+    if (!originalImageDataUri) return c.json({ success: false, error: "No image" }, 400);
+    if (!zone?.rect) return c.json({ success: false, error: "No zone" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!ideogramKey && !openaiKey) return c.json({ success: false, error: "No inpainting API configured" }, 500);
+
+    console.log(`[inpaint-zone] user=${userId.slice(0, 8)}, type=${zone.type}, rect=${JSON.stringify(zone.rect)}`);
+
+    // ── 1. Ensure we have a real URL for the image ──
+    let imageUrl = originalImageDataUri;
+    if (typeof originalImageDataUri === "string" && originalImageDataUri.startsWith("data:")) {
+      const match = originalImageDataUri.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (!match) return c.json({ success: false, error: "Invalid data URI" }, 400);
+      const contentType = match[1];
+      const ext = contentType === "image/png" ? "png" : "jpg";
+      const b64 = match[2];
+      const binaryStr = atob(b64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      const fileName = `inpaint/${userId}/${Date.now()}-source.${ext}`;
+      await ensureGenerationsBucket();
+      const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, bytes, { contentType, upsert: true });
+      if (upErr) return c.json({ success: false, error: "Image upload failed" }, 500);
+      const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+      imageUrl = pubData.publicUrl;
+      console.log(`[inpaint-zone] Uploaded source image: ${imageUrl.slice(0, 80)}`);
+    }
+
+    // ── 2. Handle photo replacement upload if provided ──
+    let replacementPhotoUrl: string | null = null;
+    if (zone.type === "photo" && zone.newPhotoDataUri) {
+      const match = zone.newPhotoDataUri.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (match) {
+        const ct = match[1];
+        const ext2 = ct === "image/png" ? "png" : "jpg";
+        const b64_2 = match[2];
+        const bs2 = atob(b64_2);
+        const by2 = new Uint8Array(bs2.length);
+        for (let i = 0; i < bs2.length; i++) by2[i] = bs2.charCodeAt(i);
+        const fn2 = `inpaint/${userId}/${Date.now()}-replacement.${ext2}`;
+        const { data: up2 } = await supabase.storage.from("generations").upload(fn2, by2, { contentType: ct, upsert: true });
+        if (up2?.path) {
+          const { data: pub2 } = supabase.storage.from("generations").getPublicUrl(up2.path);
+          replacementPhotoUrl = pub2.publicUrl;
+        }
+      }
+    }
+
+    // ── 3. Generate mask (white rectangle on black background) ──
+    // We need to know the image dimensions to create the mask
+    // Fetch image to get dimensions via a small HEAD or just use the rect in %
+    // For Ideogram: mask is same size as image, white = area to edit
+    // We'll create it as a canvas in-memory using basic binary PNG generation
+
+    // Get image dimensions by downloading it
+    const imgRes = await fetch(imageUrl);
+    const imgBlob = await imgRes.blob();
+
+    // We need image dimensions. Parse from the blob or use a reasonable default.
+    // For simplicity: use the data URI dimensions if available, or fetch image headers
+    // Let's get dimensions from the image by re-uploading and checking
+    // Actually, we can use the arrayBuffer to detect PNG/JPEG dimensions
+    const imgArrayBuffer = await imgBlob.arrayBuffer();
+    const imgBytes = new Uint8Array(imgArrayBuffer);
+    let imgW = 1024, imgH = 1024;
+
+    // Try to get dimensions from PNG header
+    if (imgBytes[0] === 0x89 && imgBytes[1] === 0x50) { // PNG
+      imgW = (imgBytes[16] << 24) | (imgBytes[17] << 16) | (imgBytes[18] << 8) | imgBytes[19];
+      imgH = (imgBytes[20] << 24) | (imgBytes[21] << 16) | (imgBytes[22] << 8) | imgBytes[23];
+    }
+    // Try JPEG SOF0 marker for dimensions
+    else if (imgBytes[0] === 0xFF && imgBytes[1] === 0xD8) {
+      for (let i = 2; i < imgBytes.length - 8; i++) {
+        if (imgBytes[i] === 0xFF && (imgBytes[i + 1] === 0xC0 || imgBytes[i + 1] === 0xC2)) {
+          imgH = (imgBytes[i + 5] << 8) | imgBytes[i + 6];
+          imgW = (imgBytes[i + 7] << 8) | imgBytes[i + 8];
+          break;
+        }
+      }
+    }
+    console.log(`[inpaint-zone] Image dimensions: ${imgW}×${imgH}`);
+
+    // Create mask as a simple BMP (easier than PNG without a library)
+    // Actually, create a minimal PNG with the mask
+    // Simpler approach: create an SVG mask and convert to PNG via a canvas-like approach
+    // Simplest: use base64 to create a small mask image
+
+    // Build mask as raw RGBA pixels, then encode as PNG manually
+    // For efficiency: create mask at a reduced resolution (Ideogram accepts any size mask)
+    const maskW = Math.min(imgW, 1024);
+    const maskH = Math.min(imgH, 1024);
+
+    // Zone rect in pixels on the mask
+    const zx = Math.round((zone.rect.x / 100) * maskW);
+    const zy = Math.round((zone.rect.y / 100) * maskH);
+    const zw = Math.round((zone.rect.w / 100) * maskW);
+    const zh = Math.round((zone.rect.h / 100) * maskH);
+
+    // Create RGBA pixel data: black (opaque) everywhere, white (opaque) in the zone
+    const pixels = new Uint8Array(maskW * maskH * 4);
+    for (let py = 0; py < maskH; py++) {
+      for (let px = 0; px < maskW; px++) {
+        const idx = (py * maskW + px) * 4;
+        const inZone = px >= zx && px < zx + zw && py >= zy && py < zy + zh;
+        pixels[idx] = inZone ? 255 : 0;     // R
+        pixels[idx + 1] = inZone ? 255 : 0; // G
+        pixels[idx + 2] = inZone ? 255 : 0; // B
+        pixels[idx + 3] = 255;               // A (fully opaque)
+      }
+    }
+
+    // Encode as minimal uncompressed PNG
+    function createPNG(width: number, height: number, rgba: Uint8Array): Uint8Array {
+      // PNG structure: signature + IHDR + IDAT(s) + IEND
+      const crc32Table = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        crc32Table[n] = c;
+      }
+      function crc32(data: Uint8Array, start: number, len: number): number {
+        let c = 0xFFFFFFFF;
+        for (let i = start; i < start + len; i++) c = crc32Table[(c ^ data[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+      }
+      function adler32(data: Uint8Array): number {
+        let a = 1, b = 0;
+        for (let i = 0; i < data.length; i++) { a = (a + data[i]) % 65521; b = (b + a) % 65521; }
+        return (b << 16) | a;
+      }
+      function writeU32BE(arr: Uint8Array, offset: number, val: number) {
+        arr[offset] = (val >>> 24) & 0xFF; arr[offset + 1] = (val >>> 16) & 0xFF;
+        arr[offset + 2] = (val >>> 8) & 0xFF; arr[offset + 3] = val & 0xFF;
+      }
+
+      // Raw scanlines: each row = filter byte (0) + RGBA pixels
+      const rawRows: Uint8Array[] = [];
+      for (let y = 0; y < height; y++) {
+        const row = new Uint8Array(1 + width * 4);
+        row[0] = 0; // no filter
+        row.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), 1);
+        rawRows.push(row);
+      }
+      const rawData = new Uint8Array(rawRows.reduce((s, r) => s + r.length, 0));
+      let offset = 0;
+      for (const row of rawRows) { rawData.set(row, offset); offset += row.length; }
+
+      // Deflate with store-only blocks (no compression, simplest valid deflate)
+      const MAX_BLOCK = 65535;
+      const numBlocks = Math.ceil(rawData.length / MAX_BLOCK) || 1;
+      const deflated = new Uint8Array(2 + rawData.length + numBlocks * 5 + 4); // zlib header + blocks + adler
+      let dOff = 0;
+      deflated[dOff++] = 0x78; deflated[dOff++] = 0x01; // zlib header (deflate, no dict)
+      for (let i = 0; i < numBlocks; i++) {
+        const start = i * MAX_BLOCK;
+        const remaining = rawData.length - start;
+        const blockLen = Math.min(remaining, MAX_BLOCK);
+        const isLast = i === numBlocks - 1;
+        deflated[dOff++] = isLast ? 0x01 : 0x00; // BFINAL + BTYPE=00 (stored)
+        deflated[dOff++] = blockLen & 0xFF; deflated[dOff++] = (blockLen >> 8) & 0xFF;
+        deflated[dOff++] = (~blockLen) & 0xFF; deflated[dOff++] = ((~blockLen) >> 8) & 0xFF;
+        deflated.set(rawData.subarray(start, start + blockLen), dOff);
+        dOff += blockLen;
+      }
+      const adl = adler32(rawData);
+      writeU32BE(deflated, dOff, adl); dOff += 4;
+      const idatData = deflated.subarray(0, dOff);
+
+      // Build PNG file
+      const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      // IHDR
+      const ihdr = new Uint8Array(25); // 4 len + 4 type + 13 data + 4 crc
+      writeU32BE(ihdr, 0, 13);
+      ihdr[4] = 73; ihdr[5] = 72; ihdr[6] = 68; ihdr[7] = 82; // IHDR
+      writeU32BE(ihdr, 8, width); writeU32BE(ihdr, 12, height);
+      ihdr[16] = 8; ihdr[17] = 6; // 8-bit RGBA
+      ihdr[18] = 0; ihdr[19] = 0; ihdr[20] = 0;
+      const ihdrCrc = crc32(ihdr, 4, 17);
+      writeU32BE(ihdr, 21, ihdrCrc);
+
+      // IDAT
+      const idat = new Uint8Array(12 + idatData.length);
+      writeU32BE(idat, 0, idatData.length);
+      idat[4] = 73; idat[5] = 68; idat[6] = 65; idat[7] = 84; // IDAT
+      idat.set(idatData, 8);
+      const idatCrc = crc32(idat, 4, 4 + idatData.length);
+      writeU32BE(idat, 8 + idatData.length, idatCrc);
+
+      // IEND
+      const iend = new Uint8Array([0, 0, 0, 0, 73, 69, 78, 68, 0xAE, 0x42, 0x60, 0x82]);
+
+      const png = new Uint8Array(sig.length + ihdr.length + idat.length + iend.length);
+      png.set(sig, 0);
+      png.set(ihdr, sig.length);
+      png.set(idat, sig.length + ihdr.length);
+      png.set(iend, sig.length + ihdr.length + idat.length);
+      return png;
+    }
+
+    const maskPng = createPNG(maskW, maskH, pixels);
+    const maskBlob = new Blob([maskPng], { type: "image/png" });
+    console.log(`[inpaint-zone] Mask created: ${maskW}×${maskH}, zone=${zx},${zy},${zw}×${zh}`);
+
+    // ── 4. Build prompt ──
+    let prompt = "";
+    if (zone.type === "text") {
+      prompt = `Replace the text in the marked area with: "${zone.newText}". Keep the same font style, size, color, and visual treatment as the surrounding design. Preserve the background behind the text exactly as-is. Only change the text content.`;
+    } else if (zone.type === "photo") {
+      prompt = `Replace the photo/image in the marked area with a new photo that fits naturally into the campaign design. Preserve the frame, borders, angles, and visual style of the original photo placement. The new content should blend seamlessly with the existing design.`;
+      if (replacementPhotoUrl) {
+        prompt = `Replace the photo in the marked area. Match the style, lighting, and composition of the original campaign. Keep all design elements (borders, frames, overlays) intact. Blend the new content seamlessly.`;
+      }
+    }
+
+    // ── 5. Call Ideogram V3 edit ──
+    if (ideogramKey) {
+      const fd = new FormData();
+      fd.append("image", imgBlob, "image.png");
+      fd.append("mask", maskBlob, "mask.png");
+      fd.append("prompt", prompt);
+      fd.append("magic_prompt", "ON");
+      fd.append("rendering_speed", "TURBO");
+
+      const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", {
+        method: "POST",
+        headers: { "Api-Key": ideogramKey },
+        body: fd,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.log(`[inpaint-zone] Ideogram error ${res.status}: ${errText.slice(0, 200)}`);
+        return c.json({ success: false, error: `Inpainting failed: ${res.status}` }, 500);
+      }
+
+      const data = await res.json();
+      const resultUrl = data?.data?.[0]?.url;
+      if (!resultUrl) return c.json({ success: false, error: "No result image" }, 500);
+
+      // Re-upload to Supabase
+      const dlRes = await fetch(resultUrl);
+      const dlBlob = await dlRes.blob();
+      const fileName = `inpaint/${userId}/${Date.now()}-result.webp`;
+      const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp", upsert: true });
+      if (upErr) return c.json({ success: false, error: "Result upload failed" }, 500);
+      const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+      const credits = getModelCreditCost("image", "ideogram-3-leo");
+      deductCredit(userId, credits).catch(() => {});
+
+      console.log(`[inpaint-zone] OK in ${Date.now() - t0}ms — ${pubData.publicUrl.slice(0, 80)}`);
+      return c.json({ success: true, resultImageUrl: pubData.publicUrl, latencyMs: Date.now() - t0 });
+    }
+
+    return c.json({ success: false, error: "No inpainting provider available" }, 500);
+  } catch (err: any) {
+    console.log(`[inpaint-zone] ERROR: ${err?.message || err}`);
+    return c.json({ success: false, error: `Inpaint failed: ${err?.message || err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// POST /vault/reproduce-pipeline — Element-by-element Campaign Reproduction
+//
+// Multi-step pipeline called sequentially by the client:
+//   step=generate-scene    → Generate background + composition
+//   step=generate-subject  → Generate main subject
+//   step=inspect-element   → Inspect a specific element vs original
+//   step=regenerate        → Regenerate with corrective feedback
+//   step=final-inspect     → Full composite vs original comparison
+//
+// Each step returns immediately. Client drives the pipeline.
+// ══════════════════════════════════════════════════════════════════════
+app.post("/vault/reproduce-pipeline", async (c) => {
+  const t0 = Date.now();
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const token = body?._token || c.get("userToken") || "";
+    const jwt = decodeJwtPayload(token);
+    if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized" }, 401);
+    const userId = jwt.sub;
+
+    const { blueprintId, step } = body;
+    if (!blueprintId) return c.json({ success: false, error: "No blueprintId" }, 400);
+
+    const blueprint = await kv.get(`blueprint:${userId}:${blueprintId}`) as any;
+    if (!blueprint) return c.json({ success: false, error: "Blueprint not found" }, 404);
+
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) return c.json({ success: false, error: "API key not configured" }, 500);
+
+    // Helper: compute aspect ratio from blueprint dims
+    const dims = blueprint.layout?.dimensions || { width: 1000, height: 1000 };
+    const ratio = dims.width / dims.height;
+    let aspectRatio = "1:1";
+    if (Math.abs(ratio - 9/16) < 0.15) aspectRatio = "9:16";
+    else if (Math.abs(ratio - 16/9) < 0.15) aspectRatio = "16:9";
+    else if (Math.abs(ratio - 4/5) < 0.15) aspectRatio = "4:5";
+    else if (Math.abs(ratio - 2/3) < 0.15) aspectRatio = "2:3";
+    else if (Math.abs(ratio - 3/4) < 0.15) aspectRatio = "3:4";
+    else if (ratio > 1.1) aspectRatio = "16:9";
+    else if (ratio < 0.9) aspectRatio = "9:16";
+
+    // Helper: call GPT-4o Vision for inspection
+    async function inspectVision(systemPrompt: string, images: any[], userText: string) {
+      const vRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: [...images, { type: "text", text: userText }] },
+          ],
+          max_tokens: 2000,
+          temperature: 0.15,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!vRes.ok) throw new Error(`Vision API ${vRes.status}`);
+      const vData = await vRes.json();
+      let content = vData.choices?.[0]?.message?.content || "";
+      content = content.trim();
+      if (content.startsWith("```json")) content = content.slice(7);
+      else if (content.startsWith("```")) content = content.slice(3);
+      if (content.endsWith("```")) content = content.slice(0, -3);
+      try { return JSON.parse(content.trim()); }
+      catch { const m = content.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
+    }
+
+    // Helper: image content object
+    function imgContent(urlOrDataUri: string) {
+      return { type: "image_url", image_url: { url: urlOrDataUri } };
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP: PLAN — Build the reproduction plan from the blueprint
+    // ═══════════════════════════════════════════════════════════
+    if (step === "plan") {
+      const elements: any[] = [];
+
+      // 1. Background / Scene
+      elements.push({
+        id: "scene",
+        type: "scene",
+        label: "Background & Composition",
+        description: blueprint.metadata?.style || "Campaign background scene",
+        status: "pending",
+      });
+
+      // 2. Subject(s)
+      if (blueprint.subjects?.main_subject) {
+        elements.push({
+          id: "subject-main",
+          type: "subject",
+          label: "Sujet principal",
+          description: blueprint.subjects.main_subject.description || "Main subject",
+          subjectData: blueprint.subjects.main_subject,
+          status: "pending",
+        });
+      }
+      if (blueprint.subjects?.secondary_subjects?.length) {
+        blueprint.subjects.secondary_subjects.forEach((s: any, i: number) => {
+          elements.push({
+            id: `subject-${i + 1}`,
+            type: "subject",
+            label: `Sujet secondaire ${i + 1}`,
+            description: s.description || "Secondary subject",
+            subjectData: s,
+            status: "pending",
+          });
+        });
+      }
+
+      // 3. Graphic elements
+      if (blueprint.elements?.graphics_elements?.length) {
+        blueprint.elements.graphics_elements.forEach((g: any, i: number) => {
+          elements.push({
+            id: g.id || `graphic-${i}`,
+            type: "graphic",
+            label: g.description || `Élément graphique ${i + 1}`,
+            description: `${g.type || "shape"}: ${g.description || ""} — color: ${g.color || "unknown"}`,
+            graphicData: g,
+            status: "pending",
+          });
+        });
+      }
+
+      // 4. Text elements
+      if (blueprint.elements?.text_elements?.length) {
+        blueprint.elements.text_elements.forEach((t: any, i: number) => {
+          elements.push({
+            id: t.id || `text-${i}`,
+            type: "text",
+            label: t.text?.slice(0, 40) || `Texte ${i + 1}`,
+            description: `"${t.text}" — ${t.font_weight || "regular"} ${t.font_style || "sans-serif"} — ${t.color || "#000"}`,
+            textData: t,
+            status: "pending",
+          });
+        });
+      }
+
+      // 5. Logo elements
+      if (blueprint.elements?.logos_elements?.length) {
+        blueprint.elements.logos_elements.forEach((l: any, i: number) => {
+          elements.push({
+            id: l.id || `logo-${i}`,
+            type: "logo",
+            label: l.brand_name || `Logo ${i + 1}`,
+            description: l.description || "Brand logo",
+            logoData: l,
+            status: "pending",
+          });
+        });
+      }
+
+      // Store plan in KV
+      const plan = {
+        blueprintId,
+        elements,
+        generationPrompt: blueprint.generation_prompt,
+        totalElements: elements.length,
+        createdAt: new Date().toISOString(),
+      };
+      await kv.set(`pipeline:${userId}:${blueprintId}`, plan);
+
+      console.log(`[pipeline/plan] Built plan with ${elements.length} elements`);
+      return c.json({ success: true, step: "plan", plan });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP: GENERATE — Generate the full base image
+    // Uses generation_prompt which includes ALL visual elements
+    // ═══════════════════════════════════════════════════════════
+    if (step === "generate") {
+      const prompt = body.prompt || blueprint.generation_prompt;
+      if (!prompt) return c.json({ success: false, error: "No generation_prompt" }, 400);
+
+      const attempt = body.attempt || 1;
+      console.log(`[pipeline/generate] Generating base image (attempt ${attempt})...`);
+
+      try {
+        const result = await generateImage({ prompt, model: "photon-1", aspectRatio });
+        console.log(`[pipeline/generate] OK in ${result.latencyMs}ms`);
+
+        // Store for later steps
+        await kv.set(`pipeline:${userId}:${blueprintId}:image`, {
+          imageUrl: result.imageUrl,
+          attempt,
+          generatedAt: new Date().toISOString(),
+        });
+
+        return c.json({ success: true, step: "generate", imageUrl: result.imageUrl, latencyMs: result.latencyMs, attempt });
+      } catch (err: any) {
+        // Fallback: try Ideogram
+        console.log(`[pipeline/generate] Luma failed (${err.message}), trying Ideogram...`);
+        try {
+          const result = await generateImageIdeogram({ prompt, model: "ideogram", aspectRatio });
+          await kv.set(`pipeline:${userId}:${blueprintId}:image`, { imageUrl: result.imageUrl, attempt, generatedAt: new Date().toISOString() });
+          return c.json({ success: true, step: "generate", imageUrl: result.imageUrl, latencyMs: result.latencyMs, attempt });
+        } catch (e2: any) {
+          return c.json({ success: false, error: `Generation failed: ${err.message} / ${e2.message}` }, 500);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP: INSPECT-ELEMENT — Inspect one element type
+    // Sends original + generated to GPT-4o, focuses on specific element
+    // ═══════════════════════════════════════════════════════════
+    if (step === "inspect-element") {
+      const { elementType, elementId, generatedImageUrl, originalImageBase64 } = body;
+      if (!generatedImageUrl) return c.json({ success: false, error: "No generatedImageUrl" }, 400);
+      if (!originalImageBase64) return c.json({ success: false, error: "No originalImageBase64" }, 400);
+
+      // Build element-specific inspection prompt
+      const elementDescriptions: Record<string, string> = {
+        scene: `FOCUS: Background composition & layout.
+Evaluate: Does the generated image have the same LAYOUT structure? Same background type (solid color, gradient, photo, collage)? Same spatial arrangement of visual elements? Same overall composition approach?
+Score: composition (layout fidelity), colors (palette match), mood (atmosphere/lighting).`,
+
+        subject: `FOCUS: Main subject reproduction.
+Evaluate: Does the person/product/object LOOK like the original? Check: age, gender, expression, pose, clothing details (colors, style, patterns), hair, accessories, position in frame, body language.
+Score: likeness (how close the subject looks), pose (body position match), styling (clothing/accessories match).`,
+
+        graphic: `FOCUS: Graphic/decorative elements.
+Evaluate: Are the same SHAPES present? Same COLORS (#hex)? Same POSITIONS (quadrant, overlap)? Same SIZES relative to the canvas? Check: circles, rectangles, lines, badges, bubbles, decorative elements.
+Score: shape_match (correct shapes present), color_match (right colors), position_match (right placement).`,
+
+        text: `FOCUS: Typography & text rendering.
+NOTE: Text is overlaid separately by our compositor — only evaluate if the POSITIONS reserved for text are correct (empty space where text goes).
+Score: layout_space (room for text in right places).`,
+
+        logo: `FOCUS: Logo placement area.
+NOTE: The actual logo is overlaid separately — evaluate if there's appropriate SPACE at the position where the logo should go.
+Score: position_ready (correct space available for logo).`,
+      };
+
+      const focusDescription = elementDescriptions[elementType] || elementDescriptions.scene;
+
+      // Get element data from blueprint for context
+      let elementContext = "";
+      if (elementType === "subject" && blueprint.subjects?.main_subject) {
+        const s = blueprint.subjects.main_subject;
+        elementContext = `\nORIGINAL SUBJECT DETAILS (from analysis):\n- Type: ${s.type}\n- Description: ${s.description}\n- Clothing: ${JSON.stringify(s.clothing || {})}\n- Position: ${JSON.stringify(s.position || {})}`;
+      }
+      if (elementType === "graphic" && elementId) {
+        const g = blueprint.elements?.graphics_elements?.find((x: any) => x.id === elementId);
+        if (g) elementContext = `\nORIGINAL GRAPHIC DETAILS:\n- Type: ${g.type}\n- Description: ${g.description}\n- Color: ${g.color}\n- Position: ${JSON.stringify(g.position || {})}`;
+      }
+
+      const inspectionPrompt = `You are a senior art director performing element-by-element quality control on a campaign reproduction.
+
+IMAGE 1: ORIGINAL campaign (reference)
+IMAGE 2: AI-GENERATED reproduction (to evaluate)
+
+${focusDescription}
+${elementContext}
+
+Return ONLY valid JSON:
+{
+  "elementType": "${elementType}",
+  "elementId": "${elementId || elementType}",
+  "score": number (0-100, how well this specific element matches),
+  "details": {
+    "matches": ["what matches well — be specific"],
+    "mismatches": ["what doesn't match — be VERY specific with colors (#hex), positions, sizes, missing details"]
+  },
+  "corrective_prompt": "string — if score < 80, provide EXACT prompt additions to fix ONLY this element. Be surgical: 'Add a large green circle (#00A651) in the upper-left quadrant, approximately 30% of canvas width'. If score >= 80, return empty string.",
+  "verdict": "pass" | "fail"
+}`;
+
+      console.log(`[pipeline/inspect] Inspecting ${elementType}/${elementId}...`);
+      const result = await inspectVision(
+        inspectionPrompt,
+        [imgContent(originalImageBase64), imgContent(generatedImageUrl)],
+        `Compare these images focusing on: ${elementType}. Image 1 = original, Image 2 = reproduction.`
+      );
+
+      if (!result) return c.json({ success: false, error: "Inspection parse failed" }, 500);
+
+      console.log(`[pipeline/inspect] ${elementType}/${elementId}: score=${result.score}, verdict=${result.verdict}`);
+
+      // Update plan in KV
+      const plan: any = await kv.get(`pipeline:${userId}:${blueprintId}`) || {};
+      if (plan.elements) {
+        const el = plan.elements.find((e: any) => e.id === (elementId || elementType));
+        if (el) {
+          el.status = result.verdict === "pass" ? "approved" : "needs_revision";
+          el.score = result.score;
+          el.inspection = result;
+        }
+        await kv.set(`pipeline:${userId}:${blueprintId}`, plan);
+      }
+
+      return c.json({ success: true, step: "inspect-element", ...result });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP: REGENERATE — Regenerate with element-specific corrections
+    // ═══════════════════════════════════════════════════════════
+    if (step === "regenerate") {
+      const { corrections, attempt: bodyAttempt } = body;
+      const basePrompt = blueprint.generation_prompt;
+      if (!basePrompt) return c.json({ success: false, error: "No generation_prompt" }, 400);
+
+      // Build enhanced prompt with all corrections
+      let correctionBlock = "";
+      if (Array.isArray(corrections)) {
+        correctionBlock = corrections.map((c: any) => `- [${c.elementType}] ${c.corrective_prompt}`).join("\n");
+      } else if (typeof corrections === "string") {
+        correctionBlock = corrections;
+      }
+
+      const enhancedPrompt = correctionBlock
+        ? `${basePrompt}\n\nCRITICAL CORRECTIONS — these elements MUST be fixed:\n${correctionBlock}`
+        : basePrompt;
+
+      const attempt = bodyAttempt || 2;
+      console.log(`[pipeline/regenerate] Attempt ${attempt} with ${Array.isArray(corrections) ? corrections.length : 1} corrections`);
+
+      try {
+        const result = await generateImage({ prompt: enhancedPrompt, model: "photon-1", aspectRatio });
+        await kv.set(`pipeline:${userId}:${blueprintId}:image`, { imageUrl: result.imageUrl, attempt, generatedAt: new Date().toISOString() });
+        console.log(`[pipeline/regenerate] OK in ${result.latencyMs}ms`);
+        return c.json({ success: true, step: "regenerate", imageUrl: result.imageUrl, latencyMs: result.latencyMs, attempt });
+      } catch (err: any) {
+        // Fallback: Ideogram
+        try {
+          const result = await generateImageIdeogram({ prompt: enhancedPrompt, model: "ideogram", aspectRatio });
+          await kv.set(`pipeline:${userId}:${blueprintId}:image`, { imageUrl: result.imageUrl, attempt, generatedAt: new Date().toISOString() });
+          return c.json({ success: true, step: "regenerate", imageUrl: result.imageUrl, latencyMs: result.latencyMs, attempt });
+        } catch (e2: any) {
+          return c.json({ success: false, error: `Regeneration failed: ${err.message}` }, 500);
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // STEP: FINAL-INSPECT — Full composite comparison
+    // ═══════════════════════════════════════════════════════════
+    if (step === "final-inspect") {
+      const { generatedImageUrl, originalImageBase64 } = body;
+      if (!generatedImageUrl || !originalImageBase64) return c.json({ success: false, error: "Missing images" }, 400);
+
+      console.log(`[pipeline/final-inspect] Full comparison...`);
+      const result = await inspectVision(
+        `You are the creative director doing FINAL APPROVAL on a campaign reproduction.
+
+IMAGE 1: ORIGINAL campaign
+IMAGE 2: REPRODUCED campaign (AI base image + text/logo overlays)
+
+Perform a comprehensive comparison. Score EACH aspect 0-100:
+
+Return ONLY valid JSON:
+{
+  "scores": {
+    "composition": number,
+    "colors": number,
+    "subject": number,
+    "graphics": number,
+    "typography_placement": number,
+    "mood": number,
+    "overall": number
+  },
+  "feedback": {
+    "strengths": ["..."],
+    "remaining_issues": ["..."],
+    "fidelity_rating": "excellent (90+)" | "good (75-89)" | "acceptable (60-74)" | "poor (<60)"
+  },
+  "approved": boolean
+}`,
+        [imgContent(originalImageBase64), imgContent(generatedImageUrl)],
+        "Final comparison. Image 1 = original, Image 2 = reproduction. Give overall fidelity rating."
+      );
+
+      console.log(`[pipeline/final-inspect] Overall: ${result?.scores?.overall}, Approved: ${result?.approved}`);
+      return c.json({ success: true, step: "final-inspect", result });
+    }
+
+    return c.json({ success: false, error: `Unknown step: ${step}` }, 400);
+
+  } catch (err: any) {
+    console.log(`[pipeline] ERROR in ${Date.now() - t0}ms: ${err?.message || err}`);
+    return c.json({ success: false, error: `Pipeline error: ${err?.message || err}` }, 500);
+  }
+});
+
 // POST /vault/upload-logo — Upload logo file
 app.post("/vault/upload-logo", async (c) => {
   const t0 = Date.now();
@@ -10186,6 +11822,173 @@ Retourne UNIQUEMENT un JSON valide avec cette structure exacte:
   } catch (err) {
     console.error(`[learn-voice] Error: ${err}`);
     return c.json({ success: false, error: `Voice learning error: ${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// ORA VOICE — Fine-tune a dedicated Llama 3.3 model on the brand's texts
+// Business tier only. Produces a brand-specific model that writes exactly
+// like the client's actual content.
+// ══════════════════════════════════════════════════════════════
+
+app.post("/vault/voice/train", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const togetherKey = Deno.env.get("TOGETHER_API_KEY");
+    if (!togetherKey) return c.json({ success: false, error: "Together AI not configured" }, 500);
+
+    // Business-tier gate
+    const vault = (await kv.get(`vault:${user.id}`)) || {};
+    const plan = (vault.plan || vault.tier || "").toString().toLowerCase();
+    // Temporary: also allow if explicitly flagged
+    if (plan && !/business|pro-plus|enterprise/.test(plan)) {
+      return c.json({ success: false, error: "ORA Voice requires the Business plan" }, 403);
+    }
+
+    // 1. Collect brand text samples from library + vault
+    const libItems = await kv.getByPrefix(`lib:${user.id}:`);
+    const samples: string[] = [];
+    for (const item of libItems) {
+      const val = item?.value || item;
+      const isText = val?.preview?.kind === "text" || val?.type === "text";
+      if (!isText) continue;
+      const excerpt = (val?.preview?.excerpt || val?.prompt || "").trim();
+      if (excerpt.length > 80 && excerpt.length < 3000) samples.push(excerpt);
+    }
+    // Also pull from vault guidelines and key messages for more signal
+    if (Array.isArray(vault.keyMessages)) for (const km of vault.keyMessages) { if (typeof km === "string" && km.length > 60) samples.push(km); }
+    if (vault.guidelines && typeof vault.guidelines === "string" && vault.guidelines.length > 200) samples.push(vault.guidelines.slice(0, 2500));
+
+    console.log(`[voice/train] user=${user.id} samples=${samples.length}`);
+    if (samples.length < 10) {
+      return c.json({ success: false, error: `Not enough samples (${samples.length}/10 min). Add more brand texts to your Library.` }, 400);
+    }
+
+    // 2. Build JSONL training file (conversational format for Together fine-tuning)
+    const brandName = vault.brandName || "the brand";
+    const systemMsg = `You are ${brandName}'s in-house copywriter. Write in the brand's exact voice — match sentence rhythm, vocabulary, tone, and signature patterns found in the training examples.`;
+    const syntheticPrompts = [
+      "Write a short social post introducing a new launch.",
+      "Write a LinkedIn update sharing a brand insight.",
+      "Write a headline and opening paragraph for a campaign.",
+      "Draft a caption about one of our core values.",
+      "Write a short manifesto paragraph.",
+      "Write an announcement about our latest news.",
+      "Draft a story post connecting our brand to our audience.",
+      "Write a punchy hook for a marketing email.",
+    ];
+    const jsonlLines = samples.slice(0, 200).map((sample, i) => {
+      const prompt = syntheticPrompts[i % syntheticPrompts.length];
+      return JSON.stringify({
+        messages: [
+          { role: "system", content: systemMsg },
+          { role: "user", content: prompt },
+          { role: "assistant", content: sample },
+        ],
+      });
+    });
+    const jsonl = jsonlLines.join("\n");
+    console.log(`[voice/train] JSONL built: ${jsonlLines.length} examples, ${jsonl.length} bytes`);
+
+    // 3. Upload training file to Together
+    const fileBlob = new Blob([jsonl], { type: "application/jsonl" });
+    const formData = new FormData();
+    formData.append("purpose", "fine-tune");
+    formData.append("file", fileBlob, `ora-voice-${user.id}.jsonl`);
+
+    const uploadRes = await fetch(`${TOGETHER_BASE}/files`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${togetherKey}` },
+      body: formData,
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!uploadRes.ok) {
+      const body = await uploadRes.text();
+      console.error(`[voice/train] upload failed ${uploadRes.status}: ${body.slice(0, 300)}`);
+      return c.json({ success: false, error: `File upload failed: ${body.slice(0, 200)}` }, 500);
+    }
+    const uploadData = await uploadRes.json();
+    const trainingFileId = uploadData.id;
+    console.log(`[voice/train] file uploaded: ${trainingFileId}`);
+
+    // 4. Create LoRA fine-tuning job on Llama 3.3 70B
+    const ftRes = await fetch(`${TOGETHER_BASE}/fine-tunes`, {
+      method: "POST",
+      headers: togetherHeaders(),
+      body: JSON.stringify({
+        training_file: trainingFileId,
+        model: "meta-llama/Llama-3.3-70B-Instruct-Reference",
+        n_epochs: 3,
+        learning_rate: 0.00001,
+        lora: true,
+        lora_r: 16,
+        lora_alpha: 32,
+        suffix: `ora-voice-${user.id.slice(0, 8)}`,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!ftRes.ok) {
+      const body = await ftRes.text();
+      console.error(`[voice/train] fine-tune create failed ${ftRes.status}: ${body.slice(0, 300)}`);
+      return c.json({ success: false, error: `Fine-tune creation failed: ${body.slice(0, 200)}` }, 500);
+    }
+    const ftData = await ftRes.json();
+    const jobId = ftData.id;
+    console.log(`[voice/train] fine-tune job created: ${jobId}`);
+
+    // 5. Persist in vault
+    const oraVoice = {
+      jobId,
+      trainingFileId,
+      status: ftData.status || "pending",
+      baseModel: "meta-llama/Llama-3.3-70B-Instruct-Reference",
+      samplesCount: jsonlLines.length,
+      createdAt: Date.now(),
+      fineTunedModel: null, // populated when job completes
+    };
+    await kv.set(`vault:${user.id}`, { ...vault, ora_voice: oraVoice });
+
+    return c.json({ success: true, jobId, status: oraVoice.status, samplesCount: jsonlLines.length, latencyMs: Date.now() - t0 });
+  } catch (err) {
+    console.error(`[voice/train] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+app.get("/vault/voice/status", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const togetherKey = Deno.env.get("TOGETHER_API_KEY");
+    if (!togetherKey) return c.json({ success: false, error: "Together AI not configured" }, 500);
+
+    const vault = (await kv.get(`vault:${user.id}`)) || {};
+    const oraVoice = vault.ora_voice;
+    if (!oraVoice?.jobId) return c.json({ success: true, hasVoice: false });
+
+    // Poll Together for job status
+    const res = await fetch(`${TOGETHER_BASE}/fine-tunes/${oraVoice.jobId}`, {
+      headers: togetherHeaders(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      return c.json({ success: true, hasVoice: true, ...oraVoice, pollError: `status ${res.status}` });
+    }
+    const data = await res.json();
+    const status = data.status || oraVoice.status;
+    const fineTunedModel = data.output_name || data.model_output_name || oraVoice.fineTunedModel;
+
+    // Persist updated status if changed
+    if (status !== oraVoice.status || (fineTunedModel && fineTunedModel !== oraVoice.fineTunedModel)) {
+      const updated = { ...oraVoice, status, fineTunedModel, updatedAt: Date.now() };
+      await kv.set(`vault:${user.id}`, { ...vault, ora_voice: updated });
+      return c.json({ success: true, hasVoice: true, ...updated });
+    }
+
+    return c.json({ success: true, hasVoice: true, ...oraVoice, status });
+  } catch (err) {
+    console.error(`[voice/status] Error: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
   }
 });
 
@@ -15331,6 +17134,13 @@ app.get("/generate/image-via-get", async (c) => {
           batch.map(async (model: string) => {
             try {
               if (user) deductCredit(user.id, 2).catch(() => {});
+              // ── TOGETHER AI short-circuit ──
+              if (isTogetherModel(model)) {
+                const tog = await callTogetherImage(model, enhancedPrompt, { timeoutMs: MODEL_TIMEOUT });
+                console.log(`[image-via-get] ${model} (Together) OK ${tog.latencyMs}ms`);
+                logCost({ type: "image", model, provider: `together/${tog.apiModel}`, costUsd: TOGETHER_MODELS[model]?.pricePerImage || 0.005, revenueEur: REVENUE_PER_TYPE.image, latencyMs: tog.latencyMs, userId: user?.id || "guest", success: true }).catch(() => {});
+                return { success: true, result: { imageUrl: tog.imageUrl, provider: `together/${tog.apiModel}`, latencyMs: tog.latencyMs } };
+              }
               // Route to the correct provider based on model map
               // Ideogram direct (preferred over Leonardo proxy when API key available)
               const genFn = (model === "ideogram-3-leo" && Deno.env.get("IDEOGRAM_API_KEY")) ? generateImageIdeogram : directApiModels.has(model) ? generateImageDirect : leonardoImageModelMap[model] ? generateImageLeonardo : leonardoV2ModelMap[model] ? generateImageLeonardoV2 : hfImageModelMap[model] ? generateImageHf : generateImage;

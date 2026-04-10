@@ -332,6 +332,17 @@ function VaultPageContent() {
   const [voiceLearning, setVoiceLearning] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [imageBankRefreshKey, setImageBankRefreshKey] = useState(0);
+  // ── ORA Voice (fine-tuning) ──
+  const [oraVoiceStatus, setOraVoiceStatus] = useState<{
+    hasVoice: boolean;
+    jobId?: string;
+    status?: string;
+    fineTunedModel?: string | null;
+    samplesCount?: number;
+    createdAt?: number;
+  } | null>(null);
+  const [oraVoiceTraining, setOraVoiceTraining] = useState(false);
+  const [oraVoiceError, setOraVoiceError] = useState<string | null>(null);
 
   // Brand Book tabs
   const [vaultTab, setVaultTab] = useState<"identity" | "audience" | "voice" | "visuals" | "competitors">("identity");
@@ -483,6 +494,47 @@ function VaultPageContent() {
       setAnalyzeError(err?.message || "Network error");
     }
     setAnalyzing(false);
+  };
+
+  // ── ORA Voice (fine-tuning) ──
+  const fetchOraVoiceStatus = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl("/vault/voice/status"), {
+        method: "GET", headers: vaultHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) setOraVoiceStatus(data);
+    } catch (err) { console.error("[Vault] ORA Voice status error:", err); }
+  }, []);
+
+  useEffect(() => { fetchOraVoiceStatus(); }, [fetchOraVoiceStatus]);
+
+  // Poll while training
+  useEffect(() => {
+    const st = oraVoiceStatus?.status;
+    if (st === "pending" || st === "running" || st === "queued") {
+      const timer = setInterval(fetchOraVoiceStatus, 30_000);
+      return () => clearInterval(timer);
+    }
+  }, [oraVoiceStatus?.status, fetchOraVoiceStatus]);
+
+  const handleTrainOraVoice = async () => {
+    setOraVoiceTraining(true);
+    setOraVoiceError(null);
+    try {
+      const res = await fetch(apiUrl("/vault/voice/train"), {
+        method: "POST", headers: vaultHeaders(), body: corsBody(token()),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setOraVoiceStatus({ hasVoice: true, jobId: data.jobId, status: data.status, samplesCount: data.samplesCount });
+      } else {
+        setOraVoiceError(data.error || "Training failed");
+      }
+    } catch (err: any) {
+      setOraVoiceError(err?.message || "Network error");
+    }
+    setOraVoiceTraining(false);
   };
 
   // ── Learn Voice ──
@@ -1853,6 +1905,113 @@ function VaultPageContent() {
                         )}
                       </div>
                     )}
+                  </SectionCard>
+                </div>
+
+                {/* ORA Voice — Fine-tuned model (Business plan) */}
+                <div className="md:col-span-2">
+                  <SectionCard
+                    icon={Sparkles}
+                    title="ORA Voice"
+                    count={oraVoiceStatus?.hasVoice ? 1 : 0}
+                    open={isOpen("ora-voice")}
+                    onToggle={() => toggleSection("ora-voice")}
+                  >
+                    <div className="space-y-4">
+                      <div
+                        className="p-4 rounded-xl"
+                        style={{
+                          background: "linear-gradient(135deg, rgba(124,58,237,0.06), rgba(236,72,153,0.06))",
+                          border: "1px solid rgba(124,58,237,0.2)",
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span
+                            className="px-2 py-0.5 rounded-full"
+                            style={{
+                              fontSize: "9px", fontWeight: 600,
+                              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                              color: "#fff", letterSpacing: "0.06em", textTransform: "uppercase",
+                            }}
+                          >
+                            Business
+                          </span>
+                          <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontWeight: 500 }}>
+                            {t("vault.oraVoiceTagline")}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: "13px", color: "var(--foreground)", lineHeight: 1.6 }}>
+                          {t("vault.oraVoiceDesc")}
+                        </p>
+                      </div>
+
+                      {oraVoiceStatus?.hasVoice ? (
+                        <div className="p-4 rounded-xl" style={{ background: "rgba(17,17,17,0.04)", border: "1px solid var(--border)" }}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <span style={{ fontSize: "9px", fontWeight: 600, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                                {t("vault.oraVoiceStatus")}
+                              </span>
+                              <p style={{ fontSize: "13px", color: "var(--foreground)", marginTop: 4, fontWeight: 500 }}>
+                                {oraVoiceStatus.status === "completed" || oraVoiceStatus.status === "succeeded"
+                                  ? t("vault.oraVoiceReady")
+                                  : oraVoiceStatus.status === "running" || oraVoiceStatus.status === "pending" || oraVoiceStatus.status === "queued"
+                                  ? t("vault.oraVoiceTraining")
+                                  : oraVoiceStatus.status === "failed" || oraVoiceStatus.status === "error"
+                                  ? t("vault.oraVoiceFailed")
+                                  : oraVoiceStatus.status}
+                              </p>
+                              {oraVoiceStatus.samplesCount && (
+                                <p style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: 2 }}>
+                                  {oraVoiceStatus.samplesCount} {t("vault.oraVoiceSamples")}
+                                </p>
+                              )}
+                              {oraVoiceStatus.fineTunedModel && (
+                                <p style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: 4, fontFamily: "monospace" }}>
+                                  {oraVoiceStatus.fineTunedModel}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              onClick={handleTrainOraVoice}
+                              disabled={oraVoiceTraining || oraVoiceStatus.status === "running" || oraVoiceStatus.status === "pending"}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full cursor-pointer transition-colors hover:bg-secondary"
+                              style={{
+                                fontSize: "11px", fontWeight: 500, color: "var(--text-secondary)",
+                                border: "1px solid var(--border)",
+                                opacity: oraVoiceTraining || oraVoiceStatus.status === "running" ? 0.5 : 1,
+                              }}
+                            >
+                              {oraVoiceTraining ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                              {t("vault.oraVoiceRetrain")}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-6">
+                          <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6, maxWidth: 460, margin: "0 auto 16px" }}>
+                            {t("vault.oraVoiceEmpty")}
+                          </p>
+                          <button
+                            onClick={handleTrainOraVoice}
+                            disabled={oraVoiceTraining}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
+                            style={{
+                              fontSize: "13px", fontWeight: 500, color: "#fff",
+                              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                              border: "none",
+                              opacity: oraVoiceTraining ? 0.6 : 1,
+                            }}
+                          >
+                            {oraVoiceTraining ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                            {oraVoiceTraining ? t("vault.oraVoiceLaunching") : t("vault.oraVoiceTrain")}
+                          </button>
+                        </div>
+                      )}
+                      {oraVoiceError && (
+                        <p style={{ fontSize: "12px", color: "#ef4444" }}>{oraVoiceError}</p>
+                      )}
+                    </div>
                   </SectionCard>
                 </div>
 
