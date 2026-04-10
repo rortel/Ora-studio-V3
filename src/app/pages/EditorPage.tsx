@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Stage, Layer, Image as KonvaImage, Line, Rect } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Line, Rect, Text as KonvaText, Transformer } from "react-konva";
 import Konva from "konva";
 import {
   Eraser, Paintbrush, ImageIcon, Expand, Sparkles,
   Search, Download, Undo2, Redo2, ZoomOut, Maximize,
   ChevronLeft, ChevronRight, Loader2, RotateCcw,
   Minus, Plus, FlipHorizontal2, MousePointer2,
-  Layers, SlidersHorizontal, Upload, Share2,
+  Layers, SlidersHorizontal, Upload, Share2, Save, Check,
+  Type, Image as ImageLucide, Trash2, Film, X as XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
@@ -31,6 +32,41 @@ interface MaskLine {
 interface HistoryEntry {
   imageData: string;
   maskData: MaskLine[];
+}
+
+interface EditorTextLayer {
+  id: string;
+  type: "text";
+  x: number;
+  y: number;
+  rotation: number;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  fontStyle: string; // "normal" | "bold" | "italic" | "bold italic"
+  fill: string;
+}
+
+interface EditorLogoLayer {
+  id: string;
+  type: "logo";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  imageUrl: string; // data URL (source of truth for export)
+}
+
+type EditorLayer = EditorTextLayer | EditorLogoLayer;
+
+interface AnimateState {
+  prompt: string;
+  model: string;
+  duration: number;
+  running: boolean;
+  videoUrl: string | null;
+  sourceImageUrl: string | null;
 }
 
 interface LibraryItem {
@@ -404,7 +440,12 @@ function EditorPageContent() {
       lastPanPos.current = { x: e.evt.clientX, y: e.evt.clientY };
       return;
     }
-    if (tool !== "clean" && tool !== "replace") return;
+    if (tool !== "clean" && tool !== "replace") {
+      // Non-brush tools: clicking empty stage space deselects any layer.
+      const stage = e.target.getStage();
+      if (e.target === stage) setSelectedLayerId(null);
+      return;
+    }
     if (!image) return;
     setIsDrawing(true);
     const pos = e.target.getStage()?.getPointerPosition();
@@ -498,6 +539,310 @@ function EditorPageContent() {
     a.download = `ora-editor-${Date.now()}.png`;
     a.click();
   }, [imageUrl]);
+
+  // --- Layers (text + logo) ---
+  const [layers, setLayers] = useState<EditorLayer[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const logoImagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const layerNodesRef = useRef<Record<string, Konva.Node>>({});
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedLayer = useMemo(
+    () => layers.find(l => l.id === selectedLayerId) || null,
+    [layers, selectedLayerId],
+  );
+
+  // Compose layers onto an off-screen canvas (base image + text + logo overlays)
+  const composeCanvasDataUrl = useCallback((): string | null => {
+    if (!image) return null;
+    const c = document.createElement("canvas");
+    c.width = image.width;
+    c.height = image.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(image, 0, 0);
+    for (const layer of layers) {
+      ctx.save();
+      if (layer.type === "text") {
+        ctx.translate(layer.x, layer.y);
+        ctx.rotate((layer.rotation * Math.PI) / 180);
+        const weight = layer.fontStyle.includes("bold") ? "bold" : "normal";
+        const italic = layer.fontStyle.includes("italic") ? "italic " : "";
+        ctx.font = `${italic}${weight} ${layer.fontSize}px ${layer.fontFamily}`;
+        ctx.fillStyle = layer.fill;
+        ctx.textBaseline = "top";
+        // Konva.Text has a slight padding; mimic by drawing at 0,0 with topline
+        ctx.fillText(layer.text, 0, 0);
+      } else {
+        const logoImg = logoImagesRef.current[layer.id];
+        if (logoImg) {
+          ctx.translate(layer.x, layer.y);
+          ctx.rotate((layer.rotation * Math.PI) / 180);
+          ctx.drawImage(logoImg, 0, 0, layer.width, layer.height);
+        }
+      }
+      ctx.restore();
+    }
+    return c.toDataURL("image/png");
+  }, [image, layers]);
+
+  const addTextLayer = useCallback(() => {
+    if (!image) {
+      toast.error(isFr ? "Chargez d'abord une image" : "Load an image first");
+      return;
+    }
+    const id = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const fontSize = Math.max(32, Math.round(image.width / 16));
+    const initialText = isFr ? "Votre texte" : "Your text";
+    setLayers(prev => [
+      ...prev,
+      {
+        id,
+        type: "text",
+        x: image.width * 0.1,
+        y: image.height * 0.45,
+        rotation: 0,
+        text: initialText,
+        fontSize,
+        fontFamily: "Inter, sans-serif",
+        fontStyle: "bold",
+        fill: "#ffffff",
+      },
+    ]);
+    setSelectedLayerId(id);
+  }, [image, isFr]);
+
+  const handleLogoFileChosen = useCallback(
+    (file: File) => {
+      if (!image) {
+        toast.error(isFr ? "Chargez d'abord une image" : "Load an image first");
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        toast.error(isFr ? "Fichier image requis" : "Image file required");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const img = new window.Image();
+        img.onload = () => {
+          const id = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const targetW = image.width * 0.22;
+          const targetH = (img.height / img.width) * targetW;
+          logoImagesRef.current[id] = img;
+          setLayers(prev => [
+            ...prev,
+            {
+              id,
+              type: "logo",
+              x: image.width * 0.05,
+              y: image.height * 0.05,
+              width: targetW,
+              height: targetH,
+              rotation: 0,
+              imageUrl: dataUrl,
+            },
+          ]);
+          setSelectedLayerId(id);
+        };
+        img.onerror = () => toast.error(isFr ? "Impossible de charger le logo" : "Failed to load logo");
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    },
+    [image, isFr],
+  );
+
+  const updateLayer = useCallback((id: string, patch: Partial<EditorLayer>) => {
+    setLayers(prev => prev.map(l => (l.id === id ? ({ ...l, ...patch } as EditorLayer) : l)));
+  }, []);
+
+  const deleteLayer = useCallback(
+    (id: string) => {
+      setLayers(prev => prev.filter(l => l.id !== id));
+      delete logoImagesRef.current[id];
+      delete layerNodesRef.current[id];
+      setSelectedLayerId(prev => (prev === id ? null : prev));
+    },
+    [],
+  );
+
+  // Attach Konva Transformer to the selected layer node
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    if (!selectedLayerId) {
+      tr.nodes([]);
+      tr.getLayer()?.batchDraw();
+      return;
+    }
+    const node = layerNodesRef.current[selectedLayerId];
+    if (node) {
+      tr.nodes([node]);
+      tr.getLayer()?.batchDraw();
+    }
+  }, [selectedLayerId, layers]);
+
+  // Delete key removes selected layer (when not typing in an input)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!selectedLayerId) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        deleteLayer(selectedLayerId);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedLayerId, deleteLayer]);
+
+  // Clear layers whenever a fundamentally different base image is loaded
+  // (avoid stale overlays sitting in wrong coordinates after reframe/upload).
+  const prevImageDimsRef = useRef<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    if (!image) {
+      prevImageDimsRef.current = null;
+      return;
+    }
+    const prev = prevImageDimsRef.current;
+    if (prev && (prev.w !== image.width || prev.h !== image.height)) {
+      setLayers([]);
+      setSelectedLayerId(null);
+      logoImagesRef.current = {};
+      layerNodesRef.current = {};
+    }
+    prevImageDimsRef.current = { w: image.width, h: image.height };
+  }, [image]);
+
+  // --- Save to Library ---
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const handleSaveToLibrary = useCallback(async () => {
+    if (!imageUrl || !image) return;
+    setSaving(true);
+    try {
+      // Composite base image + all layers (text/logo) at native resolution.
+      const dataUrl = composeCanvasDataUrl();
+      if (!dataUrl) {
+        toast.error(isFr ? "Rien à enregistrer" : "Nothing to save");
+        setSaving(false);
+        return;
+      }
+
+      const res = await serverPost("/editor/save", {
+        imageDataUrl: dataUrl,
+        prompt: prompt || "Edited in ORA Editor",
+      });
+      if (res.success) {
+        setSavedAt(Date.now());
+        toast.success(isFr ? "Enregistré dans la bibliothèque" : "Saved to Library");
+      } else {
+        toast.error(res.error || (isFr ? "Erreur lors de l'enregistrement" : "Save failed"));
+      }
+    } catch (err: any) {
+      toast.error(err?.message || (isFr ? "Erreur lors de l'enregistrement" : "Save failed"));
+    } finally {
+      setSaving(false);
+    }
+  }, [imageUrl, image, serverPost, prompt, isFr, composeCanvasDataUrl]);
+
+  // Reset savedAt flag whenever the image changes (so user can re-save edits)
+  useEffect(() => { setSavedAt(null); }, [imageUrl]);
+
+  // --- Animate (image-to-video) ---
+  const [animateOpen, setAnimateOpen] = useState(false);
+  const [animate, setAnimate] = useState<AnimateState>({
+    prompt: "",
+    model: "kling-2.5-turbo-pro",
+    duration: 5,
+    running: false,
+    videoUrl: null,
+    sourceImageUrl: null,
+  });
+
+  const runAnimate = useCallback(async () => {
+    if (!image) return;
+    if (!animate.prompt.trim()) {
+      toast.error(isFr ? "Décrivez le mouvement souhaité" : "Describe the desired motion");
+      return;
+    }
+    setAnimate(a => ({ ...a, running: true, videoUrl: null }));
+    try {
+      // 1) Composite current canvas and upload to Supabase Storage via /editor/save
+      const dataUrl = composeCanvasDataUrl();
+      if (!dataUrl) throw new Error("No image to animate");
+      const upRes = await serverPost("/editor/save", {
+        imageDataUrl: dataUrl,
+        prompt: `Animate source: ${animate.prompt}`,
+      });
+      if (!upRes.success || !upRes.imageUrl) {
+        throw new Error(upRes.error || "Upload failed");
+      }
+      const sourceImageUrl: string = upRes.imageUrl;
+      setAnimate(a => ({ ...a, sourceImageUrl }));
+
+      // 2) Start video generation (GET with query params)
+      const qs = new URLSearchParams({
+        prompt: animate.prompt,
+        model: animate.model,
+        imageUrl: sourceImageUrl,
+        duration: String(animate.duration),
+        aspectRatio: image.width >= image.height ? "16:9" : "9:16",
+      });
+      const token = getAuthHeader();
+      const startUrl = `${API_BASE}/generate/video-start?${qs.toString()}${token ? `&_token=${encodeURIComponent(token)}` : ""}`;
+      const startRes = await fetch(startUrl, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      });
+      const startJson = await startRes.json();
+      if (!startJson.success || !startJson.generationId) {
+        throw new Error(startJson.error || "Video start failed");
+      }
+      const genId: string = startJson.generationId;
+
+      // 3) Poll until completed
+      let videoUrl: string | null = null;
+      for (let i = 0; i < 80; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const pollRes = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+          });
+          const pollJson = await pollRes.json();
+          if (pollJson.state === "completed" && pollJson.videoUrl) {
+            videoUrl = pollJson.videoUrl;
+            break;
+          }
+          if (pollJson.state === "failed") {
+            throw new Error(pollJson.error || "Video generation failed");
+          }
+        } catch (pollErr) {
+          // transient, keep polling
+        }
+      }
+      if (!videoUrl) throw new Error(isFr ? "Délai dépassé" : "Timeout");
+
+      // 4) Save to library as film
+      await serverPost("/editor/save-video", {
+        videoUrl,
+        prompt: animate.prompt,
+        sourceImageUrl,
+        posterUrl: sourceImageUrl,
+      });
+
+      setAnimate(a => ({ ...a, running: false, videoUrl }));
+      toast.success(isFr ? "Vidéo enregistrée dans la bibliothèque" : "Video saved to Library");
+    } catch (err: any) {
+      console.error("[editor/animate] error:", err);
+      toast.error(err?.message || (isFr ? "Erreur d'animation" : "Animate error"));
+      setAnimate(a => ({ ...a, running: false }));
+    }
+  }, [animate.prompt, animate.model, animate.duration, image, composeCanvasDataUrl, serverPost, getAuthHeader, isFr]);
 
   // --- Build mask as black/white image matching original image dimensions ---
   const buildMaskDataUrl = useCallback((): string | null => {
@@ -844,8 +1189,90 @@ function EditorPageContent() {
           <Redo2 size={16} />
         </button>
 
+        {/* Divider */}
+        <div style={{ width: 24, height: 1, background: "#2a2a40", margin: "6px 0" }} />
+
+        {/* Add Text layer */}
+        <button
+          onClick={addTextLayer}
+          disabled={!image}
+          title={isFr ? "Ajouter un texte" : "Add text layer"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: "transparent", color: image ? "#888" : "#444",
+            cursor: image ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <Type size={18} />
+        </button>
+
+        {/* Add Logo layer */}
+        <button
+          onClick={() => logoFileInputRef.current?.click()}
+          disabled={!image}
+          title={isFr ? "Ajouter un logo" : "Add logo layer"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: "transparent", color: image ? "#888" : "#444",
+            cursor: image ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <ImageLucide size={18} />
+        </button>
+        <input
+          ref={logoFileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) handleLogoFileChosen(f);
+            e.target.value = "";
+          }}
+        />
+
+        {/* Animate (image-to-video) */}
+        <button
+          onClick={() => { if (image) setAnimateOpen(true); }}
+          disabled={!image}
+          title={isFr ? "Animer (image → vidéo)" : "Animate (image → video)"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: "transparent", color: image ? "#888" : "#444",
+            cursor: image ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+        >
+          <Film size={18} />
+        </button>
+
         {/* Spacer */}
         <div style={{ flex: 1 }} />
+
+        {/* Save to Library */}
+        <button
+          onClick={handleSaveToLibrary}
+          disabled={!imageUrl || saving}
+          title={isFr ? "Enregistrer dans la bibliothèque" : "Save to Library"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: savedAt ? "#22c55e20" : "transparent",
+            color: savedAt ? "#22c55e" : (imageUrl ? "#888" : "#444"),
+            cursor: imageUrl && !saving ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: 8,
+          }}
+        >
+          {saving ? <Loader2 size={16} className="animate-spin" /> : savedAt ? <Check size={16} /> : <Save size={16} />}
+        </button>
 
         {/* Publish to socials */}
         <button
@@ -964,6 +1391,104 @@ function EditorPageContent() {
                   <RotateCcw size={13} />
                   Clear
                 </motion.button>
+              )}
+            </AnimatePresence>
+
+            {/* Selected layer controls */}
+            <AnimatePresence>
+              {selectedLayer && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  style={{ display: "flex", alignItems: "center", gap: 8 }}
+                >
+                  {selectedLayer.type === "text" ? (
+                    <>
+                      <input
+                        value={selectedLayer.text}
+                        onChange={e => updateLayer(selectedLayer.id, { text: e.target.value })}
+                        placeholder={isFr ? "Votre texte" : "Your text"}
+                        style={{
+                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
+                          padding: "4px 8px", color: "#fff", fontSize: 12, width: 160, outline: "none",
+                        }}
+                      />
+                      <input
+                        type="number"
+                        value={Math.round(selectedLayer.fontSize)}
+                        onChange={e => {
+                          const v = Number(e.target.value);
+                          if (v > 0) updateLayer(selectedLayer.id, { fontSize: v });
+                        }}
+                        title={isFr ? "Taille" : "Size"}
+                        style={{
+                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
+                          padding: "4px 6px", color: "#fff", fontSize: 12, width: 56, outline: "none",
+                        }}
+                      />
+                      <input
+                        type="color"
+                        value={selectedLayer.fill}
+                        onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                        title={isFr ? "Couleur" : "Color"}
+                        style={{
+                          width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
+                          background: "transparent", cursor: "pointer", padding: 0,
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const next = selectedLayer.fontStyle.includes("bold")
+                            ? selectedLayer.fontStyle.replace("bold", "").trim() || "normal"
+                            : (selectedLayer.fontStyle === "normal" ? "bold" : `bold ${selectedLayer.fontStyle}`);
+                          updateLayer(selectedLayer.id, { fontStyle: next });
+                        }}
+                        title="Bold"
+                        style={{
+                          padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
+                          background: selectedLayer.fontStyle.includes("bold") ? "#7C3AED" : "transparent",
+                          color: selectedLayer.fontStyle.includes("bold") ? "#fff" : "#888",
+                          fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        }}
+                      >
+                        B
+                      </button>
+                      <button
+                        onClick={() => {
+                          const next = selectedLayer.fontStyle.includes("italic")
+                            ? selectedLayer.fontStyle.replace("italic", "").trim() || "normal"
+                            : (selectedLayer.fontStyle === "normal" ? "italic" : `${selectedLayer.fontStyle} italic`);
+                          updateLayer(selectedLayer.id, { fontStyle: next });
+                        }}
+                        title="Italic"
+                        style={{
+                          padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
+                          background: selectedLayer.fontStyle.includes("italic") ? "#7C3AED" : "transparent",
+                          color: selectedLayer.fontStyle.includes("italic") ? "#fff" : "#888",
+                          fontSize: 12, fontStyle: "italic", cursor: "pointer",
+                        }}
+                      >
+                        I
+                      </button>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11, color: "#888" }}>
+                      {isFr ? "Logo — glissez pour déplacer, coins pour redimensionner" : "Logo — drag to move, corners to resize"}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => deleteLayer(selectedLayer.id)}
+                    title={isFr ? "Supprimer le calque" : "Delete layer"}
+                    style={{
+                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
+                      background: "transparent", color: "#ef4444",
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11,
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </motion.div>
               )}
             </AnimatePresence>
 
@@ -1161,7 +1686,103 @@ function EditorPageContent() {
                   y={0}
                   width={image.width}
                   height={image.height}
-                  listening={false}
+                  listening={!isBrushTool}
+                  onMouseDown={(e) => {
+                    if (isBrushTool) return;
+                    // Click on base image deselects any layer
+                    if (e.target === e.target.getStage()?.findOne("Image")) {
+                      setSelectedLayerId(null);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Text + Logo layers */}
+              {image && layers.map((layer) => {
+                if (layer.type === "text") {
+                  return (
+                    <KonvaText
+                      key={layer.id}
+                      ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
+                      text={layer.text}
+                      x={layer.x}
+                      y={layer.y}
+                      fontSize={layer.fontSize}
+                      fontFamily={layer.fontFamily}
+                      fontStyle={layer.fontStyle}
+                      fill={layer.fill}
+                      rotation={layer.rotation}
+                      draggable={!isBrushTool}
+                      listening={!isBrushTool}
+                      onMouseDown={(e) => { e.cancelBubble = true; setSelectedLayerId(layer.id); }}
+                      onTap={() => setSelectedLayerId(layer.id)}
+                      onDragEnd={(e) => updateLayer(layer.id, { x: e.target.x(), y: e.target.y() })}
+                      onTransformEnd={(e) => {
+                        const n = e.target;
+                        const sx = n.scaleX();
+                        updateLayer(layer.id, {
+                          x: n.x(),
+                          y: n.y(),
+                          rotation: n.rotation(),
+                          fontSize: Math.max(8, layer.fontSize * sx),
+                        });
+                        n.scaleX(1);
+                        n.scaleY(1);
+                      }}
+                    />
+                  );
+                }
+                const logoImg = logoImagesRef.current[layer.id];
+                if (!logoImg) return null;
+                return (
+                  <KonvaImage
+                    key={layer.id}
+                    ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
+                    image={logoImg}
+                    x={layer.x}
+                    y={layer.y}
+                    width={layer.width}
+                    height={layer.height}
+                    rotation={layer.rotation}
+                    draggable={!isBrushTool}
+                    listening={!isBrushTool}
+                    onMouseDown={(e) => { e.cancelBubble = true; setSelectedLayerId(layer.id); }}
+                    onTap={() => setSelectedLayerId(layer.id)}
+                    onDragEnd={(e) => updateLayer(layer.id, { x: e.target.x(), y: e.target.y() })}
+                    onTransformEnd={(e) => {
+                      const n = e.target;
+                      const sx = n.scaleX();
+                      const sy = n.scaleY();
+                      updateLayer(layer.id, {
+                        x: n.x(),
+                        y: n.y(),
+                        rotation: n.rotation(),
+                        width: Math.max(10, layer.width * sx),
+                        height: Math.max(10, layer.height * sy),
+                      });
+                      n.scaleX(1);
+                      n.scaleY(1);
+                    }}
+                  />
+                );
+              })}
+
+              {/* Transformer for selected layer */}
+              {!isBrushTool && (
+                <Transformer
+                  ref={transformerRef}
+                  rotateEnabled
+                  borderStroke="#7C3AED"
+                  borderStrokeWidth={2 / zoom}
+                  anchorFill="#fff"
+                  anchorStroke="#7C3AED"
+                  anchorSize={10 / zoom}
+                  anchorCornerRadius={2}
+                  keepRatio={false}
+                  boundBoxFunc={(oldBox, newBox) => {
+                    if (newBox.width < 10 || newBox.height < 10) return oldBox;
+                    return newBox;
+                  }}
                 />
               )}
             </Layer>
@@ -1349,6 +1970,175 @@ function EditorPageContent() {
           border-radius: 2px;
         }
       `}</style>
+
+      {/* ═══ ANIMATE MODAL ═══ */}
+      <AnimatePresence>
+        {animateOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 1000, padding: 16,
+            }}
+            onClick={() => { if (!animate.running) setAnimateOpen(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: "#16162a", border: "1px solid #2a2a40",
+                borderRadius: 16, width: "100%", maxWidth: 520,
+                boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+                overflow: "hidden",
+              }}
+            >
+              {/* Header */}
+              <div style={{
+                padding: "16px 20px", borderBottom: "1px solid #2a2a40",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Film size={18} style={{ color: "#7C3AED" }} />
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: "#fff", margin: 0 }}>
+                    {isFr ? "Animer cette image" : "Animate this image"}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => { if (!animate.running) setAnimateOpen(false); }}
+                  disabled={animate.running}
+                  style={{
+                    background: "none", border: "none", color: "#888",
+                    cursor: animate.running ? "default" : "pointer", padding: 4,
+                  }}
+                >
+                  <XIcon size={18} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                    {isFr ? "Description du mouvement" : "Motion description"}
+                  </label>
+                  <textarea
+                    value={animate.prompt}
+                    onChange={e => setAnimate(a => ({ ...a, prompt: e.target.value }))}
+                    placeholder={isFr ? "Ex: caméra lente qui zoome, vent léger..." : "e.g. slow camera push-in, gentle wind..."}
+                    rows={3}
+                    disabled={animate.running}
+                    style={{
+                      width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
+                      borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13,
+                      outline: "none", resize: "vertical", fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                      {isFr ? "Modèle" : "Model"}
+                    </label>
+                    <select
+                      value={animate.model}
+                      onChange={e => setAnimate(a => ({ ...a, model: e.target.value }))}
+                      disabled={animate.running}
+                      style={{
+                        width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
+                        borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13, outline: "none",
+                      }}
+                    >
+                      <option value="kling-2.5-turbo-pro">Kling 2.5 Turbo Pro</option>
+                      <option value="hailuo-02">Minimax Hailuo 02</option>
+                      <option value="ora-motion">Luma Ray 2</option>
+                    </select>
+                  </div>
+                  <div style={{ width: 140 }}>
+                    <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                      {isFr ? "Durée" : "Duration"}
+                    </label>
+                    <select
+                      value={animate.duration}
+                      onChange={e => setAnimate(a => ({ ...a, duration: Number(e.target.value) }))}
+                      disabled={animate.running}
+                      style={{
+                        width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
+                        borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13, outline: "none",
+                      }}
+                    >
+                      <option value={5}>5s</option>
+                      <option value={10}>10s</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Result preview */}
+                {animate.videoUrl && (
+                  <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #2a2a40" }}>
+                    <video
+                      src={animate.videoUrl}
+                      controls
+                      autoPlay
+                      loop
+                      style={{ width: "100%", display: "block", background: "#000" }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{
+                padding: "14px 20px", borderTop: "1px solid #2a2a40",
+                display: "flex", justifyContent: "flex-end", gap: 10,
+              }}>
+                <button
+                  onClick={() => setAnimateOpen(false)}
+                  disabled={animate.running}
+                  style={{
+                    padding: "8px 16px", borderRadius: 8, border: "1px solid #2a2a40",
+                    background: "transparent", color: "#888",
+                    fontSize: 13, cursor: animate.running ? "default" : "pointer",
+                  }}
+                >
+                  {isFr ? "Fermer" : "Close"}
+                </button>
+                <button
+                  onClick={runAnimate}
+                  disabled={animate.running || !animate.prompt.trim()}
+                  style={{
+                    padding: "8px 18px", borderRadius: 8, border: "none",
+                    background: animate.running || !animate.prompt.trim()
+                      ? "#2a2a40"
+                      : "linear-gradient(135deg, #7C3AED, #EC4899)",
+                    color: animate.running || !animate.prompt.trim() ? "#666" : "#fff",
+                    fontSize: 13, fontWeight: 600,
+                    cursor: animate.running || !animate.prompt.trim() ? "default" : "pointer",
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}
+                >
+                  {animate.running ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                      {isFr ? "Génération..." : "Generating..."}
+                    </>
+                  ) : (
+                    <>
+                      <Film size={14} />
+                      {isFr ? "Animer" : "Animate"}
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ PUBLISH MODAL ═══ */}
       <PublishModal

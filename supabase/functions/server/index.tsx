@@ -5728,11 +5728,11 @@ app.post("/ideogram/describe", async (c) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// EDITOR WRAPPER ENDPOINTS
+// EDITOR ENDPOINTS
 // ───────────────────────────────────────────────────────────────
-// Thin provider-agnostic wrappers around /ideogram/* used by the
-// in-house image editor (EditorPage). They translate the editor's
-// body shape and normalize the response to { success, imageUrl, variants }.
+// Used by the in-house image editor (EditorPage). These call the
+// Ideogram v3 API directly (no internal forwarding) and return
+// { success, imageUrl, variants: [imageUrl] } to match the client.
 // ═══════════════════════════════════════════════════════════════
 
 // Ratio → Ideogram v3 resolution (valid presets)
@@ -5748,118 +5748,300 @@ const EDITOR_RATIO_TO_RESOLUTION: Record<string, string> = {
   "2:3": "RESOLUTION_832_1248",
 };
 
-// Helper to forward an internal POST to another app route with the same context
-async function editorForward(c: any, path: string, newBody: any) {
-  const req = new Request(new URL(path, c.req.url).toString(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": c.req.header("Authorization") || `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
-    },
-    body: JSON.stringify(newBody),
-  });
-  return app.fetch(req);
+// Convert a data URL mask to a Blob
+function editorMaskToBlob(maskDataUrl: string): Blob {
+  const base64Data = maskDataUrl.split(",")[1];
+  const binaryStr = atob(base64Data);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  return new Blob([bytes], { type: "image/png" });
 }
 
-// ── /editor/clean — remove/clean masked area ──
+// Fetch source image bytes (supports http(s) URLs and data URLs)
+async function editorFetchImageBlob(imageUrl: string): Promise<Blob> {
+  if (imageUrl.startsWith("data:")) {
+    const [meta, base64] = imageUrl.split(",");
+    const mime = /data:([^;]+)/.exec(meta)?.[1] || "image/png";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+  const r = await fetch(imageUrl);
+  if (!r.ok) throw new Error(`Failed to fetch source image: ${r.status}`);
+  return await r.blob();
+}
+
+// Re-upload an Ideogram result URL to Supabase Storage (their URLs expire)
+async function editorUploadResult(resultUrl: string, prefix: string): Promise<string> {
+  const dl = await fetch(resultUrl);
+  if (!dl.ok) throw new Error(`Failed to download Ideogram result: ${dl.status}`);
+  const blob = await dl.blob();
+  const ct = blob.type || "image/webp";
+  const ext = ct.includes("png") ? "png" : ct.includes("jpeg") ? "jpg" : "webp";
+  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  await ensureGenerationsBucket();
+  const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: ct, upsert: true });
+  if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+  const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+  return pubData.publicUrl;
+}
+
+// ── /editor/clean — remove masked area (photorealistic fill) ──
 app.post("/editor/clean", async (c) => {
+  const t0 = Date.now();
   try {
+    const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const { imageUrl, mask } = body;
     if (!imageUrl || !mask) return c.json({ success: false, error: "imageUrl and mask required" }, 400);
-    const res = await editorForward(c, "/ideogram/edit", {
-      imageUrl,
-      maskDataUrl: mask,
-      prompt: "clean seamless background, remove object, photorealistic",
-      _token: body._token,
-    });
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/clean] user=${user.id.slice(0, 8)}`);
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+    const maskBlob = editorMaskToBlob(mask);
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("mask", maskBlob, "mask.png");
+    fd.append("prompt", "clean seamless background, remove object, photorealistic");
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", { method: "POST", headers: { "Api-Key": ideogramKey }, body: fd });
+    if (!res.ok) { const errText = await res.text(); console.log(`[editor/clean] Ideogram ${res.status}: ${errText.slice(0, 200)}`); return c.json({ success: false, error: `Ideogram clean failed: ${res.status}` }, 500); }
     const data = await res.json();
-    if (!data.success) return c.json(data, res.status);
-    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
-  } catch (err) {
-    console.error("[editor/clean] Error:", err);
-    return c.json({ success: false, error: String(err) }, 500);
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const publicUrl = await editorUploadResult(resultUrl, "editor-clean");
+    deductCredit(user.id, getModelCreditCost("image", "ideogram-3-leo")).catch(() => {});
+    console.log(`[editor/clean] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: publicUrl, variants: [publicUrl] });
+  } catch (err: any) {
+    console.error("[editor/clean] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
 // ── /editor/replace — replace masked area with prompt-driven content ──
 app.post("/editor/replace", async (c) => {
+  const t0 = Date.now();
   try {
+    const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const { imageUrl, mask, prompt } = body;
-    if (!imageUrl || !mask || !prompt) return c.json({ success: false, error: "imageUrl, mask, prompt required" }, 400);
-    const res = await editorForward(c, "/ideogram/edit", {
-      imageUrl,
-      maskDataUrl: mask,
-      prompt,
-      _token: body._token,
-    });
+    if (!imageUrl || !mask || !prompt) return c.json({ success: false, error: "imageUrl, mask, and prompt required" }, 400);
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/replace] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}"`);
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+    const maskBlob = editorMaskToBlob(mask);
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("mask", maskBlob, "mask.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", { method: "POST", headers: { "Api-Key": ideogramKey }, body: fd });
+    if (!res.ok) { const errText = await res.text(); console.log(`[editor/replace] Ideogram ${res.status}: ${errText.slice(0, 200)}`); return c.json({ success: false, error: `Ideogram replace failed: ${res.status}` }, 500); }
     const data = await res.json();
-    if (!data.success) return c.json(data, res.status);
-    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
-  } catch (err) {
-    console.error("[editor/replace] Error:", err);
-    return c.json({ success: false, error: String(err) }, 500);
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const publicUrl = await editorUploadResult(resultUrl, "editor-replace");
+    deductCredit(user.id, getModelCreditCost("image", "ideogram-3-leo")).catch(() => {});
+    console.log(`[editor/replace] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: publicUrl, variants: [publicUrl] });
+  } catch (err: any) {
+    console.error("[editor/replace] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
 // ── /editor/background — replace background ──
 app.post("/editor/background", async (c) => {
+  const t0 = Date.now();
   try {
+    const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const { imageUrl, prompt } = body;
     if (!imageUrl || !prompt) return c.json({ success: false, error: "imageUrl and prompt required" }, 400);
-    const res = await editorForward(c, "/ideogram/replace-background", {
-      imageUrl,
-      prompt,
-      _token: body._token,
-    });
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/background] user=${user.id.slice(0, 8)}, prompt="${prompt.slice(0, 60)}"`);
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("prompt", prompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/replace-background", { method: "POST", headers: { "Api-Key": ideogramKey }, body: fd });
+    if (!res.ok) { const errText = await res.text(); console.log(`[editor/background] Ideogram ${res.status}: ${errText.slice(0, 200)}`); return c.json({ success: false, error: `Ideogram background failed: ${res.status}` }, 500); }
     const data = await res.json();
-    if (!data.success) return c.json(data, res.status);
-    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
-  } catch (err) {
-    console.error("[editor/background] Error:", err);
-    return c.json({ success: false, error: String(err) }, 500);
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const publicUrl = await editorUploadResult(resultUrl, "editor-bg");
+    deductCredit(user.id, getModelCreditCost("image", "ideogram-3-leo")).catch(() => {});
+    console.log(`[editor/background] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: publicUrl, variants: [publicUrl] });
+  } catch (err: any) {
+    console.error("[editor/background] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
 // ── /editor/reframe — extend canvas to target ratio ──
 app.post("/editor/reframe", async (c) => {
+  const t0 = Date.now();
   try {
+    const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const { imageUrl, format } = body;
     if (!imageUrl || !format) return c.json({ success: false, error: "imageUrl and format required" }, 400);
     const resolution = EDITOR_RATIO_TO_RESOLUTION[format] || "RESOLUTION_1024_1024";
-    const res = await editorForward(c, "/ideogram/reframe", {
-      imageUrl,
-      resolution,
-      _token: body._token,
-    });
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/reframe] user=${user.id.slice(0, 8)}, format=${format}, resolution=${resolution}`);
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("resolution", resolution);
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/reframe", { method: "POST", headers: { "Api-Key": ideogramKey }, body: fd });
+    if (!res.ok) { const errText = await res.text(); console.log(`[editor/reframe] Ideogram ${res.status}: ${errText.slice(0, 200)}`); return c.json({ success: false, error: `Ideogram reframe failed: ${res.status}` }, 500); }
     const data = await res.json();
-    if (!data.success) return c.json(data, res.status);
-    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
-  } catch (err) {
-    console.error("[editor/reframe] Error:", err);
-    return c.json({ success: false, error: String(err) }, 500);
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const publicUrl = await editorUploadResult(resultUrl, "editor-reframe");
+    deductCredit(user.id, getModelCreditCost("image", "ideogram-3-leo")).catch(() => {});
+    console.log(`[editor/reframe] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: publicUrl, variants: [publicUrl] });
+  } catch (err: any) {
+    console.error("[editor/reframe] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── /editor/save — persist current editor canvas (data URL or http URL) as a Library item ──
+app.post("/editor/save", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageDataUrl, prompt, sourceItemId } = body;
+    if (!imageDataUrl) return c.json({ success: false, error: "imageDataUrl required" }, 400);
+
+    // Upload bytes to generations bucket (works for both data: URLs and http(s) URLs)
+    const blob = await editorFetchImageBlob(imageDataUrl);
+    const ct = blob.type || "image/png";
+    const ext = ct.includes("png") ? "png" : ct.includes("jpeg") ? "jpg" : "webp";
+    const fileName = `editor-save-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    await ensureGenerationsBucket();
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: ct, upsert: true });
+    if (upErr) return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    // Create library item
+    const itemId = `editor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const libItem: any = {
+      id: itemId,
+      userId: user.id,
+      type: "image",
+      model: { id: "editor", name: "ORA Editor", provider: "ora", speed: "instant", quality: 90 },
+      prompt: prompt || "Edited in ORA Editor",
+      timestamp: now,
+      savedAt: now,
+      updatedAt: now,
+      folderId: null,
+      preview: { kind: "image", imageUrl: pubData.publicUrl },
+      editedFrom: sourceItemId || null,
+    };
+    await kv.set(`lib:${user.id}:${itemId}`, libItem);
+    console.log(`[editor/save] OK in ${Date.now() - t0}ms, item=${itemId}`);
+    return c.json({ success: true, item: libItem, imageUrl: pubData.publicUrl });
+  } catch (err: any) {
+    console.error("[editor/save] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── /editor/save-video — persist an animated editor result as a Library film ──
+app.post("/editor/save-video", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { videoUrl, prompt, sourceImageUrl, posterUrl } = body;
+    if (!videoUrl) return c.json({ success: false, error: "videoUrl required" }, 400);
+
+    const itemId = `editor-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    const libItem: any = {
+      id: itemId,
+      userId: user.id,
+      type: "film",
+      model: { id: "editor-animate", name: "ORA Editor Animate", provider: "ora", speed: "standard", quality: 90 },
+      prompt: prompt || "Animated in ORA Editor",
+      timestamp: now,
+      savedAt: now,
+      updatedAt: now,
+      folderId: null,
+      preview: { kind: "video", videoUrl, imageUrl: posterUrl || sourceImageUrl || null },
+      editedFrom: sourceImageUrl || null,
+    };
+    await kv.set(`lib:${user.id}:${itemId}`, libItem);
+    console.log(`[editor/save-video] OK in ${Date.now() - t0}ms, item=${itemId}`);
+    return c.json({ success: true, item: libItem, videoUrl });
+  } catch (err: any) {
+    console.error("[editor/save-video] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
 // ── /editor/upscale — enhance resolution ──
 app.post("/editor/upscale", async (c) => {
+  const t0 = Date.now();
   try {
+    const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const { imageUrl } = body;
     if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
-    const res = await editorForward(c, "/ideogram/upscale", {
-      imageUrl,
-      _token: body._token,
-    });
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/upscale] user=${user.id.slice(0, 8)}`);
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+
+    const fd = new FormData();
+    fd.append("image_request", JSON.stringify({ resemblance: 55, detail: 90 }));
+    fd.append("image_file", imgBlob, "image.png");
+
+    const res = await fetch("https://api.ideogram.ai/upscale", { method: "POST", headers: { "Api-Key": ideogramKey }, body: fd });
+    if (!res.ok) { const errText = await res.text(); console.log(`[editor/upscale] Ideogram ${res.status}: ${errText.slice(0, 200)}`); return c.json({ success: false, error: `Ideogram upscale failed: ${res.status}` }, 500); }
     const data = await res.json();
-    if (!data.success) return c.json(data, res.status);
-    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
-  } catch (err) {
-    console.error("[editor/upscale] Error:", err);
-    return c.json({ success: false, error: String(err) }, 500);
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No image in response" }, 500);
+
+    const publicUrl = await editorUploadResult(resultUrl, "editor-upscale");
+    deductCredit(user.id, getModelCreditCost("image", "ideogram-3-leo")).catch(() => {});
+    console.log(`[editor/upscale] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, imageUrl: publicUrl, variants: [publicUrl] });
+  } catch (err: any) {
+    console.error("[editor/upscale] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
