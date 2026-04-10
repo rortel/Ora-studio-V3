@@ -82,22 +82,20 @@ export function PricingPage() {
   ];
 
   const creditPacks = [
-    { name: t("pricingPage.packSName"), price: "\u20AC9", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
-    { name: t("pricingPage.packMName"), price: "\u20AC19", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
-    { name: t("pricingPage.packLName"), price: "\u20AC39", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
+    { name: t("pricingPage.packSName"), price: "\u20AC15", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
+    { name: t("pricingPage.packMName"), price: "\u20AC39", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
+    { name: t("pricingPage.packLName"), price: "\u20AC99", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
   ];
 
   const comparisonFeatures: { name: string; starter: boolean | string; pro: boolean | string; business: boolean | string }[] = [
-    { name: t("pricingPage.compAiCredits"), starter: t("pricingPage.comp100cr"), pro: t("pricingPage.comp500cr"), business: t("pricingPage.comp2000cr") },
-    { name: t("pricingPage.compPublications"), starter: t("pricingPage.comp15pub"), pro: t("pricingPage.comp60pub"), business: t("pricingPage.comp200pub") },
-    { name: t("pricingPage.compAiModels"), starter: t("pricingPage.comp10models"), pro: t("pricingPage.comp25models"), business: t("pricingPage.compAllModels") },
-    { name: t("pricingPage.compProducts"), starter: t("pricingPage.comp1product"), pro: t("pricingPage.comp5products"), business: t("pricingPage.comp20products") },
-    { name: t("pricingPage.compBrandVault"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compLibrary"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compCampaignLab"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compCalendar"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compGenerations"), starter: t("pricingPage.comp200gen"), pro: t("pricingPage.comp1000gen"), business: t("pricingPage.comp5000gen") },
+    { name: t("pricingPage.compModels"), starter: t("pricingPage.comp15models"), pro: t("pricingPage.comp50models"), business: t("pricingPage.compAllModels") },
+    { name: t("pricingPage.compSideBySide"), starter: t("pricingPage.comp3side"), pro: t("pricingPage.comp6side"), business: t("pricingPage.compUnlimited") },
+    { name: t("pricingPage.compKpiScoring"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compProVideo"), starter: false, pro: false, business: true },
+    { name: t("pricingPage.compHistory"), starter: true, pro: true, business: true },
     { name: t("pricingPage.compTeam"), starter: t("pricingPage.comp1member"), pro: t("pricingPage.comp3members"), business: t("pricingPage.comp10members") },
-    { name: t("pricingPage.compCreditPacks"), starter: true, pro: true, business: true },
+    { name: t("pricingPage.compTopup"), starter: true, pro: true, business: true },
     { name: t("pricingPage.compSupport"), starter: t("pricingPage.compCommunity"), pro: t("pricingPage.compEmail"), business: t("pricingPage.compPriority") },
   ];
 

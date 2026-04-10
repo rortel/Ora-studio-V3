@@ -1,9 +1,10 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { RootLayout } from "./pages/RootLayout";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { lazy } from "react";
+import { PHASE_1_ONLY } from "./lib/phase";
+import { createElement, lazy } from "react";
 
 /**
  * Retry wrapper for lazy imports — handles stale chunk hashes after deploy.
@@ -50,6 +51,7 @@ const OnboardingPage = lazyRetry(() => import("./pages/OnboardingPage"), "Onboar
 const TermsPage = lazyRetry(() => import("./pages/TermsPage"), "TermsPage");
 const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage");
 const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
+const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
 
 
 /*
@@ -86,7 +88,7 @@ export const router = createBrowserRouter([
       // Public routes
       { index: true, Component: LandingPage },
       { path: "pricing", Component: PricingPage },
-      { path: "models", Component: AgentsPage },
+      { path: "models", Component: ModelsPage },
       { path: "agents", Component: AgentsPage },
       { path: "login", Component: LoginPage },
       { path: "terms", Component: TermsPage },
@@ -95,7 +97,15 @@ export const router = createBrowserRouter([
 
       // Authenticated routes (guard inside component)
       { path: "onboarding", Component: OnboardingPage },
-      { path: "hub", Component: StudioPage },
+      // Phase 1: /hub redirects to the comparator. Studio is kept warm
+      // under /hub/studio so Phase 2 can flip PHASE_1_ONLY to restore it.
+      {
+        path: "hub",
+        Component: PHASE_1_ONLY
+          ? () => createElement(Navigate, { to: "/hub/compare", replace: true })
+          : StudioPage,
+      },
+      { path: "hub/studio", Component: StudioPage },
       { path: "hub/classic", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },
       { path: "hub/vault", Component: VaultPage },

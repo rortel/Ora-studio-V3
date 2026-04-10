@@ -609,7 +609,14 @@ export function ComparePage() {
               url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
             } else {
               const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
-              url = res.success && res.results?.[0]?.result?.imageUrl ? res.results[0].result.imageUrl : "";
+              const first = res.results?.[0];
+              url = res.success && first?.result?.imageUrl ? first.result.imageUrl : "";
+              if (!url) {
+                const modelErr = first?.error || res.error || "";
+                const timeMs = Date.now() - t0;
+                setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+                return { modelId, timeMs, success: false, error: modelErr ? String(modelErr).slice(0, 160) : "Generation failed" };
+              }
             }
             const timeMs = Date.now() - t0;
             setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: url ? "done" : "error", timeMs } : s));

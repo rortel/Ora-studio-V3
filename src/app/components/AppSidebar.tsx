@@ -7,6 +7,7 @@ import {
 import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
+import { PHASE_1_ONLY } from "../lib/phase";
 import { useState, useRef, useEffect } from "react";
 
 /**
@@ -31,19 +32,24 @@ export function AppSidebar() {
   const { t } = useI18n();
   const [tooltip, setTooltip] = useState<string | null>(null);
 
-  const navItems = [
-    { icon: Home, label: t("sidebar.home"), href: "/hub" },
-    { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
-    { icon: Palette, label: t("sidebar.brandKit"), href: "/hub/vault" },
-    { icon: Sparkles, label: t("sidebar.compare"), href: "/hub/compare" },
+  // Phase 2 items (Studio, Calendar, Brand Vault) are hidden in Phase 1.
+  // Keep the definitions so we can restore them by flipping PHASE_1_ONLY.
+  const allNavItems = [
+    { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
+    { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
+    { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
+    { icon: Palette,   label: t("sidebar.brandKit"), href: "/hub/vault",   phase1: false },
   ];
+  const navItems = allNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
 
-  const mobileNavItems = [
-    { icon: Home, label: t("sidebar.home"), href: "/hub" },
-    { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
+  const allMobileNavItems = [
+    { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
+    { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
+    { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
   ];
+  const mobileNavItems = allMobileNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
 

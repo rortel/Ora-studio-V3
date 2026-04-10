@@ -1111,6 +1111,8 @@ async function callTogetherText(
 }
 
 // Call Together AI for image generation
+// Supports both response formats (url, b64_json) and falls back to the Free
+// variant of FLUX.1-schnell if the paid model returns an auth/billing error.
 async function callTogetherImage(
   oraModelId: string,
   prompt: string,
@@ -1125,28 +1127,48 @@ async function callTogetherImage(
   // Flux schnell: 4 steps max. Flux dev/pro: up to 28 steps.
   const steps = opts.steps ?? (oraModelId === "together-flux-schnell" ? 4 : 28);
 
-  const res = await fetch(`${TOGETHER_BASE}/images/generations`, {
-    method: "POST",
-    headers: togetherHeaders(),
-    body: JSON.stringify({
-      model: entry.apiModel,
-      prompt: prompt.slice(0, 2000),
-      width: opts.width || 1024,
-      height: opts.height || 1024,
-      steps,
-      n: 1,
-      response_format: "url",
-    }),
-    signal: AbortSignal.timeout(opts.timeoutMs || 60_000),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Together image ${res.status}: ${body.slice(0, 300)}`);
+  const attempt = async (apiModel: string) => {
+    const res = await fetch(`${TOGETHER_BASE}/images/generations`, {
+      method: "POST",
+      headers: togetherHeaders(),
+      body: JSON.stringify({
+        model: apiModel,
+        prompt: prompt.slice(0, 2000),
+        width: opts.width || 1024,
+        height: opts.height || 1024,
+        steps,
+        n: 1,
+      }),
+      signal: AbortSignal.timeout(opts.timeoutMs || 60_000),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      const err = new Error(`Together image ${res.status}: ${bodyText.slice(0, 300)}`);
+      (err as any).status = res.status;
+      throw err;
+    }
+    let data: any;
+    try { data = JSON.parse(bodyText); } catch { throw new Error(`Together image: invalid JSON response`); }
+    const first = data.data?.[0] || {};
+    // Together returns either { url } or { b64_json } depending on model / server choice
+    if (first.url) return first.url as string;
+    if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+    throw new Error("Together returned no image data");
+  };
+
+  try {
+    const imageUrl = await attempt(entry.apiModel);
+    return { imageUrl, apiModel: entry.apiModel, latencyMs: Date.now() - t0 };
+  } catch (err: any) {
+    // Fallback: FLUX.1-schnell has a free tier variant that works without paid billing
+    const status = err?.status;
+    if (oraModelId === "together-flux-schnell" && (status === 402 || status === 403 || status === 404)) {
+      console.log(`[together-image] ${entry.apiModel} failed ${status}, trying free variant`);
+      const imageUrl = await attempt("black-forest-labs/FLUX.1-schnell-Free");
+      return { imageUrl, apiModel: "black-forest-labs/FLUX.1-schnell-Free", latencyMs: Date.now() - t0 };
+    }
+    throw err;
   }
-  const data = await res.json();
-  const imageUrl = data.data?.[0]?.url || "";
-  if (!imageUrl) throw new Error("Together returned no image URL");
-  return { imageUrl, apiModel: entry.apiModel, latencyMs: Date.now() - t0 };
 }
 
 // Helper: is this an ORA model ID routed to Together?

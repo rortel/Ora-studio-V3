@@ -6,11 +6,8 @@ import { FAQ } from "../components/FAQ";
 import { CTASection } from "../components/CTASection";
 
 /**
- * Landing — Visual-first structure:
- * 1. Hero (video + headline)
- * 2. Logo Marquee (AI model logos, infinite scroll)
- * 3. Product Showcase (3 full-bleed sections: Studio, Vault, Calendar)
- * 4. Pricing + FAQ + CTA
+ * Landing — Phase 1: Aggregator / Comparator only.
+ * Studio + Brand Vault coming in Phase 2.
  */
 
 export function LandingPage() {
