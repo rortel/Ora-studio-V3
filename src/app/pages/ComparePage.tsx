@@ -416,6 +416,13 @@ export function ComparePage() {
   const [showScores, setShowScores] = useState(true);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
+  // ── Music options (used when mode === "music") ──
+  const [musicDurationSec, setMusicDurationSec] = useState(30);       // 10–180s
+  const [musicInstrumental, setMusicInstrumental] = useState(false);
+  const [musicLyrics, setMusicLyrics] = useState("");
+  const [musicStyle, setMusicStyle] = useState("");
+  const [showMusicOptions, setShowMusicOptions] = useState(false);
+
   // ── Voice recording (Whisper) ──
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -710,14 +717,30 @@ export function ComparePage() {
         try {
           let audioUrl: string | null = null;
           if (modelId === "suno-v5") {
-            // Suno: start → poll
-            const startRes = await serverPost("/generate/audio-start", { prompt, models: ["suno"] }, 30_000);
+            // Suno: start → poll. Passes lyrics / instrumental / style when provided.
+            const sunoPayload: Record<string, unknown> = {
+              prompt,
+              models: ["suno"],
+              instrumental: musicInstrumental,
+            };
+            if (musicLyrics.trim()) sunoPayload.lyrics = musicLyrics.trim();
+            if (musicStyle.trim()) sunoPayload.style = musicStyle.trim();
+            const startRes = await serverPost("/generate/audio-start", sunoPayload, 30_000);
             const first = startRes?.results?.[0];
             if (!first?.success || !first?.taskId) throw new Error(first?.error || startRes?.error || "Suno start failed");
             audioUrl = await pollSuno(first.taskId);
           } else if (modelId === "elevenlabs-music-v1") {
-            // ElevenLabs: synchronous compose
-            const res = await serverPost("/generate/music-elevenlabs", { prompt, durationMs: 20000 }, 120_000);
+            // ElevenLabs: synchronous compose. Lyrics are inlined into the prompt
+            // since /v1/music takes a single natural-language brief.
+            const briefParts = [prompt];
+            if (musicStyle.trim()) briefParts.push(`Style: ${musicStyle.trim()}`);
+            if (musicLyrics.trim() && !musicInstrumental) briefParts.push(`Lyrics:\n${musicLyrics.trim()}`);
+            const elBrief = briefParts.join("\n\n");
+            const res = await serverPost("/generate/music-elevenlabs", {
+              prompt: elBrief,
+              durationMs: Math.max(10, Math.min(300, musicDurationSec)) * 1000,
+              instrumental: musicInstrumental,
+            }, 180_000);
             if (!res.success || !res.audioUrl) throw new Error(res.error || "ElevenLabs compose failed");
             audioUrl = res.audioUrl;
           }
@@ -755,7 +778,7 @@ export function ComparePage() {
 
     setResults(creativeResults);
     setIsRunning(false);
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, musicDurationSec, musicInstrumental, musicLyrics, musicStyle]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
@@ -1060,6 +1083,17 @@ export function ComparePage() {
                   {selectedModels.length > 0 ? `${selectedModels.length} ${isFr ? "modèle(s)" : "model(s)"}` : (isFr ? "Modèles" : "Models")}
                   <ChevronDown size={10} style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                 </button>
+
+                {/* Music options toggle — only in music mode */}
+                {mode === "music" && (
+                  <button onClick={() => setShowMusicOptions(!showMusicOptions)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                    style={{ background: showMusicOptions ? "var(--foreground)" : "var(--secondary)", color: showMusicOptions ? "var(--background)" : "var(--muted-foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
+                    <Music size={10} />
+                    {musicDurationSec}s{musicInstrumental ? " · instru" : ""}{musicLyrics.trim() ? " · paroles" : ""}
+                    <ChevronDown size={10} style={{ transform: showMusicOptions ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                  </button>
+                )}
                 {selectedModels.map(id => {
                   const m = catalog.find(c => c.id === id);
                   return m ? (
@@ -1101,6 +1135,85 @@ export function ComparePage() {
                           </button>
                         );
                       })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Music options panel */}
+              <AnimatePresence>
+                {mode === "music" && showMusicOptions && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                    className="px-4 pb-2 overflow-hidden">
+                    <div className="pt-1 flex flex-col gap-2.5">
+                      {/* Duration slider + instrumental toggle */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                          <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted-foreground)", minWidth: 52 }}>
+                            {isFr ? "Durée" : "Length"}
+                          </span>
+                          <input
+                            type="range"
+                            min={10}
+                            max={180}
+                            step={5}
+                            value={musicDurationSec}
+                            onChange={e => setMusicDurationSec(Number(e.target.value))}
+                            className="flex-1"
+                            style={{ accentColor: "var(--foreground)" }}
+                          />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--foreground)", minWidth: 36, textAlign: "right" }}>
+                            {musicDurationSec}s
+                          </span>
+                        </div>
+                        <label className="flex items-center gap-1.5 cursor-pointer px-2 py-1 rounded-lg"
+                          style={{ background: musicInstrumental ? "var(--foreground)" : "var(--secondary)", color: musicInstrumental ? "var(--background)" : "var(--muted-foreground)", fontSize: 10, fontWeight: 600, border: "1px solid var(--border)" }}>
+                          <input
+                            type="checkbox"
+                            checked={musicInstrumental}
+                            onChange={e => setMusicInstrumental(e.target.checked)}
+                            className="hidden"
+                          />
+                          {musicInstrumental && <CheckCircle2 size={10} />}
+                          {isFr ? "Instrumental" : "Instrumental"}
+                        </label>
+                      </div>
+
+                      {/* Style input */}
+                      <input
+                        type="text"
+                        value={musicStyle}
+                        onChange={e => setMusicStyle(e.target.value)}
+                        placeholder={isFr ? "Style (optionnel) — ex: synthwave, lo-fi, orchestral..." : "Style (optional) — e.g. synthwave, lo-fi, orchestral..."}
+                        className="w-full px-2.5 py-1.5 rounded-lg outline-none"
+                        style={{ fontSize: 11, background: "var(--secondary)", border: "1px solid var(--border)", color: "var(--foreground)" }}
+                      />
+
+                      {/* Lyrics textarea — disabled when instrumental */}
+                      <div className="relative">
+                        <textarea
+                          value={musicLyrics}
+                          onChange={e => setMusicLyrics(e.target.value)}
+                          disabled={musicInstrumental}
+                          placeholder={musicInstrumental
+                            ? (isFr ? "Paroles désactivées (mode instrumental)" : "Lyrics disabled (instrumental mode)")
+                            : (isFr ? "Paroles (optionnel) — laissez vide pour que l'IA les écrive" : "Lyrics (optional) — leave empty for AI-written lyrics")}
+                          className="w-full resize-none outline-none px-2.5 py-1.5 rounded-lg"
+                          rows={3}
+                          style={{ fontSize: 11, background: "var(--secondary)", border: "1px solid var(--border)", color: "var(--foreground)", opacity: musicInstrumental ? 0.4 : 1 }}
+                        />
+                        {!musicInstrumental && musicLyrics.trim() && (
+                          <span className="absolute bottom-1 right-2" style={{ fontSize: 9, color: "var(--muted-foreground)" }}>
+                            {musicLyrics.trim().split(/\s+/).length} {isFr ? "mots" : "words"}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ fontSize: 9, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
+                        {isFr
+                          ? "Suno accepte paroles et style séparément. ElevenLabs fusionne tout dans un brief unique."
+                          : "Suno accepts lyrics and style as separate fields. ElevenLabs merges everything into a single brief."}
+                      </div>
                     </div>
                   </motion.div>
                 )}
