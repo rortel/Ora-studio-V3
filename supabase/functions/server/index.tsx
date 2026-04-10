@@ -4524,6 +4524,160 @@ ${fmtDesc}`;
 });
 
 // ══════════════════════════════════════════════════════════════
+// COMPARE — scrape product/company URLs found in the brief
+// Used by /hub/compare to enrich prompts with real product data
+// and to pass the product image as img2img reference.
+// ══════════════════════════════════════════════════════════════
+app.post("/compare/scrape-urls", async (c) => {
+  const t0 = Date.now();
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const urls: string[] = Array.isArray(body.urls)
+      ? body.urls.filter((u: any) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 3)
+      : [];
+    if (urls.length === 0) return c.json({ success: false, error: "urls required" }, 400);
+
+    console.log(`[compare/scrape-urls] scraping ${urls.length} url(s): ${urls.map(u => u.slice(0, 60)).join(", ")}`);
+
+    // Re-host external product image to Supabase Storage (img2img accessibility)
+    async function reHostImage(externalUrl: string, idx: number): Promise<string | null> {
+      try {
+        const imgRes = await fetchWithTimeout(externalUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Accept": "image/*,*/*;q=0.8",
+            "Referer": externalUrl,
+          },
+        }, 10_000);
+        if (!imgRes.ok) return null;
+        const ct = imgRes.headers.get("content-type") || "";
+        if (!ct.startsWith("image/")) return null;
+        const buf = await imgRes.arrayBuffer();
+        if (buf.byteLength < 5_000 || buf.byteLength > 10_000_000) return null;
+        await ensureImageBankBucket();
+        const sb = supabaseAdmin();
+        const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+        const path = `compare-scrape/${Date.now()}-${idx}.${ext}`;
+        const { error: upErr } = await sb.storage.from(IMAGE_BANK_BUCKET).upload(path, new Uint8Array(buf), { contentType: ct, upsert: true });
+        if (upErr) return null;
+        const { data: signedData } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(path, 3600);
+        return signedData?.signedUrl || null;
+      } catch { return null; }
+    }
+
+    const scrapeResults = await Promise.allSettled(urls.map(async (pageUrl, i) => {
+      const jinaKey = Deno.env.get("JINA_API_KEY");
+      let content = "";
+      let rawImageUrls: string[] = [];
+      let source = "none";
+      if (jinaKey) {
+        try {
+          const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${jinaKey}`,
+              "Accept": "application/json",
+              "X-No-Cache": "true",
+              "X-Proxy": "auto",
+              "X-Target-Selector": "body",
+              "X-Token-Budget": "120000",
+              "X-With-Generated-Alt": "true",
+              "X-With-Images-Summary": "all",
+            },
+          }, 20_000);
+          if (res.ok) {
+            const data = await res.json();
+            content = (data.data?.content || data.data?.text || data.content || "").slice(0, 4000);
+            source = "jina";
+            const jinaImages = data.data?.images || data.images || {};
+            if (typeof jinaImages === "object" && !Array.isArray(jinaImages)) {
+              for (const [imgUrl] of Object.entries(jinaImages)) {
+                if (typeof imgUrl === "string" && imgUrl.startsWith("http")) rawImageUrls.push(imgUrl);
+              }
+            } else if (Array.isArray(jinaImages)) {
+              for (const img of jinaImages) {
+                const u = typeof img === "string" ? img : (img as any)?.url || (img as any)?.src || "";
+                if (u.startsWith("http")) rawImageUrls.push(u);
+              }
+            }
+          }
+        } catch (e) { console.log(`[compare/scrape-urls] Jina [${i}] fail: ${e}`); }
+      }
+      // Extract markdown images ![alt](url)
+      if (content.length > 0) {
+        const mdImgRe = /!\[[^\]]*\]\(([^)]+)\)/g;
+        let m;
+        while ((m = mdImgRe.exec(content)) !== null) {
+          const u = m[1].trim();
+          if (u.startsWith("http") && !rawImageUrls.includes(u)) rawImageUrls.push(u);
+        }
+      }
+      // Fallback: generic scrapeUrl
+      if (content.length < 50) {
+        try { const r = await scrapeUrl(pageUrl, 0.5); content = r.content.slice(0, 4000); source = r.source; } catch {}
+      }
+      // Filter out icons, pixels, tiny assets
+      const filtered = rawImageUrls.filter(u => {
+        const l = u.toLowerCase();
+        if (l.includes(".svg") || l.includes("favicon") || l.includes("data:")) return false;
+        if (l.includes("tracking") || l.includes("pixel") || l.includes("analytics") || l.includes("beacon")) return false;
+        if (l.includes("1x1") || l.includes("spacer") || l.includes("badge") || l.includes("button")) return false;
+        if (l.match(/icon[\-_.]\d/) || l.match(/logo[\-_.](small|xs|16|32|ico)/)) return false;
+        if (l.includes("avatar") || l.includes("emoji") || l.includes("flag")) return false;
+        return true;
+      }).slice(0, 5);
+      console.log(`[compare/scrape-urls] [${i}] ${content.length} chars via ${source}, ${filtered.length} images`);
+      return content.length >= 50 ? { url: pageUrl, content, source, images: filtered } : null;
+    }));
+
+    const scraped = scrapeResults
+      .filter((r): r is PromiseFulfilledResult<{ url: string; content: string; source: string; images: string[] } | null> => r.status === "fulfilled")
+      .map(r => r.value)
+      .filter(Boolean) as { url: string; content: string; source: string; images: string[] }[];
+
+    if (scraped.length === 0) {
+      return c.json({ success: true, briefEnrichment: "", productImages: [], pagesScraped: 0, imagesFound: 0, note: "no content extracted" });
+    }
+
+    // Re-host up to 3 images
+    const candidateImages: { url: string; sourceUrl: string }[] = [];
+    const seen = new Set<string>();
+    for (const s of scraped) {
+      for (const imgUrl of s.images) {
+        if (seen.has(imgUrl) || candidateImages.length >= 3) continue;
+        seen.add(imgUrl);
+        candidateImages.push({ url: imgUrl, sourceUrl: s.url });
+      }
+    }
+    const rehosted = await Promise.allSettled(candidateImages.map(async (img, idx) => {
+      const signed = await reHostImage(img.url, idx);
+      return signed || img.url; // fallback: original URL
+    }));
+    const productImages = rehosted
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && !!r.value)
+      .map(r => r.value);
+
+    // Build compact briefEnrichment block
+    const blocks = scraped.map((s, i) => `[PAGE ${i + 1}] ${s.url}\n${s.content.slice(0, 2500)}`).join("\n\n");
+    const briefEnrichment = `\n\n=== REAL PRODUCT/COMPANY CONTEXT (scraped from client URLs — USE THESE REAL FACTS) ===\n${blocks}\n\nMANDATORY: Use the REAL product names, features, prices, benefits, and USPs from the scraped pages above. NEVER invent product information. Quote exact names as they appear. Derive tone from the scraped copy.`;
+
+    const took = Date.now() - t0;
+    console.log(`[compare/scrape-urls] OK: ${scraped.length} pages, ${productImages.length} images, ${briefEnrichment.length} chars, ${took}ms`);
+    return c.json({
+      success: true,
+      briefEnrichment,
+      productImages,
+      pagesScraped: scraped.length,
+      imagesFound: productImages.length,
+      tookMs: took,
+    });
+  } catch (err) {
+    console.log(`[compare/scrape-urls] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // CAMPAIGN LAB — plan + image-start + image-status
 // ══════════════════════════════════════════════════════════════
 

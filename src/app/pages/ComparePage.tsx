@@ -420,6 +420,9 @@ export function ComparePage() {
   const [composerExpanded, setComposerExpanded] = useState(true);
   const [aspectRatio, setAspectRatio] = useState<string>("1:1");
   const [textFormat, setTextFormat] = useState<string>("instagram-post");
+  // URL scraping (auto-detects product/company URLs in the brief and scrapes them)
+  const [scrapedUrls, setScrapedUrls] = useState<{ pagesScraped: number; imagesFound: number } | null>(null);
+  const [isScraping, setIsScraping] = useState(false);
 
   // ── Music options (used when mode === "music") ──
   const [musicDurationSec, setMusicDurationSec] = useState(30);       // 10–180s
@@ -676,14 +679,42 @@ export function ComparePage() {
     if (!prompt.trim() || selectedModels.length < 1 || isRunning) return;
     setIsRunning(true);
     setResults([]);
+    setScrapedUrls(null);
 
     const modelSteps = selectedModels.map(id => ({ label: catalog.find(m => m.id === id)?.label || id, status: "pending" as StepStatus }));
     setSteps(modelSteps);
 
+    // ── AUTO-DETECT URLs in the brief → scrape pages + extract product images ──
+    // Real product facts get injected into every prompt, and the first scraped image
+    // is used as img2img reference for image/video modes.
+    const urlRegex = /https?:\/\/[^\s<>"')]+/gi;
+    const urlsInBrief = Array.from(new Set((prompt.match(urlRegex) || []).slice(0, 3)));
+    let briefEnrichment = "";
+    let scrapedProductImages: string[] = [];
+    if (urlsInBrief.length > 0) {
+      setIsScraping(true);
+      try {
+        const scrapeRes = await serverPost("/compare/scrape-urls", { urls: urlsInBrief }, 45_000);
+        if (scrapeRes?.success) {
+          briefEnrichment = String(scrapeRes.briefEnrichment || "");
+          scrapedProductImages = Array.isArray(scrapeRes.productImages) ? scrapeRes.productImages : [];
+          setScrapedUrls({ pagesScraped: scrapeRes.pagesScraped || 0, imagesFound: scrapeRes.imagesFound || 0 });
+        }
+      } catch (err) {
+        console.warn("[compare] URL scrape failed:", err);
+      } finally {
+        setIsScraping(false);
+      }
+    }
+
+    // Enriched prompt — brief + scraped real product context (when URLs detected)
+    const enrichedPrompt = briefEnrichment ? `${prompt}${briefEnrichment}` : prompt;
+
     const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
-    // If product photo attached (image mode only), use Photoroom for each model slot
-    const hasProductRef = mode === "image" && attachedImage?.signedUrl;
+    // Prefer client-uploaded photo; fallback to first scraped product image
+    const effectiveProductRef = attachedImage?.signedUrl || scrapedProductImages[0] || null;
+    const hasProductRef = (mode === "image" || mode === "video") && !!effectiveProductRef;
 
     if (mode === "image") {
       const BATCH = 3;
@@ -700,16 +731,16 @@ export function ComparePage() {
               // (provider="ai" skips Photoroom packshot pipeline and hits FAL Flux /
               // Luma character_ref / Kontext — real editing, not background removal).
               const r = await serverPost("/generate/image-start", {
-                prompt: prompt.slice(0, 500),
+                prompt: enrichedPrompt.slice(0, 4000),
                 model: modelId,
                 aspectRatio,
-                imageRefUrl: attachedImage!.signedUrl,
-                refSource: "upload",
+                imageRefUrl: effectiveProductRef!,
+                refSource: attachedImage?.signedUrl ? "upload" : "scrape",
                 provider: "ai",
               }, 120_000);
               url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
             } else {
-              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}`);
+              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt.slice(0, 4000))}&models=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}`);
               const first = res.results?.[0];
               url = res.success && first?.result?.imageUrl ? first.result.imageUrl : "";
               if (!url) {
@@ -735,7 +766,7 @@ export function ComparePage() {
         setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
         const t0 = Date.now();
         try {
-          const res = await serverPost("/campaign/generate-texts", { brief: prompt, formats: textFormat, model: modelId, language: locale }, 60_000);
+          const res = await serverPost("/campaign/generate-texts", { brief: enrichedPrompt, formats: textFormat, model: modelId, language: locale }, 60_000);
           const timeMs = Date.now() - t0;
           const copyMap = res.copyMap || {};
           const first = Object.values(copyMap)[0] as any;
@@ -756,7 +787,8 @@ export function ComparePage() {
         setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
         const t0 = Date.now();
         try {
-          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5`);
+          const imgRefParam = effectiveProductRef ? `&imageUrl=${encodeURIComponent(effectiveProductRef)}` : "";
+          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(enrichedPrompt.slice(0, 4000))}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5${imgRefParam}`);
           if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
           const videoUrl = await pollVideo(startRes.generationId);
           const timeMs = Date.now() - t0;
@@ -1124,6 +1156,13 @@ export function ComparePage() {
                       <Zap size={9} /> {selectedModels.length}
                     </span>
                   )}
+                  {scrapedUrls && scrapedUrls.pagesScraped > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: "rgba(34, 197, 94, 0.15)", color: "#16a34a", fontSize: 9, fontWeight: 700 }}
+                      title={isFr ? `${scrapedUrls.pagesScraped} page(s) analysée(s), ${scrapedUrls.imagesFound} image(s) produit` : `${scrapedUrls.pagesScraped} page(s) scraped, ${scrapedUrls.imagesFound} product image(s)`}>
+                      🔗 {scrapedUrls.pagesScraped}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, fontWeight: 700, color: "var(--muted-foreground)" }}>
                     {mode === "image" ? <ImageIcon size={13} /> : mode === "text" ? <Type size={13} /> : mode === "video" ? <Video size={13} /> : <Music size={13} />}
                     {mode !== "music" && <span>{mode === "text" ? FORMAT_OPTIONS.find(f => f.id === textFormat)?.label?.split(" ")[0] || textFormat : aspectRatio}</span>}
@@ -1392,6 +1431,26 @@ export function ComparePage() {
 
                 {/* Textarea */}
                 <div className="flex-1 relative">
+                  {/* URL detection hint — shows when user pastes a URL in the brief */}
+                  {(() => {
+                    const urlRe = /https?:\/\/[^\s<>"')]+/gi;
+                    const urls = (prompt.match(urlRe) || []).slice(0, 3);
+                    if (urls.length === 0) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                        {isScraping ? (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(124, 58, 237, 0.1)", color: "#7C3AED", fontSize: 9, fontWeight: 700 }}>
+                            <Loader2 size={8} className="animate-spin" />
+                            {isFr ? "Analyse..." : "Scraping..."}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(34, 197, 94, 0.12)", color: "#16a34a", fontSize: 9, fontWeight: 700 }}>
+                            🔗 {urls.length} {isFr ? `URL${urls.length > 1 ? "s" : ""} — seront analysées` : `URL${urls.length > 1 ? "s" : ""} — will be scraped`}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <textarea
                     ref={textareaRef}
                     value={prompt}
