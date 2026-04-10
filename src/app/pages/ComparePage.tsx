@@ -77,6 +77,9 @@ const VIDEO_MODELS: ModelDef[] = [
   { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["versatile"], bestFor: "Contenu vidéo polyvalent", tier: "standard" },
   { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy" },
   { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "campaign"], bestFor: "Vidéo campagne", tier: "standard" },
+  { id: "hailuo-02", label: "Minimax Hailuo 02", badge: "Realistic", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "physics"], bestFor: "Mouvements réalistes", tier: "standard" },
+  { id: "wan-2.2", label: "Wan 2.2", badge: "Open", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["versatile", "open"], bestFor: "Vidéo polyvalente", tier: "economy" },
+  { id: "kling-2.5", label: "Kling 2.5 Turbo Pro", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium" },
 ];
 
 // ── Result types ──

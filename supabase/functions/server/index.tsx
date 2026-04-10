@@ -1678,6 +1678,154 @@ async function generateImageDirect(req: { prompt: string; model: string; aspectR
   throw new Error(`Unknown direct API model: ${req.model}`);
 }
 
+// ══════════════════════════════════════════════════════════════
+// FAL VIDEO — async queue (Minimax Hailuo 02, Wan 2.2, Kling 2.5)
+// Schemas verified from https://fal.ai/docs — each model has its
+// own body builder because the input param names differ.
+// ══════════════════════════════════════════════════════════════
+
+type FalVideoBuildCtx = {
+  prompt: string;
+  imageUrl?: string | null;
+  durationSec: number;       // requested video length, seconds
+  aspectRatio: string;       // "16:9" | "9:16" | "1:1"
+};
+
+type FalVideoModelDef = {
+  label: string;
+  t2v?: string;
+  i2v?: string;
+  buildBody: (ctx: FalVideoBuildCtx, hasImage: boolean) => Record<string, unknown>;
+};
+
+// ORA id → FAL model definition
+const falVideoModelMap: Record<string, FalVideoModelDef> = {
+  // Minimax Hailuo 02 Standard — duration is a STRING "6" or "10", no aspect_ratio param
+  "hailuo-02": {
+    label: "minimax-hailuo-02",
+    t2v: "fal-ai/minimax/hailuo-02/standard/text-to-video",
+    i2v: "fal-ai/minimax/hailuo-02/standard/image-to-video",
+    buildBody: (ctx, hasImage) => {
+      const body: Record<string, unknown> = {
+        prompt: ctx.prompt,
+        duration: ctx.durationSec >= 9 ? "10" : "6",
+        resolution: "768P",
+        prompt_optimizer: true,
+      };
+      if (hasImage && ctx.imageUrl) body.image_url = ctx.imageUrl;
+      return body;
+    },
+  },
+  // Wan 2.2 a14b — uses num_frames + frames_per_second, NOT duration
+  "wan-2.2": {
+    label: "wan-2.2-a14b",
+    t2v: "fal-ai/wan/v2.2-a14b/text-to-video",
+    i2v: "fal-ai/wan/v2.2-a14b/image-to-video",
+    buildBody: (ctx, hasImage) => {
+      const fps = 16;
+      const targetFrames = Math.max(17, Math.min(161, Math.round(ctx.durationSec * fps) + 1));
+      const ar = ["16:9", "9:16", "1:1"].includes(ctx.aspectRatio) ? ctx.aspectRatio : "16:9";
+      const body: Record<string, unknown> = {
+        prompt: ctx.prompt,
+        num_frames: targetFrames,
+        frames_per_second: fps,
+        resolution: "720p",
+        aspect_ratio: ar,
+      };
+      if (hasImage && ctx.imageUrl) body.image_url = ctx.imageUrl;
+      return body;
+    },
+  },
+  // Kling 2.5 Turbo Pro — image-to-video only, duration is STRING "5" or "10"
+  "kling-2.5": {
+    label: "kling-v2.5-turbo-pro",
+    i2v: "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+    buildBody: (ctx, hasImage) => {
+      const body: Record<string, unknown> = {
+        prompt: ctx.prompt,
+        duration: ctx.durationSec >= 8 ? "10" : "5",
+      };
+      if (hasImage && ctx.imageUrl) body.image_url = ctx.imageUrl;
+      return body;
+    },
+  },
+};
+
+function isFalVideoModel(id: string): boolean {
+  return !!falVideoModelMap[id];
+}
+
+// Submit to FAL queue. Returns { requestId, statusUrl, responseUrl }.
+async function callFalVideoStart(falPath: string, body: any): Promise<{ ok: true; requestId: string; statusUrl: string; responseUrl: string } | { ok: false; error: string }> {
+  const key = Deno.env.get("FAL_API_KEY");
+  if (!key) return { ok: false, error: "FAL_API_KEY not configured" };
+  try {
+    const res = await fetch(`https://queue.fal.run/${falPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) return { ok: false, error: `FAL ${falPath} HTTP ${res.status}: ${txt.slice(0, 300)}` };
+    let data: any;
+    try { data = JSON.parse(txt); } catch { return { ok: false, error: `FAL ${falPath}: non-JSON response` }; }
+    if (!data.request_id || !data.status_url || !data.response_url) {
+      return { ok: false, error: `FAL ${falPath}: missing request_id/status_url/response_url (got: ${JSON.stringify(data).slice(0, 200)})` };
+    }
+    return { ok: true, requestId: data.request_id, statusUrl: data.status_url, responseUrl: data.response_url };
+  } catch (err) {
+    return { ok: false, error: `FAL ${falPath} error: ${err}` };
+  }
+}
+
+// Poll FAL status and fetch final video url when completed.
+async function callFalVideoStatus(statusUrl: string, responseUrl: string): Promise<{ state: "queued" | "dreaming" | "completed" | "failed" | "error"; videoUrl?: string | null; error?: string }> {
+  const key = Deno.env.get("FAL_API_KEY");
+  if (!key) return { state: "error", error: "FAL_API_KEY not configured" };
+  try {
+    const sres = await fetch(statusUrl, { headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(10_000) });
+    if (!sres.ok) {
+      if (sres.status === 404) return { state: "queued" };
+      return { state: "queued" };
+    }
+    const sdata = await sres.json();
+    const status = String(sdata.status || "").toUpperCase();
+    if (status === "COMPLETED") {
+      const rres = await fetch(responseUrl, { headers: { Authorization: `Key ${key}` }, signal: AbortSignal.timeout(15_000) });
+      if (!rres.ok) return { state: "error", error: `FAL response HTTP ${rres.status}` };
+      const rdata = await rres.json();
+      const videoUrl = rdata.video?.url || rdata.output?.video?.url || rdata.video_url || null;
+      return { state: "completed", videoUrl };
+    }
+    if (status === "FAILED" || status === "ERROR" || status === "CANCELED") {
+      return { state: "failed", error: sdata.error || "FAL generation failed" };
+    }
+    return { state: "dreaming" };
+  } catch (err) {
+    return { state: "error", error: `${err}` };
+  }
+}
+
+// Pack / unpack the generationId used for FAL polling (stateless: URLs encoded in the id).
+function packFalGenerationId(statusUrl: string, responseUrl: string): string {
+  try {
+    const payload = JSON.stringify({ s: statusUrl, r: responseUrl });
+    return "fal:" + btoa(payload);
+  } catch {
+    return "fal:" + btoa(`${statusUrl}|${responseUrl}`);
+  }
+}
+function unpackFalGenerationId(id: string): { statusUrl: string; responseUrl: string } | null {
+  if (!id.startsWith("fal:")) return null;
+  try {
+    const decoded = atob(id.slice(4));
+    const parsed = JSON.parse(decoded);
+    if (parsed.s && parsed.r) return { statusUrl: parsed.s, responseUrl: parsed.r };
+  } catch {}
+  return null;
+}
+
 // ── IMAGE GENERATION (secondary provider — submit + polling) ──
 async function generateImageHf(req: { prompt: string; model: string; aspectRatio?: string }) {
   const mapping = hfImageModelMap[req.model];
@@ -3521,6 +3669,32 @@ app.get("/generate/video-start", async (c) => {
       }
     }
 
+    // ── Check if model routes through FAL (Minimax Hailuo, Wan 2.2, Kling 2.5) ──
+    if (isFalVideoModel(model)) {
+      const fm = falVideoModelMap[model];
+      const hasImage = !!resolvedImageUrl;
+      const falPath = hasImage ? fm.i2v : fm.t2v;
+      if (!falPath) {
+        console.log(`[video-start] FAL ${model} does not support ${hasImage ? "image-to-video" : "text-to-video"}`);
+        return c.json({ success: false, error: `${model} does not support ${hasImage ? "image-to-video" : "text-to-video"}` }, 400);
+      }
+      const aspectRatio = clientAspectRatio || "16:9";
+      const falBody = fm.buildBody(
+        { prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio },
+        hasImage
+      );
+      console.log(`[video-start] FAL: model=${model} path=${falPath} img2v=${hasImage} body=${JSON.stringify(falBody).slice(0, 200)}`);
+      const falResult = await callFalVideoStart(falPath, falBody);
+      if (falResult.ok) {
+        const genId = packFalGenerationId(falResult.statusUrl, falResult.responseUrl);
+        console.log(`[video-start] FAL OK in ${Date.now() - t0}ms, requestId=${falResult.requestId}`);
+        if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+        logCost({ type: "video", model, provider: `fal/${fm.label}`, costUsd: 0.20, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
+        return c.json({ success: true, generationId: genId, state: "queued", model });
+      }
+      console.log(`[video-start] FAL FAILED: ${falResult.error} — falling through to Luma`);
+    }
+
     // ── Check if model routes through secondary provider ──
     const hfMapping = hfVideoModelMap[model];
     if (hfMapping) {
@@ -3610,6 +3784,21 @@ app.get("/generate/video-status", async (c) => {
   try {
     const rawId = c.req.query("id");
     if (!rawId) return c.json({ error: "id required" }, 400);
+
+    // Detect FAL via "fal:" prefix
+    if (rawId.startsWith("fal:")) {
+      const unpacked = unpackFalGenerationId(rawId);
+      if (!unpacked) {
+        console.log(`[video-status] FAL: failed to unpack generationId`);
+        return c.json({ success: false, state: "error", error: "Invalid FAL generation id" }, 400);
+      }
+      const r = await callFalVideoStatus(unpacked.statusUrl, unpacked.responseUrl);
+      console.log(`[video-status] FAL state=${r.state} (${Date.now() - t0}ms)`);
+      if (r.state === "completed") return c.json({ success: true, state: "completed", videoUrl: r.videoUrl || null });
+      if (r.state === "failed") return c.json({ success: true, state: "failed", error: r.error || "Video generation failed" });
+      if (r.state === "error") return c.json({ success: false, state: "error", error: r.error });
+      return c.json({ success: true, state: r.state });
+    }
 
     // Detect secondary provider via "hf:" prefix
     if (rawId.startsWith("hf:")) {
