@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Zap, Clock, DollarSign, FileText, Image as ImageIcon, Video,
@@ -417,6 +417,9 @@ export function ComparePage() {
   const [lightbox, setLightbox] = useState<CreativeResult | null>(null);
   const [showScores, setShowScores] = useState(true);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<string>("1:1");
+  const [textFormat, setTextFormat] = useState<string>("instagram-post");
 
   // ── Music options (used when mode === "music") ──
   const [musicDurationSec, setMusicDurationSec] = useState(30);       // 10–180s
@@ -446,7 +449,54 @@ export function ComparePage() {
   const catalog = mode === "text" ? TEXT_MODELS : mode === "image" ? IMAGE_MODELS : mode === "video" ? VIDEO_MODELS : MUSIC_MODELS;
   const maxModels = mode === "text" ? 4 : mode === "image" ? 6 : mode === "video" ? 4 : 2;
 
-  useEffect(() => { setSelectedModels([]); setResults([]); setSteps([]); }, [mode]);
+  useEffect(() => {
+    setSelectedModels([]); setResults([]); setSteps([]);
+    // Reset format to mode-specific default
+    if (mode === "image") setAspectRatio("1:1");
+    else if (mode === "video") setAspectRatio("16:9");
+    else if (mode === "text") setTextFormat("instagram-post");
+  }, [mode]);
+
+  // Auto-collapse composer once client has picked their AIs.
+  // Triggers as soon as the first model is selected — gives immediate "choice locked in" feedback.
+  const prevModelCountRef = useRef(0);
+  useEffect(() => {
+    const prev = prevModelCountRef.current;
+    if (prev === 0 && selectedModels.length > 0 && composerExpanded) {
+      // small delay so the user sees the pill confirm the selection
+      const t = setTimeout(() => { setShowModelPicker(false); setComposerExpanded(false); }, 450);
+      prevModelCountRef.current = selectedModels.length;
+      return () => clearTimeout(t);
+    }
+    prevModelCountRef.current = selectedModels.length;
+  }, [selectedModels, composerExpanded]);
+
+  // Format catalog per mode — what clients can pick
+  const FORMAT_OPTIONS = useMemo(() => {
+    if (mode === "image") return [
+      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "1:1" },
+      { id: "4:5", label: "Portrait", sub: "4:5" },
+      { id: "9:16", label: "Story", sub: "9:16" },
+      { id: "16:9", label: isFr ? "Paysage" : "Landscape", sub: "16:9" },
+      { id: "3:2", label: "Photo", sub: "3:2" },
+    ];
+    if (mode === "video") return [
+      { id: "16:9", label: isFr ? "Paysage" : "Landscape", sub: "16:9" },
+      { id: "9:16", label: isFr ? "Vertical" : "Vertical", sub: "9:16" },
+      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "1:1" },
+    ];
+    if (mode === "text") return [
+      { id: "instagram-post", label: "Instagram", sub: "Post" },
+      { id: "instagram-story", label: "Instagram", sub: "Story" },
+      { id: "linkedin-post", label: "LinkedIn", sub: "Post" },
+      { id: "twitter-post", label: "X / Twitter", sub: "Post" },
+      { id: "facebook-post", label: "Facebook", sub: "Post" },
+    ];
+    return [];
+  }, [mode, isFr]);
+
+  const currentFormat = mode === "text" ? textFormat : aspectRatio;
+  const setCurrentFormat = (id: string) => { if (mode === "text") setTextFormat(id); else setAspectRatio(id); };
 
   // Scroll to bottom when new results appear
   useEffect(() => {
@@ -646,17 +696,20 @@ export function ComparePage() {
           try {
             let url = "";
             if (hasProductRef) {
-              // Product mode → Photoroom with the model's style direction
+              // Image-to-image edit: use the selected model with generative img2img
+              // (provider="ai" skips Photoroom packshot pipeline and hits FAL Flux /
+              // Luma character_ref / Kontext — real editing, not background removal).
               const r = await serverPost("/generate/image-start", {
                 prompt: prompt.slice(0, 500),
-                model: "photon-1",
-                aspectRatio: "1:1",
+                model: modelId,
+                aspectRatio,
                 imageRefUrl: attachedImage!.signedUrl,
                 refSource: "upload",
-              }, 60_000);
+                provider: "ai",
+              }, 120_000);
               url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
             } else {
-              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=1:1`);
+              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(prompt)}&models=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}`);
               const first = res.results?.[0];
               url = res.success && first?.result?.imageUrl ? first.result.imageUrl : "";
               if (!url) {
@@ -682,7 +735,7 @@ export function ComparePage() {
         setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
         const t0 = Date.now();
         try {
-          const res = await serverPost("/campaign/generate-texts", { brief: prompt, formats: "instagram-post", model: modelId, language: locale }, 60_000);
+          const res = await serverPost("/campaign/generate-texts", { brief: prompt, formats: textFormat, model: modelId, language: locale }, 60_000);
           const timeMs = Date.now() - t0;
           const copyMap = res.copyMap || {};
           const first = Object.values(copyMap)[0] as any;
@@ -703,7 +756,7 @@ export function ComparePage() {
         setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
         const t0 = Date.now();
         try {
-          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${modelId}&aspectRatio=16:9&duration=5`);
+          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(prompt)}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5`);
           if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
           const videoUrl = await pollVideo(startRes.generationId);
           const timeMs = Date.now() - t0;
@@ -823,47 +876,20 @@ export function ComparePage() {
           console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
         });
       });
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, musicDurationSec, musicInstrumental, musicLyrics, musicStyle]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
   const totalCredits = selectedModels.reduce((s, id) => s + (catalog.find(c => c.id === id)?.credits || 0), 0);
 
-  // Bottom bar height (for scroll padding)
-  const BOTTOM_BAR_H = attachedImage ? 180 : 140;
+  // Bottom bar height (for scroll padding) — collapsed pill vs expanded composer
+  const BOTTOM_BAR_H = composerExpanded ? (attachedImage ? 280 : 240) : 80;
 
   return (
     <RouteGuard>
       <div className="h-screen flex flex-col" style={{ background: "var(--background)", paddingLeft: 52 }}>
 
-        {/* ═══ HEADER — minimal, just branding + score toggle ═══ */}
-        <div className="flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "#FFFFFF" }}>
-          <div className="max-w-7xl mx-auto px-6 py-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)" }}>
-                  <Sparkles size={16} style={{ color: "#fff" }} />
-                </div>
-                <div>
-                  <h1 style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.02em" }}>Creative Lab</h1>
-                  <p style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
-                    {isFr ? "Créez librement · Comparez les IA · Sauvegardez" : "Create freely · Compare AI · Save favorites"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Score toggle (only when results exist) */}
-              {results.length > 0 && (
-                <button onClick={() => setShowScores(!showScores)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                  style={{ background: showScores ? "var(--foreground)" : "var(--secondary)", color: showScores ? "var(--background)" : "var(--foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
-                  <BarChart3 size={12} /> Scores
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+{/* HEADER removed — no top bar. Only floating glass composer at bottom. */}
 
         {/* ═══ RESULTS AREA — full-screen above prompt bar ═══ */}
         <div className="flex-1 overflow-y-auto" style={{ paddingBottom: BOTTOM_BAR_H + 16 }}>
@@ -872,20 +898,20 @@ export function ComparePage() {
             style={{ minHeight: `calc(100vh - ${BOTTOM_BAR_H + 80}px)` }}
           >
 
-            {/* ── EMPTY STATE ── */}
+            {/* ── EMPTY STATE — minimal, invite à écrire ── */}
             {results.length === 0 && !isRunning && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
                   style={{ background: "linear-gradient(135deg, #7C3AED15, #EC489915)" }}>
                   <Sparkles size={28} style={{ color: "#7C3AED" }} />
                 </div>
-                <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
-                  {isFr ? "Votre atelier créatif" : "Your creative workshop"}
+                <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 6 }}>
+                  {isFr ? "Créez ce que vous voulez" : "Create whatever you want"}
                 </h2>
-                <p style={{ fontSize: 13, color: "var(--muted-foreground)", maxWidth: 420, lineHeight: 1.6 }}>
+                <p style={{ fontSize: 13, color: "var(--muted-foreground)", maxWidth: 440, lineHeight: 1.6 }}>
                   {isFr
-                    ? "Décrivez votre idée ci-dessous, choisissez vos modèles IA, et comparez les résultats. Vous pouvez dicter votre brief ou joindre une photo produit."
-                    : "Describe your idea below, pick your AI models, and compare results. You can dictate your brief or attach a product photo."}
+                    ? "Décrivez votre idée. Choisissez vos modèles. Comparez."
+                    : "Describe your idea. Pick your models. Compare."}
                 </p>
               </div>
             )}
@@ -942,7 +968,7 @@ export function ComparePage() {
                 </div>
 
                 {/* ── UNIFIED FULL-SCREEN GRID (image · video · text) ── */}
-                <div className="flex-1 grid gap-3 min-h-0" style={{ ...gridTemplate, minHeight: 420 }}>
+                <div className="flex-1 grid gap-4 min-h-0" style={{ ...gridTemplate, minHeight: `calc(100vh - ${BOTTOM_BAR_H + 180}px)` }}>
                   {results.map(r => {
                     const isBest = r.modelId === bestResult?.modelId;
                     const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
@@ -1063,10 +1089,117 @@ export function ComparePage() {
           </div>
         </div>
 
-        {/* ═══ BOTTOM INPUT BAR — fixed at bottom ═══ */}
+        {/* ═══ FLOATING GLASS COMPOSER — expandable/collapsible ═══ */}
         <div className="flex-shrink-0 fixed bottom-0 right-0 z-40" style={{ left: 52 }}>
-          <div className="max-w-7xl mx-auto px-6 pb-5 pt-3">
-            <div className="rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid var(--border)", boxShadow: "0 -4px 24px rgba(0,0,0,0.06)" }}>
+          <div className="max-w-5xl mx-auto px-6 pb-5 pt-3">
+            {/* Collapsed pill */}
+            <AnimatePresence mode="wait">
+              {!composerExpanded ? (
+                <motion.button
+                  key="collapsed"
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                  transition={{ duration: 0.25 }}
+                  onClick={() => { setComposerExpanded(true); setTimeout(() => textareaRef.current?.focus(), 150); }}
+                  className="w-full rounded-full flex items-center gap-3 px-5 py-3.5 cursor-pointer"
+                  style={{
+                    background: "rgba(255,255,255,0.72)",
+                    backdropFilter: "blur(22px) saturate(160%)",
+                    WebkitBackdropFilter: "blur(22px) saturate(160%)",
+                    border: "1px solid rgba(255,255,255,0.6)",
+                    boxShadow: "0 10px 40px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)",
+                  }}
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)" }}>
+                    <Sparkles size={14} style={{ color: "#fff" }} />
+                  </div>
+                  <span className="flex-1 text-left truncate" style={{ fontSize: 14, fontWeight: 500, color: prompt ? "var(--foreground)" : "var(--muted-foreground)" }}>
+                    {prompt || (isFr ? "Décrivez votre idée..." : "Describe your idea...")}
+                  </span>
+                  {selectedModels.length > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 10, fontWeight: 700 }}>
+                      <Zap size={9} /> {selectedModels.length}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, fontWeight: 700, color: "var(--muted-foreground)" }}>
+                    {mode === "image" ? <ImageIcon size={13} /> : mode === "text" ? <Type size={13} /> : mode === "video" ? <Video size={13} /> : <Music size={13} />}
+                    {mode !== "music" && <span>{mode === "text" ? FORMAT_OPTIONS.find(f => f.id === textFormat)?.label?.split(" ")[0] || textFormat : aspectRatio}</span>}
+                  </span>
+                </motion.button>
+              ) : (
+              <motion.div
+                key="expanded"
+                initial={{ opacity: 0, y: 20, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.97 }}
+                transition={{ duration: 0.25 }}
+                className="rounded-3xl overflow-hidden relative"
+                style={{
+                  background: "rgba(255,255,255,0.72)",
+                  backdropFilter: "blur(28px) saturate(170%)",
+                  WebkitBackdropFilter: "blur(28px) saturate(170%)",
+                  border: "1px solid rgba(255,255,255,0.6)",
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.1), 0 4px 16px rgba(0,0,0,0.05)",
+                }}
+              >
+              {/* Collapse button — top right of expanded composer */}
+              <button
+                onClick={() => setComposerExpanded(false)}
+                className="absolute top-3 right-3 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer z-10 transition-all"
+                style={{ background: "rgba(0,0,0,0.05)", color: "var(--muted-foreground)" }}
+                title={isFr ? "Réduire" : "Collapse"}
+              >
+                <ChevronDown size={14} />
+              </button>
+
+              {/* Mode tabs — inside expanded composer */}
+              <div className="px-4 pt-4 pb-2 flex items-center gap-1">
+                {([
+                  { id: "image" as CreativeMode, icon: ImageIcon, label: "Image" },
+                  { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text" },
+                  { id: "video" as CreativeMode, icon: Video, label: "Vidéo" },
+                  { id: "music" as CreativeMode, icon: Music, label: isFr ? "Musique" : "Music" },
+                ] as const).map(tab => (
+                  <button key={tab.id} onClick={() => setMode(tab.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all cursor-pointer"
+                    style={{
+                      background: mode === tab.id ? "var(--foreground)" : "rgba(255,255,255,0.5)",
+                      color: mode === tab.id ? "var(--background)" : "var(--muted-foreground)",
+                      fontWeight: mode === tab.id ? 700 : 500, fontSize: 11,
+                      border: mode === tab.id ? "1px solid var(--foreground)" : "1px solid rgba(0,0,0,0.06)",
+                    }}>
+                    <tab.icon size={11} /> {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Format picker — clients pick their format (aspect ratio / social format) */}
+              {FORMAT_OPTIONS.length > 0 && (
+                <div className="px-4 pt-1 pb-1 flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                  <span className="flex-shrink-0" style={{ fontSize: 10, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em", marginRight: 4 }}>
+                    {isFr ? "Format" : "Format"}
+                  </span>
+                  {FORMAT_OPTIONS.map(f => {
+                    const on = currentFormat === f.id;
+                    return (
+                      <button key={f.id} onClick={() => setCurrentFormat(f.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                        style={{
+                          background: on ? "var(--foreground)" : "rgba(255,255,255,0.5)",
+                          color: on ? "var(--background)" : "var(--muted-foreground)",
+                          border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
+                          fontSize: 10, fontWeight: on ? 700 : 600,
+                        }}>
+                        {f.label}
+                        <span style={{ fontSize: 9, opacity: on ? 0.7 : 0.6, fontWeight: 500 }}>{f.sub}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Attached product photo preview */}
               <AnimatePresence>
@@ -1096,31 +1229,8 @@ export function ComparePage() {
                 )}
               </AnimatePresence>
 
-              {/* Mode tabs + Model pills — all in one row */}
+              {/* Model picker + selected pills — no more mode tabs (moved to header) */}
               <div className="px-4 pt-3 pb-1 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-                {/* Mode tabs — inline in bottom bar */}
-                <div className="flex gap-0.5 p-0.5 rounded-lg flex-shrink-0" style={{ background: "var(--secondary)" }}>
-                  {([
-                    { id: "image" as CreativeMode, icon: ImageIcon, label: "Image" },
-                    { id: "text" as CreativeMode, icon: Type, label: isFr ? "Texte" : "Text" },
-                    { id: "video" as CreativeMode, icon: Video, label: "Vidéo" },
-                    { id: "music" as CreativeMode, icon: Music, label: isFr ? "Musique" : "Music" },
-                  ] as const).map(tab => (
-                    <button key={tab.id} onClick={() => setMode(tab.id)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer"
-                      style={{
-                        background: mode === tab.id ? "#FFFFFF" : "transparent",
-                        color: mode === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
-                        fontWeight: mode === tab.id ? 600 : 400, fontSize: 11,
-                        boxShadow: mode === tab.id ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                      }}>
-                      <tab.icon size={11} /> {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Separator */}
-                <div className="w-px h-5 flex-shrink-0" style={{ background: "var(--border)" }} />
                 <button onClick={() => setShowModelPicker(!showModelPicker)}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
                   style={{ background: showModelPicker ? "var(--foreground)" : "var(--secondary)", color: showModelPicker ? "var(--background)" : "var(--muted-foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
@@ -1295,8 +1405,8 @@ export function ComparePage() {
                           ? (isFr ? "Décrivez votre vidéo..." : "Describe your video...")
                           : (isFr ? "Décrivez votre musique... (genre, tempo, mood, instruments)" : "Describe your music... (genre, tempo, mood, instruments)")}
                     className="w-full resize-none outline-none"
-                    rows={2}
-                    style={{ fontSize: 14, color: "var(--foreground)", background: "transparent", lineHeight: 1.5 }}
+                    rows={3}
+                    style={{ fontSize: 16, color: "var(--foreground)", background: "transparent", lineHeight: 1.55 }}
                   />
                 </div>
 
@@ -1337,7 +1447,9 @@ export function ComparePage() {
                   {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 </button>
               </div>
-            </div>
+              </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

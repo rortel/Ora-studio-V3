@@ -25,7 +25,7 @@ import { useI18n } from "../lib/i18n";
    TYPES
    ═══════════════════════════════════ */
 
-type EditorTool = "clean" | "replace" | "background" | "reframe" | "upscale";
+type EditorTool = "move" | "clean" | "replace" | "background" | "reframe" | "upscale";
 
 interface MaskLine {
   points: number[];
@@ -131,6 +131,7 @@ interface LibraryItem {
    ═══════════════════════════════════ */
 
 const TOOLS: { id: EditorTool; label: string; icon: typeof Eraser; shortcut: string }[] = [
+  { id: "move", label: "Move", icon: MousePointer2, shortcut: "V" },
   { id: "clean", label: "Clean", icon: Eraser, shortcut: "E" },
   { id: "replace", label: "Replace", icon: Paintbrush, shortcut: "I" },
   { id: "background", label: "Background", icon: ImageIcon, shortcut: "B" },
@@ -218,7 +219,7 @@ function EditorPageContent() {
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
 
   // --- Core state ---
-  const [tool, setTool] = useState<EditorTool>("clean");
+  const [tool, setTool] = useState<EditorTool>("move");
   const [brushSize, setBrushSize] = useState(30);
   const [maskLines, setMaskLines] = useState<MaskLine[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -455,6 +456,7 @@ function EditorPageContent() {
         e.preventDefault();
         setSpaceHeld(true);
       }
+      if (e.key === "v" || e.key === "V") setTool("move");
       if (e.key === "e" || e.key === "E") setTool("clean");
       if (e.key === "i" || e.key === "I") setTool("replace");
       if (e.key === "b" || e.key === "B") setTool("background");
