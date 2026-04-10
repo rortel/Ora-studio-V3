@@ -966,6 +966,9 @@ function EditorPageContent() {
   // --- Split subject (AI cutout + inpaint background) ---
   const [splitting, setSplitting] = useState(false);
 
+  // --- Layers panel visibility (toggleable like the Library panel) ---
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+
   // --- Animate (image-to-video) ---
   const [animateOpen, setAnimateOpen] = useState(false);
   const [animate, setAnimate] = useState<AnimateState>({
@@ -1665,6 +1668,24 @@ function EditorPageContent() {
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
+        {/* Toggle Layers panel */}
+        <button
+          onClick={() => setLayersPanelOpen(o => !o)}
+          title={isFr ? "Afficher/masquer les calques" : "Toggle layers panel"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: layersPanelOpen ? "#2a2a40" : "transparent",
+            color: layersPanelOpen ? "#c4b5fd" : "#888",
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: 6,
+          }}
+          onMouseEnter={e => { if (!layersPanelOpen) e.currentTarget.style.background = "#2a2a40"; }}
+          onMouseLeave={e => { if (!layersPanelOpen) e.currentTarget.style.background = "transparent"; }}
+        >
+          <Layers3 size={18} />
+        </button>
+
         {/* Save to Library */}
         <button
           onClick={handleSaveToLibrary}
@@ -1802,239 +1823,7 @@ function EditorPageContent() {
               )}
             </AnimatePresence>
 
-            {/* Selected layer controls */}
-            <AnimatePresence>
-              {selectedLayer && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  {selectedLayer.type === "text" ? (
-                    <>
-                      <input
-                        ref={textLayerInputRef}
-                        value={selectedLayer.text}
-                        onChange={e => updateLayer(selectedLayer.id, { text: e.target.value })}
-                        onFocus={e => e.currentTarget.select()}
-                        onKeyDown={e => e.stopPropagation()}
-                        placeholder={isFr ? "Votre texte" : "Your text"}
-                        style={{
-                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
-                          padding: "4px 8px", color: "#fff", fontSize: 12, width: 200, outline: "none",
-                        }}
-                      />
-                      <input
-                        type="number"
-                        value={Math.round(selectedLayer.fontSize)}
-                        onChange={e => {
-                          const v = Number(e.target.value);
-                          if (v > 0) updateLayer(selectedLayer.id, { fontSize: v });
-                        }}
-                        title={isFr ? "Taille" : "Size"}
-                        style={{
-                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
-                          padding: "4px 6px", color: "#fff", fontSize: 12, width: 56, outline: "none",
-                        }}
-                      />
-                      <input
-                        type="color"
-                        value={selectedLayer.fill}
-                        onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                        title={isFr ? "Couleur" : "Color"}
-                        style={{
-                          width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
-                          background: "transparent", cursor: "pointer", padding: 0,
-                        }}
-                      />
-                      <button
-                        onClick={() => {
-                          const next = selectedLayer.fontStyle.includes("bold")
-                            ? selectedLayer.fontStyle.replace("bold", "").trim() || "normal"
-                            : (selectedLayer.fontStyle === "normal" ? "bold" : `bold ${selectedLayer.fontStyle}`);
-                          updateLayer(selectedLayer.id, { fontStyle: next });
-                        }}
-                        title="Bold"
-                        style={{
-                          padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                          background: selectedLayer.fontStyle.includes("bold") ? "#7C3AED" : "transparent",
-                          color: selectedLayer.fontStyle.includes("bold") ? "#fff" : "#888",
-                          fontSize: 12, fontWeight: 700, cursor: "pointer",
-                        }}
-                      >
-                        B
-                      </button>
-                      <button
-                        onClick={() => {
-                          const next = selectedLayer.fontStyle.includes("italic")
-                            ? selectedLayer.fontStyle.replace("italic", "").trim() || "normal"
-                            : (selectedLayer.fontStyle === "normal" ? "italic" : `${selectedLayer.fontStyle} italic`);
-                          updateLayer(selectedLayer.id, { fontStyle: next });
-                        }}
-                        title="Italic"
-                        style={{
-                          padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                          background: selectedLayer.fontStyle.includes("italic") ? "#7C3AED" : "transparent",
-                          color: selectedLayer.fontStyle.includes("italic") ? "#fff" : "#888",
-                          fontSize: 12, fontStyle: "italic", cursor: "pointer",
-                        }}
-                      >
-                        I
-                      </button>
-                    </>
-                  ) : selectedLayer.type === "logo" ? (
-                    <span style={{ fontSize: 11, color: "#888" }}>
-                      {isFr ? "Logo — glissez pour déplacer, coins pour redimensionner" : "Logo — drag to move, corners to resize"}
-                    </span>
-                  ) : (
-                    /* Shape layer controls */
-                    <>
-                      <button
-                        onClick={() => updateLayer(selectedLayer.id, { fillType: "solid" })}
-                        title={isFr ? "Couleur unie" : "Solid"}
-                        style={{
-                          padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
-                          background: selectedLayer.fillType === "solid" ? "#7C3AED" : "transparent",
-                          color: selectedLayer.fillType === "solid" ? "#fff" : "#888",
-                          fontSize: 11, cursor: "pointer",
-                        }}
-                      >
-                        {isFr ? "Uni" : "Solid"}
-                      </button>
-                      <button
-                        onClick={() => updateLayer(selectedLayer.id, { fillType: "gradient" })}
-                        title={isFr ? "Dégradé" : "Gradient"}
-                        style={{
-                          padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
-                          background: selectedLayer.fillType === "gradient" ? "#7C3AED" : "transparent",
-                          color: selectedLayer.fillType === "gradient" ? "#fff" : "#888",
-                          fontSize: 11, cursor: "pointer",
-                        }}
-                      >
-                        {isFr ? "Dégradé" : "Gradient"}
-                      </button>
-                      {selectedLayer.fillType === "solid" ? (
-                        <input
-                          type="color"
-                          value={selectedLayer.fill}
-                          onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                          title={isFr ? "Couleur" : "Color"}
-                          style={{
-                            width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
-                            background: "transparent", cursor: "pointer", padding: 0,
-                          }}
-                        />
-                      ) : (
-                        <>
-                          <input
-                            type="color"
-                            value={selectedLayer.gradientStart}
-                            onChange={e => updateLayer(selectedLayer.id, { gradientStart: e.target.value })}
-                            title={isFr ? "Couleur début" : "Start color"}
-                            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                          />
-                          <input
-                            type="color"
-                            value={selectedLayer.gradientEnd}
-                            onChange={e => updateLayer(selectedLayer.id, { gradientEnd: e.target.value })}
-                            title={isFr ? "Couleur fin" : "End color"}
-                            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                          />
-                          <input
-                            type="range"
-                            min={0}
-                            max={360}
-                            value={selectedLayer.gradientAngle}
-                            onChange={e => updateLayer(selectedLayer.id, { gradientAngle: Number(e.target.value) })}
-                            title={`${isFr ? "Angle" : "Angle"}: ${selectedLayer.gradientAngle}°`}
-                            style={{ width: 70, accentColor: "#7C3AED" }}
-                          />
-                        </>
-                      )}
-                      {/* Stroke width */}
-                      <input
-                        type="number"
-                        min={0}
-                        max={40}
-                        value={selectedLayer.strokeWidth}
-                        onChange={e => updateLayer(selectedLayer.id, { strokeWidth: Math.max(0, Number(e.target.value) || 0) })}
-                        title={isFr ? "Contour" : "Stroke"}
-                        style={{
-                          background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
-                          padding: "4px 6px", color: "#fff", fontSize: 11, width: 44, outline: "none",
-                        }}
-                      />
-                      {selectedLayer.strokeWidth > 0 && (
-                        <input
-                          type="color"
-                          value={selectedLayer.stroke}
-                          onChange={e => updateLayer(selectedLayer.id, { stroke: e.target.value })}
-                          title={isFr ? "Couleur contour" : "Stroke color"}
-                          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                        />
-                      )}
-                      {/* Corner radius for rect/patch */}
-                      {(selectedLayer.shape === "rect" || selectedLayer.shape === "patch") && (
-                        <input
-                          type="range"
-                          min={0}
-                          max={Math.min(selectedLayer.width, selectedLayer.height) / 2}
-                          value={selectedLayer.cornerRadius}
-                          onChange={e => updateLayer(selectedLayer.id, { cornerRadius: Number(e.target.value) })}
-                          title={`${isFr ? "Arrondi" : "Radius"}: ${Math.round(selectedLayer.cornerRadius)}`}
-                          style={{ width: 70, accentColor: "#7C3AED" }}
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {/* Z-order controls (all layers) */}
-                  <div style={{ display: "flex", gap: 2, marginLeft: 4, paddingLeft: 8, borderLeft: "1px solid #2a2a40" }}>
-                    <button
-                      onClick={() => moveLayer(selectedLayer.id, "top")}
-                      title={isFr ? "Premier plan" : "To front"}
-                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
-                      <ArrowUpToLine size={13} />
-                    </button>
-                    <button
-                      onClick={() => moveLayer(selectedLayer.id, "up")}
-                      title={isFr ? "Avancer" : "Bring forward"}
-                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
-                      <ArrowUp size={13} />
-                    </button>
-                    <button
-                      onClick={() => moveLayer(selectedLayer.id, "down")}
-                      title={isFr ? "Reculer" : "Send backward"}
-                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
-                      <ArrowDown size={13} />
-                    </button>
-                    <button
-                      onClick={() => moveLayer(selectedLayer.id, "bottom")}
-                      title={isFr ? "Arrière-plan" : "To back"}
-                      style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
-                      <ArrowDownToLine size={13} />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => deleteLayer(selectedLayer.id)}
-                    title={isFr ? "Supprimer le calque" : "Delete layer"}
-                    style={{
-                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
-                      background: "transparent", color: "#ef4444",
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11,
-                    }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Selected layer controls now rendered as a dedicated row below the top bar */}
 
             {/* Reframe format presets */}
             <AnimatePresence>
@@ -2105,6 +1894,276 @@ function EditorPageContent() {
             </button>
           </div>
         </div>
+
+        {/* ─── Layer properties row (shows only when a layer is selected) ─── */}
+        <AnimatePresence initial={false}>
+          {selectedLayer && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 44, opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              style={{
+                background: "#16162a",
+                borderBottom: "1px solid #2a2a40",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "0 16px",
+                overflow: "hidden",
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5, marginRight: 4 }}>
+                {selectedLayer.type === "text" ? (isFr ? "Texte" : "Text")
+                  : selectedLayer.type === "logo" ? "Logo"
+                  : selectedLayer.type === "shape" ? (isFr ? "Forme" : "Shape")
+                  : (isFr ? "Sujet" : "Subject")}
+              </span>
+              {selectedLayer.type === "text" ? (
+                <>
+                  <input
+                    ref={textLayerInputRef}
+                    value={selectedLayer.text}
+                    onChange={e => updateLayer(selectedLayer.id, { text: e.target.value })}
+                    onFocus={e => e.currentTarget.select()}
+                    onKeyDown={e => e.stopPropagation()}
+                    placeholder={isFr ? "Votre texte" : "Your text"}
+                    style={{
+                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
+                      padding: "5px 10px", color: "#fff", fontSize: 12, width: 240, outline: "none",
+                    }}
+                  />
+                  <input
+                    type="number"
+                    value={Math.round(selectedLayer.fontSize)}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      if (v > 0) updateLayer(selectedLayer.id, { fontSize: v });
+                    }}
+                    title={isFr ? "Taille" : "Size"}
+                    style={{
+                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
+                      padding: "5px 6px", color: "#fff", fontSize: 12, width: 56, outline: "none",
+                    }}
+                  />
+                  <input
+                    type="color"
+                    value={selectedLayer.fill}
+                    onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                    title={isFr ? "Couleur" : "Color"}
+                    style={{
+                      width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
+                      background: "transparent", cursor: "pointer", padding: 0,
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      const next = selectedLayer.fontStyle.includes("bold")
+                        ? selectedLayer.fontStyle.replace("bold", "").trim() || "normal"
+                        : (selectedLayer.fontStyle === "normal" ? "bold" : `bold ${selectedLayer.fontStyle}`);
+                      updateLayer(selectedLayer.id, { fontStyle: next });
+                    }}
+                    title="Bold"
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
+                      background: selectedLayer.fontStyle.includes("bold") ? "#7C3AED" : "transparent",
+                      color: selectedLayer.fontStyle.includes("bold") ? "#fff" : "#888",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    B
+                  </button>
+                  <button
+                    onClick={() => {
+                      const next = selectedLayer.fontStyle.includes("italic")
+                        ? selectedLayer.fontStyle.replace("italic", "").trim() || "normal"
+                        : (selectedLayer.fontStyle === "normal" ? "italic" : `${selectedLayer.fontStyle} italic`);
+                      updateLayer(selectedLayer.id, { fontStyle: next });
+                    }}
+                    title="Italic"
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
+                      background: selectedLayer.fontStyle.includes("italic") ? "#7C3AED" : "transparent",
+                      color: selectedLayer.fontStyle.includes("italic") ? "#fff" : "#888",
+                      fontSize: 12, fontStyle: "italic", cursor: "pointer",
+                    }}
+                  >
+                    I
+                  </button>
+                </>
+              ) : selectedLayer.type === "logo" ? (
+                <span style={{ fontSize: 11, color: "#888" }}>
+                  {isFr ? "Glissez pour déplacer · poignées pour redimensionner" : "Drag to move · handles to resize"}
+                </span>
+              ) : selectedLayer.type === "subject" ? (
+                <span style={{ fontSize: 11, color: "#888" }}>
+                  {isFr ? "Sujet isolé — placez des calques derrière via l'ordre de plan" : "Isolated subject — place layers behind via z-order"}
+                </span>
+              ) : (
+                <>
+                  <button
+                    onClick={() => updateLayer(selectedLayer.id, { fillType: "solid" })}
+                    title={isFr ? "Couleur unie" : "Solid"}
+                    style={{
+                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
+                      background: selectedLayer.fillType === "solid" ? "#7C3AED" : "transparent",
+                      color: selectedLayer.fillType === "solid" ? "#fff" : "#888",
+                      fontSize: 11, cursor: "pointer",
+                    }}
+                  >
+                    {isFr ? "Uni" : "Solid"}
+                  </button>
+                  <button
+                    onClick={() => updateLayer(selectedLayer.id, { fillType: "gradient" })}
+                    title={isFr ? "Dégradé" : "Gradient"}
+                    style={{
+                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
+                      background: selectedLayer.fillType === "gradient" ? "#7C3AED" : "transparent",
+                      color: selectedLayer.fillType === "gradient" ? "#fff" : "#888",
+                      fontSize: 11, cursor: "pointer",
+                    }}
+                  >
+                    {isFr ? "Dégradé" : "Gradient"}
+                  </button>
+                  {selectedLayer.fillType === "solid" ? (
+                    <input
+                      type="color"
+                      value={selectedLayer.fill}
+                      onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
+                      title={isFr ? "Couleur" : "Color"}
+                      style={{
+                        width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
+                        background: "transparent", cursor: "pointer", padding: 0,
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <input
+                        type="color"
+                        value={selectedLayer.gradientStart}
+                        onChange={e => updateLayer(selectedLayer.id, { gradientStart: e.target.value })}
+                        title={isFr ? "Couleur début" : "Start color"}
+                        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                      />
+                      <input
+                        type="color"
+                        value={selectedLayer.gradientEnd}
+                        onChange={e => updateLayer(selectedLayer.id, { gradientEnd: e.target.value })}
+                        title={isFr ? "Couleur fin" : "End color"}
+                        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                      />
+                      <input
+                        type="range"
+                        min={0}
+                        max={360}
+                        value={selectedLayer.gradientAngle}
+                        onChange={e => updateLayer(selectedLayer.id, { gradientAngle: Number(e.target.value) })}
+                        title={`${isFr ? "Angle" : "Angle"}: ${selectedLayer.gradientAngle}°`}
+                        style={{ width: 70, accentColor: "#7C3AED" }}
+                      />
+                    </>
+                  )}
+                  <input
+                    type="number"
+                    min={0}
+                    max={40}
+                    value={selectedLayer.strokeWidth}
+                    onChange={e => updateLayer(selectedLayer.id, { strokeWidth: Math.max(0, Number(e.target.value) || 0) })}
+                    title={isFr ? "Contour" : "Stroke"}
+                    style={{
+                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
+                      padding: "5px 6px", color: "#fff", fontSize: 11, width: 48, outline: "none",
+                    }}
+                  />
+                  {selectedLayer.strokeWidth > 0 && (
+                    <input
+                      type="color"
+                      value={selectedLayer.stroke}
+                      onChange={e => updateLayer(selectedLayer.id, { stroke: e.target.value })}
+                      title={isFr ? "Couleur contour" : "Stroke color"}
+                      style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
+                    />
+                  )}
+                  {(selectedLayer.shape === "rect" || selectedLayer.shape === "patch") && (
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.min(selectedLayer.width, selectedLayer.height) / 2}
+                      value={selectedLayer.cornerRadius}
+                      onChange={e => updateLayer(selectedLayer.id, { cornerRadius: Number(e.target.value) })}
+                      title={`${isFr ? "Arrondi" : "Radius"}: ${Math.round(selectedLayer.cornerRadius)}`}
+                      style={{ width: 70, accentColor: "#7C3AED" }}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Opacity slider (all layer types) */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #2a2a40" }}>
+                <span style={{ fontSize: 10, color: "#888" }}>{isFr ? "Opacité" : "Opacity"}</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(selectedLayer.opacity * 100)}
+                  onChange={e => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
+                  style={{ width: 80, accentColor: "#7C3AED" }}
+                />
+                <span style={{ fontSize: 11, color: "#aaa", width: 30, textAlign: "right" }}>
+                  {Math.round(selectedLayer.opacity * 100)}%
+                </span>
+              </div>
+
+              {/* Z-order controls */}
+              <div style={{ display: "flex", gap: 2, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #2a2a40" }}>
+                <button
+                  onClick={() => moveLayer(selectedLayer.id, "top")}
+                  title={isFr ? "Premier plan" : "To front"}
+                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                >
+                  <ArrowUpToLine size={13} />
+                </button>
+                <button
+                  onClick={() => moveLayer(selectedLayer.id, "up")}
+                  title={isFr ? "Avancer" : "Bring forward"}
+                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                >
+                  <ArrowUp size={13} />
+                </button>
+                <button
+                  onClick={() => moveLayer(selectedLayer.id, "down")}
+                  title={isFr ? "Reculer" : "Send backward"}
+                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                >
+                  <ArrowDown size={13} />
+                </button>
+                <button
+                  onClick={() => moveLayer(selectedLayer.id, "bottom")}
+                  title={isFr ? "Arrière-plan" : "To back"}
+                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                >
+                  <ArrowDownToLine size={13} />
+                </button>
+              </div>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                onClick={() => deleteLayer(selectedLayer.id)}
+                title={isFr ? "Supprimer le calque" : "Delete layer"}
+                style={{
+                  padding: "6px 10px", borderRadius: 6, border: "1px solid #2a2a40",
+                  background: "transparent", color: "#ef4444",
+                  cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11,
+                }}
+              >
+                <Trash2 size={13} />
+                {isFr ? "Supprimer" : "Delete"}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ─── Canvas area ─── */}
         <div
@@ -2623,11 +2682,18 @@ function EditorPageContent() {
         </AnimatePresence>
       </div>
 
-      {/* ═══════ LAYERS PANEL (right side, fixed) ═══════ */}
-      <div style={{
-        width: 260, background: "#16162a", borderLeft: "1px solid #2a2a40",
-        display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
-      }}>
+      {/* ═══════ LAYERS PANEL (right side, collapsible) ═══════ */}
+      <AnimatePresence initial={false}>
+      {layersPanelOpen && (
+      <motion.div
+        initial={{ width: 0, opacity: 0 }}
+        animate={{ width: 260, opacity: 1 }}
+        exit={{ width: 0, opacity: 0 }}
+        transition={{ duration: 0.18 }}
+        style={{
+          background: "#16162a", borderLeft: "1px solid #2a2a40",
+          display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
+        }}>
         <div style={{
           padding: "12px 14px", borderBottom: "1px solid #2a2a40",
           display: "flex", alignItems: "center", gap: 8,
@@ -2787,7 +2853,9 @@ function EditorPageContent() {
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
+      )}
+      </AnimatePresence>
 
       {/* ═══════ GLOBAL STYLES (keyframes) ═══════ */}
       <style>{`
