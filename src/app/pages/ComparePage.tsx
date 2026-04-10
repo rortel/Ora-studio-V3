@@ -40,6 +40,13 @@ const TEXT_MODELS: ModelDef[] = [
   { id: "claude-opus", label: "Claude Opus", badge: "Best", credits: 5, costEur: 0.50, providerCostEur: 0.060, strengths: ["depth", "strategy"], bestFor: "Contenu stratégique", tier: "premium" },
   { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Google", credits: 2, costEur: 0.20, providerCostEur: 0.010, strengths: ["multimodal", "factual"], bestFor: "Contenu data-driven", tier: "standard" },
   { id: "deepseek", label: "DeepSeek v3", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["affordable", "technical"], bestFor: "Budget-friendly", tier: "economy" },
+  { id: "together-llama-3.3-70b", label: "Llama 3.3 70B", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.0008, strengths: ["multilingual", "speed"], bestFor: "Multilingue économique", tier: "economy" },
+  { id: "together-deepseek-v3", label: "DeepSeek V3 (Together)", badge: "Reasoning", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["reasoning", "affordable"], bestFor: "Raisonnement low-cost", tier: "economy" },
+  { id: "together-deepseek-r1", label: "DeepSeek R1", badge: "Deep Think", credits: 3, costEur: 0.30, providerCostEur: 0.0065, strengths: ["reasoning", "depth"], bestFor: "Raisonnement avancé", tier: "premium" },
+  { id: "together-qwen-2.5-72b", label: "Qwen 2.5 72B", badge: "FR Native", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["multilingual", "french"], bestFor: "Contenu français natif", tier: "economy" },
+  { id: "together-kimi-k2", label: "Kimi K2", badge: "Long Ctx", credits: 2, costEur: 0.20, providerCostEur: 0.0022, strengths: ["long-context", "analysis"], bestFor: "Long contexte", tier: "standard" },
+  { id: "together-glm-4.5", label: "GLM 4.5", badge: "Copy", credits: 2, costEur: 0.20, providerCostEur: 0.0018, strengths: ["creative", "copy"], bestFor: "Copywriting créatif", tier: "standard" },
+  { id: "together-gpt-oss-120b", label: "GPT-OSS 120B", badge: "Open", credits: 2, costEur: 0.20, providerCostEur: 0.0014, strengths: ["general", "open"], bestFor: "Généraliste open-source", tier: "standard" },
 ];
 
 const IMAGE_MODELS: ModelDef[] = [
@@ -56,6 +63,9 @@ const IMAGE_MODELS: ModelDef[] = [
   { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard" },
   { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Style artistique", tier: "standard" },
   { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["balanced", "agency"], bestFor: "Qualité agence", tier: "standard" },
+  { id: "together-flux-schnell", label: "Flux Schnell (Together)", badge: "Cheapest", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["ultra-cheap", "fast"], bestFor: "Brouillons volume", tier: "economy" },
+  { id: "together-flux-dev", label: "Flux Dev (Together)", badge: "Balanced", credits: 3, costEur: 0.30, providerCostEur: 0.025, strengths: ["balanced", "quality"], bestFor: "Production équilibrée", tier: "standard" },
+  { id: "together-flux-pro-1.1", label: "Flux 1.1 Pro (Together)", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.040, strengths: ["premium", "detail"], bestFor: "Qualité premium", tier: "premium" },
 ];
 
 const VIDEO_MODELS: ModelDef[] = [
