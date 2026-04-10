@@ -11,6 +11,7 @@ import {
   Type, Image as ImageLucide, Trash2, Film, X as XIcon,
   Shapes, Square as SquareIcon, Circle as CircleIcon, Star as StarIcon,
   ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
+  Scissors, Eye, EyeOff, Layers3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
@@ -36,8 +37,14 @@ interface HistoryEntry {
   maskData: MaskLine[];
 }
 
-interface EditorTextLayer {
+// Fields shared by every layer type
+interface BaseLayerFields {
   id: string;
+  opacity: number; // 0..1
+  visible: boolean;
+}
+
+interface EditorTextLayer extends BaseLayerFields {
   type: "text";
   x: number;
   y: number;
@@ -49,8 +56,7 @@ interface EditorTextLayer {
   fill: string;
 }
 
-interface EditorLogoLayer {
-  id: string;
+interface EditorLogoLayer extends BaseLayerFields {
   type: "logo";
   x: number;
   y: number;
@@ -62,8 +68,7 @@ interface EditorLogoLayer {
 
 type ShapeKind = "rect" | "patch" | "circle" | "star";
 
-interface EditorShapeLayer {
-  id: string;
+interface EditorShapeLayer extends BaseLayerFields {
   type: "shape";
   shape: ShapeKind;
   x: number;
@@ -87,7 +92,17 @@ interface EditorShapeLayer {
   innerRadiusRatio: number; // 0..1
 }
 
-type EditorLayer = EditorTextLayer | EditorLogoLayer | EditorShapeLayer;
+// "subject" layer = the cut-out foreground of the base photo (via AI segmentation)
+// It lives in the layer stack so users can reorder other layers BELOW it to get
+// the "behind the subject" effect.
+interface EditorSubjectLayer extends BaseLayerFields {
+  type: "subject";
+  imageUrl: string; // PNG with alpha of the isolated subject
+  // Subject is drawn at stage origin at full image size — no transform,
+  // since it must stay aligned with the (inpainted) background photo.
+}
+
+type EditorLayer = EditorTextLayer | EditorLogoLayer | EditorShapeLayer | EditorSubjectLayer;
 
 interface AnimateState {
   prompt: string;
@@ -573,6 +588,7 @@ function EditorPageContent() {
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const logoImagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const subjectImagesRef = useRef<Record<string, HTMLImageElement>>({});
   const transformerRef = useRef<Konva.Transformer>(null);
   const layerNodesRef = useRef<Record<string, Konva.Node>>({});
   const logoFileInputRef = useRef<HTMLInputElement>(null);
@@ -594,7 +610,9 @@ function EditorPageContent() {
     const ctx = c.getContext("2d")!;
     ctx.drawImage(image, 0, 0);
     for (const layer of layers) {
+      if (!layer.visible) continue;
       ctx.save();
+      ctx.globalAlpha = layer.opacity;
       if (layer.type === "text") {
         ctx.translate(layer.x, layer.y);
         ctx.rotate((layer.rotation * Math.PI) / 180);
@@ -611,6 +629,12 @@ function EditorPageContent() {
           ctx.translate(layer.x, layer.y);
           ctx.rotate((layer.rotation * Math.PI) / 180);
           ctx.drawImage(logoImg, 0, 0, layer.width, layer.height);
+        }
+      } else if (layer.type === "subject") {
+        const subjImg = subjectImagesRef.current[layer.id];
+        if (subjImg) {
+          // Subject is aligned to base image — draw at its natural size
+          ctx.drawImage(subjImg, 0, 0, image.width, image.height);
         }
       } else if (layer.type === "shape") {
         ctx.translate(layer.x + layer.width / 2, layer.y + layer.height / 2);
@@ -696,6 +720,8 @@ function EditorPageContent() {
       {
         id,
         type: "text",
+        opacity: 1,
+        visible: true,
         x: image.width * 0.1,
         y: image.height * 0.45,
         rotation: 0,
@@ -749,6 +775,8 @@ function EditorPageContent() {
         {
           id,
           type: "shape",
+          opacity: 1,
+          visible: true,
           shape,
           x: image.width * 0.1,
           y: image.height * 0.1,
@@ -814,6 +842,8 @@ function EditorPageContent() {
             {
               id,
               type: "logo",
+              opacity: 1,
+              visible: true,
               x: image.width * 0.05,
               y: image.height * 0.05,
               width: targetW,
@@ -840,17 +870,20 @@ function EditorPageContent() {
     (id: string) => {
       setLayers(prev => prev.filter(l => l.id !== id));
       delete logoImagesRef.current[id];
+      delete subjectImagesRef.current[id];
       delete layerNodesRef.current[id];
       setSelectedLayerId(prev => (prev === id ? null : prev));
     },
     [],
   );
 
-  // Attach Konva Transformer to the selected layer node
+  // Attach Konva Transformer to the selected layer node.
+  // Subject layers are not transformable (they must stay aligned to the base photo).
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    if (!selectedLayerId) {
+    const selectedLayer = layers.find(l => l.id === selectedLayerId);
+    if (!selectedLayerId || !selectedLayer || selectedLayer.type === "subject") {
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
       return;
@@ -929,6 +962,9 @@ function EditorPageContent() {
 
   // Reset savedAt flag whenever the image changes (so user can re-save edits)
   useEffect(() => { setSavedAt(null); }, [imageUrl]);
+
+  // --- Split subject (AI cutout + inpaint background) ---
+  const [splitting, setSplitting] = useState(false);
 
   // --- Animate (image-to-video) ---
   const [animateOpen, setAnimateOpen] = useState(false);
@@ -1021,6 +1057,124 @@ function EditorPageContent() {
       setAnimate(a => ({ ...a, running: false }));
     }
   }, [animate.prompt, animate.model, animate.duration, image, composeCanvasDataUrl, serverPost, getAuthHeader, isFr]);
+
+  // --- Split subject: isolate the foreground subject via AI segmentation,
+  //     inpaint the background to remove the subject, then add the subject as
+  //     a top-most layer. Other layers can then be reordered to sit BETWEEN
+  //     the background and the subject — giving a "behind-the-subject" effect.
+  const runSplitSubject = useCallback(async () => {
+    if (!image || !imageUrl) return;
+    if (splitting) return;
+    setSplitting(true);
+    const toastId = toast.loading(isFr ? "Découpe du sujet en cours…" : "Splitting subject…");
+    try {
+      // 1) Ensure the current composite is hosted so the backend can fetch it.
+      //    We ship the base photo (without overlays) to keep the cutout clean.
+      let sourceUrl = imageUrl;
+      if (sourceUrl.startsWith("data:") || sourceUrl.startsWith("blob:")) {
+        const c = document.createElement("canvas");
+        c.width = image.width;
+        c.height = image.height;
+        c.getContext("2d")!.drawImage(image, 0, 0);
+        const dataUrl = c.toDataURL("image/png");
+        const upRes = await serverPost("/editor/save", { imageDataUrl: dataUrl, prompt: "Split subject source" });
+        if (!upRes.success || !upRes.imageUrl) throw new Error(upRes.error || "Upload failed");
+        sourceUrl = upRes.imageUrl;
+      }
+
+      // 2) Call segmentation → subjectUrl (PNG with alpha)
+      const segRes = await serverPost("/editor/segment-subject", { imageUrl: sourceUrl });
+      if (!segRes.success || !segRes.subjectUrl) {
+        throw new Error(segRes.error || "Segmentation failed");
+      }
+      const subjectUrl: string = segRes.subjectUrl;
+
+      // 3) Load subject locally and derive a white-on-black mask from its alpha.
+      const subjImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const im = new window.Image();
+        im.crossOrigin = "anonymous";
+        im.onload = () => resolve(im);
+        im.onerror = reject;
+        im.src = subjectUrl;
+      });
+      const mc = document.createElement("canvas");
+      mc.width = image.width;
+      mc.height = image.height;
+      const mctx = mc.getContext("2d")!;
+      mctx.fillStyle = "#000";
+      mctx.fillRect(0, 0, mc.width, mc.height);
+      // Draw subject and convert its opaque pixels to solid white.
+      const sc = document.createElement("canvas");
+      sc.width = image.width;
+      sc.height = image.height;
+      const sctx = sc.getContext("2d")!;
+      sctx.drawImage(subjImg, 0, 0, image.width, image.height);
+      const subjData = sctx.getImageData(0, 0, image.width, image.height);
+      const maskData = mctx.getImageData(0, 0, image.width, image.height);
+      for (let i = 0; i < subjData.data.length; i += 4) {
+        const a = subjData.data[i + 3];
+        if (a > 32) {
+          maskData.data[i] = 255;
+          maskData.data[i + 1] = 255;
+          maskData.data[i + 2] = 255;
+          maskData.data[i + 3] = 255;
+        }
+      }
+      // Dilate the mask slightly to avoid halo around the subject edges.
+      mctx.putImageData(maskData, 0, 0);
+      const maskDataUrl = mc.toDataURL("image/png");
+
+      // 4) Call inpainting → new background photo URL (no subject)
+      const bgRes = await serverPost("/editor/inpaint-background", {
+        imageUrl: sourceUrl,
+        maskDataUrl,
+      });
+      if (!bgRes.success || !bgRes.backgroundUrl) {
+        throw new Error(bgRes.error || "Inpaint failed");
+      }
+      const backgroundUrl: string = bgRes.backgroundUrl;
+
+      // 5) Load the new background and install it as the base image.
+      await new Promise<void>((resolve, reject) => {
+        const bgImg = new window.Image();
+        bgImg.crossOrigin = "anonymous";
+        bgImg.onload = () => {
+          setImage(bgImg);
+          setImageUrl(backgroundUrl);
+          resolve();
+        };
+        bgImg.onerror = reject;
+        bgImg.src = backgroundUrl;
+      });
+
+      // 6) Register the subject image and push a new subject layer at the top
+      const subjectLayerId = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      subjectImagesRef.current[subjectLayerId] = subjImg;
+      setLayers(prev => [
+        ...prev,
+        {
+          id: subjectLayerId,
+          type: "subject",
+          opacity: 1,
+          visible: true,
+          imageUrl: subjectUrl,
+        },
+      ]);
+      setSelectedLayerId(subjectLayerId);
+
+      toast.success(
+        isFr
+          ? "Sujet isolé. Placez vos calques entre le fond et le sujet pour passer derrière."
+          : "Subject isolated. Place layers between background and subject to go behind.",
+        { id: toastId },
+      );
+    } catch (err: any) {
+      console.error("[editor/split-subject] error:", err);
+      toast.error(err?.message || (isFr ? "Erreur de découpe" : "Split failed"), { id: toastId });
+    } finally {
+      setSplitting(false);
+    }
+  }, [image, imageUrl, splitting, serverPost, isFr]);
 
   // --- Build mask as black/white image matching original image dimensions ---
   const buildMaskDataUrl = useCallback((): string | null => {
@@ -1472,6 +1626,24 @@ function EditorPageContent() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Split subject (behind-the-subject effect) */}
+        <button
+          onClick={runSplitSubject}
+          disabled={!image || splitting}
+          title={isFr ? "Isoler le sujet (calques derrière)" : "Split subject (behind-layers)"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: splitting ? "#2a2a40" : "transparent",
+            color: image && !splitting ? "#888" : "#444",
+            cursor: image && !splitting ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={e => { if (image && !splitting) e.currentTarget.style.background = "#2a2a40"; }}
+          onMouseLeave={e => { if (!splitting) e.currentTarget.style.background = "transparent"; }}
+        >
+          {splitting ? <Loader2 size={16} className="animate-spin" /> : <Scissors size={18} />}
+        </button>
 
         {/* Animate (image-to-video) */}
         <button
@@ -2069,8 +2241,28 @@ function EditorPageContent() {
                 />
               )}
 
-              {/* Text + Logo layers */}
+              {/* Text + Logo + Shape + Subject layers */}
               {image && layers.map((layer) => {
+                if (!layer.visible) return null;
+                if (layer.type === "subject") {
+                  const subjImg = subjectImagesRef.current[layer.id];
+                  if (!subjImg) return null;
+                  return (
+                    <KonvaImage
+                      key={layer.id}
+                      ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
+                      image={subjImg}
+                      x={0}
+                      y={0}
+                      width={image.width}
+                      height={image.height}
+                      opacity={layer.opacity}
+                      listening={!isBrushTool}
+                      onMouseDown={(e) => { e.cancelBubble = true; setSelectedLayerId(layer.id); }}
+                      onTap={() => setSelectedLayerId(layer.id)}
+                    />
+                  );
+                }
                 if (layer.type === "text") {
                   return (
                     <KonvaText
@@ -2083,6 +2275,7 @@ function EditorPageContent() {
                       fontFamily={layer.fontFamily}
                       fontStyle={layer.fontStyle}
                       fill={layer.fill}
+                      opacity={layer.opacity}
                       rotation={layer.rotation}
                       draggable={!isBrushTool}
                       listening={!isBrushTool}
@@ -2116,6 +2309,7 @@ function EditorPageContent() {
                       y={layer.y}
                       width={layer.width}
                       height={layer.height}
+                      opacity={layer.opacity}
                       rotation={layer.rotation}
                       draggable={!isBrushTool}
                       listening={!isBrushTool}
@@ -2145,6 +2339,7 @@ function EditorPageContent() {
                   x: layer.x,
                   y: layer.y,
                   rotation: layer.rotation,
+                  opacity: layer.opacity,
                   draggable: !isBrushTool,
                   listening: !isBrushTool,
                   stroke: layer.strokeWidth > 0 ? layer.stroke : undefined,
@@ -2426,6 +2621,172 @@ function EditorPageContent() {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* ═══════ LAYERS PANEL (right side, fixed) ═══════ */}
+      <div style={{
+        width: 260, background: "#16162a", borderLeft: "1px solid #2a2a40",
+        display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
+      }}>
+        <div style={{
+          padding: "12px 14px", borderBottom: "1px solid #2a2a40",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <Layers3 size={14} style={{ color: "#aaa" }} />
+          <span style={{
+            fontSize: 12, fontWeight: 600, color: "#aaa",
+            textTransform: "uppercase", letterSpacing: "0.05em",
+          }}>
+            {isFr ? "Calques" : "Layers"}
+          </span>
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "#666" }}>
+            {layers.length}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+          {layers.length === 0 && !image && (
+            <div style={{ fontSize: 11, color: "#555", padding: "12px 4px", lineHeight: 1.5 }}>
+              {isFr ? "Chargez une image pour commencer." : "Load an image to get started."}
+            </div>
+          )}
+          {layers.length === 0 && image && (
+            <div style={{ fontSize: 11, color: "#555", padding: "12px 4px", lineHeight: 1.5 }}>
+              {isFr
+                ? "Aucun calque. Ajoutez du texte, un logo, une forme, ou isolez le sujet."
+                : "No layers yet. Add text, a logo, a shape, or split the subject."}
+            </div>
+          )}
+
+          {/* Overlay layers — rendered TOP-first (reverse of paint order) */}
+          {[...layers].reverse().map((layer) => {
+            const selected = selectedLayerId === layer.id;
+            const label =
+              layer.type === "text" ? (layer.text || (isFr ? "Texte" : "Text")).slice(0, 22)
+              : layer.type === "logo" ? (isFr ? "Logo" : "Logo")
+              : layer.type === "subject" ? (isFr ? "Sujet (IA)" : "Subject (AI)")
+              : layer.shape === "rect" ? (isFr ? "Rectangle" : "Rectangle")
+              : layer.shape === "patch" ? (isFr ? "Patch" : "Patch")
+              : layer.shape === "circle" ? (isFr ? "Pastille" : "Pastille")
+              : (isFr ? "Étoile" : "Star");
+            const Icon =
+              layer.type === "text" ? Type
+              : layer.type === "logo" ? ImageLucide
+              : layer.type === "subject" ? Scissors
+              : layer.shape === "circle" ? CircleIcon
+              : layer.shape === "star" ? StarIcon
+              : SquareIcon;
+            return (
+              <div
+                key={layer.id}
+                onClick={() => setSelectedLayerId(layer.id)}
+                style={{
+                  padding: "8px 10px",
+                  marginBottom: 4,
+                  borderRadius: 8,
+                  background: selected ? "rgba(124,58,237,0.18)" : "transparent",
+                  border: selected ? "1px solid #7C3AED" : "1px solid transparent",
+                  cursor: "pointer",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "#1f1f35"; }}
+                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Icon size={13} style={{ color: selected ? "#c4b5fd" : "#888", flexShrink: 0 }} />
+                  <div style={{
+                    flex: 1, minWidth: 0, fontSize: 12, color: selected ? "#fff" : "#bbb",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {label}
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }}
+                    title={layer.visible ? (isFr ? "Masquer" : "Hide") : (isFr ? "Afficher" : "Show")}
+                    style={{
+                      width: 22, height: 22, border: "none", borderRadius: 4,
+                      background: "transparent", color: layer.visible ? "#888" : "#555",
+                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }}
+                    title={isFr ? "Supprimer" : "Delete"}
+                    style={{
+                      width: 22, height: 22, border: "none", borderRadius: 4,
+                      background: "transparent", color: "#888", cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "#888"; }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                {/* Opacity slider */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                  <span style={{ fontSize: 10, color: "#666", width: 30 }}>
+                    {Math.round(layer.opacity * 100)}%
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(layer.opacity * 100)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => updateLayer(layer.id, { opacity: Number(e.target.value) / 100 })}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+                {/* Z-order mini controls */}
+                <div style={{ display: "flex", gap: 2, marginTop: 6, justifyContent: "flex-end" }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "top"); }}
+                    title={isFr ? "Devant" : "To front"}
+                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ArrowUpToLine size={10} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "up"); }}
+                    title={isFr ? "Avancer" : "Forward"}
+                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ArrowUp size={10} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "down"); }}
+                    title={isFr ? "Reculer" : "Backward"}
+                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ArrowDown size={10} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "bottom"); }}
+                    title={isFr ? "Derrière" : "To back"}
+                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <ArrowDownToLine size={10} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Background (base photo) — always at the bottom, non-removable */}
+          {image && (
+            <div style={{
+              marginTop: 8, padding: "8px 10px", borderRadius: 8,
+              background: "#1f1f35", opacity: 0.6, fontSize: 11, color: "#999",
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <ImageIcon size={12} />
+              <span>{isFr ? "Arrière-plan (photo)" : "Background (photo)"}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ═══════ GLOBAL STYLES (keyframes) ═══════ */}

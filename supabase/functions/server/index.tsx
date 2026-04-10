@@ -6011,6 +6011,137 @@ app.post("/editor/save-video", async (c) => {
   }
 });
 
+// ── /editor/segment-subject — AI cutout of main subject (BiRefNet via FAL) ──
+// Returns a PNG with alpha isolating the foreground subject. Used together
+// with /editor/inpaint-background to create a "behind-the-subject" effect.
+app.post("/editor/segment-subject", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const falKey = Deno.env.get("FAL_KEY") || Deno.env.get("FAL_API_KEY");
+    if (!falKey) return c.json({ success: false, error: "FAL not configured" }, 500);
+
+    console.log(`[editor/segment-subject] user=${user.id.slice(0, 8)} url=${String(imageUrl).slice(0, 60)}`);
+
+    // BiRefNet needs a publicly-fetchable URL. If the caller passed a data: URL,
+    // upload it first and use the public URL.
+    let sourcePublicUrl = imageUrl as string;
+    if (sourcePublicUrl.startsWith("data:")) {
+      const blob = await editorFetchImageBlob(sourcePublicUrl);
+      const ext = (blob.type || "image/png").includes("jpeg") ? "jpg" : "png";
+      const fileName = `editor-segment-src-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      await ensureGenerationsBucket();
+      const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, blob, { contentType: blob.type || "image/png", upsert: true });
+      if (upErr) return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
+      const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+      sourcePublicUrl = pubData.publicUrl;
+    }
+
+    const res = await fetch("https://fal.run/fal-ai/birefnet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+      body: JSON.stringify({ image_url: sourcePublicUrl }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.log(`[editor/segment-subject] BiRefNet error ${res.status}: ${errBody.slice(0, 200)}`);
+      return c.json({ success: false, error: `Segmentation failed: ${res.status}` }, 500);
+    }
+    const data = await res.json();
+    const subjectRemoteUrl: string | undefined = data?.image?.url;
+    if (!subjectRemoteUrl) {
+      console.log(`[editor/segment-subject] BiRefNet no URL:`, JSON.stringify(data).slice(0, 200));
+      return c.json({ success: false, error: "No subject image returned" }, 500);
+    }
+
+    // Re-host the subject PNG in our storage so the client can load it
+    // without cross-origin issues.
+    const dl = await fetch(subjectRemoteUrl);
+    const subjectBlob = await dl.blob();
+    const subjectFile = `editor-subject-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    await ensureGenerationsBucket();
+    const { data: subjUp, error: subjErr } = await supabase.storage.from("generations").upload(subjectFile, subjectBlob, { contentType: "image/png", upsert: true });
+    if (subjErr) return c.json({ success: false, error: `Subject upload failed: ${subjErr.message}` }, 500);
+    const { data: subjPub } = supabase.storage.from("generations").getPublicUrl(subjUp.path);
+
+    console.log(`[editor/segment-subject] OK in ${Date.now() - t0}ms`);
+    return c.json({
+      success: true,
+      subjectUrl: subjPub.publicUrl,
+      sourceUrl: sourcePublicUrl,
+    });
+  } catch (err: any) {
+    console.error("[editor/segment-subject] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── /editor/inpaint-background — fill the subject area so the BG has no hole ──
+// Input: imageUrl (original photo) + maskDataUrl (base64 PNG, white = subject area to fill).
+// Uses Ideogram v3 edit to inpaint a plausible background behind where the subject was.
+app.post("/editor/inpaint-background", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, maskDataUrl, prompt } = body;
+    if (!imageUrl || !maskDataUrl) return c.json({ success: false, error: "imageUrl and maskDataUrl required" }, 400);
+
+    const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+    if (!ideogramKey) return c.json({ success: false, error: "Ideogram not configured" }, 500);
+
+    console.log(`[editor/inpaint-background] user=${user.id.slice(0, 8)}`);
+
+    const imgBlob = await editorFetchImageBlob(imageUrl);
+    const maskBlob = await editorFetchImageBlob(maskDataUrl);
+
+    const inpaintPrompt = (prompt && String(prompt).trim()) ||
+      "Continue and complete the background naturally where the foreground subject was. Fully remove any subject or person. Preserve the surrounding environment, lighting, perspective, and style. No people, no objects — just the clean background.";
+
+    const fd = new FormData();
+    fd.append("image", imgBlob, "image.png");
+    fd.append("mask", maskBlob, "mask.png");
+    fd.append("prompt", inpaintPrompt);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "TURBO");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/edit", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: fd,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[editor/inpaint-background] Ideogram error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `Inpainting failed: ${res.status}` }, 500);
+    }
+
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) return c.json({ success: false, error: "No result image" }, 500);
+
+    // Re-upload to Supabase
+    const dlRes = await fetch(resultUrl);
+    const dlBlob = await dlRes.blob();
+    const fileName = `editor-bg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    await ensureGenerationsBucket();
+    const { data: upData, error: upErr } = await supabase.storage.from("generations").upload(fileName, dlBlob, { contentType: "image/webp", upsert: true });
+    if (upErr) return c.json({ success: false, error: `Result upload failed: ${upErr.message}` }, 500);
+    const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
+
+    console.log(`[editor/inpaint-background] OK in ${Date.now() - t0}ms`);
+    return c.json({ success: true, backgroundUrl: pubData.publicUrl });
+  } catch (err: any) {
+    console.error("[editor/inpaint-background] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── /editor/upscale — enhance resolution ──
 app.post("/editor/upscale", async (c) => {
   const t0 = Date.now();
