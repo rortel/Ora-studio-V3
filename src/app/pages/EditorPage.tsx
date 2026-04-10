@@ -547,6 +547,8 @@ function EditorPageContent() {
   const transformerRef = useRef<Konva.Transformer>(null);
   const layerNodesRef = useRef<Record<string, Konva.Node>>({});
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const textLayerInputRef = useRef<HTMLInputElement>(null);
+  const [pendingTextFocus, setPendingTextFocus] = useState<string | null>(null);
 
   const selectedLayer = useMemo(
     () => layers.find(l => l.id === selectedLayerId) || null,
@@ -593,7 +595,6 @@ function EditorPageContent() {
     }
     const id = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const fontSize = Math.max(32, Math.round(image.width / 16));
-    const initialText = isFr ? "Votre texte" : "Your text";
     setLayers(prev => [
       ...prev,
       {
@@ -602,7 +603,7 @@ function EditorPageContent() {
         x: image.width * 0.1,
         y: image.height * 0.45,
         rotation: 0,
-        text: initialText,
+        text: isFr ? "Votre texte" : "Your text",
         fontSize,
         fontFamily: "Inter, sans-serif",
         fontStyle: "bold",
@@ -610,7 +611,30 @@ function EditorPageContent() {
       },
     ]);
     setSelectedLayerId(id);
+    setPendingTextFocus(id);
   }, [image, isFr]);
+
+  // Auto-focus the text input when a new text layer is created, and select
+  // its contents so the user can immediately overwrite the placeholder.
+  useEffect(() => {
+    if (!pendingTextFocus) return;
+    // Wait two frames so React has committed the new <input> into the DOM.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const input = textLayerInputRef.current;
+        if (input) {
+          input.focus();
+          try { input.select(); } catch {}
+        }
+        setPendingTextFocus(null);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [pendingTextFocus]);
 
   const handleLogoFileChosen = useCallback(
     (file: File) => {
@@ -1406,12 +1430,15 @@ function EditorPageContent() {
                   {selectedLayer.type === "text" ? (
                     <>
                       <input
+                        ref={textLayerInputRef}
                         value={selectedLayer.text}
                         onChange={e => updateLayer(selectedLayer.id, { text: e.target.value })}
+                        onFocus={e => e.currentTarget.select()}
+                        onKeyDown={e => e.stopPropagation()}
                         placeholder={isFr ? "Votre texte" : "Your text"}
                         style={{
                           background: "#16162a", border: "1px solid #2a2a40", borderRadius: 6,
-                          padding: "4px 8px", color: "#fff", fontSize: 12, width: 160, outline: "none",
+                          padding: "4px 8px", color: "#fff", fontSize: 12, width: 200, outline: "none",
                         }}
                       />
                       <input
