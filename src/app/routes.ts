@@ -45,6 +45,7 @@ const CalendarPage = lazyRetry(() => import("./pages/CalendarPage"), "CalendarPa
 const MusicPage = lazyRetry(() => import("./pages/MusicPage"), "MusicPage");
 const ProductsPage = lazyRetry(() => import("./pages/ProductsPage"), "ProductsPage");
 const VideoAssemblerPage = lazyRetry(() => import("./pages/VideoAssemblerPage"), "VideoAssemblerPage");
+const ComparePage = lazyRetry(() => import("./pages/ComparePage"), "ComparePage");
 const OnboardingPage = lazyRetry(() => import("./pages/OnboardingPage"), "OnboardingPage");
 const TermsPage = lazyRetry(() => import("./pages/TermsPage"), "TermsPage");
 const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage");
@@ -103,6 +104,7 @@ export const router = createBrowserRouter([
       { path: "hub/calendar", Component: CalendarPage },
       { path: "hub/music", Component: MusicPage },
       { path: "hub/video-editor", Component: VideoAssemblerPage },
+      { path: "hub/compare", Component: ComparePage },
       { path: "profile", Component: ProfilePage },
       { path: "subscribe", Component: SubscribePage },
 

@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Home, FolderOpen, Calendar, Palette,
+  Home, FolderOpen, Calendar, Palette, Sparkles,
   User, LogOut, Shield, Zap, CreditCard,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
@@ -19,6 +19,7 @@ function isNavActive(href: string, pathname: string): boolean {
   if (href === "/hub/library") return pathname.startsWith("/hub/library");
   if (href === "/hub/vault") return pathname.startsWith("/hub/vault");
 
+  if (href === "/hub/compare") return pathname.startsWith("/hub/compare");
   if (href === "/hub") return pathname === "/hub";
   return pathname.startsWith(href);
 }
@@ -35,6 +36,7 @@ export function AppSidebar() {
     { icon: Calendar, label: t("sidebar.calendar"), href: "/hub/calendar" },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library" },
     { icon: Palette, label: t("sidebar.brandKit"), href: "/hub/vault" },
+    { icon: Sparkles, label: t("sidebar.compare"), href: "/hub/compare" },
   ];
 
   const mobileNavItems = [

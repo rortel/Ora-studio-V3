@@ -11,7 +11,7 @@ export function Pricing() {
   const plans = [
     {
       name: t("pricing.starter"),
-      price: "29",
+      price: "39",
       period: "/mo",
       desc: t("pricing.starterDesc"),
       credits: t("pricing.starterCredits"),
@@ -21,7 +21,7 @@ export function Pricing() {
     },
     {
       name: t("pricing.pro"),
-      price: "79",
+      price: "99",
       period: "/mo",
       desc: t("pricing.proDesc"),
       credits: t("pricing.proCredits"),
@@ -31,7 +31,7 @@ export function Pricing() {
     },
     {
       name: t("pricing.business"),
-      price: "149",
+      price: "199",
       period: "/mo",
       desc: t("pricing.businessDesc"),
       credits: t("pricing.businessCredits"),

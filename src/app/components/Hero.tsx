@@ -136,7 +136,7 @@ export function Hero() {
           className="flex items-center gap-3"
         >
           <Link
-            to="/login?mode=signup"
+            to="/hub/compare"
             className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
             style={{
               background: "linear-gradient(135deg, #7C3AED, #EC4899)",
