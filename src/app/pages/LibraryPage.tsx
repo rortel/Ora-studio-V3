@@ -211,6 +211,10 @@ function LibraryPageContent() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+  // Multi-select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const navigate = useNavigate();
   const [repurposeItem, setRepurposeItem] = useState<LibraryItem | null>(null);
   const [repurposeFormats, setRepurposeFormats] = useState<string[]>(["linkedin-post", "instagram-caption", "newsletter-intro"]);
@@ -321,6 +325,51 @@ function LibraryPageContent() {
       console.error("[Library] delete item error:", err);
     }
   }, [serverPost]);
+
+  // Toggle selection for an item
+  const toggleSelected = useCallback((itemId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }, []);
+
+  // Exit select mode
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  // Bulk delete selected items
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    const confirmMsg = isFr
+      ? `Supprimer définitivement ${count} élément${count > 1 ? "s" : ""} ? Cette action est irréversible.`
+      : `Delete ${count} item${count > 1 ? "s" : ""} permanently? This cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await serverPost("/library/items-delete", { itemId: id });
+      } catch (err) {
+        failed++;
+        console.error("[Library] bulk delete error:", err);
+      }
+    }
+    setItems((prev) => prev.filter((item) => !selectedIds.has(item.id)));
+    setBulkDeleting(false);
+    exitSelectMode();
+    if (failed === 0) {
+      toast.success(isFr ? `${count} élément${count > 1 ? "s supprimés" : " supprimé"}` : `${count} item${count > 1 ? "s deleted" : " deleted"}`);
+    } else {
+      toast.error(isFr ? `${failed} suppression${failed > 1 ? "s" : ""} échoué${failed > 1 ? "es" : "e"}` : `${failed} deletion${failed > 1 ? "s" : ""} failed`);
+    }
+  }, [selectedIds, serverPost, exitSelectMode, isFr]);
 
   // Move item to folder
   const handleMoveItem = useCallback(async (itemId: string, folderId: string | null) => {
@@ -1268,7 +1317,80 @@ function LibraryPageContent() {
                   <List size={13} />
                 </button>
               </div>
+
+              {/* Select mode toggle */}
+              <button
+                onClick={() => { if (selectMode) { exitSelectMode(); } else { setSelectMode(true); } }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors"
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  background: selectMode ? "rgba(124, 58, 237, 0.12)" : "transparent",
+                  color: selectMode ? "#7C3AED" : "var(--muted-foreground)",
+                  border: selectMode ? "1px solid rgba(124, 58, 237, 0.3)" : "1px solid transparent",
+                }}
+              >
+                {selectMode ? <X size={12} /> : <Check size={12} />}
+                {selectMode ? (isFr ? "Annuler" : "Cancel") : (isFr ? "Sélectionner" : "Select")}
+              </button>
             </div>
+
+            {/* Bulk action bar (visible in select mode) */}
+            <AnimatePresence>
+              {selectMode && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: "auto" }}
+                  exit={{ opacity: 0, y: -8, height: 0 }}
+                  className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-xl"
+                  style={{
+                    background: "rgba(124, 58, 237, 0.06)",
+                    border: "1px solid rgba(124, 58, 237, 0.18)",
+                  }}
+                >
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#7C3AED" }}>
+                    {selectedIds.size} {isFr ? "sélectionné" + (selectedIds.size > 1 ? "s" : "") : "selected"}
+                  </span>
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => {
+                      if (selectedIds.size === filteredItems.length) {
+                        setSelectedIds(new Set());
+                      } else {
+                        setSelectedIds(new Set(filteredItems.map((it) => it.id)));
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-md cursor-pointer transition-colors"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      background: "transparent",
+                      color: "var(--text-secondary)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {selectedIds.size === filteredItems.length && filteredItems.length > 0
+                      ? (isFr ? "Tout désélectionner" : "Clear selection")
+                      : (isFr ? "Tout sélectionner" : "Select all")}
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={selectedIds.size === 0 || bulkDeleting}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: selectedIds.size > 0 ? "#DC2626" : "var(--secondary)",
+                      color: selectedIds.size > 0 ? "#fff" : "var(--muted-foreground)",
+                      border: "1px solid transparent",
+                    }}
+                  >
+                    {bulkDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    {isFr ? "Supprimer" : "Delete"} {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Mobile folder filter */}
             <div className="flex md:hidden items-center gap-2 mb-4 overflow-x-auto pb-1">
@@ -1343,11 +1465,29 @@ function LibraryPageContent() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.03, 0.3) }}
                       whileHover={{ y: -4, boxShadow: "0 12px 40px rgba(0,0,0,0.12)" }}
-                      className="break-inside-avoid rounded-2xl overflow-hidden group cursor-pointer"
-                      style={{ border: "1px solid var(--border)", background: "var(--card)", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}
+                      className="break-inside-avoid rounded-2xl overflow-hidden group cursor-pointer relative"
+                      style={{
+                        border: selectMode && selectedIds.has(item.id) ? "2px solid #7C3AED" : "1px solid var(--border)",
+                        background: "var(--card)",
+                        boxShadow: selectMode && selectedIds.has(item.id) ? "0 0 0 3px rgba(124,58,237,0.15), 0 2px 8px rgba(0,0,0,0.03)" : "0 2px 8px rgba(0,0,0,0.03)",
+                      }}
                     >
+                      {/* Selection checkbox (visible in select mode) */}
+                      {selectMode && (
+                        <div
+                          onClick={(e) => { e.stopPropagation(); toggleSelected(item.id); }}
+                          className="absolute top-2 right-2 z-20 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all"
+                          style={{
+                            background: selectedIds.has(item.id) ? "#7C3AED" : "rgba(255,255,255,0.9)",
+                            border: selectedIds.has(item.id) ? "2px solid #7C3AED" : "2px solid rgba(0,0,0,0.25)",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+                          }}
+                        >
+                          {selectedIds.has(item.id) && <Check size={12} style={{ color: "#fff", strokeWidth: 3 }} />}
+                        </div>
+                      )}
                       {/* Thumbnail */}
-                      <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => setPreviewItem(item)}>
+                      <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => { if (selectMode) { toggleSelected(item.id); } else { setPreviewItem(item); } }}>
                         {/* Deployment badge (top-left) */}
                         {(() => {
                           const badge = getDeploymentBadge(item);
@@ -1506,8 +1646,22 @@ function LibraryPageContent() {
                       animate={{ opacity: 1 }}
                       transition={{ delay: Math.min(i * 0.02, 0.2) }}
                       className="flex items-center gap-4 px-4 py-3 border-b border-border last:border-b-0 hover:bg-secondary/30 transition-colors group cursor-pointer"
-                      onClick={() => setPreviewItem(item)}
+                      style={selectMode && selectedIds.has(item.id) ? { background: "rgba(124,58,237,0.06)" } : undefined}
+                      onClick={() => { if (selectMode) { toggleSelected(item.id); } else { setPreviewItem(item); } }}
                     >
+                      {/* Selection checkbox (select mode) */}
+                      {selectMode && (
+                        <div
+                          onClick={(e) => { e.stopPropagation(); toggleSelected(item.id); }}
+                          className="w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-all flex-shrink-0"
+                          style={{
+                            background: selectedIds.has(item.id) ? "#7C3AED" : "transparent",
+                            border: selectedIds.has(item.id) ? "2px solid #7C3AED" : "2px solid var(--border)",
+                          }}
+                        >
+                          {selectedIds.has(item.id) && <Check size={11} style={{ color: "#fff", strokeWidth: 3 }} />}
+                        </div>
+                      )}
                       {/* Name */}
                       <div className="flex-1 flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-lg bg-secondary/50 flex items-center justify-center flex-shrink-0">
