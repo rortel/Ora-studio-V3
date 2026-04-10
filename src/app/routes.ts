@@ -52,6 +52,7 @@ const TermsPage = lazyRetry(() => import("./pages/TermsPage"), "TermsPage");
 const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage");
 const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
 const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
+const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
 
 
 /*
@@ -115,6 +116,7 @@ export const router = createBrowserRouter([
       { path: "hub/music", Component: MusicPage },
       { path: "hub/video-editor", Component: VideoAssemblerPage },
       { path: "hub/compare", Component: ComparePage },
+      { path: "hub/editor", Component: EditorPage },
       { path: "profile", Component: ProfilePage },
       { path: "subscribe", Component: SubscribePage },
 

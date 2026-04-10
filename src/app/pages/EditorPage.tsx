@@ -7,12 +7,14 @@ import {
   Search, Download, Undo2, Redo2, ZoomOut, Maximize,
   ChevronLeft, ChevronRight, Loader2, RotateCcw,
   Minus, Plus, FlipHorizontal2, MousePointer2,
-  Layers, SlidersHorizontal, Upload,
+  Layers, SlidersHorizontal, Upload, Share2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { useI18n } from "../lib/i18n";
 
 /* ═══════════════════════════════════
@@ -126,8 +128,14 @@ export function EditorPage() {
    ═══════════════════════════════════ */
 
 function EditorPageContent() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const isFr = locale === "fr";
   const { getAuthHeader } = useAuth();
+  const location = useLocation();
+  const preloadUrl = (location.state as { assetUrl?: string } | null)?.assetUrl || null;
+
+  // --- Publish modal ---
+  const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
 
   // --- Core state ---
   const [tool, setTool] = useState<EditorTool>("clean");
@@ -255,6 +263,16 @@ function EditorPageContent() {
     img.onerror = () => toast.error("Failed to load image");
     img.src = url;
   }, [canvasSize]);
+
+  // --- Preload asset from navigation state (e.g. from ComparePage/LibraryPage) ---
+  const preloadedRef = useRef(false);
+  useEffect(() => {
+    if (preloadedRef.current) return;
+    if (!preloadUrl) return;
+    if (canvasSize.width === 0) return; // wait for canvas measure
+    preloadedRef.current = true;
+    loadImage(preloadUrl);
+  }, [preloadUrl, canvasSize.width, loadImage]);
 
   // --- Load from local file ---
   const handleFileLoad = useCallback((file: File) => {
@@ -829,6 +847,30 @@ function EditorPageContent() {
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
+        {/* Publish to socials */}
+        <button
+          onClick={() => {
+            if (!imageUrl) return;
+            setPublishTarget({ imageUrl, defaultCaption: "" });
+          }}
+          disabled={!imageUrl}
+          title={isFr ? "Publier sur les réseaux" : "Publish to networks"}
+          style={{
+            width: 40, height: 40, borderRadius: 10, border: "none",
+            background: imageUrl ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "transparent",
+            color: imageUrl ? "#fff" : "#444",
+            cursor: imageUrl ? "pointer" : "default",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginBottom: 8,
+            boxShadow: imageUrl ? "0 2px 12px rgba(124,58,237,0.35)" : "none",
+            transition: "transform 0.15s",
+          }}
+          onMouseEnter={e => { if (imageUrl) e.currentTarget.style.transform = "scale(1.06)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+        >
+          <Share2 size={16} />
+        </button>
+
         {/* Download */}
         <button
           onClick={handleDownload}
@@ -1307,6 +1349,19 @@ function EditorPageContent() {
           border-radius: 2px;
         }
       `}</style>
+
+      {/* ═══ PUBLISH MODAL ═══ */}
+      <PublishModal
+        open={!!publishTarget}
+        asset={publishTarget || { defaultCaption: "" }}
+        onClose={() => setPublishTarget(null)}
+        onPublished={outcomes => {
+          const published = outcomes.filter(o => o.status === "published").length;
+          const scheduled = outcomes.filter(o => o.status === "scheduled").length;
+          if (published > 0) toast.success(isFr ? `Publié sur ${published} réseau(x)` : `Published to ${published} network(s)`);
+          if (scheduled > 0) toast.success(isFr ? `Planifié sur ${scheduled} réseau(x)` : `Scheduled on ${scheduled} network(s)`);
+        }}
+      />
     </div>
   );
 }

@@ -8,15 +8,16 @@ import {
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
   Instagram, Linkedin, Facebook, Camera, Clapperboard,
   Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
-  Upload, RefreshCw,
+  Upload, RefreshCw, Share2, Clock, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Link, useSearchParams } from "react-router";
+import { Link, useSearchParams, useNavigate } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { useI18n } from "../lib/i18n";
 import { PHASE_1_ONLY } from "../lib/phase";
+import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 
 /* ═══════════════════════════════════
    TYPES
@@ -28,6 +29,14 @@ interface LibraryFolder {
   userId: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface Deployment {
+  platform: string;
+  status: "published" | "scheduled" | "failed";
+  publishedAt?: string;
+  scheduledFor?: string;
+  url?: string;
 }
 
 interface LibraryItem {
@@ -47,6 +56,22 @@ interface LibraryItem {
     description: string;
     dominant_colors: string[];
   };
+  deployments?: Deployment[];
+}
+
+/** Returns a compact badge for deployment status: "published", "scheduled", or null */
+function getDeploymentBadge(item: LibraryItem): { label: string; color: string; icon: typeof CheckCircle2 } | null {
+  const deps = item.deployments || [];
+  if (deps.length === 0) return null;
+  const published = deps.filter(d => d.status === "published");
+  const scheduled = deps.filter(d => d.status === "scheduled");
+  if (published.length > 0) {
+    return { label: `${published.length} publié${published.length > 1 ? "s" : ""}`, color: "#22c55e", icon: CheckCircle2 };
+  }
+  if (scheduled.length > 0) {
+    return { label: `${scheduled.length} planifié${scheduled.length > 1 ? "s" : ""}`, color: "#f59e0b", icon: Clock };
+  }
+  return null;
 }
 
 type SortMode = "date-desc" | "date-asc" | "name-asc" | "name-desc" | "modified-desc";
@@ -156,7 +181,8 @@ export function LibraryPage() {
 }
 
 function LibraryPageContent() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const isFr = locale === "fr";
   const { getAuthHeader } = useAuth();
   const [searchParams] = useSearchParams();
   // Phase 1: campaigns tab is hidden — force content tab regardless of query param.
@@ -184,6 +210,8 @@ function LibraryPageContent() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+  const navigate = useNavigate();
   const [repurposeItem, setRepurposeItem] = useState<LibraryItem | null>(null);
   const [repurposeFormats, setRepurposeFormats] = useState<string[]>(["linkedin-post", "instagram-caption", "newsletter-intro"]);
   const [repurposing, setRepurposing] = useState(false);
@@ -1320,6 +1348,19 @@ function LibraryPageContent() {
                     >
                       {/* Thumbnail */}
                       <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => setPreviewItem(item)}>
+                        {/* Deployment badge (top-left) */}
+                        {(() => {
+                          const badge = getDeploymentBadge(item);
+                          if (!badge) return null;
+                          const BadgeIcon = badge.icon;
+                          return (
+                            <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-1 rounded-full pointer-events-none"
+                              style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)", fontSize: 9, fontWeight: 700, color: "#fff", border: `1px solid ${badge.color}` }}>
+                              <BadgeIcon size={9} style={{ color: badge.color }} />
+                              <span>{badge.label}</span>
+                            </div>
+                          );
+                        })()}
                         {url && item.type === "image" ? (
                           <img src={url} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" />
                         ) : url && item.type === "film" ? (
@@ -1389,6 +1430,35 @@ function LibraryPageContent() {
                             </span>
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {(item.preview?.kind === "image" || item.preview?.kind === "film") && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPublishTarget({
+                                    imageUrl: item.preview?.imageUrl,
+                                    videoUrl: item.preview?.videoUrl,
+                                    defaultCaption: item.prompt,
+                                    libraryItemId: item.id,
+                                  });
+                                }}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer"
+                                title={isFr ? "Publier sur les réseaux" : "Publish to networks"}
+                              >
+                                <Share2 size={12} style={{ color: "#7C3AED" }} />
+                              </button>
+                            )}
+                            {item.preview?.kind === "image" && item.preview?.imageUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate("/hub/editor", { state: { assetUrl: item.preview.imageUrl, assetId: item.id } });
+                                }}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer"
+                                title={isFr ? "Modifier dans l'éditeur" : "Edit in editor"}
+                              >
+                                <Pencil size={12} style={{ color: "#7C3AED" }} />
+                              </button>
+                            )}
                             <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Download HD">
                               <Download size={12} style={{ color: "var(--text-tertiary)" }} />
                             </button>
@@ -1469,6 +1539,37 @@ function LibraryPageContent() {
                       <span className="w-24 hidden md:block truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{item.model?.name || "AI"}</span>
                       <span className="w-24 hidden lg:block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{new Date(item.savedAt).toLocaleDateString()}</span>
                       <div className="w-28 flex items-center gap-1">
+                        {(item.preview?.kind === "image" || item.preview?.kind === "film") && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPublishTarget({
+                                imageUrl: item.preview?.imageUrl,
+                                videoUrl: item.preview?.videoUrl,
+                                defaultCaption: item.prompt,
+                                libraryItemId: item.id,
+                              });
+                            }}
+                            className="w-7 h-7 flex items-center justify-center rounded cursor-pointer"
+                            style={{ color: "#7C3AED" }}
+                            title={isFr ? "Publier" : "Publish"}
+                          >
+                            <Share2 size={13} />
+                          </button>
+                        )}
+                        {item.preview?.kind === "image" && item.preview?.imageUrl && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate("/hub/editor", { state: { assetUrl: item.preview.imageUrl, assetId: item.id } });
+                            }}
+                            className="w-7 h-7 flex items-center justify-center rounded cursor-pointer"
+                            style={{ color: "#7C3AED" }}
+                            title={isFr ? "Modifier" : "Edit"}
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer" title="Download HD">
                           <Download size={13} />
                         </button>
@@ -1808,6 +1909,20 @@ function LibraryPageContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ═══ PUBLISH MODAL ═══ */}
+      <PublishModal
+        open={!!publishTarget}
+        asset={publishTarget || { defaultCaption: "" }}
+        onClose={() => setPublishTarget(null)}
+        onPublished={outcomes => {
+          const published = outcomes.filter(o => o.status === "published").length;
+          const scheduled = outcomes.filter(o => o.status === "scheduled").length;
+          if (published > 0) toast.success(isFr ? `Publié sur ${published} réseau(x)` : `Published to ${published} network(s)`);
+          if (scheduled > 0) toast.success(isFr ? `Planifié sur ${scheduled} réseau(x)` : `Scheduled on ${scheduled} network(s)`);
+          fetchData();
+        }}
+      />
     </div>
   );
 }

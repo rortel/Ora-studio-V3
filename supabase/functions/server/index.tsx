@@ -5727,6 +5727,142 @@ app.post("/ideogram/describe", async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// EDITOR WRAPPER ENDPOINTS
+// ───────────────────────────────────────────────────────────────
+// Thin provider-agnostic wrappers around /ideogram/* used by the
+// in-house image editor (EditorPage). They translate the editor's
+// body shape and normalize the response to { success, imageUrl, variants }.
+// ═══════════════════════════════════════════════════════════════
+
+// Ratio → Ideogram v3 resolution (valid presets)
+const EDITOR_RATIO_TO_RESOLUTION: Record<string, string> = {
+  "1:1": "RESOLUTION_1024_1024",
+  "16:9": "RESOLUTION_1344_768",
+  "9:16": "RESOLUTION_768_1344",
+  "4:5": "RESOLUTION_896_1120",
+  "3:4": "RESOLUTION_896_1184",
+  "5:4": "RESOLUTION_1120_896",
+  "4:3": "RESOLUTION_1184_896",
+  "3:2": "RESOLUTION_1248_832",
+  "2:3": "RESOLUTION_832_1248",
+};
+
+// Helper to forward an internal POST to another app route with the same context
+async function editorForward(c: any, path: string, newBody: any) {
+  const req = new Request(new URL(path, c.req.url).toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": c.req.header("Authorization") || `Bearer ${Deno.env.get("SUPABASE_ANON_KEY") || ""}`,
+    },
+    body: JSON.stringify(newBody),
+  });
+  return app.fetch(req);
+}
+
+// ── /editor/clean — remove/clean masked area ──
+app.post("/editor/clean", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, mask } = body;
+    if (!imageUrl || !mask) return c.json({ success: false, error: "imageUrl and mask required" }, 400);
+    const res = await editorForward(c, "/ideogram/edit", {
+      imageUrl,
+      maskDataUrl: mask,
+      prompt: "clean seamless background, remove object, photorealistic",
+      _token: body._token,
+    });
+    const data = await res.json();
+    if (!data.success) return c.json(data, res.status);
+    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
+  } catch (err) {
+    console.error("[editor/clean] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── /editor/replace — replace masked area with prompt-driven content ──
+app.post("/editor/replace", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, mask, prompt } = body;
+    if (!imageUrl || !mask || !prompt) return c.json({ success: false, error: "imageUrl, mask, prompt required" }, 400);
+    const res = await editorForward(c, "/ideogram/edit", {
+      imageUrl,
+      maskDataUrl: mask,
+      prompt,
+      _token: body._token,
+    });
+    const data = await res.json();
+    if (!data.success) return c.json(data, res.status);
+    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
+  } catch (err) {
+    console.error("[editor/replace] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── /editor/background — replace background ──
+app.post("/editor/background", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, prompt } = body;
+    if (!imageUrl || !prompt) return c.json({ success: false, error: "imageUrl and prompt required" }, 400);
+    const res = await editorForward(c, "/ideogram/replace-background", {
+      imageUrl,
+      prompt,
+      _token: body._token,
+    });
+    const data = await res.json();
+    if (!data.success) return c.json(data, res.status);
+    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
+  } catch (err) {
+    console.error("[editor/background] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── /editor/reframe — extend canvas to target ratio ──
+app.post("/editor/reframe", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, format } = body;
+    if (!imageUrl || !format) return c.json({ success: false, error: "imageUrl and format required" }, 400);
+    const resolution = EDITOR_RATIO_TO_RESOLUTION[format] || "RESOLUTION_1024_1024";
+    const res = await editorForward(c, "/ideogram/reframe", {
+      imageUrl,
+      resolution,
+      _token: body._token,
+    });
+    const data = await res.json();
+    if (!data.success) return c.json(data, res.status);
+    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
+  } catch (err) {
+    console.error("[editor/reframe] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── /editor/upscale — enhance resolution ──
+app.post("/editor/upscale", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+    const res = await editorForward(c, "/ideogram/upscale", {
+      imageUrl,
+      _token: body._token,
+    });
+    const data = await res.json();
+    if (!data.success) return c.json(data, res.status);
+    return c.json({ success: true, imageUrl: data.imageUrl, variants: [data.imageUrl] });
+  } catch (err) {
+    console.error("[editor/upscale] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
 // PRIMARY: Photoroom API — removes bg, replaces with studio scene, preserves product 100%
 // FALLBACK: Luma Photon modify_image_ref
@@ -16084,6 +16220,110 @@ app.post("/campaign/deploy", async (c) => {
   } catch (err) {
     console.log(`[deploy] error (${Date.now() - t0}ms): ${err}`);
     return c.json({ success: false, error: `Deploy failed: ${err}` }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// /publish/generate-captions — AI captions calibrated per platform
+// Used by PublishModal when the user picks "Let AI write the post"
+// ═══════════════════════════════════════════════════════════════
+app.post("/publish/generate-captions", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    const body = c.get("parsedBody") || await c.req.json();
+    const { prompt, platforms, locale, imageUrl, videoUrl } = body as {
+      prompt?: string;
+      platforms: string[];
+      locale?: "fr" | "en";
+      imageUrl?: string;
+      videoUrl?: string;
+    };
+    if (!Array.isArray(platforms) || platforms.length === 0) {
+      return c.json({ success: false, error: "platforms array required" }, 400);
+    }
+    const targetLang = locale === "fr" ? "French" : "English";
+    const mediaKind = videoUrl ? "video" : imageUrl ? "image" : "visual";
+    const briefContext = (prompt || "").slice(0, 1200);
+
+    const platformRules = platforms.map(p => {
+      switch (p) {
+        case "Instagram":
+          return `- Instagram: EMOTION FIRST. Open with a feeling, not a feature. 2-6 short lines, line breaks for rhythm. Max 2200 chars, aim for ~400. Hashtags: 8-12 mixing broad + niche.`;
+        case "LinkedIn":
+          return `- LinkedIn: VALUE FIRST. Professional thought-leadership tone. Lead with insight or contrarian take. 150-300 words. Include 1 concrete insight. 3-5 hashtags max.`;
+        case "Facebook":
+          return `- Facebook: CONVERSATIONAL. Write like talking to a friend. Short, punchy (max 125 chars ideal). 0-3 hashtags.`;
+        case "Twitter/X":
+          return `- Twitter/X: PUNCHY. Max 260 chars INCLUDING hashtags. One strong hook, one clear payoff. 1-3 hashtags inline.`;
+        case "TikTok":
+          return `- TikTok: HOOK-DRIVEN. First 5 words must be a hook. Very short caption (<150 chars). Casual, trend-aware. 3-5 hashtags.`;
+        case "YouTube":
+          return `- YouTube: DESCRIPTION-STYLE. 1-2 sentence hook, then 2-3 sentences of context. 3-5 hashtags at the end.`;
+        default:
+          return `- ${p}: concise, on-topic, platform-appropriate.`;
+      }
+    }).join("\n");
+
+    const sysPrompt = `You are a social-media copy specialist. You write in ${targetLang}. You produce calibrated posts per platform — each platform gets its OWN voice, length, and hashtag strategy. NEVER reuse the same caption across platforms. NEVER invent facts, awards, certifications, or statistics not provided in the brief. Return ONLY valid JSON.`;
+
+    const userPrompt = `BRIEF (describes the ${mediaKind}):
+${briefContext || "(no brief provided — infer from the platform context only)"}
+
+TARGET PLATFORMS: ${platforms.join(", ")}
+OUTPUT LANGUAGE: ${targetLang}
+
+PLATFORM RULES (follow STRICTLY):
+${platformRules}
+
+ANTI-PATTERNS (never do this):
+- Clichés like "innovative solutions", "market leader", "passionate about excellence"
+- Generic CTAs like "Discover more" / "Learn more" — be specific
+- More than 1 exclamation mark per caption
+- Buzzwords without substance
+- Same caption across multiple platforms
+
+Return JSON EXACTLY in this shape:
+{
+${platforms.map(p => `  "${p}": { "caption": "...", "hashtags": "#tag1 #tag2 ..." }`).join(",\n")}
+}
+
+Return ONLY the JSON, no markdown fences, no explanation.`;
+
+    const result = await generateText({
+      prompt: userPrompt,
+      model: "claude-sonnet",
+      systemPrompt: sysPrompt,
+      maxTokens: 2048,
+    });
+
+    let captions: Record<string, { caption: string; hashtags: string }> = {};
+    try {
+      const cleaned = (result || "").replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+      const parsed = JSON.parse(cleaned);
+      for (const p of platforms) {
+        const entry = parsed[p];
+        if (entry && typeof entry.caption === "string") {
+          captions[p] = { caption: entry.caption, hashtags: String(entry.hashtags || "") };
+        }
+      }
+    } catch (err) {
+      console.log(`[publish/generate-captions] JSON parse failed: ${err}`);
+    }
+
+    // Fallback: if nothing parsed, use the brief as a naive baseline per platform
+    if (Object.keys(captions).length === 0) {
+      for (const p of platforms) {
+        captions[p] = { caption: briefContext || "", hashtags: "" };
+      }
+    }
+
+    console.log(`[publish/generate-captions] user=${user?.id?.slice(0, 8) || "anon"}, platforms=${platforms.length} in ${Date.now() - t0}ms`);
+    return c.json({ success: true, captions });
+  } catch (err) {
+    console.error("[publish/generate-captions] Error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

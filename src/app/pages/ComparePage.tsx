@@ -5,12 +5,14 @@ import {
   Play, CheckCircle2, Circle, Loader2, Trophy, AlertTriangle,
   ChevronDown, ChevronRight, X, BarChart3, ArrowRight, Download,
   Type, Hash, MessageSquare, Sparkles, Shield, Eye, Save, Heart,
-  Maximize2, Minimize2, Mic, Square, Paperclip, Send, Music,
+  Maximize2, Minimize2, Mic, Square, Paperclip, Send, Music, Share2, Pencil,
 } from "lucide-react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
+import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 
 /* ═══════════════════════════════════════════════════════════
    CREATIVE LAB — Free creation playground with Yuka scoring
@@ -423,6 +425,10 @@ export function ComparePage() {
   const [musicStyle, setMusicStyle] = useState("");
   const [showMusicOptions, setShowMusicOptions] = useState(false);
 
+  // ── Publish modal ──
+  const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+  const navigate = useNavigate();
+
   // ── Voice recording (Whisper) ──
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -778,6 +784,45 @@ export function ComparePage() {
 
     setResults(creativeResults);
     setIsRunning(false);
+
+    // ── Auto-save all successful results to Library (fire-and-forget) ──
+    // Shape expected by POST /library/items: { id, type, model, prompt, timestamp, preview, folderId }
+    // Type mapping: image→"image", video→"film", music→"sound", text→"text"
+    const libraryTypeFor = (m: CreativeMode) =>
+      m === "video" ? "film" : m === "music" ? "sound" : m; // "image" | "text"
+    const previewKindFor = (m: CreativeMode) =>
+      m === "video" ? "film" : m === "music" ? "sound" : m === "image" ? "image" : "text";
+    creativeResults
+      .filter(r => r.success)
+      .forEach(r => {
+        const mInfo = catalog.find(c => c.id === r.modelId);
+        const libItem: Record<string, unknown> = {
+          id: r.id,
+          type: libraryTypeFor(mode),
+          model: {
+            id: r.modelId,
+            name: mInfo?.label || r.modelId,
+            provider: (mInfo?.label || "").split(" ")[0] || "unknown",
+            speed: r.timeMs < 5000 ? "fast" : r.timeMs < 20000 ? "medium" : "slow",
+            quality: Math.round((r.scores.quality || 0) * 10),
+          },
+          prompt,
+          timestamp: new Date().toISOString(),
+          preview: {
+            kind: previewKindFor(mode),
+            imageUrl: r.imageUrl,
+            videoUrl: r.videoUrl,
+            audioUrl: r.audioUrl,
+            text: r.text,
+          },
+          folderId: null,
+          scores: r.scores,
+          source: "compare",
+        };
+        serverPost("/library/items", { item: libItem }).catch(err => {
+          console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
+        });
+      });
   }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, musicDurationSec, musicInstrumental, musicLyrics, musicStyle]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
@@ -1389,6 +1434,29 @@ export function ComparePage() {
                 })()}
 
                 <div className="space-y-2">
+                  {(lightbox.imageUrl || lightbox.videoUrl) && (
+                    <button
+                      onClick={() => {
+                        setPublishTarget({
+                          imageUrl: lightbox.imageUrl,
+                          videoUrl: lightbox.videoUrl,
+                          defaultCaption: prompt,
+                          libraryItemId: lightbox.id,
+                        });
+                      }}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all cursor-pointer"
+                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: 13, fontWeight: 700 }}>
+                      <Share2 size={14} /> {isFr ? "Publier sur les réseaux" : "Publish to networks"}
+                    </button>
+                  )}
+                  {lightbox.imageUrl && (
+                    <button
+                      onClick={() => navigate("/hub/editor", { state: { assetUrl: lightbox.imageUrl, assetId: lightbox.id } })}
+                      className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all cursor-pointer"
+                      style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: 13, fontWeight: 600, border: "1px solid var(--border)" }}>
+                      <Pencil size={14} /> {isFr ? "Modifier dans l'éditeur" : "Edit in editor"}
+                    </button>
+                  )}
                   {lightbox.imageUrl && (
                     <a href={lightbox.imageUrl} download target="_blank" rel="noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all"
@@ -1412,6 +1480,19 @@ export function ComparePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ═══ PUBLISH MODAL ═══ */}
+      <PublishModal
+        open={!!publishTarget}
+        asset={publishTarget || { defaultCaption: "" }}
+        onClose={() => setPublishTarget(null)}
+        onPublished={outcomes => {
+          const published = outcomes.filter(o => o.status === "published").length;
+          const scheduled = outcomes.filter(o => o.status === "scheduled").length;
+          if (published > 0) toast.success(isFr ? `Publié sur ${published} réseau(x)` : `Published to ${published} network(s)`);
+          if (scheduled > 0) toast.success(isFr ? `Planifié sur ${scheduled} réseau(x)` : `Scheduled on ${scheduled} network(s)`);
+        }}
+      />
     </RouteGuard>
   );
 }
