@@ -164,6 +164,217 @@ function CategoryBar({ label, value }: { label: string; value: number }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   KPI TAXONOMY — 8 categories (Yuka-style gauges for creative AI)
+   ═══════════════════════════════════════════════════════════ */
+
+interface KpiItem { key: string; label: string; value: number }
+interface KpiCategory { id: string; label: string; usage: string; items: KpiItem[] }
+
+function computeKpis(r: CreativeResult, mInfo: ModelDef | undefined, mode: CreativeMode, isFr: boolean): KpiCategory[] {
+  const speed = r.scores.speed;
+  const value = r.scores.value;
+  const quality = r.scores.quality;
+  const strengths = mInfo?.strengths || [];
+  const has = (s: string) => strengths.includes(s);
+  const tier = mInfo?.tier || "standard";
+  const tierBase = tier === "premium" ? 88 : tier === "standard" ? 74 : 60;
+  const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+  const cats: KpiCategory[] = [];
+
+  // ── Mode-specific primary category ──
+  if (mode === "image") {
+    cats.push({
+      id: "rendu-image",
+      label: isFr ? "Rendu Image" : "Image Output",
+      usage: isFr ? "Qualité visuelle pro & impression" : "Pro quality & print-ready",
+      items: [
+        { key: "anatomy", label: isFr ? "Anatomie" : "Anatomy", value: clamp(tierBase + (has("photo-realism") || has("realism") ? 8 : 0) + (has("realistic") ? 6 : 0)) },
+        { key: "res", label: "Résolution/DPI", value: clamp(tierBase + (has("quality") ? 10 : 0) + (has("detail") ? 5 : 0)) },
+        { key: "fidelity", label: isFr ? "Fidélité prompt" : "Prompt fidelity", value: clamp(tierBase + (has("precision") ? 10 : 0) + (has("text-rendering") ? 8 : 0) - (has("artistic") ? 6 : 0)) },
+        { key: "noise", label: isFr ? "Absence de bruit" : "Noise-free", value: clamp(tierBase + (has("detail") ? 6 : 0) + (has("quality") ? 4 : 0)) },
+      ],
+    });
+  } else if (mode === "video") {
+    cats.push({
+      id: "rendu-video",
+      label: isFr ? "Rendu Vidéo" : "Video Output",
+      usage: isFr ? "Cohérence sans morphing" : "Consistency, no morphing",
+      items: [
+        { key: "stability", label: isFr ? "Stabilité temp." : "Temporal stab.", value: clamp(tierBase + (has("cinematic") ? 10 : 0) + (has("quality") ? 6 : 0)) },
+        { key: "fps", label: "Fluidité FPS", value: clamp(tierBase + (has("speed") ? 6 : 0) + (has("motion") ? 8 : 0)) },
+        { key: "physics", label: isFr ? "Physique" : "Physics", value: clamp(tierBase + (has("physics") || has("realistic") ? 14 : 0)) },
+        { key: "audio", label: "Audio", value: clamp(tier === "premium" && has("quality") ? 70 : 35) },
+      ],
+    });
+  } else {
+    cats.push({
+      id: "rendu-texte",
+      label: isFr ? "Rendu Texte" : "Text Output",
+      usage: isFr ? "Fiabilité et naturel du style" : "Reliability & natural style",
+      items: [
+        { key: "halluc", label: isFr ? "Anti-hallucin." : "Anti-halluc.", value: clamp(tierBase + (has("reasoning") ? 10 : 0) + (has("factual") ? 8 : 0)) },
+        { key: "voice", label: "Ton (Voice)", value: clamp(tierBase + (has("creativity") || has("copy") || has("storytelling") ? 10 : 0)) },
+        { key: "struct", label: isFr ? "Structure" : "Structure", value: clamp(tierBase + (has("reasoning") || has("long-context") ? 8 : 0) + (has("depth") ? 6 : 0)) },
+        { key: "perp", label: "Perplexité", value: clamp(tierBase + (has("multilingual") || has("french") ? 8 : 0)) },
+      ],
+    });
+  }
+
+  // ── Common categories ──
+  cats.push({
+    id: "perf-pro",
+    label: isFr ? "Performance Pro" : "Pro Performance",
+    usage: isFr ? "Rentabilité & ROI mesurable" : "Profitability & ROI",
+    items: [
+      { key: "prod", label: isFr ? "Productivité" : "Productivity", value: clamp(speed * 0.7 + quality * 0.3) },
+      { key: "cost", label: isFr ? "Coût/unité" : "Cost/unit", value: value },
+      { key: "ttm", label: "Time-to-market", value: speed },
+      { key: "eng", label: "Engagement", value: clamp(quality + (has("branding") ? 5 : 0)) },
+    ],
+  });
+  cats.push({
+    id: "nonpro",
+    label: isFr ? "Usage Non-Pro" : "Consumer Use",
+    usage: isFr ? "Facilité & satisfaction immédiate" : "Ease & instant satisfaction",
+    items: [
+      { key: "learn", label: isFr ? "Apprentissage" : "Learning", value: 92 },
+      { key: "price", label: isFr ? "Accessibilité" : "Affordability", value: value },
+      { key: "vers", label: isFr ? "Polyvalence" : "Versatility", value: clamp(55 + strengths.length * 9) },
+    ],
+  });
+  cats.push({
+    id: "tech",
+    label: "Technique",
+    usage: isFr ? "Efficacité opérationnelle" : "Operational efficiency",
+    items: [
+      { key: "gen", label: isFr ? "Temps gén." : "Gen. time", value: speed },
+      { key: "iter", label: isFr ? "Coût/itér." : "Cost/iter.", value: value },
+      { key: "api", label: "Scalabilité API", value: tier === "economy" ? 88 : tier === "standard" ? 76 : 68 },
+    ],
+  });
+  cats.push({
+    id: "legal",
+    label: isFr ? "Légal & Sécurité" : "Legal & Security",
+    usage: isFr ? "Protection & personnalisation" : "Protection & customization",
+    items: [
+      { key: "cr", label: "Copyright", value: has("branding") ? 85 : tier === "premium" ? 78 : 68 },
+      { key: "iso", label: isFr ? "Isolation data" : "Data isolation", value: 74 },
+      { key: "safe", label: "Brand Safety", value: tier === "premium" ? 86 : 72 },
+      { key: "ft", label: "Fine-tuning", value: has("open") ? 92 : 48 },
+    ],
+  });
+  cats.push({
+    id: "eth",
+    label: isFr ? "Éthique & RSE" : "Ethics & CSR",
+    usage: isFr ? "Responsabilité environnementale" : "Environmental responsibility",
+    items: [
+      { key: "co2", label: isFr ? "Empreinte CO₂" : "Carbon", value: tier === "economy" ? 82 : tier === "standard" ? 66 : 50 },
+      { key: "bias", label: isFr ? "Score biais" : "Bias score", value: has("multilingual") ? 82 : 66 },
+    ],
+  });
+
+  return cats;
+}
+
+function buildUsageAnalysis(r: CreativeResult, mInfo: ModelDef | undefined, mode: CreativeMode, isFr: boolean): string {
+  if (!mInfo) return "";
+  const tier = mInfo.tier;
+  const t = (r.timeMs / 1000).toFixed(1);
+  if (mode === "image") {
+    return isFr
+      ? `Idéal pour ${mInfo.bestFor.toLowerCase()}. ${tier === "premium" ? `Qualité agence en ${t}s, prêt pour print & campagnes premium.` : tier === "standard" ? `Équilibre qualité/prix (${t}s), parfait pour social et web.` : `Brouillons ultra-rapides (${t}s) pour itérations volume.`}`
+      : `Best for ${mInfo.bestFor.toLowerCase()}. ${tier === "premium" ? `Agency-grade in ${t}s, print & premium-ready.` : tier === "standard" ? `Balanced quality/price (${t}s), fits social & web.` : `Fast drafts (${t}s) for volume iteration.`}`;
+  }
+  if (mode === "video") {
+    return isFr
+      ? `${mInfo.bestFor}. ${tier === "premium" ? `Rendu cinématique en ${t}s — ads, formats longs.` : tier === "standard" ? `Polyvalent (${t}s), social organique & storyboards animés.` : `Itération rapide (${t}s), concepts & previews.`}`
+      : `${mInfo.bestFor}. ${tier === "premium" ? `Cinematic grade in ${t}s — ads & long formats.` : tier === "standard" ? `Versatile (${t}s), organic social & animated boards.` : `Fast iteration (${t}s), concepts & previews.`}`;
+  }
+  return isFr
+    ? `${mInfo.bestFor}. ${tier === "premium" ? `Raisonnement profond pour briefs stratégiques (${t}s).` : tier === "standard" ? `Production quotidienne social/web (${t}s).` : `Copies volume low-cost (${t}s).`}`
+    : `${mInfo.bestFor}. ${tier === "premium" ? `Deep reasoning for strategic briefs (${t}s).` : tier === "standard" ? `Daily social/web output (${t}s).` : `High-volume low-cost copy (${t}s).`}`;
+}
+
+/* ── Glassmorphism KPI overlay (hover) ── */
+
+function MiniGauge({ value, size = 38 }: { value: number; size?: number }) {
+  const radius = (size - 4) / 2;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ * (1 - Math.max(0, Math.min(100, value)) / 100);
+  const color = value >= 75 ? "#4ade80" : value >= 55 ? "#facc15" : value >= 35 ? "#fb923c" : "#f87171";
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth={2.8} />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={2.8}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+      <text x={size / 2} y={size / 2} textAnchor="middle" dominantBaseline="central" fill="#fff" fontSize={size >= 44 ? 12 : 10} fontWeight={800}>{value}</text>
+    </svg>
+  );
+}
+
+function KpiOverlay({ result, mInfo, mode, isFr }: { result: CreativeResult; mInfo: ModelDef | undefined; mode: CreativeMode; isFr: boolean }) {
+  const kpis = computeKpis(result, mInfo, mode, isFr);
+  const usage = buildUsageAnalysis(result, mInfo, mode, isFr);
+  const { color: gradeColor, label: gradeLabel } = getGradeLabel(result.scores.overall, isFr);
+  return (
+    <div
+      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col pointer-events-none group-hover:pointer-events-auto"
+      style={{
+        background: "linear-gradient(135deg, rgba(15,10,30,0.78) 0%, rgba(40,15,50,0.85) 100%)",
+        backdropFilter: "blur(22px) saturate(140%)",
+        WebkitBackdropFilter: "blur(22px) saturate(140%)",
+        border: "1px solid rgba(255,255,255,0.14)",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+        <div className="min-w-0">
+          <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }} className="truncate">{result.label}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>{mInfo?.badge} · {(result.timeMs / 1000).toFixed(1)}s · {mInfo?.tier}</div>
+        </div>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: `${gradeColor}22`, border: `1px solid ${gradeColor}55` }}>
+          <span style={{ fontSize: 18, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{result.scores.overall}</span>
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>/100</span>
+          <span style={{ fontSize: 9, color: gradeColor, fontWeight: 700, marginLeft: 2 }}>{gradeLabel}</span>
+        </div>
+      </div>
+
+      {/* Scrollable KPI area */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.2) transparent" }}>
+        {/* Usage analysis */}
+        <div className="rounded-xl px-3.5 py-2.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.5)", marginBottom: 5 }}>
+            {isFr ? "Analyse d'usage" : "Usage analysis"}
+          </div>
+          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.92)", lineHeight: 1.5 }}>{usage}</div>
+        </div>
+
+        {/* KPI Categories */}
+        {kpis.map(cat => (
+          <div key={cat.id}>
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", letterSpacing: "0.01em" }}>{cat.label}</span>
+              <span style={{ fontSize: 8.5, color: "rgba(255,255,255,0.45)", fontStyle: "italic", textAlign: "right", marginLeft: 8 }} className="truncate">{cat.usage}</span>
+            </div>
+            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cat.items.length}, 1fr)` }}>
+              {cat.items.map(it => (
+                <div key={it.key} className="flex flex-col items-center gap-1 py-2 rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <MiniGauge value={it.value} size={38} />
+                  <span style={{ fontSize: 8.5, color: "rgba(255,255,255,0.7)", textAlign: "center", lineHeight: 1.15, padding: "0 4px", fontWeight: 500 }}>{it.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    MAIN: Creative Lab
    ═══════════════════════════════════════════════════════════ */
 
@@ -514,9 +725,12 @@ export function ComparePage() {
           </div>
         </div>
 
-        {/* ═══ SCROLLABLE RESULTS AREA ═══ */}
-        <div className="flex-1 overflow-y-auto" style={{ paddingBottom: BOTTOM_BAR_H + 24 }}>
-          <div className="max-w-7xl mx-auto px-6 py-6">
+        {/* ═══ RESULTS AREA — full-screen above prompt bar ═══ */}
+        <div className="flex-1 overflow-y-auto" style={{ paddingBottom: BOTTOM_BAR_H + 16 }}>
+          <div
+            className="max-w-7xl mx-auto px-6 py-4 flex flex-col"
+            style={{ minHeight: `calc(100vh - ${BOTTOM_BAR_H + 80}px)` }}
+          >
 
             {/* ── EMPTY STATE ── */}
             {results.length === 0 && !isRunning && (
@@ -558,14 +772,22 @@ export function ComparePage() {
               )}
             </AnimatePresence>
 
-            {/* ── RESULTS GRID ── */}
-            {results.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            {/* ── RESULTS GRID — full-screen, glassmorphism hover ── */}
+            {results.length > 0 && (() => {
+              const n = results.length;
+              const cols = n === 1 ? 1 : n <= 4 ? 2 : 3;
+              const rows = n <= 2 ? 1 : n <= 6 ? 2 : Math.ceil(n / 3);
+              const gridTemplate = {
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gridTemplateRows: `repeat(${rows}, 1fr)`,
+              } as const;
+              return (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex-1 flex flex-col min-h-0">
 
-                {/* Results header */}
-                <div className="flex items-center justify-between mb-4">
+                {/* Results header — compact */}
+                <div className="flex items-center justify-between mb-3 flex-shrink-0">
                   <div className="flex items-center gap-3">
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>
                       {results.filter(r => r.success).length} {isFr ? "créations" : "creations"}
                     </span>
                     {bestResult && (
@@ -573,184 +795,93 @@ export function ComparePage() {
                         <Trophy size={11} /> {isFr ? "Meilleur :" : "Best:"} {bestResult.label} ({bestResult.scores.overall}/100)
                       </span>
                     )}
+                    <span style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
+                      {isFr ? "Survolez pour voir les KPI" : "Hover to reveal KPIs"}
+                    </span>
                   </div>
                 </div>
 
-                {/* ── IMAGE GRID ── */}
-                {mode === "image" && (
-                  <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : results.length <= 4 ? "repeat(2, 1fr)" : "repeat(3, 1fr)" }}>
-                    {results.map(r => {
-                      const isBest = r.modelId === bestResult?.modelId;
-                      const { label: grade, color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
-                      const mInfo = catalog.find(c => c.id === r.modelId);
-                      return (
-                        <motion.div key={r.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-                          className="rounded-2xl overflow-hidden group relative cursor-pointer"
-                          style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}
-                          onClick={() => r.success && setLightbox(r)}>
-
-                          {r.success && r.imageUrl ? (
-                            <div className="relative" style={{ aspectRatio: "1" }}>
-                              <img src={r.imageUrl} className="w-full h-full object-cover" alt={r.label} />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
-                                  <button className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.95)" }}
-                                    onClick={e => { e.stopPropagation(); setLightbox(r); }}>
-                                    <Maximize2 size={16} />
-                                  </button>
-                                  <a href={r.imageUrl} download target="_blank" rel="noreferrer"
-                                    onClick={e => e.stopPropagation()}
-                                    className="w-10 h-10 rounded-full flex items-center justify-center"
-                                    style={{ background: "rgba(255,255,255,0.95)" }}>
-                                    <Download size={16} />
-                                  </a>
-                                </div>
-                              </div>
-                              {isBest && (
-                                <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-lg"
-                                  style={{ background: gradeColor, color: "#fff", fontSize: 10, fontWeight: 700 }}>
-                                  <Trophy size={10} /> {isFr ? "Recommandé" : "Best"}
-                                </div>
-                              )}
-                              {showScores && (
-                                <div className="absolute bottom-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl"
-                                  style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
-                                  <span style={{ fontSize: 16, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>
-                                  <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)" }}>/100</span>
-                                </div>
-                              )}
+                {/* ── UNIFIED FULL-SCREEN GRID (image · video · text) ── */}
+                <div className="flex-1 grid gap-3 min-h-0" style={{ ...gridTemplate, minHeight: 420 }}>
+                  {results.map(r => {
+                    const isBest = r.modelId === bestResult?.modelId;
+                    const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
+                    const mInfo = catalog.find(c => c.id === r.modelId);
+                    return (
+                      <motion.div
+                        key={r.id}
+                        initial={{ opacity: 0, scale: 0.97 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="relative rounded-2xl overflow-hidden group cursor-pointer"
+                        style={{
+                          background: mode === "text" ? "#FFFFFF" : "#0a0a0a",
+                          border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)",
+                          boxShadow: isBest ? `0 0 0 3px ${gradeColor}22` : "0 1px 3px rgba(0,0,0,0.04)",
+                        }}
+                        onClick={() => r.success && (mode !== "text") && setLightbox(r)}
+                      >
+                        {/* ── Media / Text content (absolute fill) ── */}
+                        {r.success && mode === "image" && r.imageUrl && (
+                          <img src={r.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt={r.label} />
+                        )}
+                        {r.success && mode === "video" && r.videoUrl && (
+                          <video
+                            src={r.videoUrl}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        )}
+                        {r.success && mode === "text" && (
+                          <div className="absolute inset-0 overflow-y-auto px-5 py-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground)" }}>{r.label}</span>
+                              <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>
                             </div>
-                          ) : (
-                            <div className="flex items-center justify-center" style={{ aspectRatio: "1", background: "var(--secondary)" }}>
-                              <div className="text-center">
-                                <AlertTriangle size={24} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-                                <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{r.error || "Failed"}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Footer */}
-                          <div className="px-4 py-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
-                                {mInfo && (
-                                  <span style={{
-                                    fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 600,
-                                    background: mInfo.tier === "premium" ? "#7C3AED15" : mInfo.tier === "economy" ? "#22c55e15" : "var(--secondary)",
-                                    color: mInfo.tier === "premium" ? "#7C3AED" : mInfo.tier === "economy" ? "#22c55e" : "var(--muted-foreground)",
-                                  }}>{mInfo.tier}</span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {r.success && (
-                                  <button onClick={e => { e.stopPropagation(); setResults(prev => prev.map(x => x.id === r.id ? { ...x, saved: !x.saved } : x)); toast.success(r.saved ? (isFr ? "Retiré des favoris" : "Removed") : (isFr ? "Sauvegardé !" : "Saved!")); }}
-                                    className="w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all"
-                                    style={{ background: r.saved ? "#ef444415" : "var(--secondary)" }}>
-                                    <Heart size={13} fill={r.saved ? "#ef4444" : "none"} style={{ color: r.saved ? "#ef4444" : "var(--muted-foreground)" }} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            {showScores && r.success && (
-                              <div className="space-y-0.5 mt-2">
-                                <CategoryBar label={isFr ? "Vitesse" : "Speed"} value={r.scores.speed} />
-                                <CategoryBar label={isFr ? "Valeur" : "Value"} value={r.scores.value} />
-                                <CategoryBar label={isFr ? "Qualité" : "Quality"} value={r.scores.quality} />
-                              </div>
-                            )}
-                            {mInfo && r.success && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {mInfo.strengths.slice(0, 3).map(s => (
-                                  <span key={s} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 99, background: "var(--secondary)", color: "var(--muted-foreground)", fontWeight: 500 }}>{s}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* ── TEXT RESULTS ── */}
-                {mode === "text" && (
-                  <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : "repeat(2, 1fr)" }}>
-                    {results.map(r => {
-                      const isBest = r.modelId === bestResult?.modelId;
-                      const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
-                      return (
-                        <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                          className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}>
-                          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                            <div className="flex items-center gap-2">
-                              <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
-                              {isBest && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: gradeColor, color: "#fff" }}>{isFr ? "MEILLEUR" : "BEST"}</span>}
-                            </div>
-                            {showScores && <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>}
-                          </div>
-                          <div className="px-4 py-3" style={{ fontSize: 13, lineHeight: 1.7, maxHeight: 300, overflowY: "auto", whiteSpace: "pre-wrap" }}>
-                            {r.success ? r.text : <span style={{ color: "#ef4444" }}>{r.error || "Failed"}</span>}
-                          </div>
-                          {r.success && (
-                            <div className="px-4 py-2 flex items-center gap-2" style={{ borderTop: "1px solid var(--border)" }}>
-                              <button onClick={() => { navigator.clipboard.writeText(r.text || ""); toast.success(isFr ? "Copié !" : "Copied!"); }}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
-                                style={{ background: "var(--secondary)", fontSize: 11, fontWeight: 500 }}>
-                                <FileText size={10} /> {isFr ? "Copier" : "Copy"}
-                              </button>
-                              <button onClick={() => setResults(prev => prev.map(x => x.id === r.id ? { ...x, saved: !x.saved } : x))}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all"
-                                style={{ background: r.saved ? "#ef444415" : "var(--secondary)", fontSize: 11, fontWeight: 500 }}>
-                                <Heart size={10} fill={r.saved ? "#ef4444" : "none"} style={{ color: r.saved ? "#ef4444" : "var(--muted-foreground)" }} /> {r.saved ? (isFr ? "Favori" : "Saved") : (isFr ? "Sauvegarder" : "Save")}
-                              </button>
-                            </div>
-                          )}
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* ── VIDEO RESULTS ── */}
-                {mode === "video" && (
-                  <div className="grid gap-4" style={{ gridTemplateColumns: results.length <= 2 ? `repeat(${results.length}, 1fr)` : "repeat(2, 1fr)" }}>
-                    {results.map(r => {
-                      const isBest = r.modelId === bestResult?.modelId;
-                      const { color: gradeColor } = getGradeLabel(r.scores.overall, isFr);
-                      return (
-                        <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                          className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: isBest ? `2px solid ${gradeColor}` : "1px solid var(--border)" }}>
-                          {r.success && r.videoUrl ? (
-                            <video src={r.videoUrl} controls className="w-full" style={{ aspectRatio: "16/9" }} />
-                          ) : (
-                            <div className="flex items-center justify-center" style={{ aspectRatio: "16/9", background: "var(--secondary)" }}>
-                              <AlertTriangle size={24} style={{ color: "#ef4444" }} />
-                            </div>
-                          )}
-                          <div className="px-4 py-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span style={{ fontSize: 13, fontWeight: 700 }}>{r.label}</span>
-                              {isBest && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: gradeColor, color: "#fff" }}>BEST</span>}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {showScores && <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>}
-                              {r.success && (
-                                <a href={r.videoUrl} download target="_blank" rel="noreferrer"
-                                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                                  style={{ background: "var(--secondary)" }}>
-                                  <Download size={14} />
-                                </a>
-                              )}
+                            <div style={{ fontSize: 13, lineHeight: 1.65, color: "var(--foreground)", whiteSpace: "pre-wrap" }}>
+                              {r.text}
                             </div>
                           </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                )}
+                        )}
+                        {!r.success && (
+                          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--secondary)" }}>
+                            <div className="text-center">
+                              <AlertTriangle size={28} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
+                              <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{r.error || "Failed"}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ── Best badge (always visible) ── */}
+                        {isBest && r.success && (
+                          <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-lg z-10"
+                            style={{ background: gradeColor, color: "#fff", fontSize: 10, fontWeight: 800, boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}>
+                            <Trophy size={10} /> {isFr ? "Recommandé" : "Best"}
+                          </div>
+                        )}
+
+                        {/* ── Model label badge (bottom, visible when not hovering) ── */}
+                        {r.success && mode !== "text" && (
+                          <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg z-10 group-hover:opacity-0 transition-opacity"
+                            style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>{r.label}</span>
+                            <span style={{ fontSize: 14, fontWeight: 800, color: gradeColor }}>{r.scores.overall}</span>
+                          </div>
+                        )}
+
+                        {/* ── Glassmorphism KPI overlay on hover ── */}
+                        {r.success && (
+                          <KpiOverlay result={r} mInfo={mInfo} mode={mode} isFr={isFr} />
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </motion.div>
-            )}
+              );
+            })()}
 
             <div ref={resultsEndRef} />
           </div>
