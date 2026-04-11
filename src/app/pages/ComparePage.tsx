@@ -28,66 +28,101 @@ type ModelTier = "economy" | "standard" | "premium";
 type CreativeMode = "text" | "image" | "video" | "music";
 type StepStatus = "pending" | "running" | "done" | "error";
 
+// Segment id per mode — drives grouping + segment pickers
+type TextSegment = "strategy" | "creative" | "multilingual" | "volume";
+type ImageSegment = "product" | "creative" | "text" | "portrait" | "draft";
+type VideoSegment = "cinematic" | "character" | "draft" | "versatile";
+type MusicSegment = "vocals" | "studio";
+type AnySegment = TextSegment | ImageSegment | VideoSegment | MusicSegment;
+
 interface ModelDef {
   id: string; label: string; badge: string; credits: number;
   costEur: number; providerCostEur: number;
   strengths: string[]; bestFor: string; tier: ModelTier;
+  segment: AnySegment;
 }
 
 // ── Model catalogs ──
 const TEXT_MODELS: ModelDef[] = [
-  { id: "gpt-4o", label: "GPT-4o", badge: "Fast", credits: 2, costEur: 0.20, providerCostEur: 0.008, strengths: ["speed", "multilingual"], bestFor: "Contenu rapide multilingue", tier: "standard" },
-  { id: "gpt-5", label: "GPT-5", badge: "Smart", credits: 3, costEur: 0.30, providerCostEur: 0.015, strengths: ["reasoning", "nuance"], bestFor: "Briefs complexes", tier: "premium" },
-  { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative", credits: 2, costEur: 0.20, providerCostEur: 0.012, strengths: ["creativity", "storytelling"], bestFor: "Storytelling créatif", tier: "standard" },
-  { id: "claude-opus", label: "Claude Opus", badge: "Best", credits: 5, costEur: 0.50, providerCostEur: 0.060, strengths: ["depth", "strategy"], bestFor: "Contenu stratégique", tier: "premium" },
-  { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Google", credits: 2, costEur: 0.20, providerCostEur: 0.010, strengths: ["multimodal", "factual"], bestFor: "Contenu data-driven", tier: "standard" },
-  { id: "deepseek", label: "DeepSeek v3", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["affordable", "technical"], bestFor: "Budget-friendly", tier: "economy" },
-  { id: "together-llama-3.3-70b", label: "Llama 3.3 70B", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.0008, strengths: ["multilingual", "speed"], bestFor: "Multilingue économique", tier: "economy" },
-  { id: "together-deepseek-v3", label: "DeepSeek V3 (Together)", badge: "Reasoning", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["reasoning", "affordable"], bestFor: "Raisonnement low-cost", tier: "economy" },
-  { id: "together-deepseek-r1", label: "DeepSeek R1", badge: "Deep Think", credits: 3, costEur: 0.30, providerCostEur: 0.0065, strengths: ["reasoning", "depth"], bestFor: "Raisonnement avancé", tier: "premium" },
-  { id: "together-qwen-2.5-72b", label: "Qwen 2.5 72B", badge: "FR Native", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["multilingual", "french"], bestFor: "Contenu français natif", tier: "economy" },
-  { id: "together-kimi-k2", label: "Kimi K2", badge: "Long Ctx", credits: 2, costEur: 0.20, providerCostEur: 0.0022, strengths: ["long-context", "analysis"], bestFor: "Long contexte", tier: "standard" },
-  { id: "together-glm-4.5", label: "GLM 4.5", badge: "Copy", credits: 2, costEur: 0.20, providerCostEur: 0.0018, strengths: ["creative", "copy"], bestFor: "Copywriting créatif", tier: "standard" },
-  { id: "together-gpt-oss-120b", label: "GPT-OSS 120B", badge: "Open", credits: 2, costEur: 0.20, providerCostEur: 0.0014, strengths: ["general", "open"], bestFor: "Généraliste open-source", tier: "standard" },
+  { id: "gpt-4o", label: "GPT-4o", badge: "Fast", credits: 2, costEur: 0.20, providerCostEur: 0.008, strengths: ["speed", "multilingual"], bestFor: "Contenu rapide multilingue", tier: "standard", segment: "volume" },
+  { id: "gpt-5", label: "GPT-5", badge: "Smart", credits: 3, costEur: 0.30, providerCostEur: 0.015, strengths: ["reasoning", "nuance"], bestFor: "Briefs complexes", tier: "premium", segment: "strategy" },
+  { id: "claude-sonnet", label: "Claude Sonnet", badge: "Creative", credits: 2, costEur: 0.20, providerCostEur: 0.012, strengths: ["creativity", "storytelling"], bestFor: "Storytelling créatif", tier: "standard", segment: "creative" },
+  { id: "claude-opus", label: "Claude Opus", badge: "Best", credits: 5, costEur: 0.50, providerCostEur: 0.060, strengths: ["depth", "strategy"], bestFor: "Contenu stratégique", tier: "premium", segment: "strategy" },
+  { id: "gemini-pro", label: "Gemini 2.5 Pro", badge: "Google", credits: 2, costEur: 0.20, providerCostEur: 0.010, strengths: ["multimodal", "factual"], bestFor: "Contenu data-driven", tier: "standard", segment: "multilingual" },
+  { id: "deepseek", label: "DeepSeek v3", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["affordable", "technical"], bestFor: "Budget-friendly", tier: "economy", segment: "volume" },
+  { id: "together-llama-3.3-70b", label: "Llama 3.3 70B", badge: "Open", credits: 1, costEur: 0.10, providerCostEur: 0.0008, strengths: ["multilingual", "speed"], bestFor: "Multilingue économique", tier: "economy", segment: "multilingual" },
+  { id: "together-deepseek-v3", label: "DeepSeek V3 (Together)", badge: "Reasoning", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["reasoning", "affordable"], bestFor: "Raisonnement low-cost", tier: "economy", segment: "volume" },
+  { id: "together-deepseek-r1", label: "DeepSeek R1", badge: "Deep Think", credits: 3, costEur: 0.30, providerCostEur: 0.0065, strengths: ["reasoning", "depth"], bestFor: "Raisonnement avancé", tier: "premium", segment: "strategy" },
+  { id: "together-qwen-2.5-72b", label: "Qwen 2.5 72B", badge: "FR Native", credits: 1, costEur: 0.10, providerCostEur: 0.0011, strengths: ["multilingual", "french"], bestFor: "Contenu français natif", tier: "economy", segment: "multilingual" },
+  { id: "together-kimi-k2", label: "Kimi K2", badge: "Long Ctx", credits: 2, costEur: 0.20, providerCostEur: 0.0022, strengths: ["long-context", "analysis"], bestFor: "Long contexte", tier: "standard", segment: "volume" },
+  { id: "together-glm-4.5", label: "GLM 4.5", badge: "Copy", credits: 2, costEur: 0.20, providerCostEur: 0.0018, strengths: ["creative", "copy"], bestFor: "Copywriting créatif", tier: "standard", segment: "creative" },
+  { id: "together-gpt-oss-120b", label: "GPT-OSS 120B", badge: "Open", credits: 2, costEur: 0.20, providerCostEur: 0.0014, strengths: ["general", "open"], bestFor: "Généraliste open-source", tier: "standard", segment: "volume" },
 ];
 
 const IMAGE_MODELS: ModelDef[] = [
-  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text", credits: 5, costEur: 0.50, providerCostEur: 0.074, strengths: ["text-rendering", "branding"], bestFor: "Logos, texte sur images", tier: "premium" },
-  { id: "photon-1", label: "Luma Photon", badge: "Quality", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "lighting"], bestFor: "Portraits réalistes", tier: "standard" },
-  { id: "photon-flash-1", label: "Photon Flash", badge: "Fast", credits: 3, costEur: 0.30, providerCostEur: 0.014, strengths: ["speed", "iteration"], bestFor: "Itérations rapides", tier: "economy" },
-  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["creative", "detail"], bestFor: "Prompts complexes", tier: "premium" },
-  { id: "dall-e", label: "DALL-E 3", badge: "Precise", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["precision", "compositions"], bestFor: "Compositions précises", tier: "premium" },
-  { id: "flux-pro", label: "Flux Pro", badge: "Creative", credits: 8, costEur: 0.80, providerCostEur: 0.046, strengths: ["artistic", "detail"], bestFor: "Visuels artistiques", tier: "premium" },
-  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality"], bestFor: "Campagnes premium", tier: "premium" },
-  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast"], bestFor: "Brouillons rapides", tier: "economy" },
-  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency"], bestFor: "Édition, cohérence", tier: "standard" },
-  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism"], bestFor: "Photo produit", tier: "standard" },
-  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard" },
-  { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Style artistique", tier: "standard" },
-  { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["balanced", "agency"], bestFor: "Qualité agence", tier: "standard" },
-  { id: "together-flux-schnell", label: "Flux Schnell (Together)", badge: "Cheapest", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["ultra-cheap", "fast"], bestFor: "Brouillons volume", tier: "economy" },
-  { id: "together-flux-dev", label: "Flux Dev (Together)", badge: "Balanced", credits: 3, costEur: 0.30, providerCostEur: 0.025, strengths: ["balanced", "quality"], bestFor: "Production équilibrée", tier: "standard" },
-  { id: "together-flux-pro-1.1", label: "Flux 1.1 Pro (Together)", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.040, strengths: ["premium", "detail"], bestFor: "Qualité premium", tier: "premium" },
+  { id: "ideogram-3-leo", label: "Ideogram V3", badge: "Brand + Text", credits: 5, costEur: 0.50, providerCostEur: 0.074, strengths: ["text-rendering", "branding"], bestFor: "Logos, texte sur images", tier: "premium", segment: "text" },
+  { id: "photon-1", label: "Luma Photon", badge: "Quality", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["realism", "lighting"], bestFor: "Portraits réalistes", tier: "standard", segment: "portrait" },
+  { id: "photon-flash-1", label: "Photon Flash", badge: "Fast", credits: 3, costEur: 0.30, providerCostEur: 0.014, strengths: ["speed", "iteration"], bestFor: "Itérations rapides", tier: "economy", segment: "draft" },
+  { id: "gpt-image-leo", label: "GPT Image", badge: "GPT-4o", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["creative", "detail"], bestFor: "Prompts complexes", tier: "premium", segment: "text" },
+  { id: "dall-e", label: "DALL-E 3", badge: "Precise", credits: 8, costEur: 0.80, providerCostEur: 0.037, strengths: ["precision", "compositions"], bestFor: "Compositions précises", tier: "premium", segment: "creative" },
+  { id: "flux-pro", label: "Flux Pro", badge: "Creative", credits: 8, costEur: 0.80, providerCostEur: 0.046, strengths: ["artistic", "detail"], bestFor: "Visuels artistiques", tier: "premium", segment: "creative" },
+  { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality"], bestFor: "Campagnes premium", tier: "premium", segment: "product" },
+  { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast"], bestFor: "Brouillons rapides", tier: "economy", segment: "draft" },
+  { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency"], bestFor: "Édition, cohérence", tier: "standard", segment: "product" },
+  { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism"], bestFor: "Photo produit", tier: "standard", segment: "product" },
+  { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard", segment: "creative" },
+  { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Style artistique", tier: "standard", segment: "creative" },
+  { id: "ora-vision", label: "ORA Vision", badge: "Agence", credits: 5, costEur: 0.50, providerCostEur: 0.028, strengths: ["balanced", "agency"], bestFor: "Qualité agence", tier: "standard", segment: "product" },
+  { id: "together-flux-schnell", label: "Flux Schnell (Together)", badge: "Cheapest", credits: 1, costEur: 0.10, providerCostEur: 0.003, strengths: ["ultra-cheap", "fast"], bestFor: "Brouillons volume", tier: "economy", segment: "draft" },
+  { id: "together-flux-dev", label: "Flux Dev (Together)", badge: "Balanced", credits: 3, costEur: 0.30, providerCostEur: 0.025, strengths: ["balanced", "quality"], bestFor: "Production équilibrée", tier: "standard", segment: "product" },
+  { id: "together-flux-pro-1.1", label: "Flux 1.1 Pro (Together)", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.040, strengths: ["premium", "detail"], bestFor: "Qualité premium", tier: "premium", segment: "portrait" },
 ];
 
 const VIDEO_MODELS: ModelDef[] = [
-  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "cinematic"], bestFor: "Cinématique", tier: "premium" },
-  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 20, costEur: 2.00, providerCostEur: 0.14, strengths: ["speed"], bestFor: "Itération vidéo rapide", tier: "economy" },
-  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["google", "quality"], bestFor: "Qualité Google", tier: "premium" },
-  { id: "sora-2", label: "Sora 2", badge: "OpenAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["creative", "narrative"], bestFor: "Narrations créatives", tier: "premium" },
-  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 40, costEur: 4.00, providerCostEur: 0.35, strengths: ["cinematic", "character"], bestFor: "Scènes à personnages", tier: "premium" },
-  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["versatile"], bestFor: "Contenu vidéo polyvalent", tier: "standard" },
-  { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy" },
-  { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "campaign"], bestFor: "Vidéo campagne", tier: "standard" },
-  { id: "hailuo-02", label: "Minimax Hailuo 02", badge: "Realistic", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "physics"], bestFor: "Mouvements réalistes", tier: "standard" },
-  { id: "wan-2.2", label: "Wan 2.2", badge: "Open", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["versatile", "open"], bestFor: "Vidéo polyvalente", tier: "economy" },
-  { id: "kling-2.5", label: "Kling 2.5 Turbo Pro", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium" },
+  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "cinematic"], bestFor: "Cinématique", tier: "premium", segment: "cinematic" },
+  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 20, costEur: 2.00, providerCostEur: 0.14, strengths: ["speed"], bestFor: "Itération vidéo rapide", tier: "economy", segment: "draft" },
+  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["google", "quality"], bestFor: "Qualité Google", tier: "premium", segment: "cinematic" },
+  { id: "sora-2", label: "Sora 2", badge: "OpenAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["creative", "narrative"], bestFor: "Narrations créatives", tier: "premium", segment: "character" },
+  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 40, costEur: 4.00, providerCostEur: 0.35, strengths: ["cinematic", "character"], bestFor: "Scènes à personnages", tier: "premium", segment: "character" },
+  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["versatile"], bestFor: "Contenu vidéo polyvalent", tier: "standard", segment: "versatile" },
+  { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy", segment: "draft" },
+  { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "campaign"], bestFor: "Vidéo campagne", tier: "standard", segment: "versatile" },
+  { id: "hailuo-02", label: "Minimax Hailuo 02", badge: "Realistic", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "physics"], bestFor: "Mouvements réalistes", tier: "standard", segment: "character" },
+  { id: "wan-2.2", label: "Wan 2.2", badge: "Open", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["versatile", "open"], bestFor: "Vidéo polyvalente", tier: "economy", segment: "versatile" },
+  { id: "kling-2.5", label: "Kling 2.5 Turbo Pro", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium", segment: "cinematic" },
 ];
 
 const MUSIC_MODELS: ModelDef[] = [
-  { id: "suno-v5", label: "Suno v5", badge: "Vocals", credits: 3, costEur: 0.30, providerCostEur: 0.08, strengths: ["vocals", "lyrics", "versatile"], bestFor: "Chansons avec voix & paroles", tier: "premium" },
-  { id: "elevenlabs-music-v1", label: "ElevenLabs Music", badge: "Studio", credits: 3, costEur: 0.30, providerCostEur: 0.09, strengths: ["studio-grade", "brand-safe", "multilingual"], bestFor: "Pistes studio cleared commercial", tier: "premium" },
+  { id: "suno-v5", label: "Suno v5", badge: "Vocals", credits: 3, costEur: 0.30, providerCostEur: 0.08, strengths: ["vocals", "lyrics", "versatile"], bestFor: "Chansons avec voix & paroles", tier: "premium", segment: "vocals" },
+  { id: "elevenlabs-music-v1", label: "ElevenLabs Music", badge: "Studio", credits: 3, costEur: 0.30, providerCostEur: 0.09, strengths: ["studio-grade", "brand-safe", "multilingual"], bestFor: "Pistes studio cleared commercial", tier: "premium", segment: "studio" },
 ];
+
+// Segment metadata per mode — icon emoji, label, description shown in picker
+const SEGMENTS_BY_MODE: Record<CreativeMode, { id: AnySegment; icon: string; labelFr: string; labelEn: string; descFr: string; descEn: string }[]> = {
+  text: [
+    { id: "strategy",     icon: "🧠", labelFr: "Stratégie & raisonnement", labelEn: "Strategy & reasoning",  descFr: "Briefs complexes, analyses",        descEn: "Complex briefs, analyses" },
+    { id: "creative",     icon: "✍️", labelFr: "Copywriting créatif",      labelEn: "Creative copywriting", descFr: "Storytelling, slogans",              descEn: "Storytelling, taglines" },
+    { id: "multilingual", icon: "🌍", labelFr: "Multilingue & FR natif",   labelEn: "Multilingual & FR",    descFr: "Marchés locaux, français natif",     descEn: "Local markets, native FR" },
+    { id: "volume",       icon: "⚡", labelFr: "Volume & économique",      labelEn: "Volume & budget",      descFr: "Drafts massifs, itérations rapides", descEn: "Bulk drafts, fast iteration" },
+  ],
+  image: [
+    { id: "product",  icon: "📸", labelFr: "Photo produit fidèle",   labelEn: "Faithful product photo", descFr: "Préservation produit, e-commerce",    descEn: "Product preservation, e-commerce" },
+    { id: "creative", icon: "🎨", labelFr: "Créatif & artistique",    labelEn: "Creative & artistic",     descFr: "Stylisé, illustration, concept",      descEn: "Stylized, illustration, concept" },
+    { id: "text",     icon: "🔤", labelFr: "Texte & logos",           labelEn: "Text & logos",            descFr: "Typographie, packaging, affiches",    descEn: "Typography, packaging, posters" },
+    { id: "portrait", icon: "👤", labelFr: "Portraits & humains",     labelEn: "Portraits & people",      descFr: "Visages, réalisme humain",            descEn: "Faces, human realism" },
+    { id: "draft",    icon: "⚡",  labelFr: "Brouillons rapides",       labelEn: "Fast drafts",             descFr: "Itérations massives, volume",         descEn: "Massive iterations, volume" },
+  ],
+  video: [
+    { id: "cinematic", icon: "🎬", labelFr: "Cinématique premium",     labelEn: "Premium cinematic",     descFr: "Ads TV, campagnes finales",           descEn: "TV ads, final campaigns" },
+    { id: "character", icon: "👥", labelFr: "Personnages & narratif",   labelEn: "Characters & narrative", descFr: "Humains, dialogue, scènes",           descEn: "People, dialogue, scenes" },
+    { id: "versatile", icon: "🎯", labelFr: "Polyvalent campagne",      labelEn: "Versatile campaign",    descFr: "Mix qualité/prix, production",        descEn: "Balanced quality/price" },
+    { id: "draft",     icon: "⚡",  labelFr: "Itération rapide",          labelEn: "Fast iteration",        descFr: "Brouillons, tests, concepts",         descEn: "Drafts, tests, concepts" },
+  ],
+  music: [
+    { id: "vocals", icon: "🎤", labelFr: "Voix & paroles",       labelEn: "Vocals & lyrics",    descFr: "Chansons avec voix",                  descEn: "Songs with vocals" },
+    { id: "studio", icon: "🎼", labelFr: "Studio brand-safe",     labelEn: "Studio brand-safe", descFr: "Pistes commerciales cleared",         descEn: "Commercial cleared tracks" },
+  ],
+};
 
 // ── Result types ──
 interface CreativeResult {
@@ -1303,30 +1338,55 @@ export function ComparePage() {
                 )}
               </div>
 
-              {/* Model picker dropdown */}
+              {/* Model picker dropdown — grouped by segment (usage) */}
               <AnimatePresence>
                 {showModelPicker && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                    className="px-4 pb-2 overflow-hidden">
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {catalog.map(m => {
-                        const on = selectedModels.includes(m.id);
-                        const dis = !on && selectedModels.length >= maxModels;
-                        const tierC = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
+                    className="px-4 pb-3 overflow-hidden">
+                    <div className="flex flex-col gap-2 pt-1">
+                      {SEGMENTS_BY_MODE[mode].map(seg => {
+                        const modelsInSeg = catalog.filter(m => m.segment === seg.id);
+                        if (modelsInSeg.length === 0) return null;
+                        const selectedInSeg = modelsInSeg.filter(m => selectedModels.includes(m.id)).length;
                         return (
-                          <button key={m.id} onClick={() => !dis && toggleModel(m.id)}
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer transition-all"
-                            style={{
-                              fontSize: 10, fontWeight: on ? 700 : 500,
-                              background: on ? "var(--foreground)" : "var(--secondary)",
-                              color: on ? "var(--background)" : "var(--foreground)",
-                              border: `1px solid ${on ? "var(--foreground)" : "var(--border)"}`,
-                              opacity: dis ? 0.3 : 1, cursor: dis ? "not-allowed" : "pointer",
-                            }}>
-                            {on && <CheckCircle2 size={9} />}
-                            {m.label}
-                            <span style={{ fontSize: 7, color: on ? "var(--background)" : tierC, opacity: on ? 0.7 : 1, fontWeight: 700 }}>{m.credits}cr</span>
-                          </button>
+                          <div key={seg.id} className="flex flex-col gap-1">
+                            <div className="flex items-baseline gap-1.5">
+                              <span style={{ fontSize: 11 }}>{seg.icon}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                {isFr ? seg.labelFr : seg.labelEn}
+                              </span>
+                              <span style={{ fontSize: 9, color: "var(--muted-foreground)", fontWeight: 500 }}>
+                                · {isFr ? seg.descFr : seg.descEn}
+                              </span>
+                              {selectedInSeg > 0 && (
+                                <span className="ml-auto px-1.5 py-0.5 rounded-full" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 8, fontWeight: 700 }}>
+                                  {selectedInSeg}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {modelsInSeg.map(m => {
+                                const on = selectedModels.includes(m.id);
+                                const dis = !on && selectedModels.length >= maxModels;
+                                const tierC = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
+                                return (
+                                  <button key={m.id} onClick={() => !dis && toggleModel(m.id)}
+                                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer transition-all"
+                                    style={{
+                                      fontSize: 10, fontWeight: on ? 700 : 500,
+                                      background: on ? "var(--foreground)" : "var(--secondary)",
+                                      color: on ? "var(--background)" : "var(--foreground)",
+                                      border: `1px solid ${on ? "var(--foreground)" : "var(--border)"}`,
+                                      opacity: dis ? 0.3 : 1, cursor: dis ? "not-allowed" : "pointer",
+                                    }}>
+                                    {on && <CheckCircle2 size={9} />}
+                                    {m.label}
+                                    <span style={{ fontSize: 7, color: on ? "var(--background)" : tierC, opacity: on ? 0.7 : 1, fontWeight: 700 }}>{m.credits}cr</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
