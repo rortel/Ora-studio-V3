@@ -7945,9 +7945,10 @@ app.post("/generate/image-start", async (c) => {
     }
 
     // ═══ AI-ONLY PATH: skip Photoroom, use generative AI with product as reference ═══
-    // This keeps the product identity (shape, colors, brand) while letting AI generate the scene
-    if (imageRefUrl && isUploadRef && provider === "ai") {
-      console.log(`[image-start-POST] AI PROVIDER path — using generateImageWithRef (preserveContent=true)`);
+    // This keeps the product identity (shape, colors, brand) while letting AI generate the scene.
+    // Accepts BOTH uploaded refs AND scraped refs — Photoroom is only gated on uploads below.
+    if (imageRefUrl && provider === "ai") {
+      console.log(`[image-start-POST] AI PROVIDER path (refSource=${refSource}) — using generateImageWithRef (preserveContent=true)`);
       try {
         const result = await generateImageWithRef({
           prompt: rawPrompt,
@@ -7961,10 +7962,20 @@ app.post("/generate/image-start", async (c) => {
           if (user) logEvent("generation", { userId: user.id, type: "image", model, provider: result.provider }).catch(() => {});
           return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider, directResult: true });
         }
+        console.log(`[image-start-POST] AI PROVIDER returned no image, falling back...`);
       } catch (err) {
         console.log(`[image-start-POST] AI PROVIDER failed: ${err}`);
       }
-      // If AI path fails, fall through to Photoroom
+      // For SCRAPED refs, we have no Photoroom fallback (Photoroom needs a user-uploaded product photo).
+      // Return an explicit error so the frontend can surface it instead of the silent text-to-image fallback
+      // which confused the user (generationId returned but never polled).
+      if (!isUploadRef) {
+        return c.json({
+          success: false,
+          error: "Image generation with scraped reference failed. Try uploading a product photo manually.",
+        });
+      }
+      // For UPLOADED refs we still have the Photoroom fallback below.
       console.log(`[image-start-POST] AI PROVIDER failed, falling back to Photoroom...`);
     }
 

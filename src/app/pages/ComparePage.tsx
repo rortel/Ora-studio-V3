@@ -1096,7 +1096,11 @@ USER REQUEST: `;
                 }, timeoutMs);
                 url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
                 if (!url) {
-                  console.warn(`[compare] image-start failed for ${modelId}`, { refType, error: r?.error, response: r });
+                  const msg = r?.error || r?.results?.[0]?.error || r?.message || "image-start returned no URL";
+                  console.warn(`[compare] image-start failed for ${modelId}`, { refType, error: msg, response: r });
+                  const timeMs = Date.now() - t0;
+                  setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "error", timeMs } : s));
+                  return { modelId, timeMs, success: false, error: String(msg).slice(0, 200) };
                 }
               }
             } else {
@@ -1502,10 +1506,12 @@ USER REQUEST: `;
                           </div>
                         )}
                         {!r.success && (
-                          <div className="absolute inset-0 flex items-center justify-center" style={{ background: "var(--secondary)" }}>
-                            <div className="text-center">
+                          <div className="absolute inset-0 flex items-center justify-center px-4" style={{ background: "var(--secondary)" }}>
+                            <div className="text-center max-w-full">
                               <AlertTriangle size={28} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-                              <span style={{ fontSize: 12, color: "var(--muted-foreground)" }}>{r.error || "Failed"}</span>
+                              <div style={{ fontSize: 11, color: "var(--muted-foreground)", lineHeight: 1.4, wordBreak: "break-word", maxHeight: 120, overflow: "auto" }}>
+                                {r.error || "Failed"}
+                              </div>
                             </div>
                           </div>
                         )}
