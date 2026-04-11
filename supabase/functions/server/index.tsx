@@ -4953,11 +4953,244 @@ app.post("/compare/scrape-urls", async (c) => {
       return out;
     }
 
+    // ── BRAND DNA EXTRACTION (logo, palette, fonts, meta) ─────────────────
+    // Streamlined port of /vault/analyze's extractFromHtml, specialized for Compare.
+    // Goal: turn a raw web page into a usable brand blueprint that drives
+    // generation — logo URL, dominant colors (hex), typography, meta.
+    type BrandDNA = {
+      logo: string | null;
+      logoCandidates: { url: string; score: number; source: string }[];
+      palette: { primary: string | null; secondary: string | null; accent: string | null; all: string[] };
+      themeColor: string | null;
+      fonts: string[];
+      meta: { title: string; description: string; ogImage: string | null; favicon: string | null; appleTouchIcon: string | null; keywords: string };
+      socialUrls: { platform: string; url: string }[];
+    };
+
+    function normalizeHex(raw: string): string | null {
+      const h = raw.trim();
+      if (h.length === 4 && h.startsWith("#")) return `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`.toUpperCase();
+      if ((h.length === 7 || h.length === 9) && h.startsWith("#")) return h.slice(0, 7).toUpperCase();
+      return null;
+    }
+    function rgbToHex(r: number, g: number, b: number): string {
+      return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`.toUpperCase();
+    }
+    function hslToHex(h: number, s: number, l: number): string {
+      s /= 100; l /= 100;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) => { const k = (n + h / 30) % 12; return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1); };
+      return rgbToHex(Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255));
+    }
+    function isGenericColor(hex: string): boolean {
+      return new Set(["#FFFFFF", "#FEFEFE", "#000000", "#010101", "#F5F5F5", "#E5E5E5", "#CCCCCC"]).has(hex);
+    }
+
+    // Fetch external CSS files linked in HTML (non-blocking, max 5 files, 400KB each)
+    async function fetchExternalCssForBrand(html: string, pageUrl: string): Promise<string> {
+      const linkMatches = html.match(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi) || [];
+      const altMatches = html.match(/<link[^>]+href=["']([^"']+\.css[^"']*)["'][^>]*rel=["']stylesheet["']/gi) || [];
+      const urls = new Set<string>();
+      for (const link of [...linkMatches, ...altMatches]) {
+        const href = link.match(/href=["']([^"']+)["']/)?.[1];
+        if (!href) continue;
+        try {
+          const full = href.startsWith("http") ? href : new URL(href, pageUrl).href;
+          if (/bootstrap|fontawesome|googleapis|cdnjs|unpkg|jsdelivr|normalize/i.test(full)) continue;
+          urls.add(full);
+        } catch {}
+      }
+      const arr = [...urls].slice(0, 5);
+      if (arr.length === 0) return "";
+      const chunks = await Promise.allSettled(arr.map(async (u) => {
+        try {
+          const r = await fetchWithTimeout(u, { headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudioBot/1.0)" } }, 4_000);
+          if (!r.ok) return "";
+          const t = await r.text();
+          return t.length < 400_000 ? t : "";
+        } catch { return ""; }
+      }));
+      return chunks.map(c => c.status === "fulfilled" ? c.value : "").join("\n");
+    }
+
+    function extractBrandFromHtml(html: string, pageUrl: string, externalCss = ""): BrandDNA {
+      const base = (() => { try { return new URL(pageUrl); } catch { return null; } })();
+      const resolve = (src: string): string | null => {
+        if (!src || src.startsWith("data:")) return null;
+        try {
+          if (src.startsWith("//")) return (base?.protocol || "https:") + src;
+          if (src.startsWith("/")) return (base?.origin || "") + src;
+          if (!src.startsWith("http")) return new URL(src, pageUrl).toString();
+          return src;
+        } catch { return null; }
+      };
+
+      // ── Meta tags ──
+      const metaTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || "";
+      const metaDescription = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1] || "";
+      const metaOgImage = resolve(html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || "");
+      const metaKeywords = html.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i)?.[1] || "";
+      const themeColorRaw = html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i)?.[1] || "";
+      const favicon = resolve(html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i)?.[1] || "");
+      const appleTouchIcon = resolve(html.match(/<link[^>]+rel=["']apple-touch-icon[^"']*["'][^>]+href=["']([^"']+)["']/i)?.[1] || "");
+
+      // ── Color extraction (frequency-counted, weighted by source strength) ──
+      const styleBlocks = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) || [];
+      const inlineStyles = html.match(/style=["']([^"']+)["']/gi) || [];
+      const svgFills = html.match(/(?:fill|stroke)=["']([^"']+)["']/gi) || [];
+      const twArbitrary = html.match(/(?:bg|text|border|ring|shadow|accent|fill|stroke)-\[#[0-9a-fA-F]{3,8}\]/gi) || [];
+      const allCss = [...styleBlocks, ...inlineStyles, ...svgFills, externalCss].join(" ");
+
+      const colorFreq = new Map<string, number>();
+      const addColor = (hex: string | null, weight = 1) => {
+        if (!hex || isGenericColor(hex)) return;
+        colorFreq.set(hex, (colorFreq.get(hex) || 0) + weight);
+      };
+      const cssVarColors: Record<string, string> = {};
+
+      // 1. Theme-color meta (×10 — explicit brand signal)
+      if (themeColorRaw) {
+        const hexTheme = themeColorRaw.match(/#[0-9a-fA-F]{3,8}/)?.[0];
+        if (hexTheme) addColor(normalizeHex(hexTheme), 10);
+        const rgbTheme = themeColorRaw.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (rgbTheme) addColor(rgbToHex(parseInt(rgbTheme[1]), parseInt(rgbTheme[2]), parseInt(rgbTheme[3])), 10);
+      }
+      // 2. CSS custom properties with brand keywords (×5)
+      const cssVarRe = /--[\w-]*(?:color|bg|background|primary|secondary|accent|brand|main|text|border|surface|highlight|link)[\w-]*\s*:\s*([^;}\n]+)/gi;
+      for (const m of allCss.matchAll(cssVarRe)) {
+        const full = m[0];
+        const varName = full.split(":")[0].trim();
+        const varValue = m[1].trim();
+        const hexInVar = varValue.match(/#[0-9a-fA-F]{3,8}/)?.[0];
+        if (hexInVar) { const n = normalizeHex(hexInVar); if (n) { addColor(n, 5); cssVarColors[varName] = n; continue; } }
+        const rgbInVar = varValue.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (rgbInVar) { const hx = rgbToHex(parseInt(rgbInVar[1]), parseInt(rgbInVar[2]), parseInt(rgbInVar[3])); addColor(hx, 5); cssVarColors[varName] = hx; continue; }
+        const hslInVar = varValue.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/);
+        if (hslInVar) { const hx = hslToHex(parseFloat(hslInVar[1]), parseFloat(hslInVar[2]), parseFloat(hslInVar[3])); addColor(hx, 5); cssVarColors[varName] = hx; }
+      }
+      // 3. Tailwind arbitrary (×3)
+      for (const tw of twArbitrary) {
+        const h = tw.match(/#[0-9a-fA-F]{3,8}/)?.[0];
+        if (h) addColor(normalizeHex(h), 3);
+      }
+      // 4. SVG fill/stroke (×2)
+      for (const sf of svgFills) {
+        const h = sf.match(/#[0-9a-fA-F]{3,8}/)?.[0];
+        if (h) addColor(normalizeHex(h), 2);
+      }
+      // 5. Any hex (×1)
+      for (const h of (allCss.match(/#[0-9a-fA-F]{3,8}\b/g) || [])) addColor(normalizeHex(h));
+      // 6. Any rgb()/rgba() (×1)
+      for (const rgb of (allCss.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/g) || [])) {
+        const m = rgb.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (m) addColor(rgbToHex(parseInt(m[1]), parseInt(m[2]), parseInt(m[3])));
+      }
+
+      const sortedColors = [...colorFreq.entries()].sort((a, b) => b[1] - a[1]).map(([h]) => h);
+      // Pick primary/secondary/accent: prefer CSS var colors, then frequency
+      const varPrimary = Object.entries(cssVarColors).find(([n]) => /primary|brand|main/i.test(n))?.[1];
+      const varSecondary = Object.entries(cssVarColors).find(([n]) => /secondary/i.test(n))?.[1];
+      const varAccent = Object.entries(cssVarColors).find(([n]) => /accent/i.test(n))?.[1];
+      const palette = {
+        primary: varPrimary || sortedColors[0] || null,
+        secondary: varSecondary || sortedColors.find(c => c !== varPrimary) || sortedColors[1] || null,
+        accent: varAccent || sortedColors.find(c => c !== varPrimary && c !== varSecondary) || sortedColors[2] || null,
+        all: sortedColors.slice(0, 8),
+      };
+      const themeColor = themeColorRaw.match(/#[0-9a-fA-F]{3,8}/)?.[0] ? normalizeHex(themeColorRaw.match(/#[0-9a-fA-F]{3,8}/)?.[0] as string) : null;
+
+      // ── Fonts (Google Fonts + font-family declarations) ──
+      const fonts: string[] = [];
+      for (const gf of (html.match(/fonts\.googleapis\.com\/css2?\?family=([^"&]+)/gi) || [])) {
+        const families = gf.match(/family=([^"&]+)/)?.[1] || "";
+        for (const f of families.split("|")) {
+          const name = decodeURIComponent(f.split(":")[0]).replace(/\+/g, " ");
+          if (name && !fonts.includes(name)) fonts.push(name);
+        }
+      }
+      for (const ff of (allCss.match(/font-family\s*:\s*["']?([^;"',}]+)/gi) || [])) {
+        const name = ff.replace(/font-family\s*:\s*["']?/i, "").replace(/["']/g, "").trim();
+        const generic = new Set(["inherit", "initial", "sans-serif", "serif", "monospace", "cursive", "system-ui", "-apple-system", "blinkmacsystemfont", "segoe ui", "roboto", "helvetica", "arial"]);
+        if (name && !generic.has(name.toLowerCase()) && !name.startsWith("var(") && !fonts.includes(name)) fonts.push(name);
+      }
+
+      // ── Social URLs ──
+      const socialUrls: { platform: string; url: string }[] = [];
+      const socialRe = [
+        { p: "instagram", r: /https?:\/\/(?:www\.)?instagram\.com\/[a-zA-Z0-9._-]+/i },
+        { p: "facebook", r: /https?:\/\/(?:www\.)?facebook\.com\/[a-zA-Z0-9._-]+/i },
+        { p: "linkedin", r: /https?:\/\/(?:www\.)?linkedin\.com\/(?:company|in)\/[a-zA-Z0-9._-]+/i },
+        { p: "twitter", r: /https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[a-zA-Z0-9._-]+/i },
+        { p: "youtube", r: /https?:\/\/(?:www\.)?youtube\.com\/(?:channel|c|@)[a-zA-Z0-9._-]+/i },
+        { p: "tiktok", r: /https?:\/\/(?:www\.)?tiktok\.com\/@[a-zA-Z0-9._-]+/i },
+        { p: "pinterest", r: /https?:\/\/(?:www\.)?pinterest\.[a-z.]+\/[a-zA-Z0-9._-]+/i },
+      ];
+      for (const { p, r } of socialRe) {
+        const m = html.match(r);
+        if (m) socialUrls.push({ platform: p, url: m[0].replace(/["'<>\s]/g, "") });
+      }
+
+      // ── Logo extraction (scored by confidence) ──
+      const logoCandidates: { url: string; score: number; source: string }[] = [];
+      const seenLogos = new Set<string>();
+      const addLogo = (rawUrl: string, score: number, source: string) => {
+        const full = resolve(rawUrl);
+        if (!full || seenLogos.has(full)) return;
+        if (/pixel|track|beacon|1x1|spacer/i.test(full)) return;
+        seenLogos.add(full);
+        logoCandidates.push({ url: full, score, source });
+      };
+
+      // 1. <img> inside <header>/<nav> with "logo" in class/alt/src → score 10
+      for (const block of (html.match(/<(?:header|nav)[^>]*>[\s\S]*?<\/(?:header|nav)>/gi) || [])) {
+        for (const img of (block.match(/<img[^>]+src=["']([^"']+)["'][^>]*/gi) || [])) {
+          const src = img.match(/src=["']([^"']+)["']/)?.[1];
+          if (!src) continue;
+          const alt = img.match(/alt=["']([^"']*?)["']/i)?.[1] || "";
+          const cls = img.match(/class=["']([^"']*?)["']/i)?.[1] || "";
+          if (/logo/i.test(alt) || /logo/i.test(cls) || /logo/i.test(src)) addLogo(src, 10, "header-logo");
+          else addLogo(src, 6, "header-first-img");
+        }
+      }
+      // 2. Any <img> with logo in class/id/alt → score 8
+      for (const m of (html.matchAll(/<img[^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/gi))) addLogo(m[1], 8, "img-logo-attr");
+      for (const m of (html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]+(?:class|id|alt)=["'][^"']*logo[^"']*["']/gi))) addLogo(m[1], 8, "img-logo-attr-rev");
+      // 3. Apple touch icon → score 5
+      if (appleTouchIcon) addLogo(appleTouchIcon, 5, "apple-touch-icon");
+      // 4. og:image → score 4 (often logo on homepage, hero on product)
+      if (metaOgImage) addLogo(metaOgImage, 4, "og-image");
+      // 5. Favicon → score 2
+      if (favicon) addLogo(favicon, 2, "favicon");
+
+      logoCandidates.sort((a, b) => b.score - a.score);
+      const logo = logoCandidates[0]?.url || null;
+
+      return {
+        logo,
+        logoCandidates: logoCandidates.slice(0, 5),
+        palette,
+        themeColor,
+        fonts: fonts.slice(0, 5),
+        meta: {
+          title: metaTitle.slice(0, 200),
+          description: metaDescription.slice(0, 500),
+          ogImage: metaOgImage || null,
+          favicon,
+          appleTouchIcon,
+          keywords: metaKeywords.slice(0, 300),
+        },
+        socialUrls,
+      };
+    }
+
     const scrapeResults = await Promise.allSettled(urls.map(async (pageUrl, i) => {
       const jinaKey = Deno.env.get("JINA_API_KEY");
       let content = "";
       let rawImageUrls: string[] = [];
       let source = "none";
+      let brand: BrandDNA | null = null;
       const tracking = { jina: 0, html: 0, sitemap: 0, gallery: 0, galleryPages: 0 };
       if (jinaKey) {
         try {
@@ -5028,6 +5261,14 @@ app.post("/compare/scrape-urls", async (c) => {
         for (const u of direct) {
           if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.html++; }
         }
+        // ── BRAND DNA: extract logo, palette, fonts, meta from main page HTML ──
+        // Runs in parallel with the deep scan (sitemap + gallery) via Promise.all below.
+        // External CSS fetch is awaited inside extractBrandFromHtml for accurate colors.
+        try {
+          const externalCss = await fetchExternalCssForBrand(mainHtml, pageUrl);
+          brand = extractBrandFromHtml(mainHtml, pageUrl, externalCss);
+          console.log(`[compare/scrape-urls] [${i}] brand DNA — logo:${brand.logo ? "YES" : "NO"}, palette:${brand.palette.all.length} colors, fonts:${brand.fonts.length}, title:"${brand.meta.title.slice(0, 40)}"`);
+        } catch (e) { console.log(`[compare/scrape-urls] [${i}] brand extraction failed: ${e}`); }
       }
 
       // Layer 2 (sitemap) + Layer 3 (gallery 1-hop) in parallel
@@ -5102,13 +5343,13 @@ app.post("/compare/scrape-urls", async (c) => {
       console.log(`[compare/scrape-urls] [${i}] ${content.length} chars via ${source}, ${topFiltered.length} images kept (${filtered.length} after filter, ${rawImageUrls.length} raw)`);
       // Keep the page even if Jina content is empty — deep scan may still have found images
       const hasSomething = content.length >= 50 || topFiltered.length > 0;
-      return hasSomething ? { url: pageUrl, content: content || pageUrl, source, images: topFiltered } : null;
+      return hasSomething ? { url: pageUrl, content: content || pageUrl, source, images: topFiltered, brand } : null;
     }));
 
     const scraped = scrapeResults
-      .filter((r): r is PromiseFulfilledResult<{ url: string; content: string; source: string; images: string[] } | null> => r.status === "fulfilled")
+      .filter((r): r is PromiseFulfilledResult<{ url: string; content: string; source: string; images: string[]; brand: BrandDNA | null } | null> => r.status === "fulfilled")
       .map(r => r.value)
-      .filter(Boolean) as { url: string; content: string; source: string; images: string[] }[];
+      .filter(Boolean) as { url: string; content: string; source: string; images: string[]; brand: BrandDNA | null }[];
 
     if (scraped.length === 0) {
       return c.json({ success: true, briefEnrichment: "", productImages: [], pagesScraped: 0, imagesFound: 0, note: "no content extracted" });
@@ -5132,16 +5373,97 @@ app.post("/compare/scrape-urls", async (c) => {
       .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && !!r.value)
       .map(r => r.value);
 
-    // Build compact briefEnrichment block
+    // ── Aggregate BRAND DNA across all scraped pages ──
+    // Strategy: the highest-scored logo across pages wins; palettes/fonts are
+    // deduped unions; meta is taken from the first page (usually the homepage
+    // or canonical URL), since most downstream pages reuse og:title/description.
+    const aggregatedBrand: BrandDNA | null = (() => {
+      const withBrand = scraped.filter(s => s.brand);
+      if (withBrand.length === 0) return null;
+
+      // Best logo across all pages by score
+      const allLogos = withBrand.flatMap(s => s.brand!.logoCandidates);
+      allLogos.sort((a, b) => b.score - a.score);
+      const bestLogo = allLogos[0]?.url || null;
+
+      // Merge palettes — keep first-seen order, dedupe
+      const colorsOrdered: string[] = [];
+      for (const s of withBrand) {
+        for (const c of s.brand!.palette.all) {
+          if (!colorsOrdered.includes(c)) colorsOrdered.push(c);
+        }
+      }
+      const primaryCands = withBrand.map(s => s.brand!.palette.primary).filter(Boolean) as string[];
+      const secondaryCands = withBrand.map(s => s.brand!.palette.secondary).filter(Boolean) as string[];
+      const accentCands = withBrand.map(s => s.brand!.palette.accent).filter(Boolean) as string[];
+
+      // Merge fonts (dedupe)
+      const fontsSet = new Set<string>();
+      for (const s of withBrand) for (const f of s.brand!.fonts) fontsSet.add(f);
+
+      // Merge socials (dedupe by platform)
+      const socialByPlatform = new Map<string, string>();
+      for (const s of withBrand) for (const soc of s.brand!.socialUrls) {
+        if (!socialByPlatform.has(soc.platform)) socialByPlatform.set(soc.platform, soc.url);
+      }
+
+      // Meta: first page wins
+      const firstMeta = withBrand[0].brand!.meta;
+      const firstTheme = withBrand[0].brand!.themeColor;
+
+      return {
+        logo: bestLogo,
+        logoCandidates: allLogos.slice(0, 5),
+        palette: {
+          primary: primaryCands[0] || colorsOrdered[0] || null,
+          secondary: secondaryCands[0] || colorsOrdered[1] || null,
+          accent: accentCands[0] || colorsOrdered[2] || null,
+          all: colorsOrdered.slice(0, 8),
+        },
+        themeColor: firstTheme,
+        fonts: [...fontsSet].slice(0, 5),
+        meta: firstMeta,
+        socialUrls: [...socialByPlatform.entries()].map(([platform, url]) => ({ platform, url })),
+      };
+    })();
+
+    // Build compact briefEnrichment block (scraped copy + brand DNA block)
     const blocks = scraped.map((s, i) => `[PAGE ${i + 1}] ${s.url}\n${s.content.slice(0, 2500)}`).join("\n\n");
-    const briefEnrichment = `\n\n=== REAL PRODUCT/COMPANY CONTEXT (scraped from client URLs — USE THESE REAL FACTS) ===\n${blocks}\n\nMANDATORY: Use the REAL product names, features, prices, benefits, and USPs from the scraped pages above. NEVER invent product information. Quote exact names as they appear. Derive tone from the scraped copy.`;
+
+    // Brand DNA block — injected into enrichment so text/image/video agents
+    // use the REAL brand identity (colors, fonts, tone anchor) instead of guessing.
+    let brandBlock = "";
+    if (aggregatedBrand) {
+      const p = aggregatedBrand.palette;
+      const paletteStr = [p.primary && `primary ${p.primary}`, p.secondary && `secondary ${p.secondary}`, p.accent && `accent ${p.accent}`]
+        .filter(Boolean).join(", ");
+      const fontsStr = aggregatedBrand.fonts.slice(0, 3).join(", ") || "—";
+      const socialStr = aggregatedBrand.socialUrls.map(s => `${s.platform}:${s.url}`).join(" | ") || "—";
+      brandBlock = `\n\n=== BRAND DNA (extracted from the scraped site — USE THESE EXACT CODES) ===\n` +
+        `Brand name: ${aggregatedBrand.meta.title || "—"}\n` +
+        `Tagline/description: ${aggregatedBrand.meta.description || "—"}\n` +
+        `Logo URL: ${aggregatedBrand.logo || "—"}\n` +
+        `Color palette (HEX): ${paletteStr || "—"}\n` +
+        `All observed brand colors: ${p.all.join(", ") || "—"}\n` +
+        `Typography: ${fontsStr}\n` +
+        `Social: ${socialStr}\n\n` +
+        `MANDATORY BRAND RULES:\n` +
+        `- Use the EXACT palette above — do not invent or substitute colors.\n` +
+        `- Respect the brand name as provided — never paraphrase or abbreviate.\n` +
+        `- Mood/tone must match the tagline and scraped copy (no generic marketing clichés).\n` +
+        `- If typography is provided, reference it in visual prompts when relevant.\n` +
+        `- Logo, if present, is sacred — do not redraw or re-stylize it.`;
+    }
+
+    const briefEnrichment = `\n\n=== REAL PRODUCT/COMPANY CONTEXT (scraped from client URLs — USE THESE REAL FACTS) ===\n${blocks}\n\nMANDATORY: Use the REAL product names, features, prices, benefits, and USPs from the scraped pages above. NEVER invent product information. Quote exact names as they appear. Derive tone from the scraped copy.${brandBlock}`;
 
     const took = Date.now() - t0;
-    console.log(`[compare/scrape-urls] OK: ${scraped.length} pages, ${productImages.length} images, ${briefEnrichment.length} chars, ${took}ms`);
+    console.log(`[compare/scrape-urls] OK: ${scraped.length} pages, ${productImages.length} images, brand:${aggregatedBrand ? "YES" : "NO"}, ${briefEnrichment.length} chars, ${took}ms`);
     return c.json({
       success: true,
       briefEnrichment,
       productImages,
+      brand: aggregatedBrand,
       pagesScraped: scraped.length,
       imagesFound: productImages.length,
       tookMs: took,

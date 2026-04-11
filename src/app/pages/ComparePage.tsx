@@ -126,6 +126,154 @@ const SEGMENTS_BY_MODE: Record<CreativeMode, { id: AnySegment; icon: string; lab
   ],
 };
 
+/* ═══════════════════════════════════════════════════════════
+   INTENT PRESETS — 8 content intents that shape the creative brief
+   Each preset injects a framework (copywriting recipe), visual
+   direction (mood + composition) and pacing hints before we call
+   the underlying models. `auto` = no preset, free creation.
+   ═══════════════════════════════════════════════════════════ */
+type IntentId =
+  | "auto"
+  | "promo"
+  | "brand-ad"
+  | "product-launch"
+  | "social-organic"
+  | "editorial"
+  | "ugc"
+  | "lookbook"
+  | "b2b";
+
+interface IntentPreset {
+  id: IntentId;
+  icon: string;
+  labelFr: string;
+  labelEn: string;
+  descFr: string;
+  descEn: string;
+  // Framework / copy recipe (FR) — injected into the prompt
+  copyFramework: string;
+  // Visual direction (FR) — injected into image/video prompts
+  visualDirection: string;
+  // Pacing / tone hints (FR)
+  pacing: string;
+}
+
+const INTENT_PRESETS: IntentPreset[] = [
+  {
+    id: "auto",
+    icon: "✨",
+    labelFr: "Auto",
+    labelEn: "Auto",
+    descFr: "Création libre, sans template",
+    descEn: "Free creation, no template",
+    copyFramework: "",
+    visualDirection: "",
+    pacing: "",
+  },
+  {
+    id: "promo",
+    icon: "🏷️",
+    labelFr: "Promo / Offre",
+    labelEn: "Promo / Offer",
+    descFr: "Réduction, offre limitée, urgence",
+    descEn: "Discount, limited offer, urgency",
+    copyFramework: "Framework PAS (Problème · Agitation · Solution). Hook direct avec le bénéfice chiffré. Prix visible. Deadline explicite. CTA impératif (Profitez, Découvrez, Commandez).",
+    visualDirection: "Packshot clean, fond uni ou légèrement texturé, lumière studio crisp, produit frontal ou 3/4, price tag intégré, couleurs vives. Composition centrée, règle des tiers lâche. Ambiance commerciale premium (pas cheap).",
+    pacing: "Impact immédiat, message court, punch.",
+  },
+  {
+    id: "brand-ad",
+    icon: "🎬",
+    labelFr: "Pub Marque",
+    labelEn: "Brand Ad",
+    descFr: "Storytelling de marque, émotion",
+    descEn: "Brand storytelling, emotion",
+    copyFramework: "Framework BAB (Before · After · Bridge). Ouverture sur une tension émotionnelle, résolution par la marque, bridge vers le manifesto. Ton élevé, rythme cinématique.",
+    visualDirection: "Lifestyle éditorial, lumière naturelle directionnelle (golden hour, soft overcast), narration visuelle, profondeur de champ cinéma, cadrage large, grain film subtil. Palette cohérente avec la marque.",
+    pacing: "Lent, posé, émotionnel. Laisser respirer le silence / le vide.",
+  },
+  {
+    id: "product-launch",
+    icon: "🚀",
+    labelFr: "Lancement Produit",
+    labelEn: "Product Launch",
+    descFr: "Révélation hero d'un nouveau produit",
+    descEn: "Hero reveal of a new product",
+    copyFramework: "Framework AIDA (Attention · Intérêt · Désir · Action). Hook choc sur la nouveauté. Mise en avant des features différenciantes. Désir par la démonstration. CTA: précommande / découvrir.",
+    visualDirection: "Hero shot dramatique, éclairage studio rim light, fond gradient ou noir profond, produit en majesté, reflets maîtrisés, angle héroïque légèrement contre-plongée. Effet produit-sacré.",
+    pacing: "Révélation, crescendo, reveal final net.",
+  },
+  {
+    id: "social-organic",
+    icon: "📱",
+    labelFr: "Social Organique",
+    labelEn: "Social Organic",
+    descFr: "Natif social, scroll-stopper, conversationnel",
+    descEn: "Native social, scroll-stopper, conversational",
+    copyFramework: "Hook 1ère seconde obligatoire (question, stat, POV, contre-intuition). Ton conversationnel, tutoiement possible. Valeur-first, pas de vente frontale. CTA soft (commente, partage, save).",
+    visualDirection: "Authentique, POV iPhone-like, lumière naturelle, cadrage vertical 9:16 ou carré, pas de sur-léchage, mouvement léger, expressivité. Feel UGC-but-clean.",
+    pacing: "Ultra-rapide 0-1s, hook visuel fort, cuts punchy.",
+  },
+  {
+    id: "editorial",
+    icon: "📰",
+    labelFr: "Éditorial",
+    labelEn: "Editorial",
+    descFr: "Magazine premium, storytelling visuel",
+    descEn: "Premium magazine, visual storytelling",
+    copyFramework: "Ton journalistique, narration posée, vocabulaire riche, structure chapitrée (accroche · développement · chute). Pas de CTA agressif.",
+    visualDirection: "Composition magazine, règle des tiers stricte, typographie espacée, lumière narrative, palette sobre, détails matières. Cadrage intentionnel, chaque plan raconte quelque chose.",
+    pacing: "Contemplatif, lent, chapitré.",
+  },
+  {
+    id: "ugc",
+    icon: "🤳",
+    labelFr: "UGC Style",
+    labelEn: "UGC Style",
+    descFr: "Témoignage POV, look iPhone vrai",
+    descEn: "Testimonial POV, real iPhone look",
+    copyFramework: "Voix à la première personne, tutoiement, imperfections assumées, mini-histoire vécue, proof social. Pas de jargon marketing, parler comme un vrai client.",
+    visualDirection: "Look iPhone front-camera ou handheld, lumière disponible, grain naturel, flou léger, cadrage approximatif volontaire, feel selfie ou vlog. ZÉRO studio.",
+    pacing: "Naturel, parlé, coupes bruts, overlays texte façon TikTok.",
+  },
+  {
+    id: "lookbook",
+    icon: "👗",
+    labelFr: "Lookbook",
+    labelEn: "Lookbook",
+    descFr: "Mode / saison, plans séquencés",
+    descEn: "Fashion / seasonal, sequenced shots",
+    copyFramework: "Minimal, presque silencieux. Nom de la collection, saison, 1-2 mots clés. Priorité au visuel.",
+    visualDirection: "Série de plans cohérents: plein pied / mi-corps / détail tissu / accessoire. Lumière constante sur la série, palette dominante, stylisme net. Mannequin posé, regard absent ou franc. Décor minimaliste ou texturé.",
+    pacing: "Séquentiel, rythme posé, cuts fluides entre plans.",
+  },
+  {
+    id: "b2b",
+    icon: "🏢",
+    labelFr: "B2B / Corpo",
+    labelEn: "B2B / Corporate",
+    descFr: "Professionnel, data-driven, expertise",
+    descEn: "Professional, data-driven, expertise",
+    copyFramework: "Ton expert, factuel, data-driven. Structure: problème métier · solution · proof (chiffres, cas client). Vocabulaire sectoriel précis. CTA: demander une démo, télécharger le white paper.",
+    visualDirection: "Clean editorial corporate, lumière neutre, cadrage architectural, environnement bureau moderne ou abstraction data-viz. Couleurs sobres (bleus, gris, blancs). Pas de lifestyle frivole.",
+    pacing: "Sobre, informatif, pauses sur les chiffres clés.",
+  },
+];
+
+function getIntentPreset(id: IntentId): IntentPreset {
+  return INTENT_PRESETS.find(p => p.id === id) || INTENT_PRESETS[0];
+}
+
+// ── Brand DNA from backend /compare/scrape-urls ──
+interface BrandDNA {
+  logo: string | null;
+  palette: { primary: string | null; secondary: string | null; accent: string | null; all: string[] };
+  themeColor: string | null;
+  fonts: string[];
+  meta: { title: string; description: string; ogImage: string | null; favicon: string | null; appleTouchIcon: string | null; keywords: string };
+  socialUrls: { platform: string; url: string }[];
+}
+
 // ── Result types ──
 interface CreativeResult {
   id: string;
@@ -470,6 +618,11 @@ export function ComparePage() {
   // URL scraping (auto-detects product/company URLs in the brief and scrapes them)
   const [scrapedUrls, setScrapedUrls] = useState<{ pagesScraped: number; imagesFound: number } | null>(null);
   const [isScraping, setIsScraping] = useState(false);
+  // Brand DNA extracted from the scraped site (logo, palette, fonts, meta) —
+  // drives the brand preview banner AND is injected as a brand block into every generation.
+  const [brandDNA, setBrandDNA] = useState<BrandDNA | null>(null);
+  // Intent preset — shapes the copy framework + visual direction. "auto" = no template.
+  const [intent, setIntent] = useState<IntentId>("auto");
 
   // ── Music options (used when mode === "music") ──
   const [musicDurationSec, setMusicDurationSec] = useState(30);       // 10–180s
@@ -765,6 +918,7 @@ export function ComparePage() {
     setIsRunning(true);
     setResults([]);
     setScrapedUrls(null);
+    setBrandDNA(null);
 
     const modelSteps = selectedModels.map(id => ({ label: catalog.find(m => m.id === id)?.label || id, status: "pending" as StepStatus }));
     setSteps(modelSteps);
@@ -784,6 +938,9 @@ export function ComparePage() {
           briefEnrichment = String(scrapeRes.briefEnrichment || "");
           scrapedProductImages = Array.isArray(scrapeRes.productImages) ? scrapeRes.productImages : [];
           setScrapedUrls({ pagesScraped: scrapeRes.pagesScraped || 0, imagesFound: scrapeRes.imagesFound || 0 });
+          // Persist the brand DNA so the preview banner + downstream prompts can use it.
+          if (scrapeRes.brand) setBrandDNA(scrapeRes.brand as BrandDNA);
+          else setBrandDNA(null);
           // User-facing feedback on scrape outcome
           if (scrapedProductImages.length > 0) {
             toast.success(isFr
@@ -818,12 +975,31 @@ export function ComparePage() {
       return;
     }
 
-    // Enriched prompt — brief + scraped real product context (when URLs detected)
+    // ── Build INTENT block (if the user picked a preset other than "auto") ──
+    // The block is deliberately short and mode-specific so we don't blow past
+    // GET URL limits on fallback paths.
+    let intentBlock = "";
+    if (intent !== "auto") {
+      const preset = getIntentPreset(intent);
+      const parts: string[] = [];
+      // Copy framework only for text mode (the LLM needs the recipe)
+      if (mode === "text" && preset.copyFramework) parts.push(`COPY FRAMEWORK: ${preset.copyFramework}`);
+      // Visual direction for image / video
+      if ((mode === "image" || mode === "video") && preset.visualDirection) parts.push(`VISUAL DIRECTION: ${preset.visualDirection}`);
+      // Pacing only for video (and text as rhythm hint)
+      if ((mode === "video" || mode === "text") && preset.pacing) parts.push(`PACING/TONE: ${preset.pacing}`);
+      if (parts.length > 0) {
+        intentBlock = `\n\n=== INTENT: ${preset.labelFr.toUpperCase()} (${preset.id}) ===\n${parts.join("\n")}\nMANDATORY: follow this intent strictly unless the user explicitly overrides it in the brief below.`;
+      }
+    }
+
+    // Enriched prompt — brief + intent + scraped real product context (when URLs detected)
     // For GET fallback paths, briefEnrichment must stay small (URL query string limit ~8KB).
     // When we have a real ref image, img2img POST can take the full enrichment.
-    const enrichedPromptFull = briefEnrichment ? `${prompt}${briefEnrichment}` : prompt;
-    const briefEnrichmentShort = briefEnrichment ? briefEnrichment.slice(0, 1200) + (briefEnrichment.length > 1200 ? "\n[...truncated for GET]" : "") : "";
-    const enrichedPromptShort = briefEnrichmentShort ? `${prompt}${briefEnrichmentShort}` : prompt;
+    const fullEnrichment = `${intentBlock}${briefEnrichment}`;
+    const enrichedPromptFull = fullEnrichment ? `${prompt}${fullEnrichment}` : prompt;
+    const shortEnrichment = fullEnrichment ? fullEnrichment.slice(0, 1200) + (fullEnrichment.length > 1200 ? "\n[...truncated for GET]" : "") : "";
+    const enrichedPromptShort = shortEnrichment ? `${prompt}${shortEnrichment}` : prompt;
 
     const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
@@ -1142,7 +1318,7 @@ USER REQUEST: `;
           console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
         });
       });
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat, intent]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
@@ -1520,6 +1696,118 @@ USER REQUEST: `;
                   })}
                 </div>
               )}
+
+              {/* Intent picker — 8 presets that shape the copy framework + visual direction.
+                  Hidden for music mode (Suno/ElevenLabs have their own style system). */}
+              {mode !== "music" && (
+                <div className="px-4 pt-1 pb-1 flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+                  <span className="flex-shrink-0" style={{ fontSize: 10, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em", marginRight: 4 }}>
+                    Intent
+                  </span>
+                  {INTENT_PRESETS.map(p => {
+                    const on = intent === p.id;
+                    return (
+                      <button key={p.id} onClick={() => setIntent(p.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                        style={{
+                          background: on ? "var(--foreground)" : "rgba(255,255,255,0.5)",
+                          color: on ? "var(--background)" : "var(--muted-foreground)",
+                          border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
+                          fontSize: 10, fontWeight: on ? 700 : 600,
+                        }}
+                        title={isFr ? p.descFr : p.descEn}>
+                        <span style={{ fontSize: 11 }}>{p.icon}</span>
+                        {isFr ? p.labelFr : p.labelEn}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Brand preview banner — shown once URL scraping has returned a brand DNA.
+                  Compact inline card: logo thumbnail + palette dots + brand name + font. */}
+              <AnimatePresence>
+                {brandDNA && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="px-4 pt-2"
+                  >
+                    <div
+                      className="flex items-center gap-3 rounded-xl px-3 py-2"
+                      style={{
+                        background: "linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(59,130,246,0.06) 100%)",
+                        border: "1px solid rgba(34,197,94,0.25)",
+                      }}
+                    >
+                      {/* Logo thumbnail */}
+                      {brandDNA.logo ? (
+                        <img
+                          src={brandDNA.logo}
+                          alt="brand logo"
+                          className="w-9 h-9 rounded-md object-contain flex-shrink-0"
+                          style={{ background: "#fff", padding: 2, border: "1px solid rgba(0,0,0,0.06)" }}
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0"
+                          style={{ background: "rgba(0,0,0,0.05)", fontSize: 14 }}>🎨</div>
+                      )}
+
+                      {/* Brand info */}
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--foreground)" }}>
+                            {brandDNA.meta.title ? brandDNA.meta.title.slice(0, 40) : (isFr ? "Marque détectée" : "Brand detected")}
+                          </span>
+                          <span style={{ fontSize: 9, fontWeight: 600, color: "#16a34a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                            {isFr ? "DNA extrait" : "DNA extracted"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {/* Palette dots */}
+                          <div className="flex items-center gap-0.5">
+                            {brandDNA.palette.all.slice(0, 5).map((hex, idx) => (
+                              <div
+                                key={`${hex}-${idx}`}
+                                className="w-3 h-3 rounded-full"
+                                style={{ background: hex, border: "1px solid rgba(0,0,0,0.1)" }}
+                                title={hex}
+                              />
+                            ))}
+                            {brandDNA.palette.all.length === 0 && (
+                              <span style={{ fontSize: 9, color: "var(--muted-foreground)" }}>—</span>
+                            )}
+                          </div>
+                          {/* Font name */}
+                          {brandDNA.fonts.length > 0 && (
+                            <span style={{ fontSize: 9, color: "var(--muted-foreground)", fontWeight: 500 }}>
+                              · {brandDNA.fonts[0]}
+                            </span>
+                          )}
+                          {/* Socials */}
+                          {brandDNA.socialUrls.length > 0 && (
+                            <span style={{ fontSize: 9, color: "var(--muted-foreground)", fontWeight: 500 }}>
+                              · {brandDNA.socialUrls.length} {isFr ? "réseaux" : "socials"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Dismiss */}
+                      <button
+                        onClick={() => setBrandDNA(null)}
+                        className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer flex-shrink-0"
+                        style={{ background: "rgba(0,0,0,0.05)" }}
+                        title={isFr ? "Ignorer la marque" : "Ignore brand"}
+                      >
+                        <X size={10} style={{ color: "var(--muted-foreground)" }} />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Attached reference preview + type toggle (Product / Pixel-Perfect / Location)
                   Shown whenever a reference will be used: either uploaded image OR URL detected in prompt */}
