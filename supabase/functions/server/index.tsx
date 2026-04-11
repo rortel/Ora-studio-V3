@@ -1319,7 +1319,46 @@ NEVER ask for clarification. NEVER output multiple options. Pick the BEST interp
 - If the user's request is in another language, translate it faithfully to English first.
 - ${preserveBrandName ? `KEEP THE EXACT BRAND NAME AND PRODUCT MODEL from the user's prompt. Do NOT remove or replace brand names. However, do NOT add any NEW brand names not already in the prompt.` : `REMOVE ALL brand names, product model names, company names. Replace with VISUAL DESCRIPTIONS ONLY. Example: instead of "MAN eTGX truck" write "a large modern European electric heavy-duty truck with a sleek aerodynamic cab, blue and silver livery".`}
 - Vehicles, machines, technology MUST be MODERN, CONTEMPORARY (2024-era). NEVER vintage or retro.
-- End the prompt with: "No text, no logos, no watermarks, no AI artifacts. Shot on film, 8K scan."`;
+- End the prompt with: "No text, no logos, no watermarks, no AI artifacts. Shot on film, 8K scan."
+
+MODEL-SPECIFIC OPTIMIZATION (adapt density based on downstream model):
+- Luma Photon / Photon Flash: respond best to cinematic scene descriptions + precise lighting terms ("golden hour backlit", "overcast window light"). Less keyword stacking, more narrative.
+- Flux Pro / Flux Dev: handle long, dense prompts (150-200 words). Stack camera specs + lens + film stock + color grading.
+- Flux Kontext Pro (edit/img2img): lead with the EDIT instruction ("change the background to...", "preserve the subject identity, add..."). Mention what to KEEP.
+- DALL-E 3: shorter, more narrative prompts. Avoid technical stacking. Focus on subject + mood + simple scene.
+- Ideogram V3: when text-in-image is required, quote the exact text inside double quotes.
+- SeedDream / Soul / Nano-Banana (FAL): respond well to editorial/fashion references and brand-style tokens.
+
+COMPOSITION PRINCIPLES (weave at least one into every prompt):
+- Rule of thirds: subject off-center, eye-line on the upper third line
+- Leading lines: architectural, natural, or light-based vectors guiding to the subject
+- Negative space: intentional emptiness creating breathing room and tension
+- Foreground / midground / background layering: creates depth perception
+- Frame within a frame: doorway, window, arch, shadow — contextual framing
+
+BRAND COLOR INTEGRATION RULE:
+- NEVER append "add blue and orange" to the prompt. Weave colors DIEGETICALLY: a cobalt blue ceramic cup, a brass lamp casting amber light, a terracotta wall in the background, a client in a mustard wool coat.
+- Colors come from props, wardrobe, light sources, surfaces, materials — never as flat color fills.
+
+PRODUCT FIDELITY — ABSOLUTE RULE:
+- When a product is referenced (via img2img reference image or exact name from the vault), preserve its EXACT identity: shape, proportions, color, logo placement, material finish.
+- NEVER invent product features, certifications, awards, or performance claims in the prompt text.
+- If the downstream pipeline has an img2img reference, DO NOT describe the product in detail — let the reference image do that work. Describe the SCENE around it.
+- Quote exact product/brand names ONLY if they come from the user's prompt or vault context. Never guess or approximate.
+
+UNIVERSE COMPLIANCE — MANDATORY:
+- Every scene MUST anchor in the brand's communication universe (tone, palette, semiotic codes, photo direction from the BRAND CREATIVE DIRECTION block above).
+- If a specific product is selected, use its PRODUCT UNIVERSE (palette, tone, photo_style, keywords) OVER the generic brand rules. Product universes override brand universes for product-specific content.
+- Brand universes define creative TERRITORIES — draw visual inspiration from them, don't copy them literally.
+- NEVER mix competitor visual codes with brand visual codes.
+
+ANTI-HALLUCINATION — ZERO TOLERANCE:
+- NEVER invent certifications, labels, or regulatory visual claims (ISO stamps, bio logos, "made in France" marks) unless explicitly provided.
+- NEVER fabricate text, numbers, awards, or press mentions visible inside the image.
+- NEVER invent statistics, percentages, or study results rendered on signs, packaging, or screens.
+- NEVER guess legal/regulatory visual information (ingredient lists, allergens, nutritional facts).
+- When in doubt, keep surfaces empty or use generic placeholder textures — NEVER fabricate claims.
+- End with the anti-defect line to suppress hallucinated text: "No text, no logos, no watermarks, no AI artifacts."`;
 
   for (const m of enhanceModels) {
     try {
@@ -2378,6 +2417,88 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   const finalPrompt = req.prompt + realisticSuffix;
   console.log(`[img2img] model=${req.model}, strength=${strength} (raw=${rawStrength}, preserve=${preserveContent}), ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
 
+  // ═══ MODEL DISPATCH — route to the actual selected backend ═══
+  // CRITICAL: previously this function ignored req.model and always ran Luma Photon character_ref.
+  // That meant Kontext Pro, Nano Banana and Flux Pro 2 all produced the same output (Luma).
+  // Now each selected model goes through its own optimized pipeline.
+  const selectedModel = req.model || "";
+
+  // ── DISPATCH 1: Leonardo v2 edit models (Nano Banana, Flux Pro 2, SeedDream v4, GPT Image, etc.) ──
+  // These models have native image_reference guidance built into their v2 API — best fidelity.
+  if (leonardoV2ModelMap[selectedModel]) {
+    try {
+      console.log(`[img2img] DISPATCH → Leonardo v2 edit (${selectedModel})`);
+      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+      const res = await generateImageLeonardoV2WithGuidance({
+        prompt: finalPrompt,
+        model: selectedModel,
+        imageId,
+        strength: "HIGH", // high preservation of the reference
+        aspectRatio: req.aspectRatio,
+      });
+      if (res?.imageUrl) {
+        console.log(`[img2img] Leonardo v2 edit OK in ${Date.now() - start}ms (${selectedModel})`);
+        return { ...res, latencyMs: Date.now() - start };
+      }
+    } catch (err) {
+      console.log(`[img2img] Leonardo v2 edit failed for ${selectedModel}: ${err} — falling back`);
+    }
+  }
+
+  // ── DISPATCH 2: Flux Kontext Pro via FAL (native edit model) ──
+  // Kontext is specifically designed for image editing with subject preservation.
+  if (selectedModel === "kontext-pro-leo" || selectedModel === "kontext-pro" || selectedModel === "flux-kontext-pro") {
+    const falKey = Deno.env.get("FAL_API_KEY");
+    if (falKey) {
+      for (const falModel of ["fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"]) {
+        try {
+          console.log(`[img2img] DISPATCH → FAL ${falModel} (Kontext, preserves subject natively)...`);
+          const res = await fetch(`https://fal.run/${falModel}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+            body: JSON.stringify({
+              prompt: finalPrompt,
+              image_url: req.imageRefUrl,
+              num_images: 1,
+              safety_tolerance: "2",
+              output_format: "jpeg",
+              aspect_ratio: req.aspectRatio || "4:3",
+            }),
+          });
+          if (!res.ok) { const b = await res.text(); console.log(`[img2img] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+          const data = await res.json();
+          const imageUrl = data.images?.[0]?.url;
+          if (imageUrl) {
+            console.log(`[img2img] FAL Kontext OK in ${Date.now() - start}ms`);
+            return { model: selectedModel, provider: `fal-kontext/${falModel}`, imageUrl, latencyMs: Date.now() - start };
+          }
+        } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
+      }
+    }
+  }
+
+  // ── DISPATCH 3: Leonardo v1 models with controlnet content-guidance (Phoenix, Lucid, Flux Dev/Schnell) ──
+  if (leonardoImageModelMap[selectedModel] && leonardoPreprocessors[leonardoImageModelMap[selectedModel].leonardoModelId]) {
+    try {
+      console.log(`[img2img] DISPATCH → Leonardo v1 edit content-guidance (${selectedModel})`);
+      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+      const res = await generateImageLeonardoWithGuidance({
+        prompt: finalPrompt,
+        model: selectedModel,
+        imageId,
+        guidanceType: "content",
+        strength: "High",
+        aspectRatio: req.aspectRatio || "4:3",
+      });
+      if (res?.imageUrl) {
+        console.log(`[img2img] Leonardo v1 edit OK in ${Date.now() - start}ms (${selectedModel})`);
+        return { ...res, latencyMs: Date.now() - start };
+      }
+    } catch (err) {
+      console.log(`[img2img] Leonardo v1 edit failed for ${selectedModel}: ${err} — falling back`);
+    }
+  }
+
   // ═══ When preserveContent=true: FAL Flux img2img FIRST (true pixel-preserving denoising) ═══
   // FAL Flux img2img at strength=0.85 — 85% transformation, only 15% of original pixels guide the result.
   // The product shape/colors are seeded by the ref but the scene is COMPLETELY NEW based on the prompt.
@@ -2547,6 +2668,146 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // Final fallback: plain generation (ignore reference)
   console.log(`[img2img] All img2img failed, falling back to plain generateImage`);
   return generateImage({ prompt: req.prompt, model: req.model || "ora-vision" });
+}
+
+// ── LOCATION REFERENCE (architecture/interior preserve) ──
+// Uses ControlNet Depth to preserve the 3D structure of a place (walls, windows, volumes)
+// while the prompt drives the styling (lighting, decor, people, mood, mise-en-scène).
+// Use cases: hotel rooms, restaurants, shops, properties, event venues.
+async function generateImageWithLocationRef(req: {
+  prompt: string;
+  model: string;
+  imageRefUrl: string;
+  aspectRatio?: string;
+}) {
+  const start = Date.now();
+  const arMap: Record<string, string> = {
+    "1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9",
+    "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3",
+  };
+  const imageSize = arMap[req.aspectRatio || ""] || "landscape_4_3";
+  // Prompt construction: put the USER request first and prominent, structure-preservation as a
+  // short trailing hint. Long preservation preambles were drowning out short user prompts
+  // (e.g. "ambiance nuit, dîner aux chandelles") and the models were outputting unchanged refs.
+  const finalPrompt = `${req.prompt}. Same room and same architecture as reference, photorealistic interior photography.`;
+  console.log(`[location-ref] model=${req.model}, ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
+
+  // Per-strategy hard timeout so one hung call can't consume the whole 200s budget
+  const STRATEGY_TIMEOUT_MS = 70_000;
+  const withTimeout = (ms: number) => AbortSignal.timeout(ms);
+
+  const falKey = Deno.env.get("FAL_API_KEY");
+  if (falKey) {
+    // Strategy 1: FAL Flux Pro v1 Depth — managed depth controlnet (best for interiors)
+    try {
+      console.log(`[location-ref] Trying FAL flux-pro/v1/depth...`);
+      const res = await fetch("https://fal.run/fal-ai/flux-pro/v1/depth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          control_image_url: req.imageRefUrl,
+          num_images: 1,
+          image_size: imageSize,
+          num_inference_steps: 28,
+          // guidance_scale: FAL recommends 3.5 for flux-pro. Values > 10 cause the model to
+          // collapse onto the control image and ignore the prompt entirely (reason we were
+          // getting identical-to-reference outputs).
+          guidance_scale: 3.5,
+          safety_tolerance: "2",
+          output_format: "jpeg",
+        }),
+        signal: withTimeout(STRATEGY_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.images?.[0]?.url;
+        if (imageUrl) {
+          console.log(`[location-ref] FAL flux-pro/v1/depth OK in ${Date.now() - start}ms`);
+          return { model: req.model, provider: "fal-depth/flux-pro-v1", imageUrl, latencyMs: Date.now() - start };
+        }
+      } else {
+        const b = await res.text();
+        console.log(`[location-ref] FAL flux-pro/v1/depth ${res.status}: ${b.slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[location-ref] FAL flux-pro/v1/depth error: ${err}`); }
+
+    // Strategy 2: FAL Flux General img2img (strength 0.8 = bold lighting/mood changes while keeping composition)
+    try {
+      console.log(`[location-ref] Trying FAL flux img2img (strength 0.8)...`);
+      const res = await fetch("https://fal.run/fal-ai/flux/dev/image-to-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          image_url: req.imageRefUrl,
+          // strength 0.8 → lets the model re-imagine lighting, add candles, change mood,
+          // while img2img's latent seeding preserves the broad composition (bed, windows, walls).
+          // 0.55 was too low — the output was ~95% the reference.
+          strength: 0.8,
+          image_size: imageSize,
+          num_images: 1,
+          num_inference_steps: 28,
+          guidance_scale: 3.5,
+        }),
+        signal: withTimeout(STRATEGY_TIMEOUT_MS),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.images?.[0]?.url;
+        if (imageUrl) {
+          console.log(`[location-ref] FAL flux img2img OK in ${Date.now() - start}ms`);
+          return { model: req.model, provider: "fal-img2img/flux-dev-location", imageUrl, latencyMs: Date.now() - start };
+        }
+      } else {
+        const b = await res.text();
+        console.log(`[location-ref] FAL flux img2img ${res.status}: ${b.slice(0, 200)}`);
+      }
+    } catch (err) { console.log(`[location-ref] FAL flux img2img error: ${err}`); }
+  }
+
+  // Strategy 3: Luma Photon modify_image_ref (weight 0.85 → preserves structure)
+  try {
+    console.log(`[location-ref] Trying Luma Photon modify_image_ref...`);
+    const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
+    const lumaBody: any = {
+      prompt: finalPrompt,
+      model: "photon-1",
+      aspect_ratio: lumaArMap[req.aspectRatio || ""] || "16:9",
+      // weight 0.55: moderate structure preservation. 0.85 was too high — Luma just copied the ref.
+      // Luma interprets higher weight as "lock this image down", which kills prompt adherence.
+      modify_image_ref: { url: req.imageRefUrl, weight: 0.55 },
+    };
+    const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
+      method: "POST", headers: lumaHeaders(), body: JSON.stringify(lumaBody),
+      signal: withTimeout(20_000),
+    });
+    if (submitRes.ok) {
+      const generation = await submitRes.json();
+      const genId = generation.id;
+      if (genId) {
+        const deadline = Date.now() + 70_000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 3_000));
+          try {
+            const pollRes = await fetch(`${LUMA_BASE}/generations/${genId}`, { headers: lumaHeaders(), signal: withTimeout(10_000) });
+            if (!pollRes.ok) continue;
+            const pd = await pollRes.json();
+            if (pd.state === "completed" && pd.assets?.image) {
+              console.log(`[location-ref] Luma modify OK in ${Date.now() - start}ms`);
+              return { model: req.model, provider: "luma/photon-1-modify-location", imageUrl: pd.assets.image, latencyMs: Date.now() - start };
+            }
+            if (pd.state === "failed") break;
+          } catch { /* continue */ }
+        }
+      }
+    } else {
+      const b = await submitRes.text();
+      console.log(`[location-ref] Luma submit ${submitRes.status}: ${b.slice(0, 200)}`);
+    }
+  } catch (err) { console.log(`[location-ref] Luma error: ${err}`); }
+
+  throw new Error("All location-ref strategies failed");
 }
 
 // ── VIDEO GENERATION (Luma Ray — submit + polling) ──
@@ -4531,10 +4792,13 @@ ${fmtDesc}`;
 app.post("/compare/scrape-urls", async (c) => {
   const t0 = Date.now();
   try {
-    const body = await c.req.json().catch(() => ({}));
+    // Use parsedBody (populated by body-parser middleware) because the frontend sends
+    // Content-Type: text/plain to skip CORS preflight; c.req.json() may not parse that.
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const urls: string[] = Array.isArray(body.urls)
       ? body.urls.filter((u: any) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 3)
       : [];
+    console.log(`[compare/scrape-urls] body keys=[${Object.keys(body || {}).join(",")}], urls=${urls.length}`);
     if (urls.length === 0) return c.json({ success: false, error: "urls required" }, 400);
 
     console.log(`[compare/scrape-urls] scraping ${urls.length} url(s): ${urls.map(u => u.slice(0, 60)).join(", ")}`);
@@ -4565,11 +4829,136 @@ app.post("/compare/scrape-urls", async (c) => {
       } catch { return null; }
     }
 
+    // ── SHARED HELPERS for deep scraping ──────────────────────────────────
+    // Parse any HTML string → list of absolute image URLs.
+    // Handles: og/twitter:image, <img src/data-src/srcset>, <picture><source>,
+    // CSS background-image:url(), data-bg/data-background lazy patterns.
+    function extractImagesFromHtml(html: string, pageUrl: string): string[] {
+      const out: string[] = [];
+      let base: URL;
+      try { base = new URL(pageUrl); } catch { return out; }
+      const resolve = (src: string): string | null => {
+        if (!src || src.startsWith("data:")) return null;
+        if (/\.(svg|gif)(\?|$)/i.test(src)) return null;
+        if (/1x1|pixel|track|spacer|blank|favicon/i.test(src)) return null;
+        try {
+          if (src.startsWith("//")) return base.protocol + src;
+          if (src.startsWith("/")) return base.origin + src;
+          if (!src.startsWith("http")) return new URL(src, pageUrl).toString();
+          return src;
+        } catch { return null; }
+      };
+      const push = (raw: string) => { const r = resolve(raw); if (r && !out.includes(r)) out.push(r); };
+      for (const m of html.matchAll(/<meta[^>]+property=["'](?:og|twitter):image(?::secure_url)?["'][^>]+content=["']([^"']+)["'][^>]*>/gi)) push(m[1]);
+      for (const m of html.matchAll(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["'](?:og|twitter):image(?::secure_url)?["'][^>]*>/gi)) push(m[1]);
+      for (const m of html.matchAll(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["'][^>]*>/gi)) push(m[1]);
+      for (const m of html.matchAll(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["'][^>]*>/gi)) push(m[1]);
+      for (const m of html.matchAll(/<img[^>]+(?:src|data-src|data-lazy-src|data-original|data-lazy)=["']([^"']+)["'][^>]*>/gi)) push(m[1]);
+      for (const m of html.matchAll(/<source[^>]+srcset=["']([^"']+)["'][^>]*>/gi)) {
+        const first = m[1].split(",")[0].trim().split(/\s+/)[0];
+        if (first) push(first);
+      }
+      for (const m of html.matchAll(/<img[^>]+srcset=["']([^"']+)["'][^>]*>/gi)) {
+        const first = m[1].split(",")[0].trim().split(/\s+/)[0];
+        if (first) push(first);
+      }
+      for (const m of html.matchAll(/background-image\s*:\s*url\(['"]?([^'")]+)['"]?\)/gi)) push(m[1]);
+      for (const m of html.matchAll(/data-(?:bg|background|bgset)=["']([^"']+)["']/gi)) {
+        const first = m[1].split(",")[0].trim().split(/\s+/)[0];
+        if (first) push(first);
+      }
+      return out;
+    }
+
+    // Extract internal gallery-ish links from HTML for 1-hop crawl.
+    // Matches URL path OR anchor text against gallery keywords, same-host only.
+    const GALLERY_RE = /(gallery|galerie|photos?|chambres?|rooms?|suites?|spa|about|notre-maison|our-?(?:hotel|house|story)|restaurant|amenit|hebergement|decouvrir|discover)/i;
+    function extractGalleryLinks(html: string, pageUrl: string): string[] {
+      const out: string[] = [];
+      let base: URL;
+      try { base = new URL(pageUrl); } catch { return out; }
+      const seen = new Set<string>();
+      seen.add(pageUrl.split("#")[0]);
+      for (const m of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+        const href = m[1];
+        const text = (m[2] || "").replace(/<[^>]+>/g, " ").toLowerCase();
+        if (!href || href.startsWith("#") || /^(mailto|tel|javascript):/i.test(href)) continue;
+        let u: URL;
+        try { u = new URL(href, pageUrl); } catch { continue; }
+        if (u.host !== base.host) continue;
+        if (!/^https?:$/.test(u.protocol)) continue;
+        // Skip non-HTML assets
+        if (/\.(jpg|jpeg|png|webp|pdf|zip|mp4|mp3|svg|ico)(\?|$)/i.test(u.pathname)) continue;
+        const path = u.pathname.toLowerCase();
+        if (!GALLERY_RE.test(path) && !GALLERY_RE.test(text)) continue;
+        const norm = u.toString().split("#")[0];
+        if (seen.has(norm)) continue;
+        seen.add(norm);
+        out.push(norm);
+      }
+      return out;
+    }
+
+    // Fetch + parse sitemaps for image URLs (Google Image Sitemap + recursive sitemap index).
+    async function fetchSitemapImages(origin: string): Promise<string[]> {
+      const out: string[] = [];
+      const candidates = [
+        `${origin}/sitemap.xml`,
+        `${origin}/sitemap_index.xml`,
+        `${origin}/sitemap-image.xml`,
+        `${origin}/image-sitemap.xml`,
+        `${origin}/wp-sitemap.xml`,
+      ];
+      const tryFetch = async (url: string): Promise<string | null> => {
+        try {
+          const r = await fetchWithTimeout(url, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudioBot/1.0)" },
+          }, 5_000);
+          if (!r.ok) return null;
+          const ct = r.headers.get("content-type") || "";
+          if (!/xml|text/i.test(ct) && !url.endsWith(".xml")) return null;
+          return await r.text();
+        } catch { return null; }
+      };
+      const parseImages = (xml: string) => {
+        // Google Image Sitemap: <image:image><image:loc>URL</image:loc></image:image>
+        for (const m of xml.matchAll(/<image:loc>\s*([^<]+?)\s*<\/image:loc>/gi)) {
+          const u = m[1].trim();
+          if (u.startsWith("http") && !out.includes(u)) out.push(u);
+        }
+      };
+      for (const url of candidates) {
+        const xml = await tryFetch(url);
+        if (!xml) continue;
+        parseImages(xml);
+        // Sitemap index → follow sub-sitemaps (prefer image/media ones, max 4)
+        if (/<sitemapindex/i.test(xml)) {
+          const subs: string[] = [];
+          for (const m of xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)) {
+            const u = m[1].trim();
+            if (u.startsWith("http")) subs.push(u);
+          }
+          // Rank image/media-named sub-sitemaps first
+          subs.sort((a, b) => {
+            const s = (u: string) => /image|media|photo|gallerie|gallery/i.test(u) ? 10 : 0;
+            return s(b) - s(a);
+          });
+          const subResults = await Promise.allSettled(subs.slice(0, 4).map(tryFetch));
+          for (const r of subResults) {
+            if (r.status === "fulfilled" && r.value) parseImages(r.value);
+          }
+        }
+        if (out.length > 0) break; // stop on first sitemap that yielded images
+      }
+      return out;
+    }
+
     const scrapeResults = await Promise.allSettled(urls.map(async (pageUrl, i) => {
       const jinaKey = Deno.env.get("JINA_API_KEY");
       let content = "";
       let rawImageUrls: string[] = [];
       let source = "none";
+      const tracking = { jina: 0, html: 0, sitemap: 0, gallery: 0, galleryPages: 0 };
       if (jinaKey) {
         try {
           const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
@@ -4592,31 +4981,99 @@ app.post("/compare/scrape-urls", async (c) => {
             const jinaImages = data.data?.images || data.images || {};
             if (typeof jinaImages === "object" && !Array.isArray(jinaImages)) {
               for (const [imgUrl] of Object.entries(jinaImages)) {
-                if (typeof imgUrl === "string" && imgUrl.startsWith("http")) rawImageUrls.push(imgUrl);
+                if (typeof imgUrl === "string" && imgUrl.startsWith("http")) { rawImageUrls.push(imgUrl); tracking.jina++; }
               }
             } else if (Array.isArray(jinaImages)) {
               for (const img of jinaImages) {
                 const u = typeof img === "string" ? img : (img as any)?.url || (img as any)?.src || "";
-                if (u.startsWith("http")) rawImageUrls.push(u);
+                if (u.startsWith("http")) { rawImageUrls.push(u); tracking.jina++; }
               }
             }
           }
         } catch (e) { console.log(`[compare/scrape-urls] Jina [${i}] fail: ${e}`); }
       }
-      // Extract markdown images ![alt](url)
+      // Extract markdown images ![alt](url) from Jina content
       if (content.length > 0) {
         const mdImgRe = /!\[[^\]]*\]\(([^)]+)\)/g;
         let m;
         while ((m = mdImgRe.exec(content)) !== null) {
           const u = m[1].trim();
-          if (u.startsWith("http") && !rawImageUrls.includes(u)) rawImageUrls.push(u);
+          if (u.startsWith("http") && !rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.jina++; }
         }
       }
-      // Fallback: generic scrapeUrl
+      // Fallback: generic scrapeUrl for content only
       if (content.length < 50) {
         try { const r = await scrapeUrl(pageUrl, 0.5); content = r.content.slice(0, 4000); source = r.source; } catch {}
       }
-      // Filter out icons, pixels, tiny assets
+
+      // ── DEEP SCAN (always on) — main HTML + sitemap + gallery 1-hop ──
+      // We fetch the main page HTML once (needed both for direct images AND for gallery link
+      // detection), then fire sitemap + gallery crawl in parallel. Total budget ~12s.
+      let mainHtml = "";
+      try {
+        const htmlRes = await fetchWithTimeout(pageUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+          },
+        }, 15_000);
+        if (htmlRes.ok) mainHtml = await htmlRes.text();
+        else console.log(`[compare/scrape-urls] [${i}] main HTML fetch status=${htmlRes.status}`);
+      } catch (e) { console.log(`[compare/scrape-urls] [${i}] main HTML fetch fail: ${e}`); }
+
+      // Layer 1b: direct images from main page HTML (what the old fallback did)
+      if (mainHtml) {
+        const direct = extractImagesFromHtml(mainHtml, pageUrl);
+        for (const u of direct) {
+          if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.html++; }
+        }
+      }
+
+      // Layer 2 (sitemap) + Layer 3 (gallery 1-hop) in parallel
+      const origin = (() => { try { return new URL(pageUrl).origin; } catch { return ""; } })();
+      const [sitemapImages, galleryImages] = await Promise.all([
+        // ─── LAYER 2: sitemap.xml / sitemap-image.xml (Google Image Sitemap) ───
+        origin ? fetchSitemapImages(origin).catch(() => [] as string[]) : Promise.resolve([] as string[]),
+        // ─── LAYER 3: 1-hop gallery crawl ───
+        (async (): Promise<string[]> => {
+          if (!mainHtml) return [];
+          const links = extractGalleryLinks(mainHtml, pageUrl).slice(0, 5);
+          if (links.length === 0) return [];
+          tracking.galleryPages = links.length;
+          console.log(`[compare/scrape-urls] [${i}] gallery 1-hop: ${links.length} links → ${links.map(l => l.slice(-50)).join(" | ")}`);
+          const results = await Promise.allSettled(links.map(async (link) => {
+            try {
+              const r = await fetchWithTimeout(link, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Accept": "text/html",
+                  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                },
+              }, 8_000);
+              if (!r.ok) return [] as string[];
+              const h = await r.text();
+              return extractImagesFromHtml(h, link);
+            } catch { return [] as string[]; }
+          }));
+          const merged: string[] = [];
+          for (const r of results) {
+            if (r.status === "fulfilled") {
+              for (const u of r.value) if (!merged.includes(u)) merged.push(u);
+            }
+          }
+          return merged;
+        })(),
+      ]);
+
+      for (const u of sitemapImages) {
+        if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.sitemap++; }
+      }
+      for (const u of galleryImages) {
+        if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.gallery++; }
+      }
+      console.log(`[compare/scrape-urls] [${i}] deep sources — jina:${tracking.jina} html:${tracking.html} sitemap:${tracking.sitemap} gallery:${tracking.gallery} (${tracking.galleryPages} pages)`);
+      // Filter out icons, pixels, tiny assets, and rank hero/content images first
       const filtered = rawImageUrls.filter(u => {
         const l = u.toLowerCase();
         if (l.includes(".svg") || l.includes("favicon") || l.includes("data:")) return false;
@@ -4624,10 +5081,28 @@ app.post("/compare/scrape-urls", async (c) => {
         if (l.includes("1x1") || l.includes("spacer") || l.includes("badge") || l.includes("button")) return false;
         if (l.match(/icon[\-_.]\d/) || l.match(/logo[\-_.](small|xs|16|32|ico)/)) return false;
         if (l.includes("avatar") || l.includes("emoji") || l.includes("flag")) return false;
+        // Exclude obvious chrome (site logos, social share icons)
+        if (/\/logo[\-_.\/]/.test(l) || /sprite/.test(l)) return false;
+        if (/\/(menu|nav|header|footer)[\-_.\/]/.test(l)) return false;
         return true;
-      }).slice(0, 5);
-      console.log(`[compare/scrape-urls] [${i}] ${content.length} chars via ${source}, ${filtered.length} images`);
-      return content.length >= 50 ? { url: pageUrl, content, source, images: filtered } : null;
+      });
+      // Rank: hero/banner/bg/cover first, then everything else — keeps luxury site hero images on top
+      filtered.sort((a, b) => {
+        const score = (u: string) => {
+          const l = u.toLowerCase();
+          if (/og.?image|twitter.?image/.test(l)) return 10;
+          if (/hero|banner|cover|bg[\-_.\/]|background/.test(l)) return 8;
+          if (/\/uploads\/|\/media\/|\/content\/|\/wp-content\//.test(l)) return 5;
+          if (/\d{3,4}x\d{3,4}/.test(l)) return 4;
+          return 0;
+        };
+        return score(b) - score(a);
+      });
+      const topFiltered = filtered.slice(0, 8);
+      console.log(`[compare/scrape-urls] [${i}] ${content.length} chars via ${source}, ${topFiltered.length} images kept (${filtered.length} after filter, ${rawImageUrls.length} raw)`);
+      // Keep the page even if Jina content is empty — deep scan may still have found images
+      const hasSomething = content.length >= 50 || topFiltered.length > 0;
+      return hasSomething ? { url: pageUrl, content: content || pageUrl, source, images: topFiltered } : null;
     }));
 
     const scraped = scrapeResults
@@ -4639,12 +5114,12 @@ app.post("/compare/scrape-urls", async (c) => {
       return c.json({ success: true, briefEnrichment: "", productImages: [], pagesScraped: 0, imagesFound: 0, note: "no content extracted" });
     }
 
-    // Re-host up to 3 images
+    // Re-host up to 5 images (deep scan finds more quality candidates)
     const candidateImages: { url: string; sourceUrl: string }[] = [];
     const seen = new Set<string>();
     for (const s of scraped) {
       for (const imgUrl of s.images) {
-        if (seen.has(imgUrl) || candidateImages.length >= 3) continue;
+        if (seen.has(imgUrl) || candidateImages.length >= 5) continue;
         seen.add(imgUrl);
         candidateImages.push({ url: imgUrl, sourceUrl: s.url });
       }
@@ -4674,6 +5149,561 @@ app.post("/compare/scrape-urls", async (c) => {
   } catch (err) {
     console.log(`[compare/scrape-urls] FATAL: ${err}`);
     return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// COMPARE — VLM post-generation validation (Sprint 1: anti-hallucination)
+// Compares a generated image against a reference product/location image
+// and returns a structured verdict (excellent|good|drift|wrong).
+// ══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// /compare/describe-subject — VLM one-liner subject description
+// ═══════════════════════════════════════════════════════════════════
+// Given a reference image, returns a 1-2 sentence factual description of the
+// main subject so non-vision models in the batch know what they're editing.
+// Example: "A tall rectangular black perfume bottle with a square gold cap
+// and minimalist white label reading 'LUIS 04'."
+// This description is injected into the preservation prefix before generation.
+
+app.post("/compare/describe-subject", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { imageUrl } = body;
+    if (!imageUrl) return c.json({ success: false, error: "imageUrl required" }, 400);
+
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) return c.json({ success: true, skipped: true, reason: "APIPOD_API_KEY not configured" });
+
+    const systemPrompt = `You are a product photographer assistant. Your job is to describe the main subject of a reference image in ONE SHORT factual sentence (max 30 words), so another AI model knows exactly what to preserve when generating a new scene with that subject.
+
+RULES:
+- Describe ONLY what you see — no interpretation, no mood, no scene
+- Name the object category clearly (bottle, jacket, shoe, watch, person wearing X, bag, etc.)
+- Mention distinctive features: shape, colors, materials, labels, logos, proportions
+- If there's visible text or branding, quote it exactly
+- DO NOT describe the background
+- DO NOT invent details you can't see
+- DO NOT say "appears to be" or "looks like" — be factual
+
+Return ONLY valid JSON:
+{ "subject": "<one factual sentence>", "category": "<one word: bottle|jacket|shoe|watch|bag|person|car|food|cosmetic|accessory|electronic|packaging|other>" }`;
+
+    const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Describe the main subject of this reference image in one factual sentence:" },
+              { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+            ],
+          },
+        ],
+        max_tokens: 200,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.log(`[compare/describe-subject] vision error ${res.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: true, skipped: true, reason: `vision ${res.status}` });
+    }
+
+    const data = await res.json();
+    const raw = (data.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    let parsed: any = {};
+    try { parsed = JSON.parse(cleaned); }
+    catch {
+      const m = cleaned.match(/\{[\s\S]*\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
+    }
+
+    const subject = String(parsed.subject || "").slice(0, 300).trim();
+    const category = String(parsed.category || "other").slice(0, 20).trim();
+
+    console.log(`[compare/describe-subject] "${subject}" (${category}) in ${Date.now() - t0}ms`);
+    return c.json({ success: true, subject, category, tookMs: Date.now() - t0 });
+  } catch (err: any) {
+    console.log(`[compare/describe-subject] FATAL: ${err?.message || err}`);
+    return c.json({ success: true, skipped: true, reason: String(err?.message || err) });
+  }
+});
+
+app.post("/compare/validate-image", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const {
+      generatedImageUrl,
+      referenceImageUrl,
+      productHint = "",
+      locationHint = "",
+      userBrief = "",
+      mode = "product", // "product" | "location"
+    } = body;
+
+    if (!generatedImageUrl || !referenceImageUrl) {
+      return c.json({ success: false, error: "generatedImageUrl and referenceImageUrl are required" }, 400);
+    }
+
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) {
+      return c.json({ success: true, skipped: true, reason: "APIPOD_API_KEY not configured" });
+    }
+
+    const systemPrompt = mode === "location"
+      ? `You are a senior AI image quality auditor specialized in detecting architectural and location drift.
+
+Two images will be provided:
+- IMAGE 1 = the REFERENCE (the real location the client wants to preserve — interior, exterior, spatial layout)
+- IMAGE 2 = the GENERATED output (what the AI produced)
+
+Your job: determine if the GENERATED image FAITHFULLY preserves the architecture, spatial layout, key structural elements, and identifying features of the REFERENCE location.
+
+WHAT TO CHECK:
+1. Architectural features: walls, ceilings, beams, arches, windows, doors — shape and placement
+2. Spatial layout: room proportions, camera angle, depth, furniture positioning
+3. Key distinctive features: fireplaces, staircases, specific décor that defines the place
+4. Materials & finishes: wood, stone, concrete, tiles — major surfaces should match
+5. Light character: direction and quality (but mood/color grading can differ)
+
+WHAT IS ALLOWED TO CHANGE (don't flag):
+- Color grading, mood, time of day, weather
+- Small decorative props, flowers, dishes, minor styling
+- People present/absent
+- Minor framing adjustments
+
+SCORING:
+- 90-100 "excellent": location is faithfully preserved, only stylistic changes
+- 70-89 "good": recognizable as the same place, minor structural freedoms
+- 40-69 "drift": visible architectural changes, the place feels different
+- 0-39 "wrong": completely different location, not recognizable
+
+${locationHint ? `CLIENT HINT ABOUT THE LOCATION: "${locationHint}"` : ""}
+
+Return ONLY valid JSON (no markdown, no prose):
+{
+  "score": <0-100>,
+  "verdict": "excellent" | "good" | "drift" | "wrong",
+  "match": <true if score >= 70>,
+  "differences": ["specific list of detected drifts — empty if excellent"],
+  "preserved": ["specific list of elements correctly preserved"],
+  "summary": "one sentence verdict"
+}`
+      : `You are a senior AI image quality auditor specialized in detecting product drift and hallucination in campaign creatives. You are LENIENT by default and strict only when the product is absent, replaced, or fundamentally changed.
+
+Two images will be provided:
+- IMAGE 1 = the REFERENCE (what the client owns: a product packshot, a product in context, OR a lifestyle shot already featuring the product)
+- IMAGE 2 = the GENERATED output (what the AI produced — often a NEW scene, background, or context where the product should appear)
+
+GOLDEN RULE OF THIS AUDIT:
+"Can the client RECOGNIZE their product in the new scene?" → If yes, pass (good or excellent). If the product is absent or has become something else, fail (drift or wrong). Nothing in between, no nitpicking.
+
+CONTEXT — HOW CAMPAIGN GENERATION WORKS:
+The user uploads a product/outfit reference and asks for a NEW scene (e.g. "put the man in a studio backstage", "show the bottle on a marble counter", "add a beach setting"). The AI is EXPECTED to change scene, background, lighting, pose, and framing. Your job is NOT to check visual similarity between the two images — it is to check whether the PRODUCT ITSELF is faithfully present in the new scene.
+
+${userBrief ? `USER BRIEF (what the user asked for): "${userBrief.slice(0, 500)}"
+→ This brief tells you which elements are INTENDED to change. Do NOT penalize changes that the brief explicitly requests.` : ""}
+
+STEP 1 — IDENTIFY THE PRODUCT IN THE REFERENCE:
+Look at IMAGE 1 and extract the PRODUCT/ITEM being showcased. Examples:
+- A leather jacket worn by a model → the product is the jacket
+- A perfume bottle on a white background → the product is the bottle
+- A sneaker held in a hand → the product is the sneaker
+- A car on a road → the product is the car
+Ignore the model's face, the background, the pose — focus on what's being sold.
+
+STEP 2 — VERIFY PRODUCT PRESENCE IN THE GENERATED IMAGE:
+Check IMAGE 2 for the same product (possibly worn, held, displayed differently).
+
+WHAT TO CHECK (on the PRODUCT itself):
+1. PRESENCE: Is the product (or a close match) visible in the generated scene at all? If absent → score ≤ 30, verdict "wrong"
+2. Shape & silhouette: contours must match
+3. Color: primary product color(s) must match (±lighting variation is OK)
+4. Material & finish: leather vs fabric, matte vs gloss, metal vs plastic
+5. Logo / brand marks: if visible in reference, must not be altered or invented
+6. Distinctive features: cuts, seams, hardware, buttons, cap shape, details that identify it
+
+WHAT IS ALLOWED TO CHANGE (NEVER penalize these):
+- Background, scene, environment, location — these are intentional changes
+- Lighting setup, color grading, time of day, mood
+- Camera angle, framing, scale within the frame
+- The model's pose, face, body position, expression
+- Whether the product is worn, held, placed, or standalone
+- Props, other people, styling around the product
+- Black & white vs color treatment if the brief implies a stylistic change
+
+HALLUCINATION FLAGS (automatic penalty, score capped at 40):
+- Product category changed (ref is a jacket, output shows a shirt or hoodie instead)
+- Invented logos or text on the product that don't exist in the reference
+- Product color fundamentally different (ref is black leather, output is brown suede)
+- Multiple conflicting versions of the product
+- Product REPLACED by a different item
+
+SCORING RUBRIC (be LENIENT on scene changes, strict ONLY on product absence/replacement):
+- 90-100 "excellent": product clearly present and recognizable as the same product, new scene well executed
+- 70-89 "good": product recognizable as the same product, minor variations due to angle/lighting/scale are OK
+- 40-69 "drift": product present but FUNDAMENTALLY altered (wrong category — a jacket became a shirt, a bottle became a can, wrong color family — black became red)
+- 0-39 "wrong": product is ABSENT from the scene, or REPLACED by a different item entirely, or the scene shows the wrong subject type (e.g. reference is a perfume bottle but output shows a man with no bottle visible)
+
+IMPORTANT CALIBRATION — DEFAULT TO LENIENCY:
+- A wide shot where the product is small but VISIBLE → "excellent" or "good"
+- A product photographed at a different angle → "excellent" if same product
+- A B&W treatment of a colored product → "good" if shape/details match
+- Different label legibility due to distance or lighting → "good" if product is clearly there
+- If the product is PRESENT and RECOGNIZABLE → minimum score is 70 "good"
+- "wrong" (score < 40) is ONLY for: absent product, replaced product, wrong category, wrong subject type
+- "drift" (40-69) is ONLY for: same product present but with OBVIOUS wrong attributes (wrong color, wrong shape)
+- When in doubt between two verdicts → ALWAYS pick the HIGHER one
+- Never score below 70 just because the angle/framing/scale differs from the reference — that's intentional
+
+EXAMPLES:
+- Reference: perfume bottle packshot. Output: Mustang with the same perfume bottle on the hood. → "excellent" 90
+- Reference: perfume bottle packshot. Output: a man on a Mustang, no bottle visible. → "wrong" 20 (product absent)
+- Reference: leather jacket on model. Output: same model wearing the same jacket in a cafe. → "excellent" 95
+- Reference: leather jacket on model. Output: different jacket (suede instead of leather). → "drift" 50
+- Reference: sneaker packshot. Output: sneaker on a street from a different angle. → "excellent" 90
+
+${productHint ? `CLIENT HINT ABOUT THE PRODUCT: "${productHint}"` : ""}
+
+Return ONLY valid JSON (no markdown, no prose):
+{
+  "score": <0-100>,
+  "verdict": "excellent" | "good" | "drift" | "wrong",
+  "match": <true if score >= 70>,
+  "differences": ["specific list of detected drifts — empty if excellent"],
+  "preserved": ["specific list of elements correctly preserved"],
+  "hallucinations": ["any fabricated elements (logos, text, features) — empty if none"],
+  "summary": "one sentence verdict"
+}`;
+
+    const visionRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "IMAGE 1 — REFERENCE (what must be preserved):" },
+              { type: "image_url", image_url: { url: referenceImageUrl, detail: "high" } },
+              { type: "text", text: "IMAGE 2 — GENERATED (what to audit):" },
+              { type: "image_url", image_url: { url: generatedImageUrl, detail: "high" } },
+              { type: "text", text: "Audit the generated image against the reference and return the JSON verdict." },
+            ],
+          },
+        ],
+        max_tokens: 800,
+        temperature: 0.15,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+
+    if (!visionRes.ok) {
+      const errText = await visionRes.text();
+      console.log(`[compare/validate-image] vision error ${visionRes.status}: ${errText.slice(0, 300)}`);
+      return c.json({ success: true, skipped: true, reason: `vision ${visionRes.status}` });
+    }
+
+    const visionData = await visionRes.json();
+    const raw = (visionData.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+
+    let parsed: any = {};
+    try { parsed = JSON.parse(cleaned); }
+    catch {
+      const m = cleaned.match(/\{[\s\S]*\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
+    }
+
+    // Normalize output
+    const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+    const verdict = ["excellent", "good", "drift", "wrong"].includes(parsed.verdict)
+      ? parsed.verdict
+      : (score >= 90 ? "excellent" : score >= 70 ? "good" : score >= 40 ? "drift" : "wrong");
+    const match = score >= 70;
+
+    const result = {
+      success: true,
+      score,
+      verdict,
+      match,
+      mode,
+      differences: Array.isArray(parsed.differences) ? parsed.differences.slice(0, 8) : [],
+      preserved: Array.isArray(parsed.preserved) ? parsed.preserved.slice(0, 8) : [],
+      hallucinations: Array.isArray(parsed.hallucinations) ? parsed.hallucinations.slice(0, 5) : [],
+      summary: String(parsed.summary || "").slice(0, 300),
+      tookMs: Date.now() - t0,
+    };
+
+    console.log(`[compare/validate-image] ${mode} score=${score} verdict=${verdict} match=${match} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
+
+    if (user) {
+      logCost({
+        type: "text",
+        model: "gpt-4o-vision",
+        provider: "apipod",
+        costUsd: 0.015,
+        revenueEur: 0,
+        latencyMs: result.tookMs,
+        userId: user.id,
+        success: true,
+      }).catch(() => {});
+    }
+
+    return c.json(result);
+  } catch (err: any) {
+    console.log(`[compare/validate-image] FATAL: ${err?.message || err}`);
+    return c.json({ success: true, skipped: true, reason: String(err?.message || err) });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
+// ═══════════════════════════════════════════════════════════════════
+// Pipeline: non-generative subject extraction (Photoroom) → cutout stored →
+// FAL Bria background-generator / IC-Light / Photoroom Studio AI bg with the cutout preserved pixel-for-pixel.
+// Because the subject is NEVER re-rendered by a generative model, it is guaranteed to be
+// identical to the reference. Only the scene around it is AI-generated.
+// Use cases: packshots, bottles, sneakers, jackets, watches — where the client needs 0% drift.
+
+async function photoroomExtractCutout(productImageUrl: string, photoroomKey: string): Promise<{ pngBlob: Blob }> {
+  // Photoroom /v2/edit with only removeBackground=true and export.format=png (no bg generation)
+  // Returns a PNG with transparent background — the product pixels are 100% preserved.
+  const params = new URLSearchParams();
+  params.set("imageUrl", productImageUrl);
+  params.set("removeBackground", "true");
+  params.set("export.format", "png");
+  const url = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
+  const res = await fetch(url, { headers: { "x-api-key": photoroomKey } });
+  if (!res.ok) {
+    const b = await res.text();
+    throw new Error(`Photoroom cutout ${res.status}: ${b.slice(0, 200)}`);
+  }
+  const pngBlob = await res.blob();
+  return { pngBlob };
+}
+
+async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string | null): Promise<string> {
+  const sb = supabaseAdmin();
+  const bucket = "make-cad57f79-media";
+  const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  const storagePath = `pixel-perfect/${userId || "anon"}/${fileName}`;
+  const buf = new Uint8Array(await pngBlob.arrayBuffer());
+  const { error: upErr } = await sb.storage.from(bucket).upload(storagePath, buf, {
+    contentType: "image/png",
+    upsert: true,
+  });
+  if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
+  const { data: signedData } = await sb.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
+  if (!signedData?.signedUrl) throw new Error("Storage: no signed URL");
+  return signedData.signedUrl;
+}
+
+app.post("/compare/pixel-perfect-product", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const {
+      productImageUrl,
+      prompt,
+      aspectRatio = "1:1",
+    } = body;
+
+    if (!productImageUrl || !prompt) {
+      return c.json({ success: false, error: "productImageUrl and prompt are required" }, 400);
+    }
+
+    console.log(`[pixel-perfect] start — user=${user?.id?.slice(0, 8) || "anon"}, ar=${aspectRatio}, ref=${String(productImageUrl).slice(0, 80)}`);
+
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    const falKey = Deno.env.get("FAL_API_KEY");
+
+    // ═══ STAGE 1: Extract subject cutout (non-generative → pixel-perfect) ═══
+    let cutoutSignedUrl: string | null = null;
+    if (photoroomKey) {
+      try {
+        console.log(`[pixel-perfect] Stage 1: Photoroom cutout...`);
+        const { pngBlob } = await photoroomExtractCutout(productImageUrl, photoroomKey);
+        cutoutSignedUrl = await uploadPngToStorage(pngBlob, "cutout", user?.id || null);
+        console.log(`[pixel-perfect] Cutout OK — ${cutoutSignedUrl.slice(0, 80)}`);
+      } catch (err) {
+        console.log(`[pixel-perfect] Photoroom cutout failed: ${err}`);
+      }
+    }
+
+    // ═══ STAGE 2: Generate scene around preserved cutout ═══
+
+    // Strategy A: Photoroom v2/edit direct — does cutout + AI bg in ONE call (guaranteed pixel-perfect)
+    // This is the PRIMARY path since Photoroom's segmentation is non-generative.
+    if (photoroomKey) {
+      try {
+        console.log(`[pixel-perfect] Stage 2A: Photoroom Studio AI bg with preserved subject...`);
+        const arSizeMap: Record<string, string> = {
+          "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+          "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+          "2:3": "800x1200", "3:2": "1200x800",
+        };
+        const outputSize = arSizeMap[aspectRatio] || "1080x1080";
+
+        const params = new URLSearchParams();
+        params.set("imageUrl", productImageUrl);
+        params.set("removeBackground", "true");
+        params.set("background.prompt", String(prompt).slice(0, 400));
+        params.set("lighting.mode", "ai.preserve-hue-and-saturation"); // critical: keep original product colors
+        params.set("outputSize", outputSize);
+        params.set("padding", "0.08");
+        params.set("ignorePaddingAndSnapOnCroppedSides", "false");
+        params.set("export.format", "webp");
+
+        const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+          headers: {
+            "x-api-key": photoroomKey,
+            "pr-ai-background-model-version": "background-studio-beta-2025-03-17", // Studio model = best photorealism
+          },
+        });
+
+        if (res.ok) {
+          const imageBuffer = await res.arrayBuffer();
+          const fileName = `pixel-perfect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+          const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
+          const sb = supabaseAdmin();
+          const { error: uploadError } = await sb.storage
+            .from("make-cad57f79-media")
+            .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
+          if (!uploadError) {
+            const { data: signedData } = await sb.storage
+              .from("make-cad57f79-media")
+              .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+            if (signedData?.signedUrl) {
+              console.log(`[pixel-perfect] Photoroom Studio OK in ${Date.now() - t0}ms`);
+              if (user) logEvent("generation", { userId: user.id, type: "image", model: "pixel-perfect", provider: "photoroom-studio" }).catch(() => {});
+              return c.json({
+                success: true,
+                imageUrl: signedData.signedUrl,
+                provider: "photoroom-studio",
+                pixelPerfect: true,
+                cutoutUrl: cutoutSignedUrl,
+                tookMs: Date.now() - t0,
+              });
+            }
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[pixel-perfect] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
+        }
+      } catch (err) {
+        console.log(`[pixel-perfect] Photoroom Studio error: ${err}`);
+      }
+    }
+
+    // Strategy B: FAL Bria background replace (if we have the cutout)
+    // Bria is purpose-built for commercial product photography — pixel-perfect subject preservation.
+    if (falKey && cutoutSignedUrl) {
+      try {
+        console.log(`[pixel-perfect] Stage 2B: FAL Bria background replace with cutout...`);
+        const res = await fetch("https://fal.run/fal-ai/bria/background/replace", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+          body: JSON.stringify({
+            image_url: cutoutSignedUrl,
+            bg_prompt: String(prompt).slice(0, 400),
+            refine_prompt: true,
+            num_results: 1,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const imageUrl = data.result?.[0] || data.images?.[0]?.url;
+          if (imageUrl) {
+            console.log(`[pixel-perfect] FAL Bria OK in ${Date.now() - t0}ms`);
+            return c.json({
+              success: true,
+              imageUrl,
+              provider: "fal-bria-bg-replace",
+              pixelPerfect: true,
+              cutoutUrl: cutoutSignedUrl,
+              tookMs: Date.now() - t0,
+            });
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[pixel-perfect] FAL Bria ${res.status}: ${b.slice(0, 200)}`);
+        }
+      } catch (err) {
+        console.log(`[pixel-perfect] FAL Bria error: ${err}`);
+      }
+    }
+
+    // Strategy C: FAL IC-Light v2 relight (if we have the cutout)
+    // IC-Light relights the subject into a new environment described by the prompt.
+    if (falKey && cutoutSignedUrl) {
+      try {
+        console.log(`[pixel-perfect] Stage 2C: FAL IC-Light v2 with cutout...`);
+        const res = await fetch("https://fal.run/fal-ai/iclight-v2", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+          body: JSON.stringify({
+            image_url: cutoutSignedUrl,
+            prompt: String(prompt).slice(0, 400),
+            num_images: 1,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const imageUrl = data.images?.[0]?.url;
+          if (imageUrl) {
+            console.log(`[pixel-perfect] FAL IC-Light OK in ${Date.now() - t0}ms`);
+            return c.json({
+              success: true,
+              imageUrl,
+              provider: "fal-iclight-v2",
+              pixelPerfect: true,
+              cutoutUrl: cutoutSignedUrl,
+              tookMs: Date.now() - t0,
+            });
+          }
+        } else {
+          const b = await res.text();
+          console.log(`[pixel-perfect] FAL IC-Light ${res.status}: ${b.slice(0, 200)}`);
+        }
+      } catch (err) {
+        console.log(`[pixel-perfect] FAL IC-Light error: ${err}`);
+      }
+    }
+
+    // All strategies failed
+    console.log(`[pixel-perfect] ALL STRATEGIES FAILED in ${Date.now() - t0}ms`);
+    return c.json({
+      success: false,
+      error: "Pixel-perfect pipeline failed — no strategy produced an image",
+      cutoutUrl: cutoutSignedUrl,
+    }, 500);
+  } catch (err: any) {
+    console.log(`[pixel-perfect] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
 
@@ -6346,15 +7376,43 @@ app.post("/generate/image-start", async (c) => {
     const model = body.model || c.req.query("model") || "photon-1";
     const imageRefUrl = body.imageRefUrl || c.req.query("imageRefUrl") || undefined;
     const refSource = body.refSource || c.req.query("refSource") || "";
+    const refType = (body.refType || c.req.query("refType") || "product").toLowerCase(); // "product" | "location"
 
     const provider = body.provider || c.req.query("provider") || ""; // "ai" = skip Photoroom, use AI img2img with product ref
-    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     const imgCredits = getModelCreditCost("image", model);
     if (user) deductCredit(user.id, imgCredits).catch(() => {});
 
     const isUploadRef = refSource === "upload";
+
+    // ═══ LOCATION REFERENCE: ControlNet Depth path (preserve architecture) ═══
+    // For hotel rooms, interiors, venues — preserves walls/windows/geometry, restyles everything else.
+    // Accept BOTH uploaded refs AND URL-scraped refs (refSource === "scrape" also OK).
+    if (imageRefUrl && refType === "location") {
+      console.log(`[image-start-POST] LOCATION path — using generateImageWithLocationRef (depth controlnet), refSource=${refSource}`);
+      try {
+        const result = await generateImageWithLocationRef({
+          prompt: rawPrompt,
+          model: model || "photon-1",
+          imageRefUrl,
+          aspectRatio,
+        });
+        if (result?.imageUrl) {
+          console.log(`[image-start-POST] LOCATION OK in ${Date.now() - t0}ms — provider=${result.provider}`);
+          if (user) logEvent("generation", { userId: user.id, type: "image", model, provider: result.provider }).catch(() => {});
+          return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider, directResult: true });
+        }
+        // Cascade returned no imageUrl — respond explicitly instead of silently falling through
+        // to Photoroom (which cannot handle locations and would look misleading to the user).
+        console.log(`[image-start-POST] LOCATION cascade returned no image in ${Date.now() - t0}ms`);
+        return c.json({ success: false, error: "Location pipeline returned no image (all strategies failed or timed out)", _debug: { refType: "location" } });
+      } catch (err: any) {
+        console.log(`[image-start-POST] LOCATION failed: ${err?.message || err}`);
+        return c.json({ success: false, error: `Location pipeline failed: ${err?.message || String(err).slice(0, 160)}`, _debug: { refType: "location" } });
+      }
+    }
 
     // ═══ AI-ONLY PATH: skip Photoroom, use generative AI with product as reference ═══
     // This keeps the product identity (shape, colors, brand) while letting AI generate the scene
@@ -12021,7 +13079,46 @@ async function scrapeUrl(url: string, timeoutMultiplier = 1.0): Promise<{ conten
 }
 
 // ── Shared: brand analysis system prompt ──
-const BRAND_ANALYSIS_PROMPT = `You are an expert brand analyst. Analyze the website content and return a JSON object with exactly this structure:
+const BRAND_ANALYSIS_PROMPT = `You are an elite brand analyst — 12 years at Interbrand, Wolff Olins, and Landor. You extract brand DNA with surgical precision from raw website content. Your output feeds every downstream agent (Copywriter, Art Director, Image Engineer) so accuracy is CRITICAL.
+
+METHODOLOGY — DNA EXTRACTION PROTOCOL (4 layers):
+
+LAYER 1 — VISUAL IDENTITY:
+- Colors: extract hex codes ONLY if visible in CSS, style tags, or explicit mentions. Classify by role: primary (logo, hero, CTAs), secondary (sections, accents), neutral (backgrounds).
+- Typography: identify font families from CSS or style declarations. Distinguish display (headings) from body fonts.
+- If a color or font is not verifiable → leave empty, do NOT guess.
+
+LAYER 2 — POSITIONING:
+- Brand promise: the single rallying message the site keeps returning to (not a slogan alone — the whole narrative).
+- Key messages: 3-5 phrases that capture the value proposition, pulled from headlines, hero copy, about pages.
+- Competitors: only brands explicitly mentioned or clearly referenced ("unlike X", "the alternative to Y").
+
+LAYER 3 — AUDIENCE:
+- Primary audience: inferred from language register, pain points addressed, use cases shown.
+- Secondary/tertiary: from testimonials, case studies, section headings targeting different segments.
+- NEVER invent demographics — only extract what the content reveals.
+
+LAYER 4 — VOICE CALIBRATION (tone dimensions, integers 1-10):
+- Formality: 1=meme/slang (Oatly, Wendy's), 5=professional-casual (most SaaS), 10=institutional (banks, luxury houses).
+- Confidence: 1=hedged/humble ("we believe", "we try"), 5=balanced, 10=assertive ("we are", "you will").
+- Warmth: 1=clinical/corporate, 5=accessible, 10=intimate (direct address, "you", human stories).
+- Humor: 1=zero humor, 5=wit, 10=absurdist.
+- Approved vocabulary: signature terms that recur — the words the brand OWNS.
+- Forbidden vocabulary: cliché terms the brand explicitly avoids (if the corpus reveals this — don't invent).
+
+PRODUCT FIDELITY — ABSOLUTE RULE:
+- Extract ONLY facts, features, or claims VISIBLE in the scraped content
+- NEVER invent certifications, awards, or performance stats not literally written on the page
+- Quote brand/product names EXACTLY as they appear
+- If a field cannot be confidently extracted → leave it empty
+
+ANTI-HALLUCINATION — ZERO TOLERANCE:
+- Every tone score must be SUPPORTED by textual evidence (internal reasoning, not output)
+- NEVER fabricate competitors, testimonials, or key messages
+- NEVER invent colors (hex codes) that aren't in the source CSS/HTML
+- When in doubt, leave the field empty rather than guess
+
+Return a JSON object with exactly this structure:
 {
   "brandName": "string",
   "tone": { "formality": 7, "confidence": 8, "warmth": 5, "humor": 3 },

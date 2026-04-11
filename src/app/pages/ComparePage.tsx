@@ -69,6 +69,8 @@ const IMAGE_MODELS: ModelDef[] = [
   { id: "flux-pro-2-leo", label: "Flux Pro 2", badge: "Premium", credits: 5, costEur: 0.50, providerCostEur: 0.023, strengths: ["quality"], bestFor: "Campagnes premium", tier: "premium", segment: "product" },
   { id: "flux-schnell-leo", label: "Flux Schnell", badge: "Ultra Fast", credits: 3, costEur: 0.30, providerCostEur: 0.003, strengths: ["ultra-fast"], bestFor: "Brouillons rapides", tier: "economy", segment: "draft" },
   { id: "kontext-pro-leo", label: "Kontext Pro", badge: "Edit", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["editing", "consistency"], bestFor: "Édition, cohérence", tier: "standard", segment: "product" },
+  { id: "nano-banana-leo", label: "Nano Banana", badge: "Gemini Edit", credits: 5, costEur: 0.50, providerCostEur: 0.020, strengths: ["product-preserve", "editing"], bestFor: "Fidélité produit, édition", tier: "standard", segment: "product" },
+  { id: "nano-banana-2-leo", label: "Nano Banana 2", badge: "Gemini Pro", credits: 5, costEur: 0.50, providerCostEur: 0.025, strengths: ["product-preserve", "high-detail"], bestFor: "Packshots premium", tier: "premium", segment: "product" },
   { id: "lucid-realism", label: "Leonardo Realism", badge: "Photo", credits: 5, costEur: 0.50, providerCostEur: 0.012, strengths: ["photo-realism"], bestFor: "Photo produit", tier: "standard", segment: "product" },
   { id: "seedream-v4", label: "SeedDream v4", badge: "Detailed", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["detail", "textures"], bestFor: "Environnements détaillés", tier: "standard", segment: "creative" },
   { id: "soul", label: "Soul", badge: "Artistic", credits: 5, costEur: 0.50, providerCostEur: 0.018, strengths: ["artistic", "stylized"], bestFor: "Style artistique", tier: "standard", segment: "creative" },
@@ -139,6 +141,16 @@ interface CreativeResult {
   error?: string;
   scores: { speed: number; value: number; quality: number; reliability: number; overall: number };
   saved?: boolean;
+  // VLM post-gen validation (Sprint 1 — anti-hallucination)
+  validation?: {
+    status: "pending" | "done" | "skipped" | "error";
+    score?: number;
+    verdict?: "excellent" | "good" | "drift" | "wrong";
+    match?: boolean;
+    differences?: string[];
+    hallucinations?: string[];
+    summary?: string;
+  };
 }
 
 // ── Scoring ──
@@ -480,6 +492,17 @@ export function ComparePage() {
 
   // ── Attached product photo ──
   const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; signedUrl?: string; uploading: boolean } | null>(null);
+  // Ref type:
+  //   "product"       = generative img2img (Nano Banana / Kontext / Flux Pro 2) — fast, creative, near-perfect
+  //   "pixel-perfect" = non-generative cutout (Photoroom Studio / Bria / IC-Light) — 0% drift, commercial packshots
+  //   "location"      = ControlNet Depth (FAL Flux Depth) — preserve architecture for hotels/venues
+  const [refType, setRefType] = useState<"product" | "pixel-perfect" | "location">("product");
+  // VLM-derived factual description of what the reference shows. Populated asynchronously when an image is attached
+  // and then injected into the preservation prefix so non-vision models know what to preserve.
+  const [refSubject, setRefSubject] = useState<{ subject: string; category: string } | null>(null);
+  // True when the brief contains a URL → enables ref-type toggle even without an uploaded image,
+  // so the user can pick "Location" mode for URL-scraped hotel/venue references.
+  const promptHasUrl = useMemo(() => /https?:\/\/[^\s<>"')]+/i.test(prompt), [prompt]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultsEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -637,6 +660,27 @@ export function ComparePage() {
       if (data.success && data.signedUrl) {
         setAttachedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl, uploading: false } : null);
         toast.success(isFr ? "Photo produit ajoutée" : "Product photo added");
+        // Fire-and-forget VLM subject description — used as factual injection in the preservation prefix.
+        // This tells every downstream model EXACTLY what to preserve, avoiding hallucination of people
+        // when the reference is an object, or hallucination of objects when the reference is a person.
+        setRefSubject(null);
+        (async () => {
+          try {
+            const token = getAuthHeader();
+            const r = await fetch(`${API_BASE}/compare/describe-subject`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: token },
+              body: JSON.stringify({ imageUrl: data.signedUrl }),
+            });
+            const j = await r.json();
+            if (j?.success && j.subject) {
+              setRefSubject({ subject: String(j.subject), category: String(j.category || "other") });
+              console.log(`[compare] VLM described subject: "${j.subject}" (${j.category})`);
+            }
+          } catch (err) {
+            console.warn("[compare] describe-subject failed:", err);
+          }
+        })();
       } else {
         toast.error(isFr ? "Échec upload" : "Upload failed");
         setAttachedImage(null);
@@ -652,13 +696,18 @@ export function ComparePage() {
   const removeAttachedImage = useCallback(() => {
     if (attachedImage?.preview) URL.revokeObjectURL(attachedImage.preview);
     setAttachedImage(null);
+    setRefSubject(null);
   }, [attachedImage]);
 
   // ── Server calls (CORS-safe: text/plain avoids preflight for most browsers) ──
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
-    // Retry once on network/CORS failure
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // Retry once on network/CORS failure — but ONLY for short (<150s) calls.
+    // Long calls (location cascade, video) should NOT retry on timeout since that
+    // doubles the user wait time for no reason (the backend already cascades internally).
+    const allowRetry = timeoutMs < 150_000;
+    const maxAttempts = allowRetry ? 2 : 1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const r = await fetch(`${API_BASE}${path}`, {
           method: "POST",
@@ -669,11 +718,12 @@ export function ComparePage() {
         const text = await r.text();
         try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
       } catch (err: any) {
-        if (attempt === 0) {
+        if (allowRetry && attempt === 0) {
           console.warn(`[serverPost] ${path} attempt 1 failed (${err?.message}), retrying...`);
           await new Promise(r => setTimeout(r, 500));
           continue;
         }
+        console.warn(`[serverPost] ${path} failed (${err?.message}) — no retry`);
         return { success: false, error: err?.message || "Network error" };
       }
     }
@@ -734,6 +784,16 @@ export function ComparePage() {
           briefEnrichment = String(scrapeRes.briefEnrichment || "");
           scrapedProductImages = Array.isArray(scrapeRes.productImages) ? scrapeRes.productImages : [];
           setScrapedUrls({ pagesScraped: scrapeRes.pagesScraped || 0, imagesFound: scrapeRes.imagesFound || 0 });
+          // User-facing feedback on scrape outcome
+          if (scrapedProductImages.length > 0) {
+            toast.success(isFr
+              ? `${scrapeRes.pagesScraped || 1} page(s) analysée(s) — ${scrapedProductImages.length} image(s) trouvée(s)`
+              : `Scraped ${scrapeRes.pagesScraped || 1} page(s) — ${scrapedProductImages.length} image(s) found`);
+          } else if ((scrapeRes.pagesScraped || 0) > 0) {
+            toast.warning(isFr
+              ? "Contenu trouvé mais aucune image exploitable sur cette URL"
+              : "Content scraped but no usable images found");
+          }
         }
       } catch (err) {
         console.warn("[compare] URL scrape failed:", err);
@@ -742,14 +802,82 @@ export function ComparePage() {
       }
     }
 
+    // ── HARD STOP: URL + location mode but scraper found no image ──
+    // Falling through to text-to-image GET would hit 403 (URL too long with full enrichment).
+    // Better to tell the user clearly and abort rather than show 4 cryptic "Failed to fetch" cards.
+    if (
+      (mode === "image" || mode === "video") &&
+      refType === "location" &&
+      !attachedImage &&
+      urlsInBrief.length > 0 &&
+      scrapedProductImages.length === 0
+    ) {
+      toast.error("Aucune image exploitable n'a pu être extraite de l'URL. Attachez une photo manuellement ou désactivez le mode Location.");
+      setIsRunning(false);
+      setSteps([]);
+      return;
+    }
+
     // Enriched prompt — brief + scraped real product context (when URLs detected)
-    const enrichedPrompt = briefEnrichment ? `${prompt}${briefEnrichment}` : prompt;
+    // For GET fallback paths, briefEnrichment must stay small (URL query string limit ~8KB).
+    // When we have a real ref image, img2img POST can take the full enrichment.
+    const enrichedPromptFull = briefEnrichment ? `${prompt}${briefEnrichment}` : prompt;
+    const briefEnrichmentShort = briefEnrichment ? briefEnrichment.slice(0, 1200) + (briefEnrichment.length > 1200 ? "\n[...truncated for GET]" : "") : "";
+    const enrichedPromptShort = briefEnrichmentShort ? `${prompt}${briefEnrichmentShort}` : prompt;
 
     const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
     // Prefer client-uploaded photo; fallback to first scraped product image
     const effectiveProductRef = attachedImage?.signedUrl || scrapedProductImages[0] || null;
     const hasProductRef = (mode === "image" || mode === "video") && !!effectiveProductRef;
+
+    // Alias kept for readability below — img2img paths use the full enriched prompt.
+    const enrichedPrompt = enrichedPromptFull;
+
+    // ── REFERENCE PRESERVATION — when a reference image is attached ──
+    // Three modes, selected by the user via refType:
+    //   "product"       → generative img2img with VLM-derived subject injection
+    //   "pixel-perfect" → non-generative cutout pipeline (no prompt prefix needed, handled backend-side)
+    //   "location"      → ControlNet Depth with architecture-preserve language
+    let preservationPrefix = "";
+    if (hasProductRef && refType !== "pixel-perfect") {
+      if (refType === "location") {
+        // Location preservation: lock the ARCHITECTURE (walls, windows, ceiling, floor, perspective)
+        // but allow the model to change lighting, mood, styling, decor AND furniture arrangement
+        // (the user should be able to add a dining table, candles, etc.).
+        // Original prefix was too strict ("furniture positions EXACTLY") and blocked scene edits.
+        preservationPrefix = `LOCATION PRESERVATION — keep the same ROOM architecture from the reference image: same walls, windows, ceiling, floor, wall colors/textures, and spatial perspective so the place is instantly recognizable. You MAY change everything else the user asks for: lighting, mood, time of day, decor, styling, added furniture (dining tables, candles, food, props), added people, atmosphere. Do NOT invent a different room.\n\nUSER REQUEST: `;
+      } else {
+        // Object-agnostic subject preservation, with VLM-derived factual description injected.
+        // This avoids biasing the model toward people (old prefix said "person's face, body, outfit"
+        // which made models hallucinate a person on a perfume-bottle reference).
+        const subjectLine = refSubject?.subject
+          ? `REFERENCE SUBJECT (factual description from vision model): "${refSubject.subject}"`
+          : `REFERENCE SUBJECT: the exact item shown in the attached reference image`;
+        preservationPrefix = `STRICT PRESERVATION RULE — The attached reference image shows a SPECIFIC subject that must be preserved exactly in the generated scene.
+
+${subjectLine}
+
+YOU MUST:
+1. Place THAT EXACT subject (described above) in the new scene
+2. Preserve its exact shape, proportions, colors, materials, logos, labels, and distinguishing features
+3. If the description mentions a person + outfit → keep both the person AND the outfit recognizable
+4. If the description mentions an object → keep it as an object, DO NOT add people or clothing around it
+5. If the description mentions text or a logo → preserve it exactly, DO NOT invent new text
+
+YOU MUST NOT:
+- Replace the subject with a different item or category
+- Add a person if the description does not mention a person
+- Add clothing or accessories if the description does not mention them
+- Hallucinate additional objects, logos, or text
+- Transform the subject into something it isn't
+
+ONLY change what the user's request below explicitly asks to change (scene, background, lighting, mood, placement). The subject itself must stay 100% recognizable as the exact item described above.
+
+USER REQUEST: `;
+      }
+    }
+    const preservedPrompt = preservationPrefix + enrichedPrompt;
 
     if (mode === "image") {
       const BATCH = 3;
@@ -762,20 +890,44 @@ export function ComparePage() {
           try {
             let url = "";
             if (hasProductRef) {
-              // Image-to-image edit: use the selected model with generative img2img
-              // (provider="ai" skips Photoroom packshot pipeline and hits FAL Flux /
-              // Luma character_ref / Kontext — real editing, not background removal).
-              const r = await serverPost("/generate/image-start", {
-                prompt: enrichedPrompt.slice(0, 4000),
-                model: modelId,
-                aspectRatio,
-                imageRefUrl: effectiveProductRef!,
-                refSource: attachedImage?.signedUrl ? "upload" : "scrape",
-                provider: "ai",
-              }, 120_000);
-              url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
+              if (refType === "pixel-perfect") {
+                // Pixel-perfect pipeline: Photoroom cutout → Studio AI bg / Bria / IC-Light
+                // The product pixels are preserved NON-GENERATIVELY — 0% drift by design.
+                // Note: all models in the batch run the SAME pixel-perfect pipeline but with slight
+                // variations (different strategies in the fallback cascade produce different scenes).
+                const r = await serverPost("/compare/pixel-perfect-product", {
+                  productImageUrl: effectiveProductRef!,
+                  prompt: enrichedPrompt.slice(0, 4000),
+                  aspectRatio,
+                }, 120_000);
+                url = r?.success && r.imageUrl ? r.imageUrl : "";
+              } else {
+                // Image-to-image edit: use the selected model with generative img2img
+                // (provider="ai" skips Photoroom packshot pipeline and hits the dispatcher
+                // that routes each model to its own native backend).
+                // LOCATION mode runs a 4-strategy cascade (FAL Flux Pro Depth → Flux LoRA Depth
+                // → Flux img2img → Luma modify) and can take 2–4 min total, so extend timeout.
+                const timeoutMs = refType === "location" ? 240_000 : 120_000;
+                const r = await serverPost("/generate/image-start", {
+                  prompt: preservedPrompt.slice(0, 4000),
+                  model: modelId,
+                  aspectRatio,
+                  imageRefUrl: effectiveProductRef!,
+                  refSource: attachedImage?.signedUrl ? "upload" : "scrape",
+                  refType, // "product" or "location" — drives backend dispatch (depth ControlNet for location)
+                  provider: "ai",
+                  preserveSubject: refType === "product",
+                }, timeoutMs);
+                url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
+                if (!url) {
+                  console.warn(`[compare] image-start failed for ${modelId}`, { refType, error: r?.error, response: r });
+                }
+              }
             } else {
-              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPrompt.slice(0, 4000))}&models=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}`);
+              // GET path — use the SHORT enriched prompt (briefEnrichment capped at 1200 chars)
+              // to stay under URL length limits (~8KB). Full enrichment is only sent via POST
+              // when we have an img ref (img2img path above).
+              const res = await serverGet(`/generate/image-via-get?prompt=${encodeURIComponent(enrichedPromptShort.slice(0, 3000))}&models=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}`);
               const first = res.results?.[0];
               url = res.success && first?.result?.imageUrl ? first.result.imageUrl : "";
               if (!url) {
@@ -823,7 +975,8 @@ export function ComparePage() {
         const t0 = Date.now();
         try {
           const imgRefParam = effectiveProductRef ? `&imageUrl=${encodeURIComponent(effectiveProductRef)}` : "";
-          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(enrichedPrompt.slice(0, 4000))}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5${imgRefParam}`);
+          // Video uses the SHORT enriched prompt for URL-safety (same reason as image GET).
+          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(enrichedPromptShort.slice(0, 3000))}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5${imgRefParam}`);
           if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
           const videoUrl = await pollVideo(startRes.generationId);
           const timeMs = Date.now() - t0;
@@ -905,6 +1058,52 @@ export function ComparePage() {
     setResults(creativeResults);
     setIsRunning(false);
 
+    // ── Sprint 1: VLM post-gen validation ──
+    // For each successful image result, compare it against the reference and attach a verdict badge.
+    if (mode === "image" && effectiveProductRef) {
+      creativeResults
+        .filter(r => r.success && r.imageUrl)
+        .forEach(r => {
+          // Mark pending
+          setResults(prev => prev.map(x => x.id === r.id
+            ? { ...x, validation: { status: "pending" } }
+            : x));
+          // Fire validation (non-blocking, independent per result)
+          serverPost("/compare/validate-image", {
+            generatedImageUrl: r.imageUrl,
+            referenceImageUrl: effectiveProductRef,
+            userBrief: prompt.slice(0, 500),
+            // VLM audits against product or location criteria; pixel-perfect collapses to product mode
+            mode: refType === "location" ? "location" : "product",
+          }, 60_000).then((v: any) => {
+            if (!v || v.skipped || !v.success) {
+              setResults(prev => prev.map(x => x.id === r.id
+                ? { ...x, validation: { status: "skipped" } }
+                : x));
+              return;
+            }
+            setResults(prev => prev.map(x => x.id === r.id
+              ? {
+                  ...x,
+                  validation: {
+                    status: "done",
+                    score: v.score,
+                    verdict: v.verdict,
+                    match: v.match,
+                    differences: v.differences || [],
+                    hallucinations: v.hallucinations || [],
+                    summary: v.summary || "",
+                  },
+                }
+              : x));
+          }).catch(() => {
+            setResults(prev => prev.map(x => x.id === r.id
+              ? { ...x, validation: { status: "error" } }
+              : x));
+          });
+        });
+    }
+
     // ── Auto-save all successful results to Library (fire-and-forget) ──
     // Shape expected by POST /library/items: { id, type, model, prompt, timestamp, preview, folderId }
     // Type mapping: image→"image", video→"film", music→"sound", text→"text"
@@ -943,7 +1142,7 @@ export function ComparePage() {
           console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
         });
       });
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
@@ -1064,7 +1263,19 @@ export function ComparePage() {
                             loop
                             muted
                             playsInline
+                            preload="metadata"
                             className="absolute inset-0 w-full h-full object-cover"
+                            onLoadedMetadata={(e) => {
+                              // Force play attempt — some browsers require explicit .play() call
+                              // even when autoPlay+muted is set (Safari, Firefox with strict mode).
+                              const v = e.currentTarget;
+                              v.play().catch((err) => {
+                                console.warn("[compare] video autoplay blocked:", err?.message);
+                              });
+                            }}
+                            onError={(e) => {
+                              console.warn("[compare] video load error", e.currentTarget.error?.message, "src=", r.videoUrl?.slice(0, 80));
+                            }}
                           />
                         )}
                         {r.success && mode === "music" && r.audioUrl && (
@@ -1129,6 +1340,41 @@ export function ComparePage() {
                             style={{ background: gradeColor, color: "#fff", fontSize: 10, fontWeight: 800, boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}>
                             <Trophy size={10} /> {isFr ? "Recommandé" : "Best"}
                           </div>
+                        )}
+
+                        {/* ── Sprint 1: VLM validation verdict badge (top-right) ── */}
+                        {r.success && mode === "image" && r.validation && (
+                          (() => {
+                            const v = r.validation!;
+                            if (v.status === "pending") {
+                              return (
+                                <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-lg z-10"
+                                  style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)", fontSize: 9, fontWeight: 700, color: "#fff" }}
+                                  title={isFr ? "Validation fidélité produit..." : "Validating product fidelity..."}>
+                                  <Loader2 size={9} className="animate-spin" />
+                                  {isFr ? "Vérif." : "Check"}
+                                </div>
+                              );
+                            }
+                            if (v.status !== "done" || !v.verdict) return null;
+                            const verdictMap: Record<string, { bg: string; icon: string; labelFr: string; labelEn: string }> = {
+                              excellent: { bg: "#22c55e", icon: "✓", labelFr: "Fidèle", labelEn: "Match" },
+                              good:      { bg: "#84cc16", icon: "✓", labelFr: "OK",     labelEn: "OK" },
+                              drift:     { bg: "#f59e0b", icon: "!", labelFr: "Dérive", labelEn: "Drift" },
+                              wrong:     { bg: "#ef4444", icon: "✗", labelFr: "HS",     labelEn: "Wrong" },
+                            };
+                            const vd = verdictMap[v.verdict];
+                            const tooltip = v.summary || (v.differences && v.differences.length > 0 ? v.differences.join(" • ") : "");
+                            return (
+                              <div className="absolute top-3 right-3 flex items-center gap-1 px-2 py-1 rounded-lg z-10"
+                                style={{ background: vd.bg, color: "#fff", fontSize: 9, fontWeight: 800, boxShadow: "0 4px 12px rgba(0,0,0,0.25)" }}
+                                title={tooltip}>
+                                <span style={{ fontSize: 10 }}>{vd.icon}</span>
+                                {isFr ? vd.labelFr : vd.labelEn}
+                                <span style={{ opacity: 0.85, marginLeft: 2 }}>{v.score}</span>
+                              </div>
+                            );
+                          })()
                         )}
 
                         {/* ── Model label badge (bottom, visible when not hovering) ── */}
@@ -1275,30 +1521,101 @@ export function ComparePage() {
                 </div>
               )}
 
-              {/* Attached product photo preview */}
+              {/* Attached reference preview + type toggle (Product / Pixel-Perfect / Location)
+                  Shown whenever a reference will be used: either uploaded image OR URL detected in prompt */}
               <AnimatePresence>
-                {attachedImage && (
+                {(attachedImage || (promptHasUrl && mode === "image")) && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
                     className="px-4 pt-3">
                     <div className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                      <img src={attachedImage.preview} className="w-10 h-10 rounded-lg object-cover" alt="product" />
+                      {attachedImage ? (
+                        <img src={attachedImage.preview} className="w-10 h-10 rounded-lg object-cover" alt="reference" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: "rgba(34, 197, 94, 0.15)", color: "#16a34a", fontSize: 16 }}>
+                          🔗
+                        </div>
+                      )}
                       <div className="flex flex-col">
                         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--foreground)" }}>
-                          {isFr ? "Photo produit" : "Product photo"}
+                          {refType === "location"
+                            ? (isFr ? "Photo du lieu" : "Location photo")
+                            : refType === "pixel-perfect"
+                              ? (isFr ? "Pixel-Perfect" : "Pixel-Perfect")
+                              : (isFr ? "Photo produit" : "Product photo")}
                         </span>
-                        {attachedImage.uploading ? (
-                          <span className="flex items-center gap-1" style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
-                            <Loader2 size={9} className="animate-spin" /> {isFr ? "Upload..." : "Uploading..."}
-                          </span>
+                        {attachedImage ? (
+                          attachedImage.uploading ? (
+                            <span className="flex items-center gap-1" style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
+                              <Loader2 size={9} className="animate-spin" /> {isFr ? "Upload..." : "Uploading..."}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 500 }}>{isFr ? "Prêt" : "Ready"}</span>
+                          )
                         ) : (
-                          <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 500 }}>{isFr ? "Prêt" : "Ready"}</span>
+                          <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 500 }}>{isFr ? "URL détectée" : "URL detected"}</span>
                         )}
                       </div>
-                      <button onClick={removeAttachedImage} className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer"
-                        style={{ background: "var(--secondary)" }}>
-                        <X size={10} style={{ color: "var(--muted-foreground)" }} />
-                      </button>
+                      {/* Ref type segmented toggle — 3 modes */}
+                      <div className="flex items-center rounded-lg overflow-hidden ml-1" style={{ border: "1px solid var(--border)" }}>
+                        <button
+                          type="button"
+                          onClick={() => setRefType("product")}
+                          className="px-2 py-1 cursor-pointer transition-all"
+                          style={{
+                            background: refType === "product" ? "var(--foreground)" : "transparent",
+                            color: refType === "product" ? "var(--background)" : "var(--muted-foreground)",
+                            fontSize: 10,
+                            fontWeight: 600,
+                          }}
+                          title={isFr ? "Génératif — Nano Banana / Kontext / Flux Pro 2" : "Generative — Nano Banana / Kontext / Flux Pro 2"}
+                        >
+                          {isFr ? "Produit" : "Product"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRefType("pixel-perfect")}
+                          className="px-2 py-1 cursor-pointer transition-all"
+                          style={{
+                            background: refType === "pixel-perfect" ? "var(--foreground)" : "transparent",
+                            color: refType === "pixel-perfect" ? "var(--background)" : "var(--muted-foreground)",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            borderLeft: "1px solid var(--border)",
+                            borderRight: "1px solid var(--border)",
+                          }}
+                          title={isFr ? "0% dérive — découpe non-générative + scène AI (Photoroom Studio / Bria / IC-Light)" : "0% drift — non-generative cutout + AI scene (Photoroom Studio / Bria / IC-Light)"}
+                        >
+                          {isFr ? "Pixel-Perfect" : "Pixel-Perfect"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRefType("location")}
+                          className="px-2 py-1 cursor-pointer transition-all"
+                          style={{
+                            background: refType === "location" ? "var(--foreground)" : "transparent",
+                            color: refType === "location" ? "var(--background)" : "var(--muted-foreground)",
+                            fontSize: 10,
+                            fontWeight: 600,
+                          }}
+                          title={isFr ? "Préserve l'architecture / le lieu (ControlNet Depth)" : "Preserve architecture / venue (Depth ControlNet)"}
+                        >
+                          {isFr ? "Lieu" : "Location"}
+                        </button>
+                      </div>
+                      {attachedImage && (
+                        <button onClick={removeAttachedImage} className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer ml-1"
+                          style={{ background: "var(--secondary)" }}>
+                          <X size={10} style={{ color: "var(--muted-foreground)" }} />
+                        </button>
+                      )}
                     </div>
+                    {/* VLM-detected subject — shows what the AI understood the reference to be */}
+                    {refSubject?.subject && (
+                      <div className="mt-1 text-[10px] leading-tight" style={{ color: "var(--muted-foreground)", maxWidth: 480 }}>
+                        <span style={{ fontWeight: 600 }}>{isFr ? "Sujet détecté :" : "Detected subject:"}</span>{" "}
+                        <span style={{ fontStyle: "italic" }}>{refSubject.subject}</span>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1595,7 +1912,26 @@ export function ComparePage() {
                 />
               )}
               {lightbox.videoUrl && (
-                <video src={lightbox.videoUrl} controls autoPlay className="max-w-full max-h-full rounded-2xl" />
+                <video
+                  src={lightbox.videoUrl}
+                  controls
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="auto"
+                  className="max-w-full max-h-full rounded-2xl"
+                  onLoadedMetadata={(e) => {
+                    // Browser autoplay policy requires muted for unattended autoplay.
+                    // User can unmute via the controls once playback starts.
+                    const v = e.currentTarget;
+                    v.play().catch((err) => {
+                      console.warn("[compare] lightbox video autoplay blocked:", err?.message);
+                    });
+                  }}
+                  onError={(e) => {
+                    console.warn("[compare] lightbox video load error", e.currentTarget.error?.message, "src=", lightbox.videoUrl?.slice(0, 80));
+                  }}
+                />
               )}
             </div>
 
