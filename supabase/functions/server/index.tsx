@@ -4912,7 +4912,10 @@ app.post("/compare/scrape-urls", async (c) => {
       const tryFetch = async (url: string): Promise<string | null> => {
         try {
           const r = await fetchWithTimeout(url, {
-            headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudioBot/1.0)" },
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              "Accept": "application/xml,text/xml,*/*",
+            },
           }, 5_000);
           if (!r.ok) return null;
           const ct = r.headers.get("content-type") || "";
@@ -5004,7 +5007,12 @@ app.post("/compare/scrape-urls", async (c) => {
       if (arr.length === 0) return "";
       const chunks = await Promise.allSettled(arr.map(async (u) => {
         try {
-          const r = await fetchWithTimeout(u, { headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudioBot/1.0)" } }, 4_000);
+          const r = await fetchWithTimeout(u, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              "Accept": "text/css,*/*;q=0.1",
+            },
+          }, 4_000);
           if (!r.ok) return "";
           const t = await r.text();
           return t.length < 400_000 ? t : "";
@@ -5212,20 +5220,30 @@ app.post("/compare/scrape-urls", async (c) => {
             content = (data.data?.content || data.data?.text || data.content || "").slice(0, 4000);
             source = "jina";
             const jinaImages = data.data?.images || data.images || {};
+            // Jina returns images as an OBJECT keyed by "Image 1", "Image 2"... with URL as VALUE.
+            // Earlier code destructured `[imgUrl]` which incorrectly picked the KEY. Fix: read values.
             if (typeof jinaImages === "object" && !Array.isArray(jinaImages)) {
-              for (const [imgUrl] of Object.entries(jinaImages)) {
-                if (typeof imgUrl === "string" && imgUrl.startsWith("http")) { rawImageUrls.push(imgUrl); tracking.jina++; }
+              for (const val of Object.values(jinaImages)) {
+                const u = typeof val === "string" ? val : (val as any)?.url || (val as any)?.src || "";
+                if (typeof u === "string" && u.startsWith("http") && !rawImageUrls.includes(u)) {
+                  rawImageUrls.push(u); tracking.jina++;
+                }
               }
             } else if (Array.isArray(jinaImages)) {
               for (const img of jinaImages) {
                 const u = typeof img === "string" ? img : (img as any)?.url || (img as any)?.src || "";
-                if (u.startsWith("http")) { rawImageUrls.push(u); tracking.jina++; }
+                if (u.startsWith("http") && !rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.jina++; }
               }
             }
           }
         } catch (e) { console.log(`[compare/scrape-urls] Jina [${i}] fail: ${e}`); }
       }
-      // Extract markdown images ![alt](url) from Jina content
+      // Fallback: generic scrapeUrl when the direct Jina call returned nothing.
+      // Must run BEFORE the markdown regex so the regex can extract images from fallback content.
+      if (content.length < 50) {
+        try { const r = await scrapeUrl(pageUrl, 0.5); content = r.content.slice(0, 4000); source = r.source; } catch {}
+      }
+      // Extract markdown images ![alt](url) from WHATEVER content we ended up with (Jina or fallback).
       if (content.length > 0) {
         const mdImgRe = /!\[[^\]]*\]\(([^)]+)\)/g;
         let m;
@@ -5234,29 +5252,50 @@ app.post("/compare/scrape-urls", async (c) => {
           if (u.startsWith("http") && !rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.jina++; }
         }
       }
-      // Fallback: generic scrapeUrl for content only
-      if (content.length < 50) {
-        try { const r = await scrapeUrl(pageUrl, 0.5); content = r.content.slice(0, 4000); source = r.source; } catch {}
-      }
 
       // ── DEEP SCAN (always on) — main HTML + sitemap + gallery 1-hop ──
       // We fetch the main page HTML once (needed both for direct images AND for gallery link
       // detection), then fire sitemap + gallery crawl in parallel. Total budget ~12s.
+      //
+      // Bot-shield aware: some sites (DataDome, Cloudflare Turnstile, PerimeterX) block
+      // simple fetches and return a captcha stub. We detect that and retry via Jina Reader
+      // with X-Engine: browser (which uses a real headless browser).
+      const realBrowserHeaders = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "sec-ch-ua": `"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"`,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": `"macOS"`,
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+      };
+      // Bot-shield detector: page is too short OR contains known captcha signatures.
+      const isBotBlocked = (html: string): boolean => {
+        if (!html || html.length < 2000) return true;
+        return /datadome|captcha-delivery|cf-challenge|perimeterx|px-captcha|challenge-platform|ddg-captcha|recaptcha\/api|hcaptcha\.com/i.test(html)
+          && !/<article|<main|<section[^>]*class=[^>]*content/i.test(html);
+      };
+
       let mainHtml = "";
       try {
-        const htmlRes = await fetchWithTimeout(pageUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-          },
-        }, 15_000);
+        const htmlRes = await fetchWithTimeout(pageUrl, { headers: realBrowserHeaders }, 15_000);
         if (htmlRes.ok) mainHtml = await htmlRes.text();
         else console.log(`[compare/scrape-urls] [${i}] main HTML fetch status=${htmlRes.status}`);
       } catch (e) { console.log(`[compare/scrape-urls] [${i}] main HTML fetch fail: ${e}`); }
 
+      // Note: the Jina HTML fallback for brand extraction is wired later (after the
+      // direct HTML is validated) via the `htmlUsable` branch, so we don't need a
+      // separate retry here. Image extraction already works through the Jina JSON API.
+
       // Layer 1b: direct images from main page HTML (what the old fallback did)
-      if (mainHtml) {
+      // Only trust the HTML if it wasn't a bot-shield stub.
+      const htmlUsable = mainHtml.length > 2000 && !isBotBlocked(mainHtml);
+      if (htmlUsable) {
         const direct = extractImagesFromHtml(mainHtml, pageUrl);
         for (const u of direct) {
           if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.html++; }
@@ -5266,9 +5305,180 @@ app.post("/compare/scrape-urls", async (c) => {
         // External CSS fetch is awaited inside extractBrandFromHtml for accurate colors.
         try {
           const externalCss = await fetchExternalCssForBrand(mainHtml, pageUrl);
-          brand = extractBrandFromHtml(mainHtml, pageUrl, externalCss);
-          console.log(`[compare/scrape-urls] [${i}] brand DNA — logo:${brand.logo ? "YES" : "NO"}, palette:${brand.palette.all.length} colors, fonts:${brand.fonts.length}, title:"${brand.meta.title.slice(0, 40)}"`);
+          const candidate = extractBrandFromHtml(mainHtml, pageUrl, externalCss);
+          // If title looks like a bot-shield stub (bare domain / "Just a moment"),
+          // drop the candidate so the Jina/domain fallbacks can run instead.
+          const hostCheck = (() => { try { return new URL(pageUrl).hostname.replace(/^www\./, ""); } catch { return ""; } })();
+          const looksStub = !candidate.meta.title
+            || candidate.meta.title.trim().toLowerCase() === hostCheck.toLowerCase()
+            || /^(attention required|access denied|just a moment|please wait|captcha|security check|checking your browser|verify you are human|cloudflare)/i.test(candidate.meta.title);
+          if (!looksStub) {
+            brand = candidate;
+            console.log(`[compare/scrape-urls] [${i}] brand DNA — logo:${brand.logo ? "YES" : "NO"}, palette:${brand.palette.all.length} colors, fonts:${brand.fonts.length}, title:"${brand.meta.title.slice(0, 40)}"`);
+          } else {
+            console.log(`[compare/scrape-urls] [${i}] brand DNA from HTML rejected (stub title "${candidate.meta.title.slice(0, 40)}")`);
+          }
         } catch (e) { console.log(`[compare/scrape-urls] [${i}] brand extraction failed: ${e}`); }
+      }
+      // Brand DNA synthesis path — triggers if direct HTML was blocked / empty / not usable.
+      // We try three sources in order, falling back until we find something with a valid title:
+      //   a) Jina Reader in HTML mode (bypasses bot shields via their proxy infra)
+      //   b) Jina Reader in JSON mode — we use its meta (title, description, ogImage) as fallback
+      //   c) Metadata-only synth: best-effort from scraped content + origin
+      if (!brand && jinaKey) {
+        // Path A: Jina HTML
+        try {
+          const jinaHtmlRes = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${jinaKey}`,
+              "Accept": "text/html",
+              "X-Return-Format": "html",
+              "X-No-Cache": "true",
+              "X-Proxy": "auto",
+            },
+          }, 20_000);
+          if (jinaHtmlRes.ok) {
+            const jinaHtml = await jinaHtmlRes.text();
+            if (jinaHtml && jinaHtml.length > 1000) {
+              const candidate = extractBrandFromHtml(jinaHtml, pageUrl, "");
+              if (candidate.meta.title && candidate.meta.title.length > 3) {
+                brand = candidate;
+                mainHtml = jinaHtml;
+                const direct = extractImagesFromHtml(jinaHtml, pageUrl);
+                for (const u of direct) {
+                  if (!rawImageUrls.includes(u)) { rawImageUrls.push(u); tracking.html++; }
+                }
+                console.log(`[compare/scrape-urls] [${i}] brand via Jina-HTML — logo:${brand.logo ? "YES" : "NO"}, title:"${brand.meta.title.slice(0, 50)}"`);
+              } else {
+                console.log(`[compare/scrape-urls] [${i}] Jina-HTML returned no usable title (${jinaHtml.length} bytes)`);
+              }
+            }
+          }
+        } catch (e) { console.log(`[compare/scrape-urls] [${i}] Jina-HTML fallback fail: ${e}`); }
+      }
+      // Helper: derive a clean brand name + origin info from a URL.
+      //   octobre-editions.com → { title: "Octobre Editions", origin: "https://www.octobre-editions.com" }
+      const deriveBrandFromDomain = (u: string): { title: string; origin: string; host: string } => {
+        try {
+          const parsed = new URL(u);
+          const host = parsed.hostname.replace(/^www\./, "");
+          const core = host.split(".").slice(0, -1).join(".") || host;
+          // Split on "-", "_", "." → Title-Case each token
+          const title = core
+            .split(/[-_.]/)
+            .filter(Boolean)
+            .map(t => t.charAt(0).toUpperCase() + t.slice(1))
+            .join(" ");
+          return { title, origin: parsed.origin, host };
+        } catch {
+          return { title: "", origin: "", host: "" };
+        }
+      };
+      // Helper: is this title just a bot-block stub? (matches the domain verbatim
+      // or looks like a generic "Attention Required" / captcha page title)
+      const isStubTitle = (t: string, host: string): boolean => {
+        if (!t) return true;
+        const low = t.trim().toLowerCase();
+        if (low === host.toLowerCase()) return true;
+        if (low === host.replace(/^www\./, "").toLowerCase()) return true;
+        if (/^(attention required|access denied|just a moment|please wait|captcha|security check|checking your browser|verify you are human|cloudflare)/i.test(t)) return true;
+        return false;
+      };
+      if (!brand && jinaKey) {
+        // Path B: Jina JSON meta → synthesize minimal brand
+        try {
+          const jinaRes = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${jinaKey}`,
+              "Accept": "application/json",
+              "X-With-Images-Summary": "all",
+              "X-With-Links-Summary": "true",
+            },
+          }, 15_000);
+          if (jinaRes.ok) {
+            const data = await jinaRes.json();
+            const meta = data.data || {};
+            const title = meta.title || "";
+            const description = meta.description || "";
+            const ogImage = typeof meta.images === "object" && !Array.isArray(meta.images)
+              ? (Object.values(meta.images)[0] as string) || null
+              : null;
+            const { host } = deriveBrandFromDomain(pageUrl);
+            if (title && !isStubTitle(title, host)) {
+              brand = {
+                logo: null,
+                logoCandidates: [],
+                palette: { primary: null, secondary: null, accent: null, all: [] },
+                themeColor: null,
+                fonts: [],
+                meta: {
+                  title: title.slice(0, 200),
+                  description: description.slice(0, 500),
+                  ogImage,
+                  favicon: null,
+                  appleTouchIcon: null,
+                  keywords: "",
+                },
+                socialUrls: [],
+              };
+              console.log(`[compare/scrape-urls] [${i}] brand via Jina-JSON meta — title:"${title.slice(0, 50)}"`);
+            } else if (title) {
+              console.log(`[compare/scrape-urls] [${i}] Jina-JSON meta rejected (stub title "${title.slice(0, 40)}")`);
+            }
+          }
+        } catch (e) { console.log(`[compare/scrape-urls] [${i}] Jina-JSON meta fallback fail: ${e}`); }
+      }
+      // Path C: last-resort domain synthesis — so logo / brand name are ALWAYS
+      // populated even when the site is fully behind a bot shield (DataDome,
+      // Cloudflare challenge, etc.). We derive the brand name from the hostname
+      // and try to fetch /favicon.ico + /apple-touch-icon.png via HEAD requests —
+      // favicons are usually served from a CDN that isn't behind the shield.
+      if (!brand) {
+        const { title, origin, host } = deriveBrandFromDomain(pageUrl);
+        if (title && origin) {
+          // Try favicon candidates in parallel (HEAD only, short timeout)
+          const faviconCandidates = [
+            `${origin}/apple-touch-icon.png`,
+            `${origin}/apple-touch-icon-precomposed.png`,
+            `${origin}/favicon-192x192.png`,
+            `${origin}/favicon-96x96.png`,
+            `${origin}/favicon.ico`,
+          ];
+          let foundLogo: string | null = null;
+          let foundFavicon: string | null = null;
+          const heads = await Promise.allSettled(faviconCandidates.map(async (fu) => {
+            try {
+              const r = await fetchWithTimeout(fu, { method: "HEAD", headers: realBrowserHeaders }, 4_000);
+              return r.ok ? fu : null;
+            } catch { return null; }
+          }));
+          for (let k = 0; k < heads.length; k++) {
+            const r = heads[k];
+            if (r.status === "fulfilled" && r.value) {
+              if (!foundLogo && !faviconCandidates[k].endsWith("favicon.ico")) foundLogo = r.value;
+              if (!foundFavicon) foundFavicon = r.value;
+            }
+          }
+          brand = {
+            logo: foundLogo || foundFavicon,
+            logoCandidates: foundLogo ? [{ url: foundLogo, score: 50 }] : (foundFavicon ? [{ url: foundFavicon, score: 20 }] : []),
+            palette: { primary: null, secondary: null, accent: null, all: [] },
+            themeColor: null,
+            fonts: [],
+            meta: {
+              title,
+              description: "",
+              ogImage: null,
+              favicon: foundFavicon,
+              appleTouchIcon: foundLogo,
+              keywords: "",
+            },
+            socialUrls: [],
+          };
+          console.log(`[compare/scrape-urls] [${i}] brand via domain-synth — title:"${title}", logo:${foundLogo ? "YES" : (foundFavicon ? "favicon" : "NO")}`);
+        }
       }
 
       // Layer 2 (sitemap) + Layer 3 (gallery 1-hop) in parallel
@@ -5285,15 +5495,11 @@ app.post("/compare/scrape-urls", async (c) => {
           console.log(`[compare/scrape-urls] [${i}] gallery 1-hop: ${links.length} links → ${links.map(l => l.slice(-50)).join(" | ")}`);
           const results = await Promise.allSettled(links.map(async (link) => {
             try {
-              const r = await fetchWithTimeout(link, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                  "Accept": "text/html",
-                  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-                },
-              }, 8_000);
+              const r = await fetchWithTimeout(link, { headers: realBrowserHeaders }, 8_000);
               if (!r.ok) return [] as string[];
               const h = await r.text();
+              // If the gallery page is also bot-shielded, fall back silently to og:image only
+              if (isBotBlocked(h)) return [] as string[];
               return extractImagesFromHtml(h, link);
             } catch { return [] as string[]; }
           }));
@@ -5341,15 +5547,17 @@ app.post("/compare/scrape-urls", async (c) => {
       });
       const topFiltered = filtered.slice(0, 8);
       console.log(`[compare/scrape-urls] [${i}] ${content.length} chars via ${source}, ${topFiltered.length} images kept (${filtered.length} after filter, ${rawImageUrls.length} raw)`);
+      console.log(`[compare/scrape-urls] [${i}] DEBUG rawImageUrls sample: ${rawImageUrls.slice(0, 3).join(" | ")}`);
+      console.log(`[compare/scrape-urls] [${i}] DEBUG after filter sample: ${filtered.slice(0, 3).join(" | ")}`);
       // Keep the page even if Jina content is empty — deep scan may still have found images
       const hasSomething = content.length >= 50 || topFiltered.length > 0;
       return hasSomething ? { url: pageUrl, content: content || pageUrl, source, images: topFiltered, brand } : null;
     }));
 
     const scraped = scrapeResults
-      .filter((r): r is PromiseFulfilledResult<{ url: string; content: string; source: string; images: string[]; brand: BrandDNA | null } | null> => r.status === "fulfilled")
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
       .map(r => r.value)
-      .filter(Boolean) as { url: string; content: string; source: string; images: string[]; brand: BrandDNA | null }[];
+      .filter(Boolean) as Array<{ url: string; content: string; source: string; images: string[]; brand: BrandDNA | null }>;
 
     if (scraped.length === 0) {
       return c.json({ success: true, briefEnrichment: "", productImages: [], pagesScraped: 0, imagesFound: 0, note: "no content extracted" });
