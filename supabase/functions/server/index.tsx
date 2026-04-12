@@ -2398,7 +2398,7 @@ async function generateImageLeonardoV2WithGuidance(req: {
 }
 
 // ── IMAGE WITH REFERENCE (img2img — FAL Flux primary for preserve, Luma fallback) ──
-async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; strength?: number; preserveContent?: boolean; aspectRatio?: string }) {
+async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; imageRefUrls?: string[]; strength?: number; preserveContent?: boolean; aspectRatio?: string }) {
   const start = Date.now();
   const rawStrength = req.strength ?? 0.80;
   const preserveContent = req.preserveContent ?? false;
@@ -2639,11 +2639,16 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
       } catch (err) { console.log(`[img2img] Runware error: ${err}`); }
     }
 
-    // Strategy 3 (style): Luma Photon image_ref
+    // Strategy 3 (style): Luma Photon image_ref — supports MULTI-REF (multiple angles of the same product)
     try {
-      console.log(`[img2img] Trying Luma Photon with image_ref (weight=${strength})...`);
+      // Build image_ref array — Luma accepts up to 4 references
+      const allRefs = req.imageRefUrls && req.imageRefUrls.length > 1
+        ? req.imageRefUrls.slice(0, 4)
+        : [req.imageRefUrl];
+      const imageRefArray = allRefs.map(url => ({ url, weight: strength }));
+      console.log(`[img2img] Trying Luma Photon with ${imageRefArray.length} image_ref(s) (weight=${strength})...`);
       const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
-      const lumaBody: any = { prompt: finalPrompt, model: "photon-1", aspect_ratio: lumaArMap[req.aspectRatio || ""] || "4:3", image_ref: [{ url: req.imageRefUrl, weight: strength }] };
+      const lumaBody: any = { prompt: finalPrompt, model: "photon-1", aspect_ratio: lumaArMap[req.aspectRatio || ""] || "4:3", image_ref: imageRefArray };
       const submitRes = await fetch(`${LUMA_BASE}/generations/image`, { method: "POST", headers: lumaHeaders(), body: JSON.stringify(lumaBody) });
       if (submitRes.ok) {
         const generation = await submitRes.json();
@@ -7905,11 +7910,13 @@ app.post("/generate/image-start", async (c) => {
     const aspectRatio = body.aspectRatio || c.req.query("aspectRatio") || "16:9";
     const model = body.model || c.req.query("model") || "photon-1";
     const imageRefUrl = body.imageRefUrl || c.req.query("imageRefUrl") || undefined;
+    // Multi-ref: array of additional reference URLs (different angles of the same product)
+    const imageRefUrls: string[] = Array.isArray(body.imageRefUrls) ? body.imageRefUrls.filter((u: any) => typeof u === "string" && u.startsWith("http")) : [];
     const refSource = body.refSource || c.req.query("refSource") || "";
     const refType = (body.refType || c.req.query("refType") || "product").toLowerCase(); // "product" | "location"
 
     const provider = body.provider || c.req.query("provider") || ""; // "ai" = skip Photoroom, use AI img2img with product ref
-    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, refSource=${refSource}`);
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, imageRefUrls=${imageRefUrls.length}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     const imgCredits = getModelCreditCost("image", model);
@@ -7948,12 +7955,13 @@ app.post("/generate/image-start", async (c) => {
     // This keeps the product identity (shape, colors, brand) while letting AI generate the scene.
     // Accepts BOTH uploaded refs AND scraped refs — Photoroom is only gated on uploads below.
     if (imageRefUrl && provider === "ai") {
-      console.log(`[image-start-POST] AI PROVIDER path (refSource=${refSource}) — using generateImageWithRef (preserveContent=true)`);
+      console.log(`[image-start-POST] AI PROVIDER path (refSource=${refSource}, refs=${imageRefUrls.length || 1}) — using generateImageWithRef (preserveContent=true)`);
       try {
         const result = await generateImageWithRef({
           prompt: rawPrompt,
           model: model || "photon-1",
           imageRefUrl,
+          imageRefUrls: imageRefUrls.length > 0 ? imageRefUrls : undefined,
           preserveContent: true,
           aspectRatio,
         });
@@ -8164,7 +8172,10 @@ app.post("/generate/image-start", async (c) => {
 
     const lumaArMap2: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
     const lumaBody2: any = { prompt, model: "photon-1", aspect_ratio: lumaArMap2[aspectRatio] || "1:1" };
-    if (imageRefUrl) {
+    if (imageRefUrls.length > 0) {
+      // Multi-ref: Luma supports up to 4 image_ref entries
+      lumaBody2.image_ref = imageRefUrls.slice(0, 4).map(u => ({ url: u, weight: 0.60 }));
+    } else if (imageRefUrl) {
       lumaBody2.image_ref = [{ url: imageRefUrl, weight: 0.60 }];
     } else if (brandCtx && brandCtx.topRefImages.length > 0) {
       // Auto-resolve best brand reference image for style coherence

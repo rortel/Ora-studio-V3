@@ -5,7 +5,7 @@ import {
   Play, CheckCircle2, Circle, Loader2, Trophy, AlertTriangle,
   ChevronDown, ChevronRight, X, BarChart3, ArrowRight, Download,
   Type, Hash, MessageSquare, Sparkles, Shield, Eye, Save, Heart,
-  Maximize2, Minimize2, Mic, Square, Paperclip, Send, Music, Share2, Pencil,
+  Maximize2, Minimize2, Mic, Square, Paperclip, Send, Music, Share2, Pencil, Plus,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -643,8 +643,11 @@ export function ComparePage() {
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Attached product photo ──
-  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; signedUrl?: string; uploading: boolean } | null>(null);
+  // ── Attached product photos (multi-ref: up to 4 reference images) ──
+  interface AttachedImage { file: File; preview: string; signedUrl?: string; uploading: boolean }
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  // Convenience: first image (backward compat for single-ref consumers)
+  const attachedImage = attachedImages[0] || null;
   // Ref type:
   //   "product"       = generative img2img (Nano Banana / Kontext / Flux Pro 2) — fast, creative, near-perfect
   //   "pixel-perfect" = non-generative cutout (Photoroom Studio / Bria / IC-Light) — 0% drift, commercial packshots
@@ -795,12 +798,30 @@ export function ComparePage() {
     };
   }, []);
 
-  // ── Attached product photo ──
+  // ── Attached product photos (multi-ref upload, max 4) ──
+  const MAX_REF_IMAGES = 4;
   const handleAttachImage = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) { toast.error(isFr ? "Format non supporté" : "Unsupported format"); return; }
     if (file.size > 10 * 1024 * 1024) { toast.error(isFr ? "Image trop lourde (max 10 MB)" : "Image too large (max 10 MB)"); return; }
+    // Block if already at capacity
+    setAttachedImages(prev => {
+      if (prev.length >= MAX_REF_IMAGES) {
+        toast.error(isFr ? `Max ${MAX_REF_IMAGES} photos` : `Max ${MAX_REF_IMAGES} photos`);
+        return prev;
+      }
+      return prev; // actual append is below (async needs to be outside)
+    });
+    // Re-check synchronously
+    // (Note: we can't read state directly inside useCallback, so we use a ref-like pattern)
     const preview = URL.createObjectURL(file);
-    setAttachedImage({ file, preview, uploading: true });
+    const newEntry: AttachedImage = { file, preview, uploading: true };
+    setAttachedImages(prev => {
+      if (prev.length >= MAX_REF_IMAGES) {
+        URL.revokeObjectURL(preview);
+        return prev;
+      }
+      return [...prev, newEntry];
+    });
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -811,46 +832,66 @@ export function ComparePage() {
       });
       const data = await res.json();
       if (data.success && data.signedUrl) {
-        setAttachedImage(prev => prev ? { ...prev, signedUrl: data.signedUrl, uploading: false } : null);
+        // Update THIS entry (match by preview URL since it's unique per blob)
+        setAttachedImages(prev => prev.map(img =>
+          img.preview === preview ? { ...img, signedUrl: data.signedUrl, uploading: false } : img
+        ));
         toast.success(isFr ? "Photo produit ajoutée" : "Product photo added");
-        // Fire-and-forget VLM subject description — used as factual injection in the preservation prefix.
-        // This tells every downstream model EXACTLY what to preserve, avoiding hallucination of people
-        // when the reference is an object, or hallucination of objects when the reference is a person.
-        setRefSubject(null);
-        (async () => {
-          try {
-            const token = getAuthHeader();
-            const r = await fetch(`${API_BASE}/compare/describe-subject`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: token },
-              body: JSON.stringify({ imageUrl: data.signedUrl }),
-            });
-            const j = await r.json();
-            if (j?.success && j.subject) {
-              setRefSubject({ subject: String(j.subject), category: String(j.category || "other") });
-              console.log(`[compare] VLM described subject: "${j.subject}" (${j.category})`);
-            }
-          } catch (err) {
-            console.warn("[compare] describe-subject failed:", err);
+        // VLM subject description — only run for the FIRST image (defines what to preserve)
+        setAttachedImages(prev => {
+          if (prev.findIndex(img => img.preview === preview) === 0) {
+            setRefSubject(null);
+            (async () => {
+              try {
+                const token = getAuthHeader();
+                const r = await fetch(`${API_BASE}/compare/describe-subject`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: token },
+                  body: JSON.stringify({ imageUrl: data.signedUrl }),
+                });
+                const j = await r.json();
+                if (j?.success && j.subject) {
+                  setRefSubject({ subject: String(j.subject), category: String(j.category || "other") });
+                  console.log(`[compare] VLM described subject: "${j.subject}" (${j.category})`);
+                }
+              } catch (err) {
+                console.warn("[compare] describe-subject failed:", err);
+              }
+            })();
           }
-        })();
+          return prev;
+        });
       } else {
         toast.error(isFr ? "Échec upload" : "Upload failed");
-        setAttachedImage(null);
+        setAttachedImages(prev => prev.filter(img => img.preview !== preview));
         URL.revokeObjectURL(preview);
       }
     } catch {
       toast.error(isFr ? "Erreur réseau" : "Network error");
-      setAttachedImage(null);
+      setAttachedImages(prev => prev.filter(img => img.preview !== preview));
       URL.revokeObjectURL(preview);
     }
   }, [isFr]);
 
-  const removeAttachedImage = useCallback(() => {
-    if (attachedImage?.preview) URL.revokeObjectURL(attachedImage.preview);
-    setAttachedImage(null);
-    setRefSubject(null);
-  }, [attachedImage]);
+  const removeAttachedImage = useCallback((index?: number) => {
+    if (index !== undefined) {
+      // Remove specific image by index
+      setAttachedImages(prev => {
+        const removed = prev[index];
+        if (removed?.preview) URL.revokeObjectURL(removed.preview);
+        const next = prev.filter((_, i) => i !== index);
+        if (index === 0) setRefSubject(null); // subject was from first image
+        return next;
+      });
+    } else {
+      // Remove all
+      setAttachedImages(prev => {
+        prev.forEach(img => { if (img.preview) URL.revokeObjectURL(img.preview); });
+        return [];
+      });
+      setRefSubject(null);
+    }
+  }, []);
 
   // ── Server calls (CORS-safe: text/plain avoids preflight for most browsers) ──
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
@@ -1003,8 +1044,13 @@ export function ComparePage() {
 
     const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
-    // Prefer client-uploaded photo; fallback to first scraped product image
-    const effectiveProductRef = attachedImage?.signedUrl || scrapedProductImages[0] || null;
+    // Prefer client-uploaded photos; fallback to scraped product images
+    // Multi-ref: all uploaded signed URLs, plus scraped images to fill up to 4
+    const uploadedRefs = attachedImages.filter(img => img.signedUrl).map(img => img.signedUrl!);
+    const allProductRefs = uploadedRefs.length > 0
+      ? [...uploadedRefs, ...scrapedProductImages.filter(u => !uploadedRefs.includes(u))].slice(0, MAX_REF_IMAGES)
+      : scrapedProductImages.slice(0, MAX_REF_IMAGES);
+    const effectiveProductRef = allProductRefs[0] || null;
     const hasProductRef = (mode === "image" || mode === "video") && !!effectiveProductRef;
 
     // Alias kept for readability below — img2img paths use the full enriched prompt.
@@ -1089,7 +1135,10 @@ USER REQUEST: `;
                   model: modelId,
                   aspectRatio,
                   imageRefUrl: effectiveProductRef!,
-                  refSource: attachedImage?.signedUrl ? "upload" : "scrape",
+                  // Multi-ref: pass all reference URLs so providers that support arrays
+                  // (Luma image_ref, Leonardo image_reference) can use multiple angles.
+                  imageRefUrls: allProductRefs.length > 1 ? allProductRefs : undefined,
+                  refSource: uploadedRefs.length > 0 ? "upload" : "scrape",
                   refType, // "product" or "location" — drives backend dispatch (depth ControlNet for location)
                   provider: "ai",
                   preserveSubject: refType === "product",
@@ -1322,14 +1371,14 @@ USER REQUEST: `;
           console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
         });
       });
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImage, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat, intent]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImages, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat, intent]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
   const totalCredits = selectedModels.reduce((s, id) => s + (catalog.find(c => c.id === id)?.credits || 0), 0);
 
   // Bottom bar height (for scroll padding) — collapsed pill vs expanded composer
-  const BOTTOM_BAR_H = composerExpanded ? (attachedImage ? 280 : 240) : 80;
+  const BOTTOM_BAR_H = composerExpanded ? (attachedImages.length > 0 ? 280 : 240) : 80;
 
   return (
     <RouteGuard>
@@ -1818,12 +1867,39 @@ USER REQUEST: `;
               {/* Attached reference preview + type toggle (Product / Pixel-Perfect / Location)
                   Shown whenever a reference will be used: either uploaded image OR URL detected in prompt */}
               <AnimatePresence>
-                {(attachedImage || (promptHasUrl && mode === "image")) && (
+                {(attachedImages.length > 0 || (promptHasUrl && mode === "image")) && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
                     className="px-4 pt-3">
                     <div className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
-                      {attachedImage ? (
-                        <img src={attachedImage.preview} className="w-10 h-10 rounded-lg object-cover" alt="reference" />
+                      {/* Multi-ref thumbnails */}
+                      {attachedImages.length > 0 ? (
+                        <div className="flex items-center gap-1">
+                          {attachedImages.map((img, idx) => (
+                            <div key={img.preview} className="relative group">
+                              <img src={img.preview} className="w-10 h-10 rounded-lg object-cover" alt={`ref ${idx + 1}`}
+                                style={{ opacity: img.uploading ? 0.5 : 1, border: idx === 0 ? "2px solid var(--accent)" : "1px solid var(--border)" }} />
+                              {img.uploading && (
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                  <Loader2 size={12} className="animate-spin" style={{ color: "var(--accent)" }} />
+                                </div>
+                              )}
+                              <button onClick={() => removeAttachedImage(idx)}
+                                className="absolute -top-1 -right-1 w-4 h-4 rounded-full items-center justify-center cursor-pointer hidden group-hover:flex"
+                                style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 8 }}>
+                                <X size={8} />
+                              </button>
+                            </div>
+                          ))}
+                          {/* Add more button */}
+                          {attachedImages.length < MAX_REF_IMAGES && (
+                            <button onClick={() => fileInputRef.current?.click()}
+                              className="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                              style={{ border: "1px dashed var(--border)", color: "var(--muted-foreground)" }}
+                              title={isFr ? `Ajouter (${attachedImages.length}/${MAX_REF_IMAGES})` : `Add (${attachedImages.length}/${MAX_REF_IMAGES})`}>
+                              <Plus size={14} />
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: "rgba(34, 197, 94, 0.15)", color: "#16a34a", fontSize: 16 }}>
                           🔗
@@ -1835,15 +1911,21 @@ USER REQUEST: `;
                             ? (isFr ? "Photo du lieu" : "Location photo")
                             : refType === "pixel-perfect"
                               ? (isFr ? "Pixel-Perfect" : "Pixel-Perfect")
-                              : (isFr ? "Photo produit" : "Product photo")}
+                              : attachedImages.length > 1
+                                ? (isFr ? `${attachedImages.length} photos produit` : `${attachedImages.length} product photos`)
+                                : (isFr ? "Photo produit" : "Product photo")}
                         </span>
-                        {attachedImage ? (
-                          attachedImage.uploading ? (
+                        {attachedImages.length > 0 ? (
+                          attachedImages.some(img => img.uploading) ? (
                             <span className="flex items-center gap-1" style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
                               <Loader2 size={9} className="animate-spin" /> {isFr ? "Upload..." : "Uploading..."}
                             </span>
                           ) : (
-                            <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 500 }}>{isFr ? "Prêt" : "Ready"}</span>
+                            <span style={{ fontSize: 10, color: "#22c55e", fontWeight: 500 }}>
+                              {attachedImages.length > 1
+                                ? (isFr ? `${attachedImages.length} refs prêtes` : `${attachedImages.length} refs ready`)
+                                : (isFr ? "Prêt" : "Ready")}
+                            </span>
                           )
                         ) : (
                           <span style={{ fontSize: 10, color: "#16a34a", fontWeight: 500 }}>{isFr ? "URL détectée" : "URL detected"}</span>
@@ -1896,9 +1978,10 @@ USER REQUEST: `;
                           {isFr ? "Lieu" : "Location"}
                         </button>
                       </div>
-                      {attachedImage && (
-                        <button onClick={removeAttachedImage} className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer ml-1"
-                          style={{ background: "var(--secondary)" }}>
+                      {attachedImages.length > 0 && (
+                        <button onClick={() => removeAttachedImage()} className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer ml-1"
+                          style={{ background: "var(--secondary)" }}
+                          title={isFr ? "Retirer toutes les photos" : "Remove all photos"}>
                           <X size={10} style={{ color: "var(--muted-foreground)" }} />
                         </button>
                       )}
@@ -2089,12 +2172,12 @@ USER REQUEST: `;
                 {/* Attach button (image mode only) */}
                 {mode === "image" && (
                   <>
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleAttachImage(f); e.target.value = ""; }} />
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAttachImage(f)); } e.target.value = ""; }} />
                     <button onClick={() => fileInputRef.current?.click()}
                       className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all flex-shrink-0"
-                      style={{ background: attachedImage ? "var(--accent-warm-light)" : "var(--secondary)", color: attachedImage ? "var(--accent)" : "var(--muted-foreground)", border: "1px solid var(--border)" }}
-                      title={isFr ? "Joindre une photo produit" : "Attach product photo"}>
+                      style={{ background: attachedImages.length > 0 ? "var(--accent-warm-light)" : "var(--secondary)", color: attachedImages.length > 0 ? "var(--accent)" : "var(--muted-foreground)", border: "1px solid var(--border)" }}
+                      title={isFr ? `Joindre photo(s) produit (${attachedImages.length}/${MAX_REF_IMAGES})` : `Attach product photo(s) (${attachedImages.length}/${MAX_REF_IMAGES})`}>
                       <Paperclip size={14} />
                     </button>
                   </>
