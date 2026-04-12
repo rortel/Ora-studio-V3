@@ -2509,22 +2509,35 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
     console.log(`[img2img] preserveContent=true → SKIPPING edit dispatches, going to character_ref/image_ref pipeline for scene generation`);
   }
 
-  // ═══ When preserveContent=true: FAL Flux img2img FIRST (true pixel-preserving denoising) ═══
-  // FAL Flux img2img at strength=0.85 — 85% transformation, only 15% of original pixels guide the result.
-  // The product shape/colors are seeded by the ref but the scene is COMPLETELY NEW based on the prompt.
-  // Example: truck studio shot + "24h du Mans, families, animations" → truck at race track with crowds.
+  // ═══ When preserveContent=true: SCENE GENERATION with product identity ═══
+  // Goal: generate a COMPLETELY NEW SCENE (background, environment, lighting) while keeping
+  // the product from the reference recognizable (shape, colors, textures, brand details).
+  // This is "product placement" — NOT "image editing".
+  //
+  // Strategy priority:
+  //   1. Luma image_ref with MULTI-REF (high weight) — generates a new scene inspired by the refs
+  //   2. FAL Flux img2img (denoising from the ref as seed) — pixel-seeded scene generation
+  //   3. Luma modify_image_ref — last resort, max fidelity but limited scene change
+  //
+  // DO NOT USE character_ref — that's designed for FACES, not products/clothing/objects.
   if (preserveContent) {
-    // Strategy 1 (preserveContent): Luma Photon character_ref — PRIMARY pipeline
-    // character_ref maintains visual identity of the subject (product) across generations.
-    // The product IS the "character" — Luma preserves its exact appearance while placing it in new scenes.
+    const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
+    const lumaAr = lumaArMap[req.aspectRatio || ""] || "16:9";
+
+    // Strategy 1: Luma image_ref with MULTI-REF — best for product-in-scene
+    // Multiple reference angles give Luma a 3D understanding of the product.
+    // Weight 0.85 = strong product identity, prompt controls the scene.
     try {
-      console.log(`[img2img] PRESERVE MODE PRIMARY: Luma Photon character_ref...`);
-      const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
+      const allRefs = req.imageRefUrls && req.imageRefUrls.length > 1
+        ? req.imageRefUrls.slice(0, 4)
+        : [req.imageRefUrl];
+      const imageRefArray = allRefs.map(url => ({ url, weight: 0.85 }));
+      console.log(`[img2img] PRESERVE: Luma image_ref × ${imageRefArray.length} (weight=0.85, ar=${lumaAr})...`);
       const lumaBody: any = {
         prompt: finalPrompt,
         model: "photon-1",
-        aspect_ratio: lumaArMap[req.aspectRatio || ""] || "4:3",
-        character_ref: { identity0: { images: [req.imageRefUrl] } },
+        aspect_ratio: lumaAr,
+        image_ref: imageRefArray,
       };
       const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
         method: "POST", headers: lumaHeaders(),
@@ -2542,8 +2555,8 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
               if (!pollRes.ok) continue;
               const pd = await pollRes.json();
               if (pd.state === "completed" && pd.assets?.image) {
-                console.log(`[img2img] Luma character_ref OK in ${Date.now() - start}ms (PRIMARY)`);
-                return { model: req.model, provider: "luma/photon-1-character", imageUrl: pd.assets.image, latencyMs: Date.now() - start };
+                console.log(`[img2img] Luma image_ref OK in ${Date.now() - start}ms (${imageRefArray.length} refs)`);
+                return { model: req.model, provider: "luma/photon-1-imageref", imageUrl: pd.assets.image, latencyMs: Date.now() - start };
               }
               if (pd.state === "failed") throw new Error(`Luma failed: ${pd.failure_reason || "unknown"}`);
             } catch (e) { if (e instanceof Error && e.message.startsWith("Luma failed")) throw e; }
@@ -2551,20 +2564,22 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
         }
       } else {
         const errBody = await submitRes.text();
-        console.log(`[img2img] Luma character_ref submit failed ${submitRes.status}: ${errBody.slice(0, 200)}`);
+        console.log(`[img2img] Luma image_ref submit failed ${submitRes.status}: ${errBody.slice(0, 200)}`);
       }
-    } catch (err) { console.log(`[img2img] Luma character_ref error: ${err}`); }
+    } catch (err) { console.log(`[img2img] Luma image_ref error: ${err}`); }
 
-    // Strategy 2 (preserveContent): FAL Flux Pro img2img — FALLBACK
+    // Strategy 2: FAL Flux Pro img2img — denoising from the ref
+    // strength 0.75 = 75% new content from prompt, 25% pixel structure from ref
     const falKey = Deno.env.get("FAL_API_KEY");
     if (falKey) {
       for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
         try {
-          console.log(`[img2img] PRESERVE MODE FALLBACK: FAL ${falModel} (strength=${strength}, size=${falImageSize})...`);
+          const falStrength = 0.75;
+          console.log(`[img2img] PRESERVE FALLBACK: FAL ${falModel} (strength=${falStrength}, size=${falImageSize})...`);
           const falBody: any = {
             prompt: finalPrompt,
             image_url: req.imageRefUrl,
-            strength,
+            strength: falStrength,
             image_size: falImageSize,
             num_images: 1,
             enable_safety_checker: true,
@@ -2581,18 +2596,53 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
           const data = await res.json();
           const imageUrl = data.images?.[0]?.url;
           if (imageUrl) {
-            console.log(`[img2img] FAL ${falModel} OK in ${Date.now() - start}ms (FALLBACK, strength=${strength})`);
+            console.log(`[img2img] FAL ${falModel} OK in ${Date.now() - start}ms`);
             return { model: req.model, provider: `fal-img2img/${falModel}`, imageUrl, latencyMs: Date.now() - start };
           }
         } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
       }
     }
 
-    // Strategy 3 (preserveContent): Leonardo PhotoReal with content guidance
+    // Strategy 3: Luma modify_image_ref — max product fidelity, limited scene change
+    try {
+      console.log(`[img2img] PRESERVE LAST RESORT: Luma modify_image_ref (weight=0.65, ar=${lumaAr})...`);
+      const lumaBody: any = {
+        prompt: finalPrompt,
+        model: "photon-1",
+        aspect_ratio: lumaAr,
+        modify_image_ref: { url: req.imageRefUrl, weight: 0.65 },
+      };
+      const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
+        method: "POST", headers: lumaHeaders(),
+        body: JSON.stringify(lumaBody),
+      });
+      if (submitRes.ok) {
+        const generation = await submitRes.json();
+        const genId = generation.id;
+        if (genId) {
+          let elapsed = 0;
+          while (elapsed < 90_000) {
+            await new Promise(r => setTimeout(r, 3_000)); elapsed += 3_000;
+            try {
+              const pollRes = await fetch(`${LUMA_BASE}/generations/${genId}`, { headers: lumaHeaders() });
+              if (!pollRes.ok) continue;
+              const pd = await pollRes.json();
+              if (pd.state === "completed" && pd.assets?.image) {
+                console.log(`[img2img] Luma modify_image_ref OK in ${Date.now() - start}ms`);
+                return { model: req.model, provider: "luma/photon-1-modify", imageUrl: pd.assets.image, latencyMs: Date.now() - start };
+              }
+              if (pd.state === "failed") throw new Error(`Luma failed: ${pd.failure_reason || "unknown"}`);
+            } catch (e) { if (e instanceof Error && e.message.startsWith("Luma failed")) throw e; }
+          }
+        }
+      }
+    } catch (err) { console.log(`[img2img] Luma modify_image_ref error: ${err}`); }
+
+    // Strategy 4: Leonardo PhotoReal with content guidance
     const leoKey = Deno.env.get("LEONARDO_API_KEY");
     if (leoKey) {
       try {
-        console.log(`[img2img] PRESERVE MODE last resort: Leonardo PhotoReal content-guidance...`);
+        console.log(`[img2img] PRESERVE Leonardo content-guidance...`);
         const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
         const leoResult = await generateImageLeonardoWithGuidance({
           prompt: finalPrompt,
@@ -2600,7 +2650,7 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
           imageId,
           guidanceType: "content",
           strength: "High",
-          aspectRatio: req.aspectRatio || "4:3",
+          aspectRatio: req.aspectRatio || "16:9",
         });
         if (leoResult?.imageUrl) {
           console.log(`[img2img] Leonardo PhotoReal OK in ${Date.now() - start}ms`);
