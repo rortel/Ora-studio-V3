@@ -2426,80 +2426,87 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // Now each selected model goes through its own optimized pipeline.
   const selectedModel = req.model || "";
 
-  // ── DISPATCH 1: Leonardo v2 edit models (Nano Banana, Flux Pro 2, SeedDream v4, GPT Image, etc.) ──
-  // These models have native image_reference guidance built into their v2 API — best fidelity.
-  if (leonardoV2ModelMap[selectedModel]) {
-    try {
-      console.log(`[img2img] DISPATCH → Leonardo v2 edit (${selectedModel})`);
-      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
-      const res = await generateImageLeonardoV2WithGuidance({
-        prompt: finalPrompt,
-        model: selectedModel,
-        imageId,
-        strength: "HIGH", // high preservation of the reference
-        aspectRatio: req.aspectRatio,
-      });
-      if (res?.imageUrl) {
-        console.log(`[img2img] Leonardo v2 edit OK in ${Date.now() - start}ms (${selectedModel})`);
-        return { ...res, latencyMs: Date.now() - start };
+  // ── DISPATCH 1-3: model-specific edit pipelines ──
+  // IMPORTANT: when preserveContent=true, we SKIP the edit dispatches (Leonardo v2, Kontext, Leonardo v1)
+  // because edit models can only do MINIMAL changes to the input image — they can't recompose
+  // a completely new scene. For scene placement ("shirt at a Paris party"), we need the
+  // character_ref / image_ref pipeline below that GENERATES a new image inspired by the ref.
+  if (!preserveContent) {
+    // ── DISPATCH 1: Leonardo v2 edit models (Nano Banana, Flux Pro 2, SeedDream v4, GPT Image, etc.) ──
+    if (leonardoV2ModelMap[selectedModel]) {
+      try {
+        console.log(`[img2img] DISPATCH → Leonardo v2 edit (${selectedModel})`);
+        const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+        const res = await generateImageLeonardoV2WithGuidance({
+          prompt: finalPrompt,
+          model: selectedModel,
+          imageId,
+          strength: "HIGH",
+          aspectRatio: req.aspectRatio,
+        });
+        if (res?.imageUrl) {
+          console.log(`[img2img] Leonardo v2 edit OK in ${Date.now() - start}ms (${selectedModel})`);
+          return { ...res, latencyMs: Date.now() - start };
+        }
+      } catch (err) {
+        console.log(`[img2img] Leonardo v2 edit failed for ${selectedModel}: ${err} — falling back`);
       }
-    } catch (err) {
-      console.log(`[img2img] Leonardo v2 edit failed for ${selectedModel}: ${err} — falling back`);
     }
-  }
 
-  // ── DISPATCH 2: Flux Kontext Pro via FAL (native edit model) ──
-  // Kontext is specifically designed for image editing with subject preservation.
-  if (selectedModel === "kontext-pro-leo" || selectedModel === "kontext-pro" || selectedModel === "flux-kontext-pro") {
-    const falKey = Deno.env.get("FAL_API_KEY");
-    if (falKey) {
-      for (const falModel of ["fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"]) {
-        try {
-          console.log(`[img2img] DISPATCH → FAL ${falModel} (Kontext, preserves subject natively)...`);
-          const res = await fetch(`https://fal.run/${falModel}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-            body: JSON.stringify({
-              prompt: finalPrompt,
-              image_url: req.imageRefUrl,
-              num_images: 1,
-              safety_tolerance: "2",
-              output_format: "jpeg",
-              aspect_ratio: req.aspectRatio || "4:3",
-            }),
-          });
-          if (!res.ok) { const b = await res.text(); console.log(`[img2img] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
-          const data = await res.json();
-          const imageUrl = data.images?.[0]?.url;
-          if (imageUrl) {
-            console.log(`[img2img] FAL Kontext OK in ${Date.now() - start}ms`);
-            return { model: selectedModel, provider: `fal-kontext/${falModel}`, imageUrl, latencyMs: Date.now() - start };
-          }
-        } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
+    // ── DISPATCH 2: Flux Kontext Pro via FAL (native edit model) ──
+    if (selectedModel === "kontext-pro-leo" || selectedModel === "kontext-pro" || selectedModel === "flux-kontext-pro") {
+      const falKey = Deno.env.get("FAL_API_KEY");
+      if (falKey) {
+        for (const falModel of ["fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"]) {
+          try {
+            console.log(`[img2img] DISPATCH → FAL ${falModel} (Kontext, preserves subject natively)...`);
+            const res = await fetch(`https://fal.run/${falModel}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+              body: JSON.stringify({
+                prompt: finalPrompt,
+                image_url: req.imageRefUrl,
+                num_images: 1,
+                safety_tolerance: "2",
+                output_format: "jpeg",
+                aspect_ratio: req.aspectRatio || "4:3",
+              }),
+            });
+            if (!res.ok) { const b = await res.text(); console.log(`[img2img] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+            const data = await res.json();
+            const imageUrl = data.images?.[0]?.url;
+            if (imageUrl) {
+              console.log(`[img2img] FAL Kontext OK in ${Date.now() - start}ms`);
+              return { model: selectedModel, provider: `fal-kontext/${falModel}`, imageUrl, latencyMs: Date.now() - start };
+            }
+          } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
+        }
       }
     }
-  }
 
-  // ── DISPATCH 3: Leonardo v1 models with controlnet content-guidance (Phoenix, Lucid, Flux Dev/Schnell) ──
-  if (leonardoImageModelMap[selectedModel] && leonardoPreprocessors[leonardoImageModelMap[selectedModel].leonardoModelId]) {
-    try {
-      console.log(`[img2img] DISPATCH → Leonardo v1 edit content-guidance (${selectedModel})`);
-      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
-      const res = await generateImageLeonardoWithGuidance({
-        prompt: finalPrompt,
-        model: selectedModel,
-        imageId,
-        guidanceType: "content",
-        strength: "High",
-        aspectRatio: req.aspectRatio || "4:3",
-      });
-      if (res?.imageUrl) {
-        console.log(`[img2img] Leonardo v1 edit OK in ${Date.now() - start}ms (${selectedModel})`);
-        return { ...res, latencyMs: Date.now() - start };
+    // ── DISPATCH 3: Leonardo v1 models with controlnet content-guidance ──
+    if (leonardoImageModelMap[selectedModel] && leonardoPreprocessors[leonardoImageModelMap[selectedModel].leonardoModelId]) {
+      try {
+        console.log(`[img2img] DISPATCH → Leonardo v1 edit content-guidance (${selectedModel})`);
+        const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+        const res = await generateImageLeonardoWithGuidance({
+          prompt: finalPrompt,
+          model: selectedModel,
+          imageId,
+          guidanceType: "content",
+          strength: "High",
+          aspectRatio: req.aspectRatio || "4:3",
+        });
+        if (res?.imageUrl) {
+          console.log(`[img2img] Leonardo v1 edit OK in ${Date.now() - start}ms (${selectedModel})`);
+          return { ...res, latencyMs: Date.now() - start };
+        }
+      } catch (err) {
+        console.log(`[img2img] Leonardo v1 edit failed for ${selectedModel}: ${err} — falling back`);
       }
-    } catch (err) {
-      console.log(`[img2img] Leonardo v1 edit failed for ${selectedModel}: ${err} — falling back`);
     }
+  } else {
+    console.log(`[img2img] preserveContent=true → SKIPPING edit dispatches, going to character_ref/image_ref pipeline for scene generation`);
   }
 
   // ═══ When preserveContent=true: FAL Flux img2img FIRST (true pixel-preserving denoising) ═══
