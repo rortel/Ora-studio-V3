@@ -1145,14 +1145,27 @@ USER REQUEST: `;
                 }, 120_000);
                 url = r?.success && r.imageUrl ? r.imageUrl : "";
               } else {
-                // Image-to-image edit: use the selected model with generative img2img
-                // (provider="ai" skips Photoroom packshot pipeline and hits the dispatcher
-                // that routes each model to its own native backend).
-                // LOCATION mode runs a 4-strategy cascade (FAL Flux Pro Depth → Flux LoRA Depth
-                // → Flux img2img → Luma modify) and can take 2–4 min total, so extend timeout.
+                // Image-to-image edit: use the selected model with generative img2img.
+                // CRITICAL: img2img models are VISUAL models, not LLMs. They can't parse
+                // 3000-char instruction blocks. The preservation prefix and brand DNA block
+                // HURT fidelity by drowning the actual scene description in noise.
+                // → Send ONLY the user's brief + a short visual scene description.
+                // Subject preservation comes from the IMAGE REFERENCE WEIGHT, not from text.
                 const timeoutMs = refType === "location" ? 240_000 : 120_000;
+                // Build a short, visual-only prompt for img2img:
+                // 1. User's original brief (the creative intent)
+                // 2. VLM subject description (so the model knows WHAT to keep)
+                // 3. Short visual direction from intent preset (if any)
+                // NO preservation prefix, NO brand DNA block, NO scraped content dump.
+                const subjectHint = refSubject?.subject ? ` The product is: ${refSubject.subject}.` : "";
+                const intentHint = (() => {
+                  if (intent === "auto") return "";
+                  const p = getIntentPreset(intent);
+                  return p.visualDirection ? ` Style: ${p.visualDirection.slice(0, 200)}` : "";
+                })();
+                const img2imgPrompt = `${prompt}${subjectHint}${intentHint}`.slice(0, 1500);
                 const r = await serverPost("/generate/image-start", {
-                  prompt: preservedPrompt.slice(0, 4000),
+                  prompt: img2imgPrompt,
                   model: modelId,
                   aspectRatio,
                   imageRefUrl: effectiveProductRef!,
