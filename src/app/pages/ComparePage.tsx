@@ -1152,18 +1152,17 @@ USER REQUEST: `;
                 // → Send ONLY the user's brief + a short visual scene description.
                 // Subject preservation comes from the IMAGE REFERENCE WEIGHT, not from text.
                 const timeoutMs = refType === "location" ? 240_000 : 120_000;
-                // Build a short, visual-only prompt for img2img:
-                // 1. User's original brief (the creative intent)
-                // 2. VLM subject description (so the model knows WHAT to keep)
-                // 3. Short visual direction from intent preset (if any)
-                // NO preservation prefix, NO brand DNA block, NO scraped content dump.
-                const subjectHint = refSubject?.subject ? ` The product is: ${refSubject.subject}.` : "";
+                // Build a short, SCENE-DIRECTIVE prompt for img2img:
+                // Edit models (Kontext, Leonardo) need explicit instructions to CHANGE THE SCENE.
+                // Without a scene directive, they just do minimal edits on the reference.
+                // Formula: "Place [subject] in [user's scene]. Keep the exact [product]. [Style hint]"
+                const subjectDesc = refSubject?.subject || "the product from the reference image";
                 const intentHint = (() => {
                   if (intent === "auto") return "";
                   const p = getIntentPreset(intent);
-                  return p.visualDirection ? ` Style: ${p.visualDirection.slice(0, 200)}` : "";
+                  return p.visualDirection ? ` Visual style: ${p.visualDirection.slice(0, 150)}.` : "";
                 })();
-                const img2imgPrompt = `${prompt}${subjectHint}${intentHint}`.slice(0, 1500);
+                const img2imgPrompt = `Place ${subjectDesc} in this scene: ${prompt}. Change the background and environment completely to match the scene description. Keep the exact product/subject from the reference photo — same shape, colors, textures, details.${intentHint} Photorealistic photography.`.slice(0, 1500);
                 const r = await serverPost("/generate/image-start", {
                   prompt: img2imgPrompt,
                   model: modelId,

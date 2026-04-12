@@ -2405,10 +2405,12 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // Map client aspect ratio to FAL image_size
   const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
   const falImageSize = falSizeMap[req.aspectRatio || ""] || "landscape_4_3";
-  // For preserveContent: strength=0.55 — 55% new scene from prompt, 45% product identity from ref.
-  // Lower strength = MORE reference preservation (the product dominates the output).
-  // Previous 0.80 was way too prompt-heavy — the ref image was barely visible.
-  const strength = preserveContent ? 0.55 : rawStrength;
+  // For preserveContent: strength=0.65 — 65% new scene from prompt, 35% product identity from ref.
+  // Balance: enough ref influence to keep the product recognizable, enough prompt influence
+  // to actually CHANGE THE SCENE (party, outdoor, studio, etc.). Previous values:
+  //   0.80 = product invisible (too prompt-heavy)
+  //   0.55 = scene unchanged (too ref-heavy, model can't change background)
+  const strength = preserveContent ? 0.65 : rawStrength;
   const negativePrompt = preserveContent
     ? "wrong brand, wrong logo, competitor brand, different product, altered product, wrong product, text overlay, watermark, visible letters, visible words, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime"
     : "";
