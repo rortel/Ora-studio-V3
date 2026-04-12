@@ -646,6 +646,9 @@ export function ComparePage() {
   // ── Attached product photos (multi-ref: up to 4 reference images) ──
   interface AttachedImage { file: File; preview: string; signedUrl?: string; uploading: boolean }
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  // Live ref — always points to the latest attachedImages (for async callbacks that outlive renders)
+  const attachedImagesRef = useRef<AttachedImage[]>([]);
+  attachedImagesRef.current = attachedImages;
   // Convenience: first image (backward compat for single-ref consumers)
   const attachedImage = attachedImages[0] || null;
   // Ref type:
@@ -956,6 +959,22 @@ export function ComparePage() {
   // ── Generate ──
   const runGeneration = useCallback(async () => {
     if (!prompt.trim() || selectedModels.length < 1 || isRunning) return;
+
+    // ── GUARD: wait for all uploads to finish before generating ──
+    // If the user attached images and clicked generate before signedUrls are ready,
+    // poll the ref until all uploads complete (max 15s) to avoid the silent text-to-image fallback.
+    if (attachedImagesRef.current.length > 0 && attachedImagesRef.current.some(img => img.uploading)) {
+      toast.info(isFr ? "Upload en cours, un instant..." : "Uploading, one moment...");
+      const start = Date.now();
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (!attachedImagesRef.current.some(img => img.uploading) || Date.now() - start > 15_000) { resolve(); return; }
+          setTimeout(check, 500);
+        };
+        check();
+      });
+    }
+
     setIsRunning(true);
     setResults([]);
     setScrapedUrls(null);
@@ -1045,8 +1064,10 @@ export function ComparePage() {
     const rawResults: { modelId: string; timeMs: number; success: boolean; imageUrl?: string; videoUrl?: string; audioUrl?: string; text?: string; error?: string }[] = [];
 
     // Prefer client-uploaded photos; fallback to scraped product images
-    // Multi-ref: all uploaded signed URLs, plus scraped images to fill up to 4
-    const uploadedRefs = attachedImages.filter(img => img.signedUrl).map(img => img.signedUrl!);
+    // Multi-ref: all uploaded signed URLs, plus scraped images to fill up to 4.
+    // Read from ref (always fresh) — closure `attachedImages` may be stale if uploads
+    // completed asynchronously after this callback was created.
+    const uploadedRefs = attachedImagesRef.current.filter(img => img.signedUrl).map(img => img.signedUrl!);
     const allProductRefs = uploadedRefs.length > 0
       ? [...uploadedRefs, ...scrapedProductImages.filter(u => !uploadedRefs.includes(u))].slice(0, MAX_REF_IMAGES)
       : scrapedProductImages.slice(0, MAX_REF_IMAGES);
@@ -1138,7 +1159,7 @@ USER REQUEST: `;
                   // Multi-ref: pass all reference URLs so providers that support arrays
                   // (Luma image_ref, Leonardo image_reference) can use multiple angles.
                   imageRefUrls: allProductRefs.length > 1 ? allProductRefs : undefined,
-                  refSource: uploadedRefs.length > 0 ? "upload" : "scrape",
+                  refSource: attachedImagesRef.current.some(img => img.signedUrl) ? "upload" : "scrape",
                   refType, // "product" or "location" — drives backend dispatch (depth ControlNet for location)
                   provider: "ai",
                   preserveSubject: refType === "product",
