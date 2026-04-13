@@ -25,8 +25,8 @@ export function useDraftsFolder(
     resolving.current = true;
 
     try {
-      // Try to list existing folders
-      const res = await serverGet("/library/folders-list");
+      // Try to list existing folders (POST endpoint on server)
+      const res = await serverPost("/library/folders-list", {});
       if (res?.success && Array.isArray(res.folders)) {
         const drafts = res.folders.find(
           (f: { name: string }) => f.name === DRAFTS_FOLDER_NAME,

@@ -749,13 +749,7 @@ export function ComparePage() {
             setRefSubject(null);
             (async () => {
               try {
-                const token = getAuthHeader();
-                const r = await fetch(`${API_BASE}/compare/describe-subject`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Authorization: token },
-                  body: JSON.stringify({ imageUrl: data.signedUrl }),
-                });
-                const j = await r.json();
+                const j = await serverPost("/compare/describe-subject", { imageUrl: data.signedUrl });
                 if (j?.success && j.subject) {
                   setRefSubject({ subject: String(j.subject), category: String(j.category || "other") });
                   console.log(`[compare] VLM described subject: "${j.subject}" (${j.category})`);
@@ -831,9 +825,11 @@ export function ComparePage() {
   }, [getAuthHeader]);
 
   const serverGet = useCallback(async (path: string) => {
-    const r = await fetch(`${API_BASE}${path}`, { method: "GET", headers: { Authorization: `Bearer ${publicAnonKey}` }, signal: AbortSignal.timeout(180_000) });
+    const sep = path.includes("?") ? "&" : "?";
+    const authQs = `apikey=${publicAnonKey}&_token=${encodeURIComponent(getAuthHeader())}`;
+    const r = await fetch(`${API_BASE}${path}${sep}${authQs}`, { method: "GET", signal: AbortSignal.timeout(180_000) });
     return r.json();
-  }, []);
+  }, [getAuthHeader]);
 
   // ── Auto-save: resolve "Brouillons" folder for generated assets ──
   const draftsFolderId = useDraftsFolder(serverGet, serverPost);
