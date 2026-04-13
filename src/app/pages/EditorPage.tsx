@@ -35,7 +35,7 @@ import type { VideoProject } from "../lib/video-editor/types";
    TYPES
    ═══════════════════════════════════ */
 
-type EditorTool = "move" | "clean" | "replace" | "background" | "reframe" | "upscale";
+type EditorTool = "move" | "clean" | "replace" | "cutout" | "background" | "reframe" | "upscale";
 
 interface MaskLine {
   points: number[];
@@ -672,6 +672,7 @@ function EditorPageContent() {
       if (e.key === "v" || e.key === "V") setTool("move");
       if (e.key === "e" || e.key === "E") setTool("clean");
       if (e.key === "i" || e.key === "I") setTool("replace");
+      if (e.key === "c" || e.key === "C") setTool("cutout");
       if (e.key === "b" || e.key === "B") setTool("background");
       if (e.key === "f" || e.key === "F") setTool("reframe");
       if (e.key === "u" || e.key === "U") setTool("upscale");
@@ -691,7 +692,7 @@ function EditorPageContent() {
     };
   }, [undo, redo]);
 
-  const isBrushTool = tool === "clean" || tool === "replace";
+  const isBrushTool = tool === "clean" || tool === "replace" || tool === "cutout";
 
   // --- Canvas mouse handlers ---
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -1464,9 +1465,74 @@ function EditorPageContent() {
     return c.toDataURL("image/png");
   }, [image, maskLines, invertMask]);
 
+  // --- Client-side cutout: extract painted region as a new subject layer ---
+  const handleCutout = useCallback(() => {
+    if (!image || maskLines.length === 0) return;
+
+    // 1) Build an alpha mask from the painted brush strokes (white = keep)
+    const maskCanvas = document.createElement("canvas");
+    maskCanvas.width = image.width;
+    maskCanvas.height = image.height;
+    const mctx = maskCanvas.getContext("2d")!;
+    // Start fully transparent (black/0 alpha)
+    mctx.clearRect(0, 0, image.width, image.height);
+    // Draw brush strokes as solid white
+    mctx.strokeStyle = "#ffffff";
+    mctx.lineCap = "round";
+    mctx.lineJoin = "round";
+    for (const line of maskLines) {
+      mctx.lineWidth = line.brushSize;
+      mctx.beginPath();
+      for (let i = 0; i < line.points.length; i += 2) {
+        const x = line.points[i];
+        const y = line.points[i + 1];
+        if (i === 0) mctx.moveTo(x, y);
+        else mctx.lineTo(x, y);
+      }
+      mctx.stroke();
+    }
+
+    // 2) Composite: keep only the original image pixels inside the mask
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = image.width;
+    outCanvas.height = image.height;
+    const octx = outCanvas.getContext("2d")!;
+    // Draw original image
+    octx.drawImage(image, 0, 0);
+    // Use destination-in: keep only pixels where mask is opaque
+    octx.globalCompositeOperation = "destination-in";
+    octx.drawImage(maskCanvas, 0, 0);
+    octx.globalCompositeOperation = "source-over";
+
+    // 3) Create HTMLImageElement from the result
+    const dataUrl = outCanvas.toDataURL("image/png");
+    const subjImg = new window.Image();
+    subjImg.crossOrigin = "anonymous";
+    subjImg.onload = () => {
+      const layerId = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      subjectImagesRef.current[layerId] = subjImg;
+      setLayers(prev => [
+        ...prev,
+        {
+          id: layerId,
+          type: "subject" as const,
+          opacity: 1,
+          visible: true,
+          imageUrl: dataUrl,
+        },
+      ]);
+      setSelectedLayerId(layerId);
+      setMaskLines([]);
+      toast.success(isFr ? "Élément détouré ajouté comme calque" : "Cutout added as layer");
+    };
+    subjImg.src = dataUrl;
+  }, [image, maskLines, isFr]);
+
   // --- Server action ---
   const handleAction = useCallback(async () => {
     if (!imageUrl) return;
+    // Cutout is client-side only — no server call
+    if (tool === "cutout") { handleCutout(); return; }
     setProcessing(true);
     try {
       const body: any = { imageUrl, tool, _token: getAuthHeader() };
@@ -1523,7 +1589,7 @@ function EditorPageContent() {
     } finally {
       setProcessing(false);
     }
-  }, [imageUrl, tool, prompt, invertMask, reframeFormat, getAuthHeader, buildMaskDataUrl]);
+  }, [imageUrl, tool, prompt, invertMask, reframeFormat, getAuthHeader, buildMaskDataUrl, handleCutout]);
 
   // --- Library filtered ---
   const filteredLibrary = useMemo(() => {
@@ -1538,6 +1604,7 @@ function EditorPageContent() {
 
   // --- Prompt bar visibility ---
   const showPromptBar = tool === "replace" || tool === "background" || tool === "reframe";
+  const showActionBar = showPromptBar || tool === "clean" || tool === "upscale" || tool === "cutout";
 
   // --- Cursor style ---
   const getCursorStyle = (): string => {
@@ -1551,16 +1618,18 @@ function EditorPageContent() {
     switch (tool) {
       case "clean": return "Clean";
       case "replace": return "Replace";
+      case "cutout": return isFr ? "Détourer" : "Cutout";
       case "background": return "Replace Background";
       case "reframe": return "Fill";
       case "upscale": return "Upscale";
+      default: return "Apply";
     }
   };
 
   // --- Can execute action ---
   const canExecute = (): boolean => {
     if (!imageUrl || processing) return false;
-    if ((tool === "clean" || tool === "replace") && maskLines.length === 0) return false;
+    if ((tool === "clean" || tool === "replace" || tool === "cutout") && maskLines.length === 0) return false;
     if (tool === "replace" && !prompt.trim()) return false;
     if (tool === "background" && !prompt.trim()) return false;
     if (tool === "reframe" && !prompt.trim()) return false;
@@ -2198,7 +2267,7 @@ function EditorPageContent() {
 
         {/* ─── Bottom prompt bar ─── */}
         <AnimatePresence>
-          {(showPromptBar || tool === "clean" || tool === "upscale") && image && (
+          {showActionBar && image && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

@@ -17,13 +17,14 @@ import {
   ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
 } from "lucide-react";
 
-type EditorTool = "move" | "clean" | "replace" | "background" | "reframe" | "upscale";
+type EditorTool = "move" | "clean" | "replace" | "cutout" | "background" | "reframe" | "upscale";
 type ShapeKind = "rect" | "patch" | "circle" | "star";
 
 const TOOLS: { id: EditorTool; label: string; icon: typeof Eraser; shortcut: string }[] = [
   { id: "move", label: "Move", icon: MousePointer2, shortcut: "V" },
   { id: "clean", label: "Clean", icon: Eraser, shortcut: "E" },
   { id: "replace", label: "Replace", icon: Paintbrush, shortcut: "I" },
+  { id: "cutout", label: "Cutout", icon: Scissors, shortcut: "C" },
   { id: "background", label: "Background", icon: ImageIcon, shortcut: "B" },
   { id: "reframe", label: "Reframe", icon: Expand, shortcut: "F" },
   { id: "upscale", label: "Upscale", icon: Sparkles, shortcut: "U" },
@@ -421,7 +422,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
 
                 <DropdownItem
                   icon={splitting ? <Loader2 size={13} className="animate-spin" /> : <Scissors size={13} />}
-                  label={isFr ? "Isoler le sujet" : "Split subject"}
+                  label={isFr ? "Détourer (auto)" : "Cutout (auto)"}
                   onClick={() => { onSplitSubject(); setAddMenuOpen(false); }}
                   disabled={splitting}
                 />
