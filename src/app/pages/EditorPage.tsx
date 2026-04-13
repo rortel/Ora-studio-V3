@@ -429,10 +429,12 @@ function EditorPageContent() {
       try {
         const data = await serverPost("/library/list", {});
         if (data.success && data.items) {
-          const imageItems = data.items.filter(
-            (item: LibraryItem) => item.type === "image" || item.preview?.kind === "image"
+          const mediaItems = data.items.filter(
+            (item: LibraryItem) =>
+              item.type === "image" || item.type === "film" ||
+              item.preview?.kind === "image" || item.preview?.kind === "film"
           );
-          setLibraryItems(imageItems);
+          setLibraryItems(mediaItems);
         }
       } catch {
         // silent
@@ -520,6 +522,30 @@ function EditorPageContent() {
       setTimelineOpen(true);
       toast.success(isFr ? "Clip vidéo ajouté" : "Video clip added");
     };
+  }, [editorProject, isFr]);
+
+  // --- Select video from library ---
+  const handleSelectLibraryVideo = useCallback((url: string) => {
+    const probe = document.createElement("video");
+    probe.crossOrigin = "anonymous";
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      const fps = editorProject.project.fps;
+      const durationInFrames = Math.max(30, Math.round(probe.duration * fps));
+      const vw = probe.videoWidth || 1920;
+      const vh = probe.videoHeight || 1080;
+      const layer = createVideoClipLayer(url, {
+        name: "Library video",
+        spatial: createDefaultSpatial(0, 0, vw, vh),
+        temporal: createDefaultTemporal(durationInFrames),
+        trimEnd: probe.duration,
+      });
+      editorProject.addLayer(layer);
+      setTimelineOpen(true);
+      toast.success(isFr ? "Clip vidéo ajouté" : "Video clip added");
+    };
+    probe.onerror = () => toast.error(isFr ? "Impossible de charger la vidéo" : "Failed to load video");
   }, [editorProject, isFr]);
 
   // --- Add audio track (unified model) ---
@@ -1580,6 +1606,7 @@ function EditorPageContent() {
         loading={loadingLibrary}
         activeImageUrl={imageUrl}
         onSelectImage={loadImage}
+        onSelectVideo={handleSelectLibraryVideo}
       />
 
       {/* ═══════ MAIN AREA (canvas + panels) ═══════ */}

@@ -1,10 +1,10 @@
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Library Sidebar — Left panel with image library
+   Library Sidebar — Left panel with image + video library
    Clean white expert UI
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 import { motion, AnimatePresence } from "motion/react";
-import { Search, ChevronLeft, Loader2, Image as ImageIcon } from "lucide-react";
+import { Search, ChevronLeft, Loader2, Image as ImageIcon, Film } from "lucide-react";
 
 interface LibraryItem {
   id: string;
@@ -17,7 +17,12 @@ interface LibraryItem {
 function getAssetUrl(item: LibraryItem): string | null {
   if (!item.preview) return null;
   if (item.preview.kind === "image") return item.preview.imageUrl || null;
+  if (item.preview.kind === "film") return item.preview.videoUrl || null;
   return null;
+}
+
+function isVideo(item: LibraryItem): boolean {
+  return item.type === "film" || item.preview?.kind === "film";
 }
 
 function getItemName(item: LibraryItem): string {
@@ -33,11 +38,12 @@ interface LibrarySidebarProps {
   loading: boolean;
   activeImageUrl: string | null;
   onSelectImage: (url: string) => void;
+  onSelectVideo?: (url: string) => void;
 }
 
 export function LibrarySidebar({
   open, onClose, search, onSearchChange,
-  items, loading, activeImageUrl, onSelectImage,
+  items, loading, activeImageUrl, onSelectImage, onSelectVideo,
 }: LibrarySidebarProps) {
   return (
     <AnimatePresence>
@@ -100,7 +106,7 @@ export function LibrarySidebar({
               <div style={{ padding: "24px 8px", textAlign: "center" }}>
                 <ImageIcon size={24} style={{ color: "#ddd", margin: "0 auto 8px" }} />
                 <p style={{ fontSize: 12, color: "#bbb" }}>
-                  {search ? "No images found" : "No images in library"}
+                  {search ? "No results" : "No media in library"}
                 </p>
               </div>
             ) : (
@@ -108,24 +114,48 @@ export function LibrarySidebar({
                 {items.map(item => {
                   const url = getAssetUrl(item);
                   if (!url) return null;
+                  const video = isVideo(item);
                   return (
                     <motion.div
                       key={item.id}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => onSelectImage(url)}
+                      onClick={() => video ? onSelectVideo?.(url) : onSelectImage(url)}
                       style={{
                         borderRadius: 8, overflow: "hidden", cursor: "pointer",
                         aspectRatio: "1", background: "#f5f5f7",
                         border: activeImageUrl === url ? "2px solid #7C3AED" : "2px solid transparent",
                         transition: "border-color 0.12s",
+                        position: "relative",
                       }}
                     >
-                      <img
-                        src={url} alt={getItemName(item)}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                        loading="lazy"
-                      />
+                      {video ? (
+                        <video
+                          src={url}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          onMouseEnter={e => { (e.target as HTMLVideoElement).play().catch(() => {}); }}
+                          onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
+                        />
+                      ) : (
+                        <img
+                          src={url} alt={getItemName(item)}
+                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          loading="lazy"
+                        />
+                      )}
+                      {/* Video badge */}
+                      {video && (
+                        <div style={{
+                          position: "absolute", top: 4, right: 4,
+                          background: "rgba(0,0,0,0.55)", borderRadius: 4,
+                          padding: "2px 4px", display: "flex", alignItems: "center", gap: 2,
+                        }}>
+                          <Film size={9} style={{ color: "#fff" }} />
+                        </div>
+                      )}
                     </motion.div>
                   );
                 })}
