@@ -714,9 +714,10 @@ function EditorPageContent() {
   }, [tool, image, spaceHeld, stagePos, zoom, brushSize]);
 
   const handleMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Update cursor position
     const pos = e.target.getStage()?.getPointerPosition();
-    if (pos) setCursorPos(pos);
+
+    // Only track cursor position for brush tools (avoid re-renders during drag)
+    if (isBrushTool && pos) setCursorPos(pos);
 
     // Panning
     if (isPanning && lastPanPos.current) {
@@ -738,7 +739,7 @@ function EditorPageContent() {
       updated[updated.length - 1] = lastLine;
       return updated;
     });
-  }, [isDrawing, isPanning, stagePos, zoom]);
+  }, [isDrawing, isPanning, isBrushTool, stagePos, zoom]);
 
   const handleMouseUp = useCallback(() => {
     setIsDrawing(false);
