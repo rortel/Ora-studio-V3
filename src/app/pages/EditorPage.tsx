@@ -1232,7 +1232,7 @@ function EditorPageContent() {
   const [animateOpen, setAnimateOpen] = useState(false);
   const [animate, setAnimate] = useState<AnimateState>({
     prompt: "",
-    model: "kling-2.5-turbo-pro",
+    model: "kling-2.5",
     duration: 5,
     running: false,
     videoUrl: null,
@@ -2480,7 +2480,7 @@ function EditorPageContent() {
                         borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
                       }}
                     >
-                      <option value="kling-2.5-turbo-pro">Kling 2.5 Turbo Pro</option>
+                      <option value="kling-2.5">Kling 2.5 Turbo Pro</option>
                       <option value="hailuo-02">Minimax Hailuo 02</option>
                       <option value="ora-motion">Luma Ray 2</option>
                     </select>
