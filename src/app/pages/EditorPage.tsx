@@ -691,6 +691,8 @@ function EditorPageContent() {
     };
   }, [undo, redo]);
 
+  const isBrushTool = tool === "clean" || tool === "replace";
+
   // --- Canvas mouse handlers ---
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     // Pan with space + drag or middle click
@@ -1536,9 +1538,6 @@ function EditorPageContent() {
 
   // --- Prompt bar visibility ---
   const showPromptBar = tool === "replace" || tool === "background" || tool === "reframe";
-
-  // --- Brush tools ---
-  const isBrushTool = tool === "clean" || tool === "replace";
 
   // --- Cursor style ---
   const getCursorStyle = (): string => {
