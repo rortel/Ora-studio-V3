@@ -582,16 +582,16 @@ export function ComparePage() {
   // Format catalog per mode — what clients can pick
   const FORMAT_OPTIONS = useMemo(() => {
     if (mode === "image") return [
-      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "1:1" },
-      { id: "4:5", label: "Portrait", sub: "4:5" },
-      { id: "9:16", label: "Story", sub: "9:16" },
-      { id: "16:9", label: isFr ? "Paysage" : "Landscape", sub: "16:9" },
-      { id: "3:2", label: "Photo", sub: "3:2" },
+      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "Post" },
+      { id: "4:5", label: "Portrait", sub: "Feed" },
+      { id: "9:16", label: "Story", sub: "Story / Reel" },
+      { id: "16:9", label: isFr ? "Paysage" : "Landscape", sub: "Cover" },
+      { id: "3:2", label: "Photo", sub: "Photo" },
     ];
     if (mode === "video") return [
-      { id: "16:9", label: isFr ? "Paysage" : "Landscape", sub: "16:9" },
-      { id: "9:16", label: isFr ? "Vertical" : "Vertical", sub: "9:16" },
-      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "1:1" },
+      { id: "16:9", label: "YouTube · LinkedIn", sub: "YouTube" },
+      { id: "9:16", label: "Reel · TikTok · Shorts", sub: "Reel / TikTok" },
+      { id: "1:1", label: isFr ? "Carré" : "Square", sub: "Post" },
     ];
     if (mode === "text") return [
       { id: "instagram-post", label: "Instagram", sub: "Post" },
@@ -1736,7 +1736,7 @@ USER REQUEST: `;
                   )}
                   <span className="flex items-center gap-1 flex-shrink-0" style={{ fontSize: 10, fontWeight: 700, color: "var(--muted-foreground)" }}>
                     {mode === "image" ? <ImageIcon size={13} /> : mode === "text" ? <Type size={13} /> : mode === "video" ? <Video size={13} /> : <Music size={13} />}
-                    {mode !== "music" && <span>{mode === "text" ? FORMAT_OPTIONS.find(f => f.id === textFormat)?.label?.split(" ")[0] || textFormat : aspectRatio}</span>}
+                    {mode !== "music" && <span>{mode === "text" ? FORMAT_OPTIONS.find(f => f.id === textFormat)?.label?.split(" ")[0] || textFormat : FORMAT_OPTIONS.find(f => f.id === aspectRatio)?.sub || aspectRatio}</span>}
                   </span>
                 </motion.button>
               ) : (

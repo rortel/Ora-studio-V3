@@ -30,11 +30,11 @@ const TOOLS: { id: EditorTool; label: string; icon: typeof Eraser; shortcut: str
 ];
 
 const REFRAME_FORMATS = [
-  { label: "1:1", value: "1:1" },
-  { label: "16:9", value: "16:9" },
-  { label: "9:16", value: "9:16" },
-  { label: "4:5", value: "4:5" },
-  { label: "3:4", value: "3:4" },
+  { label: "Post", value: "1:1", ratio: "1:1" },
+  { label: "Feed", value: "4:5", ratio: "4:5" },
+  { label: "Story", value: "9:16", ratio: "9:16" },
+  { label: "Cover", value: "16:9", ratio: "16:9" },
+  { label: "Photo", value: "3:2", ratio: "3:2" },
 ];
 
 function clamp(v: number, min: number, max: number) { return Math.min(Math.max(v, min), max); }
@@ -343,6 +343,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                 <button
                   key={fmt.value}
                   onClick={() => onReframeFormatChange(fmt.value)}
+                  title={fmt.ratio}
                   style={{
                     padding: "3px 7px", borderRadius: 5, border: "1px solid #e8e8e8",
                     background: reframeFormat === fmt.value ? "#7C3AED" : "transparent",
