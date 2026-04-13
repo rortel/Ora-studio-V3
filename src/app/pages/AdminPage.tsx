@@ -53,7 +53,7 @@ interface SystemLog {
   timestamp: string;
 }
 
-type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "emails" | "diagnostics";
+type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "api-credits" | "emails" | "diagnostics";
 
 /* ═══════════════════════════════════
    COMPONENT
@@ -278,6 +278,7 @@ function AdminPageContent() {
     { id: "users", label: "Users", icon: Users },
     { id: "financial", label: "Financial", icon: DollarSign },
     { id: "costs", label: "Costs", icon: CreditCard },
+    { id: "api-credits", label: "API Credits", icon: Zap },
     { id: "emails", label: "Emails", icon: Mail },
     { id: "logs", label: "System Logs", icon: Activity },
     { id: "diagnostics", label: "Diagnostics", icon: AlertTriangle },
@@ -362,6 +363,7 @@ function AdminPageContent() {
         )}
         {tab === "financial" && overview && <FinancialTab overview={overview} users={users} />}
         {tab === "costs" && overview && <CostsTab overview={overview} users={users} preloadedCosts={costsData} onRefresh={fetchData} />}
+        {tab === "api-credits" && <ApiCreditsTab adminPost={adminPost} />}
         {tab === "emails" && <EmailTab adminPost={adminPost} users={users} />}
         {tab === "logs" && <LogsTab logs={logs} />}
         {tab === "diagnostics" && <DiagnosticsTab authToken={accessToken || publicAnonKey} />}
@@ -1029,6 +1031,172 @@ interface SingleTestResult {
   ms?: number;
   body?: string;
   error?: string;
+}
+
+/* ═══════════════════════════════════
+   API CREDITS TAB — Real-time balance for all providers
+   ═══════════════════════════════════ */
+
+const DASHBOARD_URLS: Record<string, string> = {
+  apipod: "https://apipod.ai/dashboard",
+  openai: "https://platform.openai.com/usage",
+  anthropic: "https://console.anthropic.com/settings/billing",
+  fal: "https://fal.ai/dashboard/billing",
+  ideogram: "https://ideogram.ai/manage",
+  luma: "https://lumalabs.ai/dream-machine/api/billing",
+  together: "https://api.together.xyz/settings/billing",
+  mistral: "https://console.mistral.ai/billing",
+  gemini: "https://aistudio.google.com/apikey",
+  photoroom: "https://app.photoroom.com/account",
+  suno: "https://sunoapi.org",
+  elevenlabs: "https://elevenlabs.io/subscription",
+  leonardo: "https://app.leonardo.ai/api-access",
+  replicate: "https://replicate.com/account/billing",
+  kling: "https://klingai.com",
+  higgsfield: "https://platform.higgsfield.ai",
+  runware: "https://app.runware.ai/billing",
+  jina: "https://jina.ai/dashboard",
+  firecrawl: "https://firecrawl.dev/app/usage",
+  scrapingbee: "https://app.scrapingbee.com/account/usage",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  llm: "LLM / Vision",
+  image: "Image",
+  video: "Video",
+  audio: "Audio / Music",
+  scraping: "Web Scraping",
+  multi: "Multi-modal",
+};
+
+const CATEGORY_ORDER = ["llm", "image", "video", "audio", "scraping", "multi"];
+
+function ApiCreditsTab({ adminPost }: { adminPost: (path: string, body?: any, timeout?: number) => Promise<any> }) {
+  const [providers, setProviders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const fetchBalances = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await adminPost("/admin/api-balances", {}, 30000);
+      if (data?.success && data.providers) {
+        setProviders(data.providers);
+        setCheckedAt(data.checkedAt);
+      } else {
+        setError(data?.error || "Failed to fetch balances");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Network error");
+    }
+    setLoading(false);
+  }, [adminPost]);
+
+  useEffect(() => { fetchBalances(); }, []);
+
+  const grouped = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    for (const p of providers) {
+      const cat = p.category || "other";
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(p);
+    }
+    return map;
+  }, [providers]);
+
+  const statusColor = (p: any) => {
+    if (!p.hasKey) return "var(--destructive)";
+    if (p.error) return "#e8a308";
+    if (p.balance != null && p.balance <= 0) return "var(--destructive)";
+    if (p.balance != null && p.balance < 100) return "#e8a308";
+    return "#22c55e";
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 style={{ fontSize: "16px", fontWeight: 500, color: "var(--foreground)" }}>API Provider Balances</h2>
+          <p style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+            {checkedAt ? `Last checked: ${new Date(checkedAt).toLocaleTimeString()}` : "Not checked yet"}
+            {" · "}{providers.filter(p => p.hasKey).length}/{providers.length} keys configured
+          </p>
+        </div>
+        <button
+          onClick={fetchBalances}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+          style={{ fontSize: "12px", fontWeight: 500 }}
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          Refresh
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg border border-destructive/30" style={{ background: "rgba(239,68,68,0.05)", fontSize: "13px", color: "var(--destructive)" }}>
+          {error}
+        </div>
+      )}
+
+      {/* Provider grid by category */}
+      {CATEGORY_ORDER.map(cat => {
+        const items = grouped[cat];
+        if (!items?.length) return null;
+        return (
+          <div key={cat}>
+            <h3 style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              {CATEGORY_LABELS[cat] || cat}
+            </h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+              {items.map((p: any) => (
+                <div key={p.id} className="bg-card border border-border rounded-xl p-4" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: statusColor(p) }} />
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--foreground)" }}>{p.name}</span>
+                    </div>
+                    {DASHBOARD_URLS[p.id] && (
+                      <a href={DASHBOARD_URLS[p.id]} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "10px", color: "var(--primary)", textDecoration: "none" }}>
+                        Dashboard ↗
+                      </a>
+                    )}
+                  </div>
+                  {!p.hasKey ? (
+                    <p style={{ fontSize: "11px", color: "var(--destructive)" }}>Key not configured</p>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginBottom: 2 }}>
+                        {p.balanceLabel || "—"}
+                      </p>
+                      {p.key && (
+                        <p style={{ fontSize: "10px", color: "var(--muted-foreground)", fontFamily: "monospace" }}>
+                          {p.key}
+                        </p>
+                      )}
+                      {p.error && (
+                        <p style={{ fontSize: "10px", color: "#e8a308", marginTop: 2 }}>⚠ {p.error.slice(0, 80)}</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {loading && providers.length === 0 && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 size={20} className="animate-spin text-muted-foreground" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DiagnosticsTab({ authToken }: { authToken: string }) {

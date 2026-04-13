@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-03-18T18:00Z — v562-redeploy");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-13T17:00Z — v563-api-balances");
 
 const app = new Hono().basePath("/make-server-cad57f79");
 
@@ -120,7 +120,7 @@ app.use("*", async (c, next) => {
 });
 
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
-app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 202, audio: "suno-start-poll", credits: "tiered" }));
+app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 203, audio: "suno-start-poll", credits: "tiered", apiBalances: true }));
 
 // ── DIAGNOSTIC: test Photoroom pipeline on a given image URL ──
 app.get("/debug/photoroom-test", async (c) => {
@@ -9473,6 +9473,105 @@ app.get("/suno/credits", async (c) => {
     return c.json(data);
   } catch (err) {
     console.log("[suno/credits] error:", err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── ADMIN: API BALANCES — Check credits/balance for all providers ──
+app.post("/admin/api-balances", async (c) => {
+  const t0 = Date.now();
+  try {
+    // Only allow admin
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+    if (!user || user.email.toLowerCase() !== ADMIN_EMAIL) {
+      return c.json({ success: false, error: "Admin only" }, 403);
+    }
+
+    const mask = (k: string | undefined) => k ? `${k.slice(0, 6)}...${k.slice(-4)}` : null;
+    const providers: any[] = [];
+
+    const checks = await Promise.allSettled([
+      // 1. Suno — credits endpoint
+      (async () => {
+        const key = Deno.env.get("SUNO_API_KEY");
+        if (!key) return { id: "suno", name: "Suno", category: "audio", hasKey: false };
+        try {
+          const res = await fetch(`${SUNO_BASE}/api/v1/generate/credit`, { headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" } });
+          const data = await res.json();
+          const credits = typeof data?.data === "number" ? data.data : (data?.data?.creditsLeft ?? data?.credits_left ?? null);
+          return { id: "suno", name: "Suno", category: "audio", hasKey: true, key: mask(key), balance: credits, balanceLabel: credits != null ? `${credits} credits` : "N/A", raw: data };
+        } catch (e) { return { id: "suno", name: "Suno", category: "audio", hasKey: true, key: mask(key), error: String(e) }; }
+      })(),
+      // 2. ElevenLabs — subscription endpoint
+      (async () => {
+        const key = Deno.env.get("ELEVENLABS_API_KEY");
+        if (!key) return { id: "elevenlabs", name: "ElevenLabs", category: "audio", hasKey: false };
+        try {
+          const res = await fetch("https://api.elevenlabs.io/v1/user/subscription", { headers: { "xi-api-key": key } });
+          const data = await res.json();
+          const used = data?.character_count ?? 0;
+          const limit = data?.character_limit ?? 0;
+          const remaining = limit - used;
+          return { id: "elevenlabs", name: "ElevenLabs", category: "audio", hasKey: true, key: mask(key), balance: remaining, balanceLabel: `${remaining.toLocaleString()} / ${limit.toLocaleString()} chars`, raw: { tier: data?.tier, character_count: used, character_limit: limit } };
+        } catch (e) { return { id: "elevenlabs", name: "ElevenLabs", category: "audio", hasKey: true, key: mask(key), error: String(e) }; }
+      })(),
+      // 3. Leonardo.Ai — /me endpoint
+      (async () => {
+        const key = Deno.env.get("LEONARDO_API_KEY");
+        if (!key) return { id: "leonardo", name: "Leonardo.Ai", category: "image", hasKey: false };
+        try {
+          const res = await fetch("https://cloud.leonardo.ai/api/rest/v1/me", { headers: { Authorization: `Bearer ${key}` } });
+          const data = await res.json();
+          const u = data?.user_details?.[0] || {};
+          const tokens = u.apiSubscriptionTokens ?? u.subscriptionTokens ?? null;
+          const paid = u.apiPaidTokens ?? 0;
+          return { id: "leonardo", name: "Leonardo.Ai", category: "image", hasKey: true, key: mask(key), balance: tokens, balanceLabel: tokens != null ? `${tokens} tokens` : "N/A", raw: { tokens, paid, plan: u.apiPlanTokenRenewalDate } };
+        } catch (e) { return { id: "leonardo", name: "Leonardo.Ai", category: "image", hasKey: true, key: mask(key), error: String(e) }; }
+      })(),
+      // 4. Replicate — account info
+      (async () => {
+        const key = Deno.env.get("REPLICATE_API_TOKEN");
+        if (!key) return { id: "replicate", name: "Replicate", category: "multi", hasKey: false };
+        try {
+          const res = await fetch("https://api.replicate.com/v1/account", { headers: { Authorization: `Bearer ${key}` } });
+          const data = await res.json();
+          return { id: "replicate", name: "Replicate", category: "multi", hasKey: true, key: mask(key), balance: null, balanceLabel: data?.type === "organization" ? "Org account" : "Personal", raw: { type: data?.type, username: data?.username, github_url: data?.github_url } };
+        } catch (e) { return { id: "replicate", name: "Replicate", category: "multi", hasKey: true, key: mask(key), error: String(e) }; }
+      })(),
+      // 5-20: Key-only checks (no balance API available)
+      ...[
+        { id: "apipod", name: "APIPod", category: "llm", env: "APIPOD_API_KEY" },
+        { id: "openai", name: "OpenAI", category: "llm", env: "OPENAI_API_KEY" },
+        { id: "anthropic", name: "Anthropic", category: "llm", env: "ANTHROPIC_API_KEY" },
+        { id: "fal", name: "FAL.ai", category: "image", env: "FAL_API_KEY" },
+        { id: "ideogram", name: "Ideogram", category: "image", env: "IDEOGRAM_API_KEY" },
+        { id: "luma", name: "Luma AI", category: "video", env: "LUMA_API_KEY" },
+        { id: "together", name: "Together AI", category: "llm", env: "TOGETHER_API_KEY" },
+        { id: "mistral", name: "Mistral", category: "llm", env: "MISTRAL_API_KEY" },
+        { id: "gemini", name: "Google Gemini", category: "llm", env: "GEMINI_API_KEY" },
+        { id: "photoroom", name: "Photoroom", category: "image", env: "PHOTOROOM_API_KEY" },
+        { id: "kling", name: "Kling AI", category: "video", env: "KLING_ACCESS_KEY" },
+        { id: "higgsfield", name: "Higgsfield", category: "video", env: "HIGGSFIELD_API_KEY" },
+        { id: "runware", name: "Runware", category: "image", env: "RUNWARE_IMAGE_API_KEY" },
+        { id: "jina", name: "Jina.ai", category: "scraping", env: "JINA_API_KEY" },
+        { id: "firecrawl", name: "Firecrawl", category: "scraping", env: "FIRECRAWL_API_KEY" },
+        { id: "scrapingbee", name: "ScrapingBee", category: "scraping", env: "SCRAPINGBEE_API_KEY" },
+      ].map(async (p) => {
+        const key = Deno.env.get(p.env);
+        return { ...p, hasKey: !!key, key: mask(key), balance: null, balanceLabel: "Dashboard only" };
+      }),
+    ]);
+
+    for (const result of checks) {
+      if (result.status === "fulfilled") providers.push(result.value);
+      else providers.push({ id: "unknown", error: String(result.reason) });
+    }
+
+    console.log(`[admin/api-balances] checked ${providers.length} providers in ${Date.now() - t0}ms`);
+    return c.json({ success: true, providers, checkedAt: new Date().toISOString() });
+  } catch (err) {
+    console.log(`[admin/api-balances] error: ${err}`);
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
