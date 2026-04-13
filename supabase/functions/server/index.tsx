@@ -122,6 +122,69 @@ app.use("*", async (c, next) => {
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
 app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 202, audio: "suno-start-poll", credits: "tiered" }));
 
+// ── DIAGNOSTIC: test Photoroom pipeline on a given image URL ──
+app.get("/debug/photoroom-test", async (c) => {
+  const imageUrl = c.req.query("imageUrl");
+  const bgPrompt = c.req.query("bgPrompt") || "elegant marble bathroom, warm lighting";
+  if (!imageUrl) return c.json({ error: "imageUrl required" }, 400);
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return c.json({ error: "PHOTOROOM_API_KEY not configured" }, 500);
+  const steps: { step: string; ok: boolean; detail: string; ms: number }[] = [];
+
+  // Step A: Download the image
+  let accessibleUrl = imageUrl;
+  const t0 = Date.now();
+  try {
+    const dlRes = await fetch(imageUrl, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "image/*" } });
+    const dlBytes = dlRes.ok ? new Uint8Array(await dlRes.arrayBuffer()) : null;
+    steps.push({ step: "download", ok: dlRes.ok, detail: `${dlRes.status} ${dlRes.headers.get("content-type")} ${dlBytes?.length || 0} bytes`, ms: Date.now() - t0 });
+    if (dlRes.ok && dlBytes && dlBytes.length > 5000) {
+      // Re-upload
+      const t1 = Date.now();
+      const sb = supabaseAdmin();
+      const fileName = `debug-${Date.now()}.jpg`;
+      const path = `generated/debug/${fileName}`;
+      const { error: upErr } = await sb.storage.from("make-cad57f79-media").upload(path, dlBytes, { contentType: dlRes.headers.get("content-type") || "image/jpeg", upsert: true });
+      if (!upErr) {
+        const { data } = await sb.storage.from("make-cad57f79-media").createSignedUrl(path, 3600);
+        if (data?.signedUrl) accessibleUrl = data.signedUrl;
+        steps.push({ step: "reupload", ok: true, detail: `${accessibleUrl.slice(0, 80)}`, ms: Date.now() - t1 });
+      } else {
+        steps.push({ step: "reupload", ok: false, detail: upErr.message, ms: Date.now() - t1 });
+      }
+    }
+  } catch (err) {
+    steps.push({ step: "download", ok: false, detail: String(err), ms: Date.now() - t0 });
+  }
+
+  // Step B: Call Photoroom
+  const t2 = Date.now();
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", accessibleUrl);
+    params.set("removeBackground", "true");
+    params.set("background.prompt", bgPrompt);
+    params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+    params.set("outputSize", "1080x1080");
+    params.set("padding", "0.08");
+    params.set("export.format", "webp");
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey, "pr-ai-background-model-version": "background-studio-beta-2025-03-17" },
+    });
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      steps.push({ step: "photoroom", ok: true, detail: `${buf.byteLength} bytes output`, ms: Date.now() - t2 });
+    } else {
+      const errText = await res.text();
+      steps.push({ step: "photoroom", ok: false, detail: `${res.status}: ${errText.slice(0, 300)}`, ms: Date.now() - t2 });
+    }
+  } catch (err) {
+    steps.push({ step: "photoroom", ok: false, detail: String(err), ms: Date.now() - t2 });
+  }
+
+  return c.json({ imageUrl, accessibleUrl: accessibleUrl.slice(0, 100), bgPrompt, steps, totalMs: Date.now() - t0 });
+});
+
 // ── IMAGE PROXY — bypass CORS for external image URLs (DALL-E Azure Blob, etc.) ──
 app.get("/image-proxy", async (c) => {
   const url = c.req.query("url");
@@ -2398,7 +2461,7 @@ async function generateImageLeonardoV2WithGuidance(req: {
 }
 
 // ── IMAGE WITH REFERENCE (img2img — FAL Flux primary for preserve, Luma fallback) ──
-async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; imageRefUrls?: string[]; strength?: number; preserveContent?: boolean; aspectRatio?: string }) {
+async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; imageRefUrls?: string[]; strength?: number; preserveContent?: boolean; aspectRatio?: string; intentId?: string; intentVisualDirection?: string; intentPacing?: string }) {
   const start = Date.now();
   const rawStrength = req.strength ?? 0.80;
   const preserveContent = req.preserveContent ?? false;
@@ -2515,24 +2578,454 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // This is "product placement" — NOT "image editing".
   //
   // Strategy priority:
+  //   0. Photoroom v2/edit — cutout + AI background in ONE call (pixel-perfect, best quality)
   //   1. Luma image_ref with MULTI-REF (high weight) — generates a new scene inspired by the refs
   //   2. FAL Flux img2img (denoising from the ref as seed) — pixel-seeded scene generation
   //   3. Luma modify_image_ref — last resort, max fidelity but limited scene change
   //
   // DO NOT USE character_ref — that's designed for FACES, not products/clothing/objects.
   if (preserveContent) {
+    // ═══════════════════════════════════════════════════════════════════
+    // TWO-STEP PIPELINE: Photoroom Composite → Model-Specific Style Pass
+    // ═══════════════════════════════════════════════════════════════════
+    // Step 1: Photoroom extracts the product (non-generative, pixel-perfect) and generates
+    //         an AI background matching the scene description → clean composite
+    // Step 2: The composite is fed to the SELECTED AI model with moderate strength to apply
+    //         intent-specific style (Editorial = magazine composition, UGC = iPhone grain, etc.)
+    //         This ensures each model produces a DIFFERENT, STYLED result while keeping
+    //         the product recognizable from the Photoroom base.
+    // Fallback: If Photoroom fails → direct AI pipeline (Luma/FAL scene generation)
+    //           If style pass fails → return clean Photoroom composite as-is
+
+    // ── Extract clean ENVIRONMENT-ONLY scene prompt for Photoroom ──
+    // Photoroom's background.prompt describes what goes BEHIND the product.
+    // It should be a descriptive environment, NOT an instruction about the product.
+    // "Un homme met de ce parfum dans une salle de bain élégante" →
+    //   → "une salle de bain élégante, chez un couple de parisien"
+    // Strategy: strip instructive wrappers, then find the FIRST scene preposition
+    // ("dans", "in", "sur", "on") and take everything after it as the environment.
+    const cleanScenePrompt = (() => {
+      let p = req.prompt;
+      // Strip "Place X in this scene: " wrapper from frontend
+      p = p.replace(/^Place\s+.+?\s+in this scene:\s*/i, "");
+      // Strip "Change the background..." and everything after
+      p = p.replace(/\.\s*Change the background and environment.*/i, "");
+      // Strip "Keep the exact product..." and everything after
+      p = p.replace(/\.\s*Keep the exact product.*/i, "");
+      // Strip "Photorealistic photography." — Photoroom Studio model does this natively
+      p = p.replace(/\.\s*Photorealistic photography\.?\s*$/i, "");
+      // Strip "Visual style: ..." — intent goes to step 2
+      p = p.replace(/\s*Visual style:\s*.*/i, "");
+      // Strip URLs — they're not scene descriptions
+      p = p.replace(/https?:\/\/[^\s<>"')]+/gi, "");
+      // Strip common French/English task-instructions that aren't scene descriptions
+      p = p.replace(/\b(fais|crée|créer|génère|générer|make|create|generate|lance|lancer)\s+(une?\s+)?(campagne|pub|publicité|ad|campaign|visuel|visuels|contenu|content)\s*(pour|for|de|d')?\s*/gi, "");
+      // Clean up leftover punctuation/colons
+      p = p.replace(/\s*:\s*/g, " ").replace(/\s{2,}/g, " ");
+      p = p.trim();
+
+      // Now extract JUST the environment/scene description.
+      // User prompt patterns:
+      //   "Un homme met de ce parfum dans une salle de bain élégante, chez un couple..."
+      //   "met ce parfum dans une salle de bain..."
+      //   "pose cette bouteille sur un comptoir en marbre..."
+      //   "a man uses this perfume in an elegant bathroom..."
+      // Strategy: find the FIRST scene preposition and take everything after.
+      const scenePrepositionMatch = p.match(/\b(dans|in|sur|on|devant|behind|derrière|à côté de?|next to|inside|outside|au milieu d[eu']?|among|entre)\s+(un|une|le|la|les|l'|a|an|the|this|des|du|de la|some|ce|cette|ces)\s+/i);
+      if (scenePrepositionMatch && scenePrepositionMatch.index !== undefined) {
+        // Take from the preposition onwards: "dans une salle de bain élégante, chez un couple..."
+        // But skip the preposition itself for Photoroom: "une salle de bain élégante..."
+        const afterPrep = p.slice(scenePrepositionMatch.index + scenePrepositionMatch[1].length).trim();
+        if (afterPrep.length > 10) p = afterPrep;
+      }
+
+      p = p.trim();
+
+      // VALIDATION: if remaining text is too short or looks like garbage (just a brand name,
+      // a URL fragment, etc.), build a default scene from intent metadata.
+      // A good scene prompt should be at least ~15 chars and contain descriptive words.
+      const looksLikeScene = p.length >= 15 && /[a-zA-Zàâéèêëïîôùûüÿç]{4,}/i.test(p);
+      if (!looksLikeScene) {
+        // Build a contextual default scene from intent ID
+        const intentScenes: Record<string, string> = {
+          "promo": "clean studio setting with soft white background and professional product lighting",
+          "brand-ad": "cinematic lifestyle scene with natural golden hour light and shallow depth of field",
+          "product-launch": "dramatic dark studio with rim lighting and sleek gradient background",
+          "social-organic": "casual bright natural setting with authentic daylight atmosphere",
+          "editorial": "elegant minimalist interior with magazine-style composition and soft narrative light",
+          "ugc": "casual home environment with natural window light, relaxed atmosphere",
+          "lookbook": "minimalist textured backdrop with consistent fashion photography lighting",
+          "b2b": "modern clean office space with neutral professional lighting",
+        };
+        const fallbackScene = (req.intentId && intentScenes[req.intentId])
+          || (req.intentVisualDirection ? req.intentVisualDirection.slice(0, 200) : null)
+          || "elegant professional setting with beautiful soft natural light and clean background";
+        console.log(`[img2img] cleanScenePrompt too short/invalid ("${p}") → using intent fallback (${req.intentId || "none"}): "${fallbackScene.slice(0, 80)}"`);
+        p = fallbackScene;
+      }
+
+      return p.slice(0, 400);
+    })();
+    console.log(`[img2img] cleanScenePrompt resolved: "${cleanScenePrompt.slice(0, 120)}" (len=${cleanScenePrompt.length})`);
+
+    // ── STEP 1: Photoroom pixel-perfect composite ──
+    // Photoroom requires a DIRECTLY ACCESSIBLE image URL. Scraped website images may be
+    // blocked by CORS, hotlink protection, or require cookies. To guarantee access:
+    // 1. Download the image ourselves (Edge Function can bypass CORS)
+    // 2. Re-upload to Supabase storage → get a signed URL
+    // 3. Pass the signed URL to Photoroom
+    // Also: try multiple ref images if the first one fails (scraped sites may have
+    // thumbnails vs high-res product images).
+    let photoroomCompositeUrl: string | null = null;
+    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+    if (photoroomKey) {
+      const arSizeMap: Record<string, string> = {
+        "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+        "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+        "2:3": "800x1200", "3:2": "1200x800",
+      };
+      const outputSize = arSizeMap[req.aspectRatio || ""] || "1080x1080";
+      const photoroomBgPrompt = cleanScenePrompt.slice(0, 400);
+
+      // Build list of image refs to try: primary ref + any multi-refs (different angles/images from scraper)
+      const refsToTry = [req.imageRefUrl, ...(req.imageRefUrls || [])].filter(Boolean).slice(0, 4);
+
+      for (const refUrl of refsToTry) {
+        if (photoroomCompositeUrl) break; // already succeeded with a previous ref
+        try {
+          // ── Re-upload external image to our storage for guaranteed access ──
+          let accessibleUrl = refUrl;
+          // Only re-upload if this looks like an external URL (not already our storage)
+          if (!refUrl.includes("supabase") && !refUrl.includes("make-cad57f79")) {
+            try {
+              console.log(`[img2img] STEP 1: Downloading external ref for re-upload: ${refUrl.slice(0, 80)}...`);
+              const dlRes = await fetch(refUrl, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)", "Accept": "image/*" },
+              });
+              if (dlRes.ok) {
+                const contentType = dlRes.headers.get("content-type") || "image/jpeg";
+                const imgBytes = new Uint8Array(await dlRes.arrayBuffer());
+                // Skip tiny images (likely icons/thumbnails < 5KB)
+                if (imgBytes.length < 5_000) {
+                  console.log(`[img2img] STEP 1: Skipping tiny image (${imgBytes.length} bytes): ${refUrl.slice(0, 60)}`);
+                  continue;
+                }
+                const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+                const reuploFileName = `reupload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+                const reuploadPath = `generated/reupload/${reuploFileName}`;
+                const sb = supabaseAdmin();
+                const { error: reupErr } = await sb.storage
+                  .from("make-cad57f79-media")
+                  .upload(reuploadPath, imgBytes, { contentType, upsert: true });
+                if (!reupErr) {
+                  const { data: signedData } = await sb.storage
+                    .from("make-cad57f79-media")
+                    .createSignedUrl(reuploadPath, 60 * 60); // 1 hour
+                  if (signedData?.signedUrl) {
+                    accessibleUrl = signedData.signedUrl;
+                    console.log(`[img2img] STEP 1: Re-uploaded to storage OK (${imgBytes.length} bytes)`);
+                  }
+                }
+              } else {
+                console.log(`[img2img] STEP 1: Download failed ${dlRes.status} for ${refUrl.slice(0, 60)} — trying Photoroom direct`);
+              }
+            } catch (dlErr) {
+              console.log(`[img2img] STEP 1: Re-upload failed: ${dlErr} — trying Photoroom direct`);
+            }
+          }
+
+          console.log(`[img2img] STEP 1: Photoroom composite (ar=${req.aspectRatio} → ${outputSize}, bg="${photoroomBgPrompt.slice(0, 80)}", ref=${accessibleUrl.slice(0, 60)})...`);
+
+          const params = new URLSearchParams();
+          params.set("imageUrl", accessibleUrl);
+          params.set("removeBackground", "true");
+          params.set("background.prompt", photoroomBgPrompt);
+          // Note: expandPrompt defaults to ai.auto — omitting avoids 400 error (it requires object format, not string)
+          params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+          params.set("outputSize", outputSize);
+          params.set("padding", "0.08");
+          params.set("ignorePaddingAndSnapOnCroppedSides", "false");
+          params.set("export.format", "webp");
+
+          const photoroomRes = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+            headers: {
+              "x-api-key": photoroomKey,
+              "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
+            },
+          });
+
+          if (photoroomRes.ok) {
+            const imageBuffer = await photoroomRes.arrayBuffer();
+            const fileName = `photoroom-base-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+            const storagePath = `generated/photoroom/${fileName}`;
+            const sb2 = supabaseAdmin();
+            const { error: uploadError } = await sb2.storage
+              .from("make-cad57f79-media")
+              .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
+            if (!uploadError) {
+              const { data: signedData } = await sb2.storage
+                .from("make-cad57f79-media")
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+              if (signedData?.signedUrl) {
+                photoroomCompositeUrl = signedData.signedUrl;
+                console.log(`[img2img] STEP 1 OK: Photoroom composite in ${Date.now() - start}ms — ${photoroomCompositeUrl.slice(0, 80)}`);
+              }
+            } else {
+              console.log(`[img2img] Photoroom storage upload failed: ${uploadError.message}`);
+            }
+          } else {
+            const errBody = await photoroomRes.text();
+            console.log(`[img2img] Photoroom ${photoroomRes.status} for ref ${refUrl.slice(0, 60)}: ${errBody.slice(0, 200)}`);
+          }
+        } catch (err) {
+          console.log(`[img2img] Photoroom error for ref ${refUrl.slice(0, 60)}: ${err}`);
+        }
+      } // end for (refsToTry)
+    }
+
+    // ── STEP 2: Model-specific style pass on the Photoroom composite ──
+    // Each model interprets the intent + scene differently → visual variation per card.
+    // Strength is MODERATE (0.30-0.35) so the model reshapes the ambiance/mood/style
+    // while the product from Photoroom remains recognizable.
+    if (photoroomCompositeUrl) {
+      // Build a STYLE-FOCUSED prompt that emphasizes the intent's visual direction
+      // This is what makes Editorial ≠ UGC ≠ Product Launch
+      const stylePrompt = (() => {
+        let p = cleanScenePrompt;
+        if (req.intentVisualDirection) {
+          p += `. STYLE MANDATORY: ${req.intentVisualDirection}`;
+        }
+        if (req.intentPacing) {
+          p += `. Mood: ${req.intentPacing}`;
+        }
+        p += ". Keep the product intact and recognizable. Professional photography.";
+        return p.slice(0, 1000);
+      })();
+
+      console.log(`[img2img] STEP 2: Style pass with model=${selectedModel}, stylePrompt="${stylePrompt.slice(0, 100)}"`);
+
+      // ── Style Dispatch 1: Leonardo v2 edit models (Flux Pro 2, Nano Banana 2, etc.) ──
+      if (leonardoV2ModelMap[selectedModel]) {
+        try {
+          console.log(`[img2img] STYLE → Leonardo v2 edit ${selectedModel} on Photoroom composite...`);
+          const { imageId } = await uploadImageToLeonardo(photoroomCompositeUrl);
+          const res = await generateImageLeonardoV2WithGuidance({
+            prompt: stylePrompt,
+            model: selectedModel,
+            imageId,
+            strength: "MEDIUM",
+            aspectRatio: req.aspectRatio,
+          });
+          if (res?.imageUrl) {
+            console.log(`[img2img] STYLE Leonardo v2 OK in ${Date.now() - start}ms`);
+            return { ...res, provider: `photoroom+leo-v2/${selectedModel}`, pixelPerfect: true, latencyMs: Date.now() - start };
+          }
+        } catch (err) { console.log(`[img2img] STYLE Leonardo v2 failed: ${err}`); }
+      }
+
+      // ── Style Dispatch 2: Kontext Pro via FAL ──
+      if (selectedModel === "kontext-pro-leo" || selectedModel === "kontext-pro" || selectedModel === "flux-kontext-pro") {
+        const falKey = Deno.env.get("FAL_API_KEY");
+        if (falKey) {
+          for (const falModel of ["fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"]) {
+            try {
+              console.log(`[img2img] STYLE → FAL ${falModel} on Photoroom composite...`);
+              const res = await fetch(`https://fal.run/${falModel}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+                body: JSON.stringify({
+                  prompt: stylePrompt,
+                  image_url: photoroomCompositeUrl,
+                  num_images: 1,
+                  safety_tolerance: "2",
+                  output_format: "jpeg",
+                  aspect_ratio: req.aspectRatio || "4:3",
+                }),
+              });
+              if (!res.ok) { const b = await res.text(); console.log(`[img2img] STYLE FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+              const data = await res.json();
+              const imageUrl = data.images?.[0]?.url;
+              if (imageUrl) {
+                console.log(`[img2img] STYLE FAL Kontext OK in ${Date.now() - start}ms`);
+                return { model: selectedModel, provider: `photoroom+fal-kontext`, imageUrl, pixelPerfect: true, latencyMs: Date.now() - start };
+              }
+            } catch (err) { console.log(`[img2img] STYLE FAL ${falModel} error: ${err}`); }
+          }
+        }
+      }
+
+      // ── Style Dispatch 3: Leonardo v1 with controlnet ──
+      if (leonardoImageModelMap[selectedModel] && leonardoPreprocessors[leonardoImageModelMap[selectedModel].leonardoModelId]) {
+        try {
+          console.log(`[img2img] STYLE → Leonardo v1 content-guidance on Photoroom composite...`);
+          const { imageId } = await uploadImageToLeonardo(photoroomCompositeUrl);
+          const res = await generateImageLeonardoWithGuidance({
+            prompt: stylePrompt,
+            model: selectedModel,
+            imageId,
+            guidanceType: "content",
+            strength: "Medium",
+            aspectRatio: req.aspectRatio || "4:3",
+          });
+          if (res?.imageUrl) {
+            console.log(`[img2img] STYLE Leonardo v1 OK in ${Date.now() - start}ms`);
+            return { ...res, provider: `photoroom+leo-v1/${selectedModel}`, pixelPerfect: true, latencyMs: Date.now() - start };
+          }
+        } catch (err) { console.log(`[img2img] STYLE Leonardo v1 failed: ${err}`); }
+      }
+
+      // ── Style Dispatch 4: Ideogram V3 Remix — best intent/style differentiation ──
+      // Ideogram Remix takes an image + prompt + image_weight and re-interprets it.
+      // The style_type (REALISTIC, DESIGN, FICTION) maps to intents for visual variation.
+      // image_weight=65 → keeps 65% of the Photoroom composite structure, restyling 35%.
+      const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+      if (ideogramKey && photoroomCompositeUrl) {
+        try {
+          console.log(`[img2img] STYLE → Ideogram V3 Remix on Photoroom composite (weight=65)...`);
+          // Fetch the Photoroom composite as binary (Ideogram requires FormData with file bytes)
+          const compositeRes = await fetch(photoroomCompositeUrl);
+          if (compositeRes.ok) {
+            const compositeBlob = await compositeRes.blob();
+            const ideogramArMap: Record<string, string> = {
+              "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3",
+              "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3",
+            };
+
+            const fd = new FormData();
+            fd.append("image", compositeBlob, "composite.webp");
+            fd.append("prompt", stylePrompt);
+            fd.append("image_weight", "65");
+            fd.append("aspect_ratio", ideogramArMap[req.aspectRatio || ""] || "1x1");
+            fd.append("style_type", "REALISTIC");
+            fd.append("magic_prompt", "ON");
+            fd.append("rendering_speed", "DEFAULT");
+
+            const ideogramRes = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+              method: "POST",
+              headers: { "Api-Key": ideogramKey },
+              body: fd,
+            });
+            if (ideogramRes.ok) {
+              const ideogramData = await ideogramRes.json();
+              const resultUrl = ideogramData?.data?.[0]?.url;
+              if (resultUrl) {
+                // Ideogram URLs expire — re-upload to Supabase
+                const dlRes = await fetch(resultUrl);
+                if (dlRes.ok) {
+                  const dlBlob = await dlRes.blob();
+                  const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+                  const storagePath = `generated/ideogram/${fileName}`;
+                  const sb = supabaseAdmin();
+                  const { error: upErr } = await sb.storage
+                    .from("make-cad57f79-media")
+                    .upload(storagePath, new Uint8Array(await dlBlob.arrayBuffer()), { contentType: "image/webp", upsert: true });
+                  if (!upErr) {
+                    const { data: signedData } = await sb.storage
+                      .from("make-cad57f79-media")
+                      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+                    if (signedData?.signedUrl) {
+                      console.log(`[img2img] STYLE Ideogram V3 Remix OK in ${Date.now() - start}ms`);
+                      return { model: req.model, provider: "photoroom+ideogram-remix", imageUrl: signedData.signedUrl, pixelPerfect: true, latencyMs: Date.now() - start };
+                    }
+                  }
+                }
+              }
+            } else {
+              const errBody = await ideogramRes.text();
+              console.log(`[img2img] STYLE Ideogram Remix ${ideogramRes.status}: ${errBody.slice(0, 200)}`);
+            }
+          }
+        } catch (err) { console.log(`[img2img] STYLE Ideogram Remix error: ${err}`); }
+      }
+
+      // ── Style Dispatch 5: Universal FAL img2img (works for any model) ──
+      const falKey = Deno.env.get("FAL_API_KEY");
+      if (falKey) {
+        for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
+          try {
+            const styleStrength = 0.32; // Moderate: enough to change ambiance/style, product stays recognizable
+            console.log(`[img2img] STYLE → FAL ${falModel} on Photoroom composite (strength=${styleStrength})...`);
+            const falBody: any = {
+              prompt: stylePrompt,
+              image_url: photoroomCompositeUrl,
+              strength: styleStrength,
+              image_size: falImageSize,
+              num_images: 1,
+              enable_safety_checker: true,
+              num_inference_steps: 28,
+              guidance_scale: 8,
+            };
+            if (negativePrompt) falBody.negative_prompt = negativePrompt;
+            const res = await fetch(`https://fal.run/${falModel}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+              body: JSON.stringify(falBody),
+            });
+            if (!res.ok) { const b = await res.text(); console.log(`[img2img] STYLE FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+            const data = await res.json();
+            const imageUrl = data.images?.[0]?.url;
+            if (imageUrl) {
+              console.log(`[img2img] STYLE FAL ${falModel} OK in ${Date.now() - start}ms`);
+              return { model: req.model, provider: `photoroom+fal-style/${falModel}`, imageUrl, pixelPerfect: true, latencyMs: Date.now() - start };
+            }
+          } catch (err) { console.log(`[img2img] STYLE FAL ${falModel} error: ${err}`); }
+        }
+      }
+
+      // ── Style Dispatch 6: Luma modify_image_ref on the composite ──
+      const lumaArMap2: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
+      const lumaAr2 = lumaArMap2[req.aspectRatio || ""] || "16:9";
+      try {
+        console.log(`[img2img] STYLE → Luma modify_image_ref on Photoroom composite (weight=0.70, ar=${lumaAr2})...`);
+        const lumaBody: any = {
+          prompt: stylePrompt,
+          model: "photon-1",
+          aspect_ratio: lumaAr2,
+          modify_image_ref: { url: photoroomCompositeUrl, weight: 0.70 },
+        };
+        const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
+          method: "POST", headers: lumaHeaders(),
+          body: JSON.stringify(lumaBody),
+        });
+        if (submitRes.ok) {
+          const generation = await submitRes.json();
+          const genId = generation.id;
+          if (genId) {
+            let elapsed = 0;
+            while (elapsed < 60_000) {
+              await new Promise(r => setTimeout(r, 3_000)); elapsed += 3_000;
+              try {
+                const pollRes = await fetch(`${LUMA_BASE}/generations/${genId}`, { headers: lumaHeaders() });
+                if (!pollRes.ok) continue;
+                const pd = await pollRes.json();
+                if (pd.state === "completed" && pd.assets?.image) {
+                  console.log(`[img2img] STYLE Luma modify OK in ${Date.now() - start}ms`);
+                  return { model: req.model, provider: "photoroom+luma-style", imageUrl: pd.assets.image, pixelPerfect: true, latencyMs: Date.now() - start };
+                }
+                if (pd.state === "failed") throw new Error(`Luma failed: ${pd.failure_reason || "unknown"}`);
+              } catch (e) { if (e instanceof Error && e.message.startsWith("Luma failed")) throw e; }
+            }
+          }
+        }
+      } catch (err) { console.log(`[img2img] STYLE Luma modify error: ${err}`); }
+
+      // ── All style passes failed → return clean Photoroom composite ──
+      console.log(`[img2img] All style passes failed — returning clean Photoroom composite`);
+      return { model: req.model, provider: "photoroom-studio", imageUrl: photoroomCompositeUrl, pixelPerfect: true, latencyMs: Date.now() - start };
+    }
+
+    // ═══ FALLBACK: Photoroom failed → direct AI scene generation pipeline ═══
+    // These strategies generate entirely new images from scratch, using the product ref as inspiration.
     const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
     const lumaAr = lumaArMap[req.aspectRatio || ""] || "16:9";
 
-    // Strategy 1: Luma image_ref with MULTI-REF — best for product-in-scene
-    // Multiple reference angles give Luma a 3D understanding of the product.
-    // Weight 0.85 = strong product identity, prompt controls the scene.
+    // Fallback 1: Luma image_ref with MULTI-REF
     try {
       const allRefs = req.imageRefUrls && req.imageRefUrls.length > 1
         ? req.imageRefUrls.slice(0, 4)
         : [req.imageRefUrl];
       const imageRefArray = allRefs.map(url => ({ url, weight: 0.85 }));
-      console.log(`[img2img] PRESERVE: Luma image_ref × ${imageRefArray.length} (weight=0.85, ar=${lumaAr})...`);
+      console.log(`[img2img] FALLBACK: Luma image_ref × ${imageRefArray.length} (weight=0.85, ar=${lumaAr})...`);
       const lumaBody: any = {
         prompt: finalPrompt,
         model: "photon-1",
@@ -2568,44 +3061,45 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
       }
     } catch (err) { console.log(`[img2img] Luma image_ref error: ${err}`); }
 
-    // Strategy 2: FAL Flux Pro img2img — denoising from the ref
-    // strength 0.75 = 75% new content from prompt, 25% pixel structure from ref
-    const falKey = Deno.env.get("FAL_API_KEY");
-    if (falKey) {
-      for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
-        try {
-          const falStrength = 0.75;
-          console.log(`[img2img] PRESERVE FALLBACK: FAL ${falModel} (strength=${falStrength}, size=${falImageSize})...`);
-          const falBody: any = {
-            prompt: finalPrompt,
-            image_url: req.imageRefUrl,
-            strength: falStrength,
-            image_size: falImageSize,
-            num_images: 1,
-            enable_safety_checker: true,
-            num_inference_steps: 30,
-            guidance_scale: 10,
-          };
-          if (negativePrompt) falBody.negative_prompt = negativePrompt;
-          const res = await fetch(`https://fal.run/${falModel}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-            body: JSON.stringify(falBody),
-          });
-          if (!res.ok) { const b = await res.text(); console.log(`[img2img] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
-          const data = await res.json();
-          const imageUrl = data.images?.[0]?.url;
-          if (imageUrl) {
-            console.log(`[img2img] FAL ${falModel} OK in ${Date.now() - start}ms`);
-            return { model: req.model, provider: `fal-img2img/${falModel}`, imageUrl, latencyMs: Date.now() - start };
-          }
-        } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
+    // Fallback 2: FAL Flux img2img
+    {
+      const falKey2 = Deno.env.get("FAL_API_KEY");
+      if (falKey2) {
+        for (const falModel of ["fal-ai/flux-pro/v1.1/image-to-image", "fal-ai/flux/dev/image-to-image"]) {
+          try {
+            const falStrength = 0.75;
+            console.log(`[img2img] FALLBACK: FAL ${falModel} (strength=${falStrength}, size=${falImageSize})...`);
+            const falBody: any = {
+              prompt: finalPrompt,
+              image_url: req.imageRefUrl,
+              strength: falStrength,
+              image_size: falImageSize,
+              num_images: 1,
+              enable_safety_checker: true,
+              num_inference_steps: 30,
+              guidance_scale: 10,
+            };
+            if (negativePrompt) falBody.negative_prompt = negativePrompt;
+            const res = await fetch(`https://fal.run/${falModel}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Key ${falKey2}` },
+              body: JSON.stringify(falBody),
+            });
+            if (!res.ok) { const b = await res.text(); console.log(`[img2img] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+            const data = await res.json();
+            const imageUrl = data.images?.[0]?.url;
+            if (imageUrl) {
+              console.log(`[img2img] FAL ${falModel} OK in ${Date.now() - start}ms`);
+              return { model: req.model, provider: `fal-img2img/${falModel}`, imageUrl, latencyMs: Date.now() - start };
+            }
+          } catch (err) { console.log(`[img2img] FAL ${falModel} error: ${err}`); }
+        }
       }
     }
 
-    // Strategy 3: Luma modify_image_ref — max product fidelity, limited scene change
+    // Fallback 3: Luma modify_image_ref
     try {
-      console.log(`[img2img] PRESERVE LAST RESORT: Luma modify_image_ref (weight=0.65, ar=${lumaAr})...`);
+      console.log(`[img2img] FALLBACK LAST RESORT: Luma modify_image_ref (weight=0.65, ar=${lumaAr})...`);
       const lumaBody: any = {
         prompt: finalPrompt,
         model: "photon-1",
@@ -2637,27 +3131,6 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
         }
       }
     } catch (err) { console.log(`[img2img] Luma modify_image_ref error: ${err}`); }
-
-    // Strategy 4: Leonardo PhotoReal with content guidance
-    const leoKey = Deno.env.get("LEONARDO_API_KEY");
-    if (leoKey) {
-      try {
-        console.log(`[img2img] PRESERVE Leonardo content-guidance...`);
-        const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
-        const leoResult = await generateImageLeonardoWithGuidance({
-          prompt: finalPrompt,
-          model: "lucid-realism",
-          imageId,
-          guidanceType: "content",
-          strength: "High",
-          aspectRatio: req.aspectRatio || "16:9",
-        });
-        if (leoResult?.imageUrl) {
-          console.log(`[img2img] Leonardo PhotoReal OK in ${Date.now() - start}ms`);
-          return { ...leoResult, provider: "leonardo-photoreal-content", latencyMs: Date.now() - start };
-        }
-      } catch (err) { console.log(`[img2img] Leonardo PhotoReal error: ${err}`); }
-    }
   } else {
     // ═══ Standard mode (style reference, not content preserve): FAL first ═══
 
@@ -2746,133 +3219,230 @@ async function generateImageWithLocationRef(req: {
   aspectRatio?: string;
 }) {
   const start = Date.now();
-  const arMap: Record<string, string> = {
+  const selectedModel = req.model || "";
+  const falArMap: Record<string, string> = {
     "1:1": "square_hd", "16:9": "landscape_16_9", "9:16": "portrait_16_9",
     "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3",
   };
-  const imageSize = arMap[req.aspectRatio || ""] || "landscape_4_3";
-  // Prompt construction: put the USER request first and prominent, structure-preservation as a
-  // short trailing hint. Long preservation preambles were drowning out short user prompts
-  // (e.g. "ambiance nuit, dîner aux chandelles") and the models were outputting unchanged refs.
+  const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
+  const imageSize = falArMap[req.aspectRatio || ""] || "landscape_4_3";
   const finalPrompt = `${req.prompt}. Same room and same architecture as reference, photorealistic interior photography.`;
-  console.log(`[location-ref] model=${req.model}, ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
+  console.log(`[location-ref] model=${selectedModel}, ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
 
-  // Per-strategy hard timeout so one hung call can't consume the whole 200s budget
   const STRATEGY_TIMEOUT_MS = 70_000;
-  const withTimeout = (ms: number) => AbortSignal.timeout(ms);
-
   const falKey = Deno.env.get("FAL_API_KEY");
-  if (falKey) {
-    // Strategy 1: FAL Flux Pro v1 Depth — managed depth controlnet (best for interiors)
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+
+  // ═══ HELPER: FAL Flux Depth ControlNet (best architecture preservation) ═══
+  const tryFalDepth = async (): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    if (!falKey) return null;
     try {
-      console.log(`[location-ref] Trying FAL flux-pro/v1/depth...`);
+      console.log(`[location-ref] FAL flux-pro/v1/depth for ${selectedModel}...`);
       const res = await fetch("https://fal.run/fal-ai/flux-pro/v1/depth", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          control_image_url: req.imageRefUrl,
-          num_images: 1,
-          image_size: imageSize,
-          num_inference_steps: 28,
-          // guidance_scale: FAL recommends 3.5 for flux-pro. Values > 10 cause the model to
-          // collapse onto the control image and ignore the prompt entirely (reason we were
-          // getting identical-to-reference outputs).
-          guidance_scale: 3.5,
-          safety_tolerance: "2",
-          output_format: "jpeg",
-        }),
-        signal: withTimeout(STRATEGY_TIMEOUT_MS),
+        body: JSON.stringify({ prompt: finalPrompt, control_image_url: req.imageRefUrl, num_images: 1, image_size: imageSize, num_inference_steps: 28, guidance_scale: 3.5, safety_tolerance: "2", output_format: "jpeg" }),
+        signal: AbortSignal.timeout(STRATEGY_TIMEOUT_MS),
       });
       if (res.ok) {
         const data = await res.json();
         const imageUrl = data.images?.[0]?.url;
-        if (imageUrl) {
-          console.log(`[location-ref] FAL flux-pro/v1/depth OK in ${Date.now() - start}ms`);
-          return { model: req.model, provider: "fal-depth/flux-pro-v1", imageUrl, latencyMs: Date.now() - start };
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[location-ref] FAL flux-pro/v1/depth ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) { console.log(`[location-ref] FAL flux-pro/v1/depth error: ${err}`); }
+        if (imageUrl) return { model: selectedModel, provider: "fal-depth/flux-pro-v1", imageUrl, latencyMs: Date.now() - start };
+      } else { const b = await res.text(); console.log(`[location-ref] FAL depth ${res.status}: ${b.slice(0, 200)}`); }
+    } catch (err) { console.log(`[location-ref] FAL depth error: ${err}`); }
+    return null;
+  };
 
-    // Strategy 2: FAL Flux General img2img (strength 0.8 = bold lighting/mood changes while keeping composition)
+  // ═══ HELPER: FAL Flux img2img (latent-seeded — preserves broad composition) ═══
+  const tryFalImg2Img = async (strength = 0.75): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    if (!falKey) return null;
     try {
-      console.log(`[location-ref] Trying FAL flux img2img (strength 0.8)...`);
+      console.log(`[location-ref] FAL flux img2img (strength=${strength}) for ${selectedModel}...`);
       const res = await fetch("https://fal.run/fal-ai/flux/dev/image-to-image", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-        body: JSON.stringify({
-          prompt: finalPrompt,
-          image_url: req.imageRefUrl,
-          // strength 0.8 → lets the model re-imagine lighting, add candles, change mood,
-          // while img2img's latent seeding preserves the broad composition (bed, windows, walls).
-          // 0.55 was too low — the output was ~95% the reference.
-          strength: 0.8,
-          image_size: imageSize,
-          num_images: 1,
-          num_inference_steps: 28,
-          guidance_scale: 3.5,
-        }),
-        signal: withTimeout(STRATEGY_TIMEOUT_MS),
+        body: JSON.stringify({ prompt: finalPrompt, image_url: req.imageRefUrl, strength, image_size: imageSize, num_images: 1, num_inference_steps: 28, guidance_scale: 3.5 }),
+        signal: AbortSignal.timeout(STRATEGY_TIMEOUT_MS),
       });
       if (res.ok) {
         const data = await res.json();
         const imageUrl = data.images?.[0]?.url;
-        if (imageUrl) {
-          console.log(`[location-ref] FAL flux img2img OK in ${Date.now() - start}ms`);
-          return { model: req.model, provider: "fal-img2img/flux-dev-location", imageUrl, latencyMs: Date.now() - start };
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[location-ref] FAL flux img2img ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) { console.log(`[location-ref] FAL flux img2img error: ${err}`); }
-  }
+        if (imageUrl) return { model: selectedModel, provider: `fal-img2img/flux-dev-location-s${strength}`, imageUrl, latencyMs: Date.now() - start };
+      } else { const b = await res.text(); console.log(`[location-ref] FAL img2img ${res.status}: ${b.slice(0, 200)}`); }
+    } catch (err) { console.log(`[location-ref] FAL img2img error: ${err}`); }
+    return null;
+  };
 
-  // Strategy 3: Luma Photon modify_image_ref (weight 0.85 → preserves structure)
-  try {
-    console.log(`[location-ref] Trying Luma Photon modify_image_ref...`);
-    const lumaArMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3" };
-    const lumaBody: any = {
-      prompt: finalPrompt,
-      model: "photon-1",
-      aspect_ratio: lumaArMap[req.aspectRatio || ""] || "16:9",
-      // weight 0.55: moderate structure preservation. 0.85 was too high — Luma just copied the ref.
-      // Luma interprets higher weight as "lock this image down", which kills prompt adherence.
-      modify_image_ref: { url: req.imageRefUrl, weight: 0.55 },
-    };
-    const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
-      method: "POST", headers: lumaHeaders(), body: JSON.stringify(lumaBody),
-      signal: withTimeout(20_000),
-    });
-    if (submitRes.ok) {
+  // ═══ HELPER: Luma Photon modify_image_ref ═══
+  const tryLumaModify = async (lumaModel = "photon-1", weight = 0.55): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    try {
+      console.log(`[location-ref] Luma ${lumaModel} modify (weight=${weight}) for ${selectedModel}...`);
+      const submitRes = await fetch(`${LUMA_BASE}/generations/image`, {
+        method: "POST", headers: lumaHeaders(),
+        body: JSON.stringify({ prompt: finalPrompt, model: lumaModel, aspect_ratio: lumaArMap[req.aspectRatio || ""] || "16:9", modify_image_ref: { url: req.imageRefUrl, weight } }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!submitRes.ok) { const b = await submitRes.text(); console.log(`[location-ref] Luma submit ${submitRes.status}: ${b.slice(0, 200)}`); return null; }
       const generation = await submitRes.json();
       const genId = generation.id;
-      if (genId) {
-        const deadline = Date.now() + 70_000;
-        while (Date.now() < deadline) {
-          await new Promise(r => setTimeout(r, 3_000));
-          try {
-            const pollRes = await fetch(`${LUMA_BASE}/generations/${genId}`, { headers: lumaHeaders(), signal: withTimeout(10_000) });
-            if (!pollRes.ok) continue;
-            const pd = await pollRes.json();
-            if (pd.state === "completed" && pd.assets?.image) {
-              console.log(`[location-ref] Luma modify OK in ${Date.now() - start}ms`);
-              return { model: req.model, provider: "luma/photon-1-modify-location", imageUrl: pd.assets.image, latencyMs: Date.now() - start };
-            }
-            if (pd.state === "failed") break;
-          } catch { /* continue */ }
-        }
+      if (!genId) return null;
+      const deadline = Date.now() + 70_000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 3_000));
+        try {
+          const pollRes = await fetch(`${LUMA_BASE}/generations/${genId}`, { headers: lumaHeaders(), signal: AbortSignal.timeout(10_000) });
+          if (!pollRes.ok) continue;
+          const pd = await pollRes.json();
+          if (pd.state === "completed" && pd.assets?.image) {
+            console.log(`[location-ref] Luma ${lumaModel} OK in ${Date.now() - start}ms`);
+            return { model: selectedModel, provider: `luma/${lumaModel}-modify-location`, imageUrl: pd.assets.image, latencyMs: Date.now() - start };
+          }
+          if (pd.state === "failed") break;
+        } catch { /* continue polling */ }
       }
-    } else {
-      const b = await submitRes.text();
-      console.log(`[location-ref] Luma submit ${submitRes.status}: ${b.slice(0, 200)}`);
-    }
-  } catch (err) { console.log(`[location-ref] Luma error: ${err}`); }
+    } catch (err) { console.log(`[location-ref] Luma error: ${err}`); }
+    return null;
+  };
 
-  throw new Error("All location-ref strategies failed");
+  // ═══ HELPER: Leonardo v2 img2img with guidance ═══
+  const tryLeonardoV2 = async (): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    if (!leonardoV2ModelMap[selectedModel]) return null;
+    try {
+      console.log(`[location-ref] Leonardo v2 guidance for ${selectedModel}...`);
+      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+      const res = await generateImageLeonardoV2WithGuidance({
+        prompt: finalPrompt, model: selectedModel, imageId,
+        strength: "HIGH", aspectRatio: req.aspectRatio,
+      });
+      if (res?.imageUrl) return { ...res, model: selectedModel, provider: `leonardo-v2/${selectedModel}`, latencyMs: Date.now() - start };
+    } catch (err) { console.log(`[location-ref] Leonardo v2 error for ${selectedModel}: ${err}`); }
+    return null;
+  };
+
+  // ═══ HELPER: Leonardo v1 with content-guidance controlnet ═══
+  const tryLeonardoV1 = async (): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    const mapping = leonardoImageModelMap[selectedModel];
+    if (!mapping || !leonardoPreprocessors[mapping.leonardoModelId]) return null;
+    try {
+      console.log(`[location-ref] Leonardo v1 content-guidance for ${selectedModel}...`);
+      const { imageId } = await uploadImageToLeonardo(req.imageRefUrl);
+      const res = await generateImageLeonardoWithGuidance({
+        prompt: finalPrompt, model: selectedModel, imageId,
+        guidanceType: "content", strength: "High", aspectRatio: req.aspectRatio || "4:3",
+      });
+      if (res?.imageUrl) return { ...res, model: selectedModel, provider: `leonardo-v1/${selectedModel}`, latencyMs: Date.now() - start };
+    } catch (err) { console.log(`[location-ref] Leonardo v1 error for ${selectedModel}: ${err}`); }
+    return null;
+  };
+
+  // ═══ HELPER: Kontext Pro native edit (preserves structure naturally) ═══
+  const tryKontext = async (): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    if (!falKey) return null;
+    for (const falModel of ["fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"]) {
+      try {
+        console.log(`[location-ref] FAL ${falModel} for location...`);
+        const res = await fetch(`https://fal.run/${falModel}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+          body: JSON.stringify({ prompt: finalPrompt, image_url: req.imageRefUrl, num_images: 1, safety_tolerance: "2", output_format: "jpeg", aspect_ratio: req.aspectRatio || "4:3" }),
+          signal: AbortSignal.timeout(STRATEGY_TIMEOUT_MS),
+        });
+        if (!res.ok) { const b = await res.text(); console.log(`[location-ref] FAL ${falModel} ${res.status}: ${b.slice(0, 200)}`); continue; }
+        const data = await res.json();
+        const imageUrl = data.images?.[0]?.url;
+        if (imageUrl) return { model: selectedModel, provider: `fal-kontext/${falModel}`, imageUrl, latencyMs: Date.now() - start };
+      } catch (err) { console.log(`[location-ref] FAL ${falModel} error: ${err}`); }
+    }
+    return null;
+  };
+
+  // ═══ HELPER: Ideogram V3 edit (inpaint with inverted mask — edit background, keep structure) ═══
+  const tryIdeogramEdit = async (): Promise<{ model: string; provider: string; imageUrl: string; latencyMs: number } | null> => {
+    if (!ideogramKey) return null;
+    try {
+      console.log(`[location-ref] Ideogram v3 remix for location...`);
+      // Use Ideogram Remix: takes an image + prompt, generates a variation respecting the structure
+      const imgBlob = await editorFetchImageBlob(req.imageRefUrl);
+      const fd = new FormData();
+      fd.append("image", imgBlob, "image.png");
+      fd.append("prompt", finalPrompt);
+      fd.append("magic_prompt", "ON");
+      fd.append("rendering_speed", "TURBO");
+      fd.append("style_type", "REALISTIC");
+      fd.append("image_weight", "60"); // 60 = moderate structure preservation
+      const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+        method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
+        signal: AbortSignal.timeout(STRATEGY_TIMEOUT_MS),
+      });
+      if (!res.ok) { const b = await res.text(); console.log(`[location-ref] Ideogram remix ${res.status}: ${b.slice(0, 200)}`); return null; }
+      const data = await res.json();
+      const resultUrl = data?.data?.[0]?.url;
+      if (!resultUrl) return null;
+      // Re-upload (Ideogram URLs expire)
+      const publicUrl = await editorUploadResult(resultUrl, "location-ideogram");
+      return { model: selectedModel, provider: "ideogram/v3-remix-location", imageUrl: publicUrl, latencyMs: Date.now() - start };
+    } catch (err) { console.log(`[location-ref] Ideogram remix error: ${err}`); }
+    return null;
+  };
+
+  // ═══ MODEL DISPATCH — each model uses its own location strategy ═══
+  let result: { model: string; provider: string; imageUrl: string; latencyMs: number } | null = null;
+
+  // ── Kontext Pro → native edit (best for structural edits) ──
+  if (selectedModel === "kontext-pro-leo" || selectedModel === "kontext-pro" || selectedModel === "flux-kontext-pro") {
+    result = await tryKontext();
+    if (!result) result = await tryFalDepth(); // fallback
+  }
+  // ── Ideogram V3 → Remix with image_weight ──
+  else if (selectedModel === "ideogram-3-leo") {
+    result = await tryIdeogramEdit();
+    if (!result) result = await tryFalDepth(); // fallback
+  }
+  // ── Luma models (ORA Vision, Photon, Photon Flash) → modify_image_ref ──
+  else if (selectedModel === "ora-vision" || selectedModel === "photon-1" || selectedModel === "photon-flash-1") {
+    const lumaModel = selectedModel === "photon-flash-1" ? "photon-flash-1" : "photon-1";
+    result = await tryLumaModify(lumaModel, 0.55);
+    if (!result) result = await tryFalDepth(); // fallback
+  }
+  // ── Leonardo v2 models (Flux Pro 2, Nano Banana 2, SeedDream, GPT Image, Soul, etc.) → guidance HIGH ──
+  else if (leonardoV2ModelMap[selectedModel] && leonardoV2ModelMap[selectedModel].modelSlug !== "__v1__") {
+    result = await tryLeonardoV2();
+    if (!result) result = await tryFalImg2Img(0.75); // fallback
+  }
+  // ── Leonardo v1 models (Lucid Origin, Lucid Realism, Flux Dev, Flux Schnell via Leo) → controlnet ──
+  else if (leonardoImageModelMap[selectedModel]) {
+    result = await tryLeonardoV1();
+    if (!result) result = await tryFalImg2Img(0.75); // fallback
+  }
+  // ── FAL models (Flux Pro, Flux Schnell) → ControlNet Depth (best) ──
+  else if (selectedModel === "flux-pro" || selectedModel.includes("flux-schnell") || selectedModel.includes("flux-dev")) {
+    result = await tryFalDepth();
+    if (!result) result = await tryFalImg2Img(0.75); // fallback
+  }
+  // ── Together models (no img2img API) → proxy through FAL Depth ──
+  else if (isTogetherModel(selectedModel)) {
+    result = await tryFalDepth();
+    if (!result) result = await tryFalImg2Img(0.75);
+  }
+  // ── DALL-E 3 (no img2img) → FAL Depth as proxy ──
+  else if (selectedModel === "dall-e" || selectedModel === "dall-e-3") {
+    result = await tryFalDepth();
+    if (!result) result = await tryFalImg2Img(0.75);
+  }
+  // ── Unknown model → full cascade ──
+  else {
+    console.log(`[location-ref] Unknown model "${selectedModel}" — running full cascade`);
+    result = await tryFalDepth();
+    if (!result) result = await tryFalImg2Img(0.75);
+    if (!result) result = await tryLumaModify("photon-1", 0.55);
+  }
+
+  if (result) {
+    console.log(`[location-ref] ${selectedModel} → ${result.provider} OK in ${result.latencyMs}ms`);
+    return result;
+  }
+
+  throw new Error(`Location-ref failed for model ${selectedModel} — all strategies exhausted`);
 }
 
 // ── VIDEO GENERATION (Luma Ray — submit + polling) ──
@@ -5748,6 +6318,99 @@ app.post("/compare/scrape-urls", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// COMPARE — "Inspire Me" scene suggestions
+// Takes scraped brand/product data + intent → returns 4 contextual scene ideas
+// ══════════════════════════════════════════════════════════════
+app.post("/compare/suggest-scenes", async (c) => {
+  const t0 = Date.now();
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const briefEnrichment = (body.briefEnrichment || "").slice(0, 3000);
+    const brandName = body.brandName || "";
+    const brandDescription = body.brandDescription || "";
+    const intentId = body.intentId || "auto";
+    const intentLabel = body.intentLabel || "";
+    const locale = body.locale || "fr";
+
+    if (!briefEnrichment && !brandName) {
+      return c.json({ success: false, error: "No product/brand data to inspire from" }, 400);
+    }
+
+    const systemPrompt = `You are a creative director at a top advertising agency. Given a product/brand context, suggest 4 short, vivid SCENE DESCRIPTIONS for product photography.
+
+CRITICAL — SCENE MUST MATCH THE PRODUCT:
+- READ the product context carefully: what is it? (skincare, food, tech, fashion...) who buys it? (luxury, mass-market, pro...) where is it used?
+- Each scene MUST be a place where THIS SPECIFIC product would naturally appear or be used
+- Example: skincare serum → bathroom vanity, spa treatment room, morning routine on marble counter
+- Example: artisan coffee → café counter, cozy kitchen, morning sunlight on wood table
+- Example: running shoes → track field, urban morning jog, gym locker room
+- NEVER suggest generic scenes unrelated to the product (no "garden" for a tech product, no "bathroom" for food)
+
+RULES:
+- Each scene = VISUAL ENVIRONMENT description (where the product is placed), NOT a campaign concept
+- Be specific and evocative: "comptoir en marbre blanc d'une salle de bain parisienne, lumière tamisée du matin" NOT "salle de bain"
+- Reflect the brand's market positioning (luxury → premium settings, eco → natural settings, etc.)
+- Each scene must be DIFFERENT (vary: indoor/outdoor, mood, setting, time of day)
+- Keep each suggestion under 80 characters
+- Language: ${locale === "fr" ? "French" : "English"}
+${intentId !== "auto" ? `- Intent "${intentLabel}": adapt scenes to this creative direction` : ""}
+
+Return ONLY a JSON array of 4 strings. No markdown, no explanation.`;
+
+    const userPrompt = `Brand: ${brandName || "Unknown"}
+Description: ${brandDescription || "—"}
+${intentId !== "auto" ? `Intent: ${intentLabel}` : ""}
+
+Scraped product/brand context:
+${briefEnrichment.slice(0, 2500) || "(no enrichment available — use brand name and description to infer product category)"}
+
+Based on this context, suggest 4 scenes where THIS product would naturally be photographed.`;
+
+    // Use GPT-4o-mini for speed (suggestions don't need deep reasoning)
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey) return c.json({ success: false, error: "No OpenAI key" }, 500);
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.9,
+        max_tokens: 400,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.log(`[suggest-scenes] OpenAI ${res.status}: ${err.slice(0, 200)}`);
+      return c.json({ success: false, error: "LLM call failed" }, 500);
+    }
+
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "[]";
+    let scenes: string[] = [];
+    try {
+      scenes = JSON.parse(raw);
+      if (!Array.isArray(scenes)) scenes = [];
+      scenes = scenes.filter((s: any) => typeof s === "string" && s.length > 5).slice(0, 5);
+    } catch {
+      console.log(`[suggest-scenes] JSON parse failed: ${raw.slice(0, 200)}`);
+      scenes = [];
+    }
+
+    console.log(`[suggest-scenes] OK: ${scenes.length} scenes in ${Date.now() - t0}ms — ${scenes.map(s => s.slice(0, 40)).join(" | ")}`);
+    return c.json({ success: true, scenes, tookMs: Date.now() - t0 });
+  } catch (err) {
+    console.log(`[suggest-scenes] FATAL: ${err}`);
+    return c.json({ success: false, error: `${err}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // COMPARE — VLM post-generation validation (Sprint 1: anti-hallucination)
 // Compares a generated image against a reference product/location image
 // and returns a structured verdict (excellent|good|drift|wrong).
@@ -7516,15 +8179,15 @@ app.post("/ideogram/describe", async (c) => {
 
 // Ratio → Ideogram v3 resolution (valid presets)
 const EDITOR_RATIO_TO_RESOLUTION: Record<string, string> = {
-  "1:1": "RESOLUTION_1024_1024",
-  "16:9": "RESOLUTION_1344_768",
-  "9:16": "RESOLUTION_768_1344",
-  "4:5": "RESOLUTION_896_1120",
-  "3:4": "RESOLUTION_896_1184",
-  "5:4": "RESOLUTION_1120_896",
-  "4:3": "RESOLUTION_1184_896",
-  "3:2": "RESOLUTION_1248_832",
-  "2:3": "RESOLUTION_832_1248",
+  "1:1": "1024x1024",
+  "16:9": "1344x768",
+  "9:16": "768x1344",
+  "4:5": "896x1120",
+  "3:4": "896x1152",
+  "5:4": "1120x896",
+  "4:3": "1152x896",
+  "3:2": "1248x832",
+  "2:3": "832x1248",
 };
 
 // Convert a data URL mask to a Blob
@@ -7976,7 +8639,11 @@ app.post("/generate/image-start", async (c) => {
     const refType = (body.refType || c.req.query("refType") || "product").toLowerCase(); // "product" | "location"
 
     const provider = body.provider || c.req.query("provider") || ""; // "ai" = skip Photoroom, use AI img2img with product ref
-    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, imageRefUrls=${imageRefUrls.length}, refSource=${refSource}`);
+    // Intent metadata from frontend (visual direction, pacing) — used by Photoroom and AI providers
+    const intentId = body.intentId || "";
+    const intentVisualDirection = body.intentVisualDirection || "";
+    const intentPacing = body.intentPacing || "";
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, intent=${intentId || "auto"}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, imageRefUrls=${imageRefUrls.length}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     const imgCredits = getModelCreditCost("image", model);
@@ -8024,6 +8691,9 @@ app.post("/generate/image-start", async (c) => {
           imageRefUrls: imageRefUrls.length > 0 ? imageRefUrls : undefined,
           preserveContent: true,
           aspectRatio,
+          intentId,
+          intentVisualDirection,
+          intentPacing,
         });
         if (result?.imageUrl) {
           console.log(`[image-start-POST] AI PROVIDER OK in ${Date.now() - t0}ms — provider=${result.provider}`);

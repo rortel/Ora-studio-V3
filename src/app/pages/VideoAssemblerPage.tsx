@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft, Send, Film, Play, Download, RefreshCw,
   Sparkles, GripVertical, Trash2, Wand2, Music, Type,
-  Loader2, ChevronRight, Image as ImageIcon, Video,
+  Loader2, ChevronRight, Image as ImageIcon, Video, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Player } from "@remotion/player";
@@ -370,6 +370,16 @@ export function VideoAssemblerPage() {
                 className="flex items-center gap-2 px-4 py-2 rounded-full transition-all cursor-pointer"
                 style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", fontWeight: 500 }}>
                 Edit
+              </button>
+              <button
+                onClick={() => {
+                  const proj = buildProject();
+                  if (!proj) return;
+                  navigate("/hub/editor", { state: { videoProject: proj } });
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-full transition-all cursor-pointer"
+                style={{ background: "var(--secondary)", border: "1px solid var(--border)", fontSize: "13px", fontWeight: 500 }}>
+                <Pencil size={14} /> Open in Editor
               </button>
               <button
                 onClick={() => {

@@ -3,15 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { Stage, Layer, Image as KonvaImage, Line, Rect, Text as KonvaText, Transformer, Circle as KonvaCircle, Star as KonvaStar } from "react-konva";
 import Konva from "konva";
 import {
-  Eraser, Paintbrush, ImageIcon, Expand, Sparkles,
-  Search, Download, Undo2, Redo2, ZoomOut, Maximize,
-  ChevronLeft, ChevronRight, Loader2, RotateCcw,
-  Minus, Plus, FlipHorizontal2, MousePointer2,
-  Layers, SlidersHorizontal, Upload, Share2, Save, Check,
-  Type, Image as ImageLucide, Trash2, Film, X as XIcon,
-  Shapes, Square as SquareIcon, Circle as CircleIcon, Star as StarIcon,
-  ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
-  Scissors, Eye, EyeOff, Layers3,
+  ImageIcon, Loader2, Maximize,
+  Upload, X as XIcon, Film,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
@@ -20,6 +13,23 @@ import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { useI18n } from "../lib/i18n";
+import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
+import { LibrarySidebar } from "../components/editor/LibrarySidebar";
+import { EditorToolbar } from "../components/editor/EditorToolbar";
+// ContextBar merged into EditorToolbar
+import { LayersPanel } from "../components/editor/LayersPanel";
+import { PropertiesSidebar } from "../components/editor/PropertiesSidebar";
+import { EditorTimeline } from "../components/editor/EditorTimeline";
+import { ExportDialog } from "../components/editor/ExportDialog";
+import { composeCanvasDataUrl as composeUnifiedCanvas } from "../lib/editor/compose-export";
+import { useEditorProject, importFromVideoProject } from "../lib/editor/useEditorProject";
+import { AnimationEngine } from "../lib/editor/animation-engine";
+import {
+  createVideoClipLayer, createAudioTrack,
+  createDefaultSpatial, createDefaultTemporal,
+} from "../lib/editor/types";
+import type { VideoClipLayer as VideoClipLayerType } from "../lib/editor/types";
+import type { VideoProject } from "../lib/video-editor/types";
 
 /* ═══════════════════════════════════
    TYPES
@@ -130,15 +140,6 @@ interface LibraryItem {
    CONSTANTS
    ═══════════════════════════════════ */
 
-const TOOLS: { id: EditorTool; label: string; icon: typeof Eraser; shortcut: string }[] = [
-  { id: "move", label: "Move", icon: MousePointer2, shortcut: "V" },
-  { id: "clean", label: "Clean", icon: Eraser, shortcut: "E" },
-  { id: "replace", label: "Replace", icon: Paintbrush, shortcut: "I" },
-  { id: "background", label: "Background", icon: ImageIcon, shortcut: "B" },
-  { id: "reframe", label: "Reframe", icon: Expand, shortcut: "F" },
-  { id: "upscale", label: "Upscale", icon: Sparkles, shortcut: "U" },
-];
-
 const REFRAME_FORMATS = [
   { label: "1:1", value: "1:1", w: 1, h: 1 },
   { label: "16:9", value: "16:9", w: 16, h: 9 },
@@ -184,9 +185,9 @@ function createCheckerboardPattern(): HTMLCanvasElement {
   canvas.width = CHECKERBOARD_SIZE * 2;
   canvas.height = CHECKERBOARD_SIZE * 2;
   const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#1a1a2e";
+  ctx.fillStyle = "#f0f0f2";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#151528";
+  ctx.fillStyle = "#e4e4e7";
   ctx.fillRect(0, 0, CHECKERBOARD_SIZE, CHECKERBOARD_SIZE);
   ctx.fillRect(CHECKERBOARD_SIZE, CHECKERBOARD_SIZE, CHECKERBOARD_SIZE, CHECKERBOARD_SIZE);
   return canvas;
@@ -213,10 +214,26 @@ function EditorPageContent() {
   const isFr = locale === "fr";
   const { getAuthHeader } = useAuth();
   const location = useLocation();
-  const preloadUrl = (location.state as { assetUrl?: string } | null)?.assetUrl || null;
+  const navState = location.state as {
+    assetUrl?: string; assetId?: string; assetType?: string;
+    prompt?: string; model?: string;
+    videoProject?: VideoProject;
+  } | null;
+  const preloadUrl = navState?.assetUrl || null;
 
   // --- Publish modal ---
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+
+  // --- Unified project model (timeline + layers + audio) ---
+  const editorProject = useEditorProject("Untitled", 1024, 1024);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+
+  // --- Animation engine + media element registries ---
+  const animationEngineRef = useRef<AnimationEngine | null>(null);
+  const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
 
   // --- Core state ---
   const [tool, setTool] = useState<EditorTool>("move");
@@ -280,6 +297,117 @@ function EditorPageContent() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // --- Animation engine init ---
+  useEffect(() => {
+    const engine = new AnimationEngine({
+      onFrameChange: (frame) => editorProject.setPlayheadFrame(frame),
+      onPlayStateChange: (playing) => editorProject.setIsPlaying(playing),
+      onEnd: () => {},
+    });
+    animationEngineRef.current = engine;
+    return () => engine.destroy();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync engine ↔ project data
+  useEffect(() => {
+    animationEngineRef.current?.setProject(editorProject.project);
+  }, [editorProject.project]);
+
+  // Play/pause via timeline controls
+  useEffect(() => {
+    const engine = animationEngineRef.current;
+    if (!engine) return;
+    if (editorProject.isPlaying) {
+      engine.seek(editorProject.playheadFrame);
+      engine.play();
+    } else {
+      engine.pause();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorProject.isPlaying]);
+
+  // Scrub playhead → seek engine (only when NOT playing to avoid feedback loop)
+  const prevPlayheadRef = useRef(0);
+  useEffect(() => {
+    if (!editorProject.isPlaying && editorProject.playheadFrame !== prevPlayheadRef.current) {
+      animationEngineRef.current?.seek(editorProject.playheadFrame);
+    }
+    prevPlayheadRef.current = editorProject.playheadFrame;
+  }, [editorProject.playheadFrame, editorProject.isPlaying]);
+
+  // batchDraw during playback to update video frames in Konva
+  useEffect(() => {
+    if (!editorProject.isPlaying) return;
+    let rafId: number;
+    const draw = () => {
+      stageRef.current?.batchDraw();
+      rafId = requestAnimationFrame(draw);
+    };
+    rafId = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(rafId);
+  }, [editorProject.isPlaying]);
+
+  // --- Video element lifecycle: create/destroy offscreen <video> for each video layer ---
+  useEffect(() => {
+    const videoLayers = editorProject.project.layers.filter(
+      (l): l is VideoClipLayerType => l.type === "video",
+    );
+    const currentIds = new Set(videoElementsRef.current.keys());
+    const neededIds = new Set(videoLayers.map(l => l.id));
+
+    // Create new
+    for (const layer of videoLayers) {
+      if (!currentIds.has(layer.id)) {
+        const vid = document.createElement("video");
+        vid.crossOrigin = "anonymous";
+        vid.preload = "auto";
+        vid.muted = true; // engine controls volume
+        vid.playsInline = true;
+        vid.src = layer.sourceUrl;
+        vid.load();
+        videoElementsRef.current.set(layer.id, vid);
+        animationEngineRef.current?.registerVideo(layer.id, vid);
+      }
+    }
+    // Destroy removed
+    for (const id of currentIds) {
+      if (!neededIds.has(id)) {
+        const vid = videoElementsRef.current.get(id);
+        if (vid) { vid.pause(); vid.src = ""; }
+        videoElementsRef.current.delete(id);
+        animationEngineRef.current?.unregisterVideo(id);
+      }
+    }
+  }, [editorProject.project.layers]);
+
+  // --- Audio element lifecycle: create/destroy <audio> for each audio track ---
+  useEffect(() => {
+    const tracks = editorProject.project.audioTracks;
+    const currentIds = new Set(audioElementsRef.current.keys());
+    const neededIds = new Set(tracks.map(t => t.id));
+
+    for (const track of tracks) {
+      if (!currentIds.has(track.id)) {
+        const audio = new Audio();
+        audio.crossOrigin = "anonymous";
+        audio.preload = "auto";
+        audio.src = track.sourceUrl;
+        audio.load();
+        audioElementsRef.current.set(track.id, audio);
+        animationEngineRef.current?.registerAudio(track.id, audio);
+      }
+    }
+    for (const id of currentIds) {
+      if (!neededIds.has(id)) {
+        const audio = audioElementsRef.current.get(id);
+        if (audio) { audio.pause(); audio.src = ""; }
+        audioElementsRef.current.delete(id);
+        animationEngineRef.current?.unregisterAudio(id);
+      }
+    }
+  }, [editorProject.project.audioTracks]);
 
   // --- Canvas container resize ---
   useEffect(() => {
@@ -355,19 +483,78 @@ function EditorPageContent() {
     loadImage(preloadUrl);
   }, [preloadUrl, canvasSize.width, loadImage]);
 
-  // --- Load from local file ---
-  const handleFileLoad = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please drop an image file");
+  // --- Import VideoProject from VideoAssemblerPage ---
+  const videoProjectImportedRef = useRef(false);
+  useEffect(() => {
+    if (videoProjectImportedRef.current) return;
+    if (!navState?.videoProject) return;
+    videoProjectImportedRef.current = true;
+    const imported = importFromVideoProject(navState.videoProject);
+    editorProject.loadProject(imported);
+    setTimelineOpen(true);
+    toast.success(isFr ? "Projet vidéo importé dans l'éditeur" : "Video project imported into editor");
+  }, [navState?.videoProject, editorProject, isFr]);
+
+  // --- Add video clip layer (unified model) ---
+  const handleVideoFileChosen = useCallback((file: File) => {
+    if (!file.type.startsWith("video/")) {
+      toast.error(isFr ? "Fichier vidéo requis" : "Video file required");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      loadImage(dataUrl);
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      const fps = editorProject.project.fps;
+      const durationInFrames = Math.max(30, Math.round(probe.duration * fps));
+      const vw = probe.videoWidth || 1920;
+      const vh = probe.videoHeight || 1080;
+      const layer = createVideoClipLayer(url, {
+        name: file.name.replace(/\.[^.]+$/, ""),
+        spatial: createDefaultSpatial(0, 0, vw, vh),
+        temporal: createDefaultTemporal(durationInFrames),
+        trimEnd: probe.duration,
+      });
+      editorProject.addLayer(layer);
+      setTimelineOpen(true);
+      toast.success(isFr ? "Clip vidéo ajouté" : "Video clip added");
     };
-    reader.readAsDataURL(file);
-  }, [loadImage]);
+  }, [editorProject, isFr]);
+
+  // --- Add audio track (unified model) ---
+  const handleAudioFileChosen = useCallback((file: File) => {
+    if (!file.type.startsWith("audio/")) {
+      toast.error(isFr ? "Fichier audio requis" : "Audio file required");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const probe = new Audio();
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      const fps = editorProject.project.fps;
+      const durationInFrames = Math.max(30, Math.round(probe.duration * fps));
+      const track = createAudioTrack(url, file.name.replace(/\.[^.]+$/, ""), {
+        durationInFrames,
+      });
+      editorProject.addAudioTrack(track);
+      setTimelineOpen(true);
+      toast.success(isFr ? "Piste audio ajoutée" : "Audio track added");
+    };
+  }, [editorProject, isFr]);
+
+  // --- Load from local file (image or video) ---
+  const handleFileLoad = useCallback((file: File) => {
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => loadImage(reader.result as string);
+      reader.readAsDataURL(file);
+    } else if (file.type.startsWith("video/")) {
+      handleVideoFileChosen(file);
+    } else {
+      toast.error("Please drop an image or video file");
+    }
+  }, [loadImage, handleVideoFileChosen]);
 
   // --- Drag & drop handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -577,14 +764,18 @@ function EditorPageContent() {
     setMaskLines([]);
   }, []);
 
-  // --- Download ---
+  // --- Download / Export ---
   const handleDownload = useCallback(() => {
-    if (!imageUrl) return;
-    const a = document.createElement("a");
-    a.href = imageUrl;
-    a.download = `ora-editor-${Date.now()}.png`;
-    a.click();
-  }, [imageUrl]);
+    // Open export dialog if timeline has content, otherwise quick download
+    if (editorProject.project.layers.length > 0 || editorProject.project.audioTracks.length > 0) {
+      setExportOpen(true);
+    } else if (imageUrl) {
+      const a = document.createElement("a");
+      a.href = imageUrl;
+      a.download = `ora-editor-${Date.now()}.png`;
+      a.click();
+    }
+  }, [imageUrl, editorProject.project]);
 
   // --- Layers (text + logo) ---
   const [layers, setLayers] = useState<EditorLayer[]>([]);
@@ -709,6 +900,40 @@ function EditorPageContent() {
     }
     return c.toDataURL("image/png");
   }, [image, layers]);
+
+  // Export image at current frame using compose-export module
+  const handleExportImage = useCallback((format: "png" | "jpeg" | "webp", quality: number): string | null => {
+    const unified = composeUnifiedCanvas(
+      image,
+      editorProject.project.layers,
+      {
+        logos: logoImagesRef.current,
+        subjects: subjectImagesRef.current,
+        videos: Object.fromEntries(videoElementsRef.current),
+      },
+      editorProject.playheadFrame,
+      editorProject.project.fps,
+      editorProject.getInterpolatedSpatial,
+    );
+    const dataUrl = unified || composeCanvasDataUrl();
+    if (!dataUrl) return null;
+    if (format === "png") return dataUrl;
+    // Re-encode for jpeg/webp
+    const img2 = new window.Image();
+    img2.src = dataUrl;
+    const c = document.createElement("canvas");
+    c.width = image?.width || editorProject.project.width;
+    c.height = image?.height || editorProject.project.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(img2, 0, 0);
+    return c.toDataURL(`image/${format}`, quality);
+  }, [image, editorProject, composeCanvasDataUrl]);
+
+  // Video export stub
+  const handleExportVideo = useCallback(async (_quality: "standard" | "high"): Promise<string | null> => {
+    toast.info(isFr ? "Export vidéo bientôt disponible" : "Video export coming soon");
+    return null;
+  }, [isFr]);
 
   const addTextLayer = useCallback(() => {
     if (!image) {
@@ -970,6 +1195,8 @@ function EditorPageContent() {
 
   // --- Layers panel visibility (toggleable like the Library panel) ---
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   // --- Animate (image-to-video) ---
   const [animateOpen, setAnimateOpen] = useState(false);
@@ -1188,10 +1415,10 @@ function EditorPageContent() {
     c.width = image.width;
     c.height = image.height;
     const ctx = c.getContext("2d")!;
-    // Black = keep, White = modify
-    ctx.fillStyle = invertMask ? "#ffffff" : "#000000";
+    // Ideogram convention: Black = areas to EDIT, White = areas to KEEP
+    ctx.fillStyle = invertMask ? "#000000" : "#ffffff";
     ctx.fillRect(0, 0, c.width, c.height);
-    ctx.strokeStyle = invertMask ? "#000000" : "#ffffff";
+    ctx.strokeStyle = invertMask ? "#ffffff" : "#000000";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     for (const line of maskLines) {
@@ -1252,9 +1479,12 @@ function EditorPageContent() {
           setMaskLines([]);
           setHistory(prev => [...prev.slice(0, historyIndex + 1), { imageData: resultUrl, maskData: [] }]);
           setHistoryIndex(prev => prev + 1);
+          toast.success(`${tool.charAt(0).toUpperCase() + tool.slice(1)} completed`);
+        };
+        img.onerror = () => {
+          toast.error("Failed to load result image");
         };
         img.src = resultUrl;
-        toast.success(`${TOOLS.find(t => t.id === tool)?.label} completed`);
       } else {
         toast.error(res.error || "Editor processing error");
       }
@@ -1319,13 +1549,13 @@ function EditorPageContent() {
     return (
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        height: "100vh", background: "#0d0d1a", color: "#fff",
+        height: "100vh", background: "#fff", color: "#1a1a1a",
         padding: "32px", textAlign: "center",
       }}>
         <div>
           <Maximize size={48} style={{ color: "#7C3AED", marginBottom: 16, margin: "0 auto 16px" }} />
           <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>Desktop Only</h2>
-          <p style={{ fontSize: 14, color: "#888", lineHeight: 1.6, maxWidth: 320 }}>
+          <p style={{ fontSize: 14, color: "#999", lineHeight: 1.6, maxWidth: 320 }}>
             The AI image editor requires a desktop screen for the best experience.
             Please open this page on a computer.
           </p>
@@ -1336,837 +1566,28 @@ function EditorPageContent() {
 
   return (
     <div style={{
-      display: "flex", height: "100vh", background: "#0d0d1a", color: "#fff",
+      display: "flex", height: "100vh", background: "#f5f5f7", color: "#1a1a1a",
       overflow: "hidden", userSelect: "none",
     }}>
 
       {/* ═══════ LIBRARY PANEL ═══════ */}
-      <AnimatePresence>
-        {libraryOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 240, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              background: "#16162a", borderRight: "1px solid #2a2a40",
-              display: "flex", flexDirection: "column", overflow: "hidden",
-              flexShrink: 0,
-            }}
-          >
-            {/* Library header */}
-            <div style={{
-              padding: "12px 12px 8px", borderBottom: "1px solid #2a2a40",
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-            }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#aaa", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Library
-              </span>
-              <button
-                onClick={() => setLibraryOpen(false)}
-                style={{
-                  background: "none", border: "none", color: "#666", cursor: "pointer",
-                  padding: 4, borderRadius: 4, display: "flex",
-                }}
-                title="Collapse library"
-              >
-                <ChevronLeft size={16} />
-              </button>
-            </div>
+      <LibrarySidebar
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        search={librarySearch}
+        onSearchChange={setLibrarySearch}
+        items={filteredLibrary}
+        loading={loadingLibrary}
+        activeImageUrl={imageUrl}
+        onSelectImage={loadImage}
+      />
 
-            {/* Search */}
-            <div style={{ padding: "8px 12px" }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: "#1e1e32", borderRadius: 8, padding: "6px 10px",
-                border: "1px solid #2a2a40",
-              }}>
-                <Search size={14} style={{ color: "#666", flexShrink: 0 }} />
-                <input
-                  value={librarySearch}
-                  onChange={e => setLibrarySearch(e.target.value)}
-                  placeholder="Search images..."
-                  style={{
-                    background: "none", border: "none", outline: "none", color: "#fff",
-                    fontSize: 13, width: "100%",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Image grid */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px 8px" }}>
-              {loadingLibrary ? (
-                <div style={{ display: "flex", justifyContent: "center", padding: 32 }}>
-                  <Loader2 size={20} style={{ color: "#666", animation: "spin 1s linear infinite" }} />
-                </div>
-              ) : filteredLibrary.length === 0 ? (
-                <div style={{ padding: "24px 8px", textAlign: "center" }}>
-                  <ImageIcon size={24} style={{ color: "#444", margin: "0 auto 8px" }} />
-                  <p style={{ fontSize: 12, color: "#666" }}>
-                    {librarySearch ? "No images found" : "No images in library"}
-                  </p>
-                </div>
-              ) : (
-                <div style={{
-                  display: "grid", gridTemplateColumns: "1fr 1fr",
-                  gap: 6,
-                }}>
-                  {filteredLibrary.map(item => {
-                    const url = getAssetUrl(item);
-                    if (!url) return null;
-                    return (
-                      <motion.div
-                        key={item.id}
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
-                        onClick={() => loadImage(url)}
-                        style={{
-                          borderRadius: 8, overflow: "hidden", cursor: "pointer",
-                          aspectRatio: "1", background: "#1e1e32",
-                          border: imageUrl === url ? "2px solid #7C3AED" : "2px solid transparent",
-                          transition: "border-color 0.15s",
-                        }}
-                      >
-                        <img
-                          src={url}
-                          alt={getItemName(item)}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                          loading="lazy"
-                        />
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ═══════ TOOL SIDEBAR ═══════ */}
-      <div style={{
-        width: 56, background: "#1e1e32", borderRight: "1px solid #2a2a40",
-        display: "flex", flexDirection: "column", alignItems: "center",
-        paddingTop: 8, gap: 2, flexShrink: 0,
-      }}>
-        {/* Toggle library */}
-        {!libraryOpen && (
-          <button
-            onClick={() => setLibraryOpen(true)}
-            style={{
-              width: 40, height: 40, borderRadius: 10, border: "none",
-              background: "transparent", color: "#888", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              marginBottom: 4,
-            }}
-            title="Open library"
-          >
-            <ChevronRight size={18} />
-          </button>
-        )}
-
-        {/* Tool buttons */}
-        {TOOLS.map(({ id, label, icon: Icon, shortcut }) => {
-          const active = tool === id;
-          return (
-            <button
-              key={id}
-              onClick={() => setTool(id)}
-              title={`${label} (${shortcut})`}
-              style={{
-                width: 40, height: 40, borderRadius: 10, border: "none",
-                background: active ? "#7C3AED" : "transparent",
-                color: active ? "#fff" : "#888",
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={e => {
-                if (!active) (e.currentTarget.style.background = "#2a2a40");
-              }}
-              onMouseLeave={e => {
-                if (!active) (e.currentTarget.style.background = "transparent");
-              }}
-            >
-              <Icon size={18} />
-            </button>
-          );
-        })}
-
-        {/* Divider */}
-        <div style={{ width: 24, height: 1, background: "#2a2a40", margin: "6px 0" }} />
-
-        {/* Undo */}
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: canUndo ? "#888" : "#444",
-            cursor: canUndo ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <Undo2 size={16} />
-        </button>
-
-        {/* Redo */}
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z)"
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: canRedo ? "#888" : "#444",
-            cursor: canRedo ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <Redo2 size={16} />
-        </button>
-
-        {/* Divider */}
-        <div style={{ width: 24, height: 1, background: "#2a2a40", margin: "6px 0" }} />
-
-        {/* Add Text layer */}
-        <button
-          onClick={addTextLayer}
-          disabled={!image}
-          title={isFr ? "Ajouter un texte" : "Add text layer"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: image ? "#888" : "#444",
-            cursor: image ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-        >
-          <Type size={18} />
-        </button>
-
-        {/* Add Logo layer */}
-        <button
-          onClick={() => logoFileInputRef.current?.click()}
-          disabled={!image}
-          title={isFr ? "Ajouter un logo" : "Add logo layer"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: image ? "#888" : "#444",
-            cursor: image ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-        >
-          <ImageLucide size={18} />
-        </button>
-        <input
-          ref={logoFileInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={e => {
-            const f = e.target.files?.[0];
-            if (f) handleLogoFileChosen(f);
-            e.target.value = "";
-          }}
-        />
-
-        {/* Shapes popover trigger */}
-        <div style={{ position: "relative" }}>
-          <button
-            onClick={() => { if (image) setShapesOpen(o => !o); }}
-            disabled={!image}
-            title={isFr ? "Ajouter une forme" : "Add shape"}
-            style={{
-              width: 40, height: 40, borderRadius: 10, border: "none",
-              background: shapesOpen ? "#2a2a40" : "transparent",
-              color: image ? "#888" : "#444",
-              cursor: image ? "pointer" : "default",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-            onMouseEnter={e => { if (image && !shapesOpen) e.currentTarget.style.background = "#2a2a40"; }}
-            onMouseLeave={e => { if (!shapesOpen) e.currentTarget.style.background = "transparent"; }}
-          >
-            <Shapes size={18} />
-          </button>
-          <AnimatePresence>
-            {shapesOpen && (
-              <motion.div
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -6 }}
-                style={{
-                  position: "absolute", left: 48, top: 0,
-                  background: "#16162a", border: "1px solid #2a2a40", borderRadius: 10,
-                  padding: 6, display: "flex", flexDirection: "column", gap: 2,
-                  zIndex: 40, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                }}
-              >
-                {([
-                  { kind: "rect" as ShapeKind, icon: SquareIcon, label: isFr ? "Rectangle" : "Rectangle" },
-                  { kind: "patch" as ShapeKind, icon: SquareIcon, label: isFr ? "Patch" : "Patch" },
-                  { kind: "circle" as ShapeKind, icon: CircleIcon, label: isFr ? "Pastille" : "Pastille" },
-                  { kind: "star" as ShapeKind, icon: StarIcon, label: isFr ? "Étoile" : "Star" },
-                ]).map(({ kind, icon: Icon, label }) => (
-                  <button
-                    key={kind}
-                    onClick={() => { addShapeLayer(kind); setShapesOpen(false); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "6px 12px", borderRadius: 6, border: "none",
-                      background: "transparent", color: "#ccc", cursor: "pointer",
-                      fontSize: 12, whiteSpace: "nowrap",
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#2a2a40"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <Icon size={14} style={{ color: "#7C3AED" }} />
-                    {label}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Split subject (behind-the-subject effect) */}
-        <button
-          onClick={runSplitSubject}
-          disabled={!image || splitting}
-          title={isFr ? "Isoler le sujet (calques derrière)" : "Split subject (behind-layers)"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: splitting ? "#2a2a40" : "transparent",
-            color: image && !splitting ? "#888" : "#444",
-            cursor: image && !splitting ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-          onMouseEnter={e => { if (image && !splitting) e.currentTarget.style.background = "#2a2a40"; }}
-          onMouseLeave={e => { if (!splitting) e.currentTarget.style.background = "transparent"; }}
-        >
-          {splitting ? <Loader2 size={16} className="animate-spin" /> : <Scissors size={18} />}
-        </button>
-
-        {/* Animate (image-to-video) */}
-        <button
-          onClick={() => { if (image) setAnimateOpen(true); }}
-          disabled={!image}
-          title={isFr ? "Animer (image → vidéo)" : "Animate (image → video)"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: image ? "#888" : "#444",
-            cursor: image ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-          onMouseEnter={e => { if (image) e.currentTarget.style.background = "#2a2a40"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-        >
-          <Film size={18} />
-        </button>
-
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* Toggle Layers panel */}
-        <button
-          onClick={() => setLayersPanelOpen(o => !o)}
-          title={isFr ? "Afficher/masquer les calques" : "Toggle layers panel"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: layersPanelOpen ? "#2a2a40" : "transparent",
-            color: layersPanelOpen ? "#c4b5fd" : "#888",
-            cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            marginBottom: 6,
-          }}
-          onMouseEnter={e => { if (!layersPanelOpen) e.currentTarget.style.background = "#2a2a40"; }}
-          onMouseLeave={e => { if (!layersPanelOpen) e.currentTarget.style.background = "transparent"; }}
-        >
-          <Layers3 size={18} />
-        </button>
-
-        {/* Save to Library */}
-        <button
-          onClick={handleSaveToLibrary}
-          disabled={!imageUrl || saving}
-          title={isFr ? "Enregistrer dans la bibliothèque" : "Save to Library"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: savedAt ? "#22c55e20" : "transparent",
-            color: savedAt ? "#22c55e" : (imageUrl ? "#888" : "#444"),
-            cursor: imageUrl && !saving ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            marginBottom: 8,
-          }}
-        >
-          {saving ? <Loader2 size={16} className="animate-spin" /> : savedAt ? <Check size={16} /> : <Save size={16} />}
-        </button>
-
-        {/* Publish to socials */}
-        <button
-          onClick={() => {
-            if (!imageUrl) return;
-            setPublishTarget({ imageUrl, defaultCaption: "" });
-          }}
-          disabled={!imageUrl}
-          title={isFr ? "Publier sur les réseaux" : "Publish to networks"}
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: imageUrl ? "linear-gradient(135deg, #7C3AED, #EC4899)" : "transparent",
-            color: imageUrl ? "#fff" : "#444",
-            cursor: imageUrl ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            marginBottom: 8,
-            boxShadow: imageUrl ? "0 2px 12px rgba(124,58,237,0.35)" : "none",
-            transition: "transform 0.15s",
-          }}
-          onMouseEnter={e => { if (imageUrl) e.currentTarget.style.transform = "scale(1.06)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
-        >
-          <Share2 size={16} />
-        </button>
-
-        {/* Download */}
-        <button
-          onClick={handleDownload}
-          disabled={!imageUrl}
-          title="Download"
-          style={{
-            width: 40, height: 40, borderRadius: 10, border: "none",
-            background: "transparent", color: imageUrl ? "#888" : "#444",
-            cursor: imageUrl ? "pointer" : "default",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            marginBottom: 8,
-          }}
-        >
-          <Download size={16} />
-        </button>
-      </div>
-
-      {/* ═══════ MAIN AREA (canvas + controls) ═══════ */}
+      {/* ═══════ MAIN AREA (canvas + panels) ═══════ */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
 
-        {/* ─── Top bar ─── */}
-        <div style={{
-          height: 44, background: "#1a1a2e", borderBottom: "1px solid #2a2a40",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 16px", flexShrink: 0,
-        }}>
-          {/* Left controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Brush size (for brush tools) */}
-            <AnimatePresence>
-              {isBrushTool && image && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span style={{ fontSize: 11, color: "#888" }}>Brush</span>
-                  <input
-                    type="range"
-                    min={5}
-                    max={150}
-                    value={brushSize}
-                    onChange={e => setBrushSize(Number(e.target.value))}
-                    style={{ width: 100, accentColor: "#7C3AED" }}
-                  />
-                  <span style={{ fontSize: 11, color: "#aaa", width: 28, textAlign: "right" }}>
-                    {brushSize}
-                  </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Mask inversion (for brush tools) */}
-            <AnimatePresence>
-              {isBrushTool && image && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  onClick={() => setInvertMask(prev => !prev)}
-                  title="Invert mask"
-                  style={{
-                    padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                    background: invertMask ? "#7C3AED" : "transparent",
-                    color: invertMask ? "#fff" : "#888",
-                    fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                  }}
-                >
-                  <FlipHorizontal2 size={13} />
-                  Invert
-                </motion.button>
-              )}
-            </AnimatePresence>
-
-            {/* Clear mask */}
-            <AnimatePresence>
-              {isBrushTool && maskLines.length > 0 && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  onClick={clearMask}
-                  title="Clear mask"
-                  style={{
-                    padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                    background: "transparent", color: "#888",
-                    fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                  }}
-                >
-                  <RotateCcw size={13} />
-                  Clear
-                </motion.button>
-              )}
-            </AnimatePresence>
-
-            {/* Selected layer controls now rendered as a dedicated row below the top bar */}
-
-            {/* Reframe format presets */}
-            <AnimatePresence>
-              {tool === "reframe" && image && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  style={{ display: "flex", alignItems: "center", gap: 4 }}
-                >
-                  <span style={{ fontSize: 11, color: "#888", marginRight: 4 }}>Format</span>
-                  {REFRAME_FORMATS.map(fmt => (
-                    <button
-                      key={fmt.value}
-                      onClick={() => setReframeFormat(fmt.value)}
-                      style={{
-                        padding: "3px 8px", borderRadius: 5, border: "1px solid #2a2a40",
-                        background: reframeFormat === fmt.value ? "#7C3AED" : "transparent",
-                        color: reframeFormat === fmt.value ? "#fff" : "#888",
-                        fontSize: 11, cursor: "pointer", fontWeight: 500,
-                      }}
-                    >
-                      {fmt.label}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Right controls: zoom */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button
-              onClick={() => setZoom(prev => clamp(prev / 1.2, 0.1, 10))}
-              style={{
-                width: 28, height: 28, borderRadius: 6, border: "none",
-                background: "transparent", color: "#888", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              title="Zoom out"
-            >
-              <Minus size={14} />
-            </button>
-            <span style={{ fontSize: 11, color: "#aaa", minWidth: 42, textAlign: "center" }}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={() => setZoom(prev => clamp(prev * 1.2, 0.1, 10))}
-              style={{
-                width: 28, height: 28, borderRadius: 6, border: "none",
-                background: "transparent", color: "#888", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              title="Zoom in"
-            >
-              <Plus size={14} />
-            </button>
-            <button
-              onClick={fitToScreen}
-              style={{
-                width: 28, height: 28, borderRadius: 6, border: "none",
-                background: "transparent", color: "#888", cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-              title="Fit to screen"
-            >
-              <Maximize size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* ─── Layer properties row (shows only when a layer is selected) ─── */}
-        <AnimatePresence initial={false}>
-          {selectedLayer && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 44, opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              style={{
-                background: "#16162a",
-                borderBottom: "1px solid #2a2a40",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "0 16px",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5, marginRight: 4 }}>
-                {selectedLayer.type === "text" ? (isFr ? "Texte" : "Text")
-                  : selectedLayer.type === "logo" ? "Logo"
-                  : selectedLayer.type === "shape" ? (isFr ? "Forme" : "Shape")
-                  : (isFr ? "Sujet" : "Subject")}
-              </span>
-              {selectedLayer.type === "text" ? (
-                <>
-                  <input
-                    ref={textLayerInputRef}
-                    value={selectedLayer.text}
-                    onChange={e => updateLayer(selectedLayer.id, { text: e.target.value })}
-                    onFocus={e => e.currentTarget.select()}
-                    onKeyDown={e => e.stopPropagation()}
-                    placeholder={isFr ? "Votre texte" : "Your text"}
-                    style={{
-                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
-                      padding: "5px 10px", color: "#fff", fontSize: 12, width: 240, outline: "none",
-                    }}
-                  />
-                  <input
-                    type="number"
-                    value={Math.round(selectedLayer.fontSize)}
-                    onChange={e => {
-                      const v = Number(e.target.value);
-                      if (v > 0) updateLayer(selectedLayer.id, { fontSize: v });
-                    }}
-                    title={isFr ? "Taille" : "Size"}
-                    style={{
-                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
-                      padding: "5px 6px", color: "#fff", fontSize: 12, width: 56, outline: "none",
-                    }}
-                  />
-                  <input
-                    type="color"
-                    value={selectedLayer.fill}
-                    onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                    title={isFr ? "Couleur" : "Color"}
-                    style={{
-                      width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
-                      background: "transparent", cursor: "pointer", padding: 0,
-                    }}
-                  />
-                  <button
-                    onClick={() => {
-                      const next = selectedLayer.fontStyle.includes("bold")
-                        ? selectedLayer.fontStyle.replace("bold", "").trim() || "normal"
-                        : (selectedLayer.fontStyle === "normal" ? "bold" : `bold ${selectedLayer.fontStyle}`);
-                      updateLayer(selectedLayer.id, { fontStyle: next });
-                    }}
-                    title="Bold"
-                    style={{
-                      padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                      background: selectedLayer.fontStyle.includes("bold") ? "#7C3AED" : "transparent",
-                      color: selectedLayer.fontStyle.includes("bold") ? "#fff" : "#888",
-                      fontSize: 12, fontWeight: 700, cursor: "pointer",
-                    }}
-                  >
-                    B
-                  </button>
-                  <button
-                    onClick={() => {
-                      const next = selectedLayer.fontStyle.includes("italic")
-                        ? selectedLayer.fontStyle.replace("italic", "").trim() || "normal"
-                        : (selectedLayer.fontStyle === "normal" ? "italic" : `${selectedLayer.fontStyle} italic`);
-                      updateLayer(selectedLayer.id, { fontStyle: next });
-                    }}
-                    title="Italic"
-                    style={{
-                      padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                      background: selectedLayer.fontStyle.includes("italic") ? "#7C3AED" : "transparent",
-                      color: selectedLayer.fontStyle.includes("italic") ? "#fff" : "#888",
-                      fontSize: 12, fontStyle: "italic", cursor: "pointer",
-                    }}
-                  >
-                    I
-                  </button>
-                </>
-              ) : selectedLayer.type === "logo" ? (
-                <span style={{ fontSize: 11, color: "#888" }}>
-                  {isFr ? "Glissez pour déplacer · poignées pour redimensionner" : "Drag to move · handles to resize"}
-                </span>
-              ) : selectedLayer.type === "subject" ? (
-                <span style={{ fontSize: 11, color: "#888" }}>
-                  {isFr ? "Sujet isolé — placez des calques derrière via l'ordre de plan" : "Isolated subject — place layers behind via z-order"}
-                </span>
-              ) : (
-                <>
-                  <button
-                    onClick={() => updateLayer(selectedLayer.id, { fillType: "solid" })}
-                    title={isFr ? "Couleur unie" : "Solid"}
-                    style={{
-                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
-                      background: selectedLayer.fillType === "solid" ? "#7C3AED" : "transparent",
-                      color: selectedLayer.fillType === "solid" ? "#fff" : "#888",
-                      fontSize: 11, cursor: "pointer",
-                    }}
-                  >
-                    {isFr ? "Uni" : "Solid"}
-                  </button>
-                  <button
-                    onClick={() => updateLayer(selectedLayer.id, { fillType: "gradient" })}
-                    title={isFr ? "Dégradé" : "Gradient"}
-                    style={{
-                      padding: "4px 8px", borderRadius: 6, border: "1px solid #2a2a40",
-                      background: selectedLayer.fillType === "gradient" ? "#7C3AED" : "transparent",
-                      color: selectedLayer.fillType === "gradient" ? "#fff" : "#888",
-                      fontSize: 11, cursor: "pointer",
-                    }}
-                  >
-                    {isFr ? "Dégradé" : "Gradient"}
-                  </button>
-                  {selectedLayer.fillType === "solid" ? (
-                    <input
-                      type="color"
-                      value={selectedLayer.fill}
-                      onChange={e => updateLayer(selectedLayer.id, { fill: e.target.value })}
-                      title={isFr ? "Couleur" : "Color"}
-                      style={{
-                        width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40",
-                        background: "transparent", cursor: "pointer", padding: 0,
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <input
-                        type="color"
-                        value={selectedLayer.gradientStart}
-                        onChange={e => updateLayer(selectedLayer.id, { gradientStart: e.target.value })}
-                        title={isFr ? "Couleur début" : "Start color"}
-                        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                      />
-                      <input
-                        type="color"
-                        value={selectedLayer.gradientEnd}
-                        onChange={e => updateLayer(selectedLayer.id, { gradientEnd: e.target.value })}
-                        title={isFr ? "Couleur fin" : "End color"}
-                        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                      />
-                      <input
-                        type="range"
-                        min={0}
-                        max={360}
-                        value={selectedLayer.gradientAngle}
-                        onChange={e => updateLayer(selectedLayer.id, { gradientAngle: Number(e.target.value) })}
-                        title={`${isFr ? "Angle" : "Angle"}: ${selectedLayer.gradientAngle}°`}
-                        style={{ width: 70, accentColor: "#7C3AED" }}
-                      />
-                    </>
-                  )}
-                  <input
-                    type="number"
-                    min={0}
-                    max={40}
-                    value={selectedLayer.strokeWidth}
-                    onChange={e => updateLayer(selectedLayer.id, { strokeWidth: Math.max(0, Number(e.target.value) || 0) })}
-                    title={isFr ? "Contour" : "Stroke"}
-                    style={{
-                      background: "#0f0f1e", border: "1px solid #2a2a40", borderRadius: 6,
-                      padding: "5px 6px", color: "#fff", fontSize: 11, width: 48, outline: "none",
-                    }}
-                  />
-                  {selectedLayer.strokeWidth > 0 && (
-                    <input
-                      type="color"
-                      value={selectedLayer.stroke}
-                      onChange={e => updateLayer(selectedLayer.id, { stroke: e.target.value })}
-                      title={isFr ? "Couleur contour" : "Stroke color"}
-                      style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", cursor: "pointer", padding: 0 }}
-                    />
-                  )}
-                  {(selectedLayer.shape === "rect" || selectedLayer.shape === "patch") && (
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.min(selectedLayer.width, selectedLayer.height) / 2}
-                      value={selectedLayer.cornerRadius}
-                      onChange={e => updateLayer(selectedLayer.id, { cornerRadius: Number(e.target.value) })}
-                      title={`${isFr ? "Arrondi" : "Radius"}: ${Math.round(selectedLayer.cornerRadius)}`}
-                      style={{ width: 70, accentColor: "#7C3AED" }}
-                    />
-                  )}
-                </>
-              )}
-
-              {/* Opacity slider (all layer types) */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #2a2a40" }}>
-                <span style={{ fontSize: 10, color: "#888" }}>{isFr ? "Opacité" : "Opacity"}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(selectedLayer.opacity * 100)}
-                  onChange={e => updateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
-                  style={{ width: 80, accentColor: "#7C3AED" }}
-                />
-                <span style={{ fontSize: 11, color: "#aaa", width: 30, textAlign: "right" }}>
-                  {Math.round(selectedLayer.opacity * 100)}%
-                </span>
-              </div>
-
-              {/* Z-order controls */}
-              <div style={{ display: "flex", gap: 2, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #2a2a40" }}>
-                <button
-                  onClick={() => moveLayer(selectedLayer.id, "top")}
-                  title={isFr ? "Premier plan" : "To front"}
-                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                >
-                  <ArrowUpToLine size={13} />
-                </button>
-                <button
-                  onClick={() => moveLayer(selectedLayer.id, "up")}
-                  title={isFr ? "Avancer" : "Bring forward"}
-                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                >
-                  <ArrowUp size={13} />
-                </button>
-                <button
-                  onClick={() => moveLayer(selectedLayer.id, "down")}
-                  title={isFr ? "Reculer" : "Send backward"}
-                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                >
-                  <ArrowDown size={13} />
-                </button>
-                <button
-                  onClick={() => moveLayer(selectedLayer.id, "bottom")}
-                  title={isFr ? "Arrière-plan" : "To back"}
-                  style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #2a2a40", background: "transparent", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
-                >
-                  <ArrowDownToLine size={13} />
-                </button>
-              </div>
-
-              <div style={{ flex: 1 }} />
-
-              <button
-                onClick={() => deleteLayer(selectedLayer.id)}
-                title={isFr ? "Supprimer le calque" : "Delete layer"}
-                style={{
-                  padding: "6px 10px", borderRadius: 6, border: "1px solid #2a2a40",
-                  background: "transparent", color: "#ef4444",
-                  cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11,
-                }}
-              >
-                <Trash2 size={13} />
-                {isFr ? "Supprimer" : "Delete"}
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+        {/* ─── Canvas + Timeline (resizable split) ─── */}
+        <PanelGroup direction="vertical" style={{ flex: 1 }}>
+          <Panel defaultSize={timelineOpen ? 75 : 100} minSize={30}>
         {/* ─── Canvas area ─── */}
         <div
           ref={canvasContainerRef}
@@ -2174,7 +1595,7 @@ function EditorPageContent() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           style={{
-            flex: 1, position: "relative", overflow: "hidden",
+            width: "100%", height: "100%", position: "relative", overflow: "hidden",
             cursor: getCursorStyle(),
           }}
         >
@@ -2232,22 +1653,22 @@ function EditorPageContent() {
                 <ImageIcon size={32} style={{ color: "#7C3AED" }} />
               </div>
               <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 16, fontWeight: 500, color: "#ccc", marginBottom: 4 }}>
+                <p style={{ fontSize: 16, fontWeight: 500, color: "#555", marginBottom: 4 }}>
                   Select an image to edit
                 </p>
-                <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+                <p style={{ fontSize: 13, color: "#999", marginBottom: 16 }}>
                   Choose from your library or drag and drop
                 </p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   style={{
                     padding: "10px 24px", borderRadius: 10, border: "none",
-                    background: "linear-gradient(135deg, #7C3AED, #6D28D9)",
+                    background: "#7C3AED",
                     color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
                     display: "inline-flex", alignItems: "center", gap: 8,
-                    transition: "transform 0.15s, box-shadow 0.15s",
+                    transition: "transform 0.12s, box-shadow 0.12s",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(124,58,237,0.4)"; }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(124,58,237,0.25)"; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}
                 >
                   <Upload size={16} />
@@ -2524,6 +1945,48 @@ function EditorPageContent() {
                 );
               })}
 
+              {/* Video clip layers (from unified model) */}
+              {editorProject.project.layers
+                .filter((l): l is VideoClipLayerType => l.type === "video" && l.visible)
+                .map(layer => {
+                  const vid = videoElementsRef.current.get(layer.id);
+                  if (!vid || vid.readyState < 2) return null;
+                  const spatial = editorProject.getInterpolatedSpatial(layer, editorProject.playheadFrame);
+                  return (
+                    <KonvaImage
+                      key={layer.id}
+                      ref={(node) => { if (node) layerNodesRef.current[layer.id] = node; }}
+                      image={vid}
+                      x={spatial.x}
+                      y={spatial.y}
+                      width={spatial.width}
+                      height={spatial.height}
+                      rotation={spatial.rotation}
+                      opacity={spatial.opacity}
+                      scaleX={spatial.scaleX}
+                      scaleY={spatial.scaleY}
+                      draggable={!isBrushTool}
+                      listening={!isBrushTool}
+                      onMouseDown={(e) => { e.cancelBubble = true; editorProject.setSelectedLayerId(layer.id); }}
+                      onTap={() => editorProject.setSelectedLayerId(layer.id)}
+                      onDragEnd={(e) => {
+                        editorProject.updateLayerSpatial(layer.id, { x: e.target.x(), y: e.target.y() });
+                      }}
+                      onTransformEnd={(e) => {
+                        const n = e.target;
+                        editorProject.updateLayerSpatial(layer.id, {
+                          x: n.x(), y: n.y(),
+                          rotation: n.rotation(),
+                          width: spatial.width * n.scaleX(),
+                          height: spatial.height * n.scaleY(),
+                        });
+                        n.scaleX(1);
+                        n.scaleY(1);
+                      }}
+                    />
+                  );
+                })}
+
               {/* Transformer for selected layer */}
               {!isBrushTool && (
                 <Transformer
@@ -2580,7 +2043,63 @@ function EditorPageContent() {
             />
           )}
 
-          {/* ─── Variants overlay (bottom right) ─── */}
+          {/* ─── Floating toolbar (bottom center) ─── */}
+          <EditorToolbar
+            tool={tool}
+            onToolChange={setTool}
+            hasImage={!!image}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            onAddText={addTextLayer}
+            logoFileInputRef={logoFileInputRef}
+            onLogoFileChosen={handleLogoFileChosen}
+            shapesOpen={shapesOpen}
+            onShapesOpenChange={setShapesOpen}
+            onAddShape={addShapeLayer}
+            splitting={splitting}
+            onSplitSubject={runSplitSubject}
+            onOpenAnimate={() => { if (image) setAnimateOpen(true); }}
+            videoFileInputRef={videoFileInputRef}
+            onVideoFileChosen={handleVideoFileChosen}
+            audioFileInputRef={audioFileInputRef}
+            onAudioFileChosen={handleAudioFileChosen}
+            timelineOpen={timelineOpen}
+            onToggleTimeline={() => setTimelineOpen(o => !o)}
+            layersPanelOpen={layersPanelOpen}
+            onToggleLayersPanel={() => setLayersPanelOpen(o => !o)}
+            propertiesOpen={propertiesOpen}
+            onToggleProperties={() => setPropertiesOpen(o => !o)}
+            saving={saving}
+            savedAt={savedAt}
+            onSave={handleSaveToLibrary}
+            imageUrl={imageUrl}
+            onPublish={() => { if (imageUrl) setPublishTarget({ imageUrl, defaultCaption: "" }); }}
+            onDownload={handleDownload}
+            libraryOpen={libraryOpen}
+            onOpenLibrary={() => setLibraryOpen(true)}
+            isBrushTool={isBrushTool}
+            brushSize={brushSize}
+            onBrushSizeChange={setBrushSize}
+            invertMask={invertMask}
+            onInvertMaskToggle={() => setInvertMask(prev => !prev)}
+            maskLinesCount={maskLines.length}
+            onClearMask={clearMask}
+            reframeFormat={reframeFormat}
+            onReframeFormatChange={setReframeFormat}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            onFitToScreen={fitToScreen}
+            selectedLayer={selectedLayer}
+            onUpdateLayer={updateLayer}
+            onMoveLayer={moveLayer}
+            onDeleteLayer={deleteLayer}
+            textLayerInputRef={textLayerInputRef}
+            isFr={isFr}
+          />
+
+          {/* ─── Variants overlay (bottom right, above toolbar) ─── */}
           <AnimatePresence>
             {variants.length > 0 && (
               <motion.div
@@ -2588,7 +2107,7 @@ function EditorPageContent() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
                 style={{
-                  position: "absolute", bottom: showPromptBar ? 76 : 16, right: 16,
+                  position: "absolute", bottom: 68, right: 16,
                   display: "flex", gap: 8, zIndex: 20,
                 }}
               >
@@ -2601,9 +2120,9 @@ function EditorPageContent() {
                     style={{
                       width: 80, height: 80, borderRadius: 10, overflow: "hidden",
                       cursor: "pointer",
-                      border: selectedVariant === i ? "2px solid #7C3AED" : "2px solid #2a2a40",
-                      boxShadow: selectedVariant === i ? "0 0 16px rgba(124,58,237,0.3)" : "0 4px 12px rgba(0,0,0,0.5)",
-                      background: "#1e1e32",
+                      border: selectedVariant === i ? "2px solid #7C3AED" : "2px solid #e8e8e8",
+                      boxShadow: selectedVariant === i ? "0 0 12px rgba(124,58,237,0.2)" : "0 2px 8px rgba(0,0,0,0.08)",
+                      background: "#fff",
                       transition: "border-color 0.15s",
                     }}
                   >
@@ -2618,6 +2137,37 @@ function EditorPageContent() {
             )}
           </AnimatePresence>
         </div>
+          </Panel>
+
+          {/* ── Timeline panel (resizable) ── */}
+          {timelineOpen && (
+            <>
+              <PanelResizeHandle style={{ height: 3, background: "#e8e8e8", cursor: "row-resize" }} />
+              <Panel defaultSize={25} minSize={12} maxSize={50}>
+                <EditorTimeline
+                  layers={editorProject.project.layers}
+                  audioTracks={editorProject.project.audioTracks}
+                  fps={editorProject.project.fps}
+                  durationInFrames={editorProject.project.durationInFrames}
+                  playheadFrame={editorProject.playheadFrame}
+                  isPlaying={editorProject.isPlaying}
+                  selectedLayerId={editorProject.selectedLayerId}
+                  onSelectLayer={editorProject.setSelectedLayerId}
+                  onPlayheadChange={editorProject.setPlayheadFrame}
+                  onTogglePlay={() => editorProject.setIsPlaying(p => !p)}
+                  onLayerTemporalChange={(id, start, dur) => {
+                    editorProject.updateLayer(id, { temporal: { ...editorProject.getLayer(id)!.temporal, startFrame: start, durationInFrames: dur } });
+                  }}
+                  onLayerAnimationChange={editorProject.setLayerAnimation}
+                  onAudioTemporalChange={(id, start, dur) => {
+                    editorProject.updateAudioTrack(id, { startFrame: start, durationInFrames: dur });
+                  }}
+                  isFr={isFr}
+                />
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
 
         {/* ─── Bottom prompt bar ─── */}
         <AnimatePresence>
@@ -2628,7 +2178,7 @@ function EditorPageContent() {
               exit={{ opacity: 0, y: 20 }}
               style={{
                 height: showPromptBar ? 64 : 52,
-                background: "#1e1e32", borderTop: "1px solid #2a2a40",
+                background: "#fff", borderTop: "1px solid #e8e8e8",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 padding: "0 20px", gap: 12, flexShrink: 0,
               }}
@@ -2637,8 +2187,8 @@ function EditorPageContent() {
               {showPromptBar && (
                 <div style={{
                   flex: 1, maxWidth: 560, display: "flex", alignItems: "center",
-                  background: "#16162a", borderRadius: 12, padding: "0 14px",
-                  border: "1px solid #2a2a40", height: 40,
+                  background: "#f5f5f7", borderRadius: 10, padding: "0 14px",
+                  border: "1px solid #e8e8e8", height: 40,
                 }}>
                   <input
                     value={prompt}
@@ -2647,7 +2197,7 @@ function EditorPageContent() {
                     onKeyDown={e => { if (e.key === "Enter" && canExecute()) handleAction(); }}
                     style={{
                       flex: 1, background: "none", border: "none", outline: "none",
-                      color: "#fff", fontSize: 13,
+                      color: "#1a1a1a", fontSize: 13,
                     }}
                   />
                 </div>
@@ -2662,9 +2212,9 @@ function EditorPageContent() {
                 style={{
                   padding: "0 24px", height: 40, borderRadius: 10, border: "none",
                   background: canExecute()
-                    ? "linear-gradient(135deg, #7C3AED, #6D28D9)"
-                    : "#2a2a40",
-                  color: canExecute() ? "#fff" : "#666",
+                    ? "#7C3AED"
+                    : "#e8e8e8",
+                  color: canExecute() ? "#fff" : "#bbb",
                   fontSize: 13, fontWeight: 600, cursor: canExecute() ? "pointer" : "default",
                   display: "flex", alignItems: "center", gap: 8,
                   transition: "all 0.15s",
@@ -2685,179 +2235,27 @@ function EditorPageContent() {
       </div>
 
       {/* ═══════ LAYERS PANEL (right side, collapsible) ═══════ */}
-      <AnimatePresence initial={false}>
-      {layersPanelOpen && (
-      <motion.div
-        initial={{ width: 0, opacity: 0 }}
-        animate={{ width: 260, opacity: 1 }}
-        exit={{ width: 0, opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        style={{
-          background: "#16162a", borderLeft: "1px solid #2a2a40",
-          display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
-        }}>
-        <div style={{
-          padding: "12px 14px", borderBottom: "1px solid #2a2a40",
-          display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <Layers3 size={14} style={{ color: "#aaa" }} />
-          <span style={{
-            fontSize: 12, fontWeight: 600, color: "#aaa",
-            textTransform: "uppercase", letterSpacing: "0.05em",
-          }}>
-            {isFr ? "Calques" : "Layers"}
-          </span>
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "#666" }}>
-            {layers.length}
-          </span>
-        </div>
+      <LayersPanel
+        open={layersPanelOpen}
+        layers={layers}
+        selectedLayerId={selectedLayerId}
+        onSelectLayer={setSelectedLayerId}
+        onUpdateLayer={updateLayer}
+        onDeleteLayer={deleteLayer}
+        onMoveLayer={moveLayer}
+        hasImage={!!image}
+        isFr={isFr}
+      />
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
-          {layers.length === 0 && !image && (
-            <div style={{ fontSize: 11, color: "#555", padding: "12px 4px", lineHeight: 1.5 }}>
-              {isFr ? "Chargez une image pour commencer." : "Load an image to get started."}
-            </div>
-          )}
-          {layers.length === 0 && image && (
-            <div style={{ fontSize: 11, color: "#555", padding: "12px 4px", lineHeight: 1.5 }}>
-              {isFr
-                ? "Aucun calque. Ajoutez du texte, un logo, une forme, ou isolez le sujet."
-                : "No layers yet. Add text, a logo, a shape, or split the subject."}
-            </div>
-          )}
-
-          {/* Overlay layers — rendered TOP-first (reverse of paint order) */}
-          {[...layers].reverse().map((layer) => {
-            const selected = selectedLayerId === layer.id;
-            const label =
-              layer.type === "text" ? (layer.text || (isFr ? "Texte" : "Text")).slice(0, 22)
-              : layer.type === "logo" ? (isFr ? "Logo" : "Logo")
-              : layer.type === "subject" ? (isFr ? "Sujet (IA)" : "Subject (AI)")
-              : layer.shape === "rect" ? (isFr ? "Rectangle" : "Rectangle")
-              : layer.shape === "patch" ? (isFr ? "Patch" : "Patch")
-              : layer.shape === "circle" ? (isFr ? "Pastille" : "Pastille")
-              : (isFr ? "Étoile" : "Star");
-            const Icon =
-              layer.type === "text" ? Type
-              : layer.type === "logo" ? ImageLucide
-              : layer.type === "subject" ? Scissors
-              : layer.shape === "circle" ? CircleIcon
-              : layer.shape === "star" ? StarIcon
-              : SquareIcon;
-            return (
-              <div
-                key={layer.id}
-                onClick={() => setSelectedLayerId(layer.id)}
-                style={{
-                  padding: "8px 10px",
-                  marginBottom: 4,
-                  borderRadius: 8,
-                  background: selected ? "rgba(124,58,237,0.18)" : "transparent",
-                  border: selected ? "1px solid #7C3AED" : "1px solid transparent",
-                  cursor: "pointer",
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={(e) => { if (!selected) e.currentTarget.style.background = "#1f1f35"; }}
-                onMouseLeave={(e) => { if (!selected) e.currentTarget.style.background = "transparent"; }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Icon size={13} style={{ color: selected ? "#c4b5fd" : "#888", flexShrink: 0 }} />
-                  <div style={{
-                    flex: 1, minWidth: 0, fontSize: 12, color: selected ? "#fff" : "#bbb",
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {label}
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); updateLayer(layer.id, { visible: !layer.visible }); }}
-                    title={layer.visible ? (isFr ? "Masquer" : "Hide") : (isFr ? "Afficher" : "Show")}
-                    style={{
-                      width: 22, height: 22, border: "none", borderRadius: 4,
-                      background: "transparent", color: layer.visible ? "#888" : "#555",
-                      cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                    }}
-                  >
-                    {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }}
-                    title={isFr ? "Supprimer" : "Delete"}
-                    style={{
-                      width: 22, height: 22, border: "none", borderRadius: 4,
-                      background: "transparent", color: "#888", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = "#888"; }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-                {/* Opacity slider */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                  <span style={{ fontSize: 10, color: "#666", width: 30 }}>
-                    {Math.round(layer.opacity * 100)}%
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(layer.opacity * 100)}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => updateLayer(layer.id, { opacity: Number(e.target.value) / 100 })}
-                    style={{ flex: 1 }}
-                  />
-                </div>
-                {/* Z-order mini controls */}
-                <div style={{ display: "flex", gap: 2, marginTop: 6, justifyContent: "flex-end" }}>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "top"); }}
-                    title={isFr ? "Devant" : "To front"}
-                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <ArrowUpToLine size={10} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "up"); }}
-                    title={isFr ? "Avancer" : "Forward"}
-                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <ArrowUp size={10} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "down"); }}
-                    title={isFr ? "Reculer" : "Backward"}
-                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <ArrowDown size={10} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, "bottom"); }}
-                    title={isFr ? "Derrière" : "To back"}
-                    style={{ width: 20, height: 20, border: "none", borderRadius: 4, background: "#1f1f35", color: "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <ArrowDownToLine size={10} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Background (base photo) — always at the bottom, non-removable */}
-          {image && (
-            <div style={{
-              marginTop: 8, padding: "8px 10px", borderRadius: 8,
-              background: "#1f1f35", opacity: 0.6, fontSize: 11, color: "#999",
-              display: "flex", alignItems: "center", gap: 8,
-            }}>
-              <ImageIcon size={12} />
-              <span>{isFr ? "Arrière-plan (photo)" : "Background (photo)"}</span>
-            </div>
-          )}
-        </div>
-      </motion.div>
-      )}
-      </AnimatePresence>
+      {/* ═══════ PROPERTIES PANEL (right side, unified layers) ═══════ */}
+      <PropertiesSidebar
+        open={propertiesOpen}
+        layer={editorProject.selectedLayer}
+        onUpdateLayer={editorProject.updateLayer}
+        onUpdateSpatial={editorProject.updateLayerSpatial}
+        onSetAnimation={editorProject.setLayerAnimation}
+        isFr={isFr}
+      />
 
       {/* ═══════ GLOBAL STYLES (keyframes) ═══════ */}
       <style>{`
@@ -2865,12 +2263,11 @@ function EditorPageContent() {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        /* Range input styling for dark theme */
         input[type="range"] {
           -webkit-appearance: none;
-          height: 4px;
+          height: 3px;
           border-radius: 2px;
-          background: #2a2a40;
+          background: #e0e0e0;
           outline: none;
         }
         input[type="range"]::-webkit-slider-thumb {
@@ -2880,7 +2277,8 @@ function EditorPageContent() {
           border-radius: 50%;
           background: #7C3AED;
           cursor: pointer;
-          border: 2px solid #1e1e32;
+          border: 2px solid #fff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
         }
         input[type="range"]::-moz-range-thumb {
           width: 14px;
@@ -2888,9 +2286,9 @@ function EditorPageContent() {
           border-radius: 50%;
           background: #7C3AED;
           cursor: pointer;
-          border: 2px solid #1e1e32;
+          border: 2px solid #fff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
         }
-        /* Hide scrollbar in library */
         div::-webkit-scrollbar {
           width: 4px;
         }
@@ -2898,7 +2296,7 @@ function EditorPageContent() {
           background: transparent;
         }
         div::-webkit-scrollbar-thumb {
-          background: #2a2a40;
+          background: #ddd;
           border-radius: 2px;
         }
       `}</style>
@@ -2911,32 +2309,32 @@ function EditorPageContent() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)",
               display: "flex", alignItems: "center", justifyContent: "center",
               zIndex: 1000, padding: 16,
             }}
             onClick={() => { if (!animate.running) setAnimateOpen(false); }}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.97, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              exit={{ scale: 0.97, opacity: 0 }}
               onClick={e => e.stopPropagation()}
               style={{
-                background: "#16162a", border: "1px solid #2a2a40",
-                borderRadius: 16, width: "100%", maxWidth: 520,
-                boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+                background: "#fff", border: "1px solid #e8e8e8",
+                borderRadius: 14, width: "100%", maxWidth: 520,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
                 overflow: "hidden",
               }}
             >
               {/* Header */}
               <div style={{
-                padding: "16px 20px", borderBottom: "1px solid #2a2a40",
+                padding: "16px 20px", borderBottom: "1px solid #f0f0f0",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <Film size={18} style={{ color: "#7C3AED" }} />
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: "#fff", margin: 0 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0 }}>
                     {isFr ? "Animer cette image" : "Animate this image"}
                   </h3>
                 </div>
@@ -2944,7 +2342,7 @@ function EditorPageContent() {
                   onClick={() => { if (!animate.running) setAnimateOpen(false); }}
                   disabled={animate.running}
                   style={{
-                    background: "none", border: "none", color: "#888",
+                    background: "none", border: "none", color: "#bbb",
                     cursor: animate.running ? "default" : "pointer", padding: 4,
                   }}
                 >
@@ -2955,7 +2353,7 @@ function EditorPageContent() {
               {/* Body */}
               <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
                 <div>
-                  <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
                     {isFr ? "Description du mouvement" : "Motion description"}
                   </label>
                   <textarea
@@ -2965,8 +2363,8 @@ function EditorPageContent() {
                     rows={3}
                     disabled={animate.running}
                     style={{
-                      width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
-                      borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13,
+                      width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
+                      borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13,
                       outline: "none", resize: "vertical", fontFamily: "inherit",
                     }}
                   />
@@ -2974,7 +2372,7 @@ function EditorPageContent() {
 
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                    <label style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
                       {isFr ? "Modèle" : "Model"}
                     </label>
                     <select
@@ -2982,8 +2380,8 @@ function EditorPageContent() {
                       onChange={e => setAnimate(a => ({ ...a, model: e.target.value }))}
                       disabled={animate.running}
                       style={{
-                        width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
-                        borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13, outline: "none",
+                        width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
+                        borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
                       }}
                     >
                       <option value="kling-2.5-turbo-pro">Kling 2.5 Turbo Pro</option>
@@ -2992,7 +2390,7 @@ function EditorPageContent() {
                     </select>
                   </div>
                   <div style={{ width: 140 }}>
-                    <label style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 6 }}>
+                    <label style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
                       {isFr ? "Durée" : "Duration"}
                     </label>
                     <select
@@ -3000,8 +2398,8 @@ function EditorPageContent() {
                       onChange={e => setAnimate(a => ({ ...a, duration: Number(e.target.value) }))}
                       disabled={animate.running}
                       style={{
-                        width: "100%", background: "#0d0d1a", border: "1px solid #2a2a40",
-                        borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 13, outline: "none",
+                        width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
+                        borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
                       }}
                     >
                       <option value={5}>5s</option>
@@ -3012,7 +2410,7 @@ function EditorPageContent() {
 
                 {/* Result preview */}
                 {animate.videoUrl && (
-                  <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #2a2a40" }}>
+                  <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e8e8e8" }}>
                     <video
                       src={animate.videoUrl}
                       controls
@@ -3026,15 +2424,15 @@ function EditorPageContent() {
 
               {/* Footer */}
               <div style={{
-                padding: "14px 20px", borderTop: "1px solid #2a2a40",
+                padding: "14px 20px", borderTop: "1px solid #f0f0f0",
                 display: "flex", justifyContent: "flex-end", gap: 10,
               }}>
                 <button
                   onClick={() => setAnimateOpen(false)}
                   disabled={animate.running}
                   style={{
-                    padding: "8px 16px", borderRadius: 8, border: "1px solid #2a2a40",
-                    background: "transparent", color: "#888",
+                    padding: "8px 16px", borderRadius: 8, border: "1px solid #e8e8e8",
+                    background: "#fff", color: "#999",
                     fontSize: 13, cursor: animate.running ? "default" : "pointer",
                   }}
                 >
@@ -3046,9 +2444,9 @@ function EditorPageContent() {
                   style={{
                     padding: "8px 18px", borderRadius: 8, border: "none",
                     background: animate.running || !animate.prompt.trim()
-                      ? "#2a2a40"
-                      : "linear-gradient(135deg, #7C3AED, #EC4899)",
-                    color: animate.running || !animate.prompt.trim() ? "#666" : "#fff",
+                      ? "#e8e8e8"
+                      : "#7C3AED",
+                    color: animate.running || !animate.prompt.trim() ? "#bbb" : "#fff",
                     fontSize: 13, fontWeight: 600,
                     cursor: animate.running || !animate.prompt.trim() ? "default" : "pointer",
                     display: "flex", alignItems: "center", gap: 8,
@@ -3071,6 +2469,18 @@ function EditorPageContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ═══ EXPORT DIALOG ═══ */}
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        project={editorProject.project}
+        currentFrame={editorProject.playheadFrame}
+        onExportImage={handleExportImage}
+        onExportVideo={handleExportVideo}
+        hasTimeline={timelineOpen}
+        isFr={isFr}
+      />
 
       {/* ═══ PUBLISH MODAL ═══ */}
       <PublishModal

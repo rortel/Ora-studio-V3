@@ -13,6 +13,7 @@ import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
+import { useDraftsFolder } from "../lib/editor/useDraftsFolder";
 
 /* ═══════════════════════════════════════════════════════════
    CREATIVE LAB — Free creation playground with Yuka scoring
@@ -353,169 +354,6 @@ function ScoreGauge({ score, size = 80, isFr = false }: { score: number; size?: 
   );
 }
 
-function CategoryBar({ label, value }: { label: string; value: number }) {
-  const c = value >= 70 ? "#22c55e" : value >= 50 ? "#f59e0b" : "#ef4444";
-  return (
-    <div className="flex items-center gap-2" style={{ fontSize: 11 }}>
-      <span style={{ width: 56, color: "var(--muted-foreground)", flexShrink: 0, fontWeight: 500 }}>{label}</span>
-      <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--secondary)" }}>
-        <div style={{ width: `${Math.max(2, value)}%`, height: "100%", borderRadius: 3, background: c, transition: "width 0.6s ease" }} />
-      </div>
-      <span style={{ width: 24, textAlign: "right", color: "var(--foreground)", fontWeight: 600, fontSize: 10 }}>{value}</span>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   KPI TAXONOMY — 8 categories (Yuka-style gauges for creative AI)
-   ═══════════════════════════════════════════════════════════ */
-
-interface KpiItem { key: string; label: string; value: number }
-interface KpiCategory { id: string; label: string; usage: string; items: KpiItem[] }
-
-function computeKpis(r: CreativeResult, mInfo: ModelDef | undefined, mode: CreativeMode, isFr: boolean): KpiCategory[] {
-  const speed = r.scores.speed;
-  const value = r.scores.value;
-  const quality = r.scores.quality;
-  const strengths = mInfo?.strengths || [];
-  const has = (s: string) => strengths.includes(s);
-  const tier = mInfo?.tier || "standard";
-  const tierBase = tier === "premium" ? 88 : tier === "standard" ? 74 : 60;
-  const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
-
-  const cats: KpiCategory[] = [];
-
-  // ── Mode-specific primary category ──
-  if (mode === "image") {
-    cats.push({
-      id: "rendu-image",
-      label: isFr ? "Rendu Image" : "Image Output",
-      usage: isFr ? "Qualité visuelle pro & impression" : "Pro quality & print-ready",
-      items: [
-        { key: "anatomy", label: isFr ? "Anatomie" : "Anatomy", value: clamp(tierBase + (has("photo-realism") || has("realism") ? 8 : 0) + (has("realistic") ? 6 : 0)) },
-        { key: "res", label: "Résolution/DPI", value: clamp(tierBase + (has("quality") ? 10 : 0) + (has("detail") ? 5 : 0)) },
-        { key: "fidelity", label: isFr ? "Fidélité prompt" : "Prompt fidelity", value: clamp(tierBase + (has("precision") ? 10 : 0) + (has("text-rendering") ? 8 : 0) - (has("artistic") ? 6 : 0)) },
-        { key: "noise", label: isFr ? "Absence de bruit" : "Noise-free", value: clamp(tierBase + (has("detail") ? 6 : 0) + (has("quality") ? 4 : 0)) },
-      ],
-    });
-  } else if (mode === "video") {
-    cats.push({
-      id: "rendu-video",
-      label: isFr ? "Rendu Vidéo" : "Video Output",
-      usage: isFr ? "Cohérence sans morphing" : "Consistency, no morphing",
-      items: [
-        { key: "stability", label: isFr ? "Stabilité temp." : "Temporal stab.", value: clamp(tierBase + (has("cinematic") ? 10 : 0) + (has("quality") ? 6 : 0)) },
-        { key: "fps", label: "Fluidité FPS", value: clamp(tierBase + (has("speed") ? 6 : 0) + (has("motion") ? 8 : 0)) },
-        { key: "physics", label: isFr ? "Physique" : "Physics", value: clamp(tierBase + (has("physics") || has("realistic") ? 14 : 0)) },
-        { key: "audio", label: "Audio", value: clamp(tier === "premium" && has("quality") ? 70 : 35) },
-      ],
-    });
-  } else if (mode === "music") {
-    cats.push({
-      id: "rendu-music",
-      label: isFr ? "Rendu Audio" : "Audio Output",
-      usage: isFr ? "Qualité studio & richesse sonore" : "Studio quality & sonic depth",
-      items: [
-        { key: "fidelity", label: isFr ? "Fidélité" : "Fidelity", value: clamp(tierBase + (has("studio-grade") ? 10 : 0) + (has("vocals") ? 6 : 0)) },
-        { key: "vocals", label: isFr ? "Voix" : "Vocals", value: clamp(tierBase + (has("vocals") ? 14 : 0) + (has("lyrics") ? 6 : 0) - (has("studio-grade") && !has("vocals") ? 6 : 0)) },
-        { key: "versat", label: isFr ? "Styles" : "Versatility", value: clamp(tierBase + (has("versatile") ? 10 : 0) + (has("multilingual") ? 6 : 0)) },
-        { key: "clear", label: "Commercial", value: clamp(tierBase + (has("brand-safe") ? 14 : 0)) },
-      ],
-    });
-  } else {
-    cats.push({
-      id: "rendu-texte",
-      label: isFr ? "Rendu Texte" : "Text Output",
-      usage: isFr ? "Fiabilité et naturel du style" : "Reliability & natural style",
-      items: [
-        { key: "halluc", label: isFr ? "Anti-hallucin." : "Anti-halluc.", value: clamp(tierBase + (has("reasoning") ? 10 : 0) + (has("factual") ? 8 : 0)) },
-        { key: "voice", label: "Ton (Voice)", value: clamp(tierBase + (has("creativity") || has("copy") || has("storytelling") ? 10 : 0)) },
-        { key: "struct", label: isFr ? "Structure" : "Structure", value: clamp(tierBase + (has("reasoning") || has("long-context") ? 8 : 0) + (has("depth") ? 6 : 0)) },
-        { key: "perp", label: "Perplexité", value: clamp(tierBase + (has("multilingual") || has("french") ? 8 : 0)) },
-      ],
-    });
-  }
-
-  // ── Common categories ──
-  cats.push({
-    id: "perf-pro",
-    label: isFr ? "Performance Pro" : "Pro Performance",
-    usage: isFr ? "Rentabilité & ROI mesurable" : "Profitability & ROI",
-    items: [
-      { key: "prod", label: isFr ? "Productivité" : "Productivity", value: clamp(speed * 0.7 + quality * 0.3) },
-      { key: "cost", label: isFr ? "Coût/unité" : "Cost/unit", value: value },
-      { key: "ttm", label: "Time-to-market", value: speed },
-      { key: "eng", label: "Engagement", value: clamp(quality + (has("branding") ? 5 : 0)) },
-    ],
-  });
-  cats.push({
-    id: "nonpro",
-    label: isFr ? "Usage Non-Pro" : "Consumer Use",
-    usage: isFr ? "Facilité & satisfaction immédiate" : "Ease & instant satisfaction",
-    items: [
-      { key: "learn", label: isFr ? "Apprentissage" : "Learning", value: 92 },
-      { key: "price", label: isFr ? "Accessibilité" : "Affordability", value: value },
-      { key: "vers", label: isFr ? "Polyvalence" : "Versatility", value: clamp(55 + strengths.length * 9) },
-    ],
-  });
-  cats.push({
-    id: "tech",
-    label: "Technique",
-    usage: isFr ? "Efficacité opérationnelle" : "Operational efficiency",
-    items: [
-      { key: "gen", label: isFr ? "Temps gén." : "Gen. time", value: speed },
-      { key: "iter", label: isFr ? "Coût/itér." : "Cost/iter.", value: value },
-      { key: "api", label: "Scalabilité API", value: tier === "economy" ? 88 : tier === "standard" ? 76 : 68 },
-    ],
-  });
-  cats.push({
-    id: "legal",
-    label: isFr ? "Légal & Sécurité" : "Legal & Security",
-    usage: isFr ? "Protection & personnalisation" : "Protection & customization",
-    items: [
-      { key: "cr", label: "Copyright", value: has("branding") ? 85 : tier === "premium" ? 78 : 68 },
-      { key: "iso", label: isFr ? "Isolation data" : "Data isolation", value: 74 },
-      { key: "safe", label: "Brand Safety", value: tier === "premium" ? 86 : 72 },
-      { key: "ft", label: "Fine-tuning", value: has("open") ? 92 : 48 },
-    ],
-  });
-  cats.push({
-    id: "eth",
-    label: isFr ? "Éthique & RSE" : "Ethics & CSR",
-    usage: isFr ? "Responsabilité environnementale" : "Environmental responsibility",
-    items: [
-      { key: "co2", label: isFr ? "Empreinte CO₂" : "Carbon", value: tier === "economy" ? 82 : tier === "standard" ? 66 : 50 },
-      { key: "bias", label: isFr ? "Score biais" : "Bias score", value: has("multilingual") ? 82 : 66 },
-    ],
-  });
-
-  return cats;
-}
-
-function buildUsageAnalysis(r: CreativeResult, mInfo: ModelDef | undefined, mode: CreativeMode, isFr: boolean): string {
-  if (!mInfo) return "";
-  const tier = mInfo.tier;
-  const t = (r.timeMs / 1000).toFixed(1);
-  if (mode === "image") {
-    return isFr
-      ? `Idéal pour ${mInfo.bestFor.toLowerCase()}. ${tier === "premium" ? `Qualité agence en ${t}s, prêt pour print & campagnes premium.` : tier === "standard" ? `Équilibre qualité/prix (${t}s), parfait pour social et web.` : `Brouillons ultra-rapides (${t}s) pour itérations volume.`}`
-      : `Best for ${mInfo.bestFor.toLowerCase()}. ${tier === "premium" ? `Agency-grade in ${t}s, print & premium-ready.` : tier === "standard" ? `Balanced quality/price (${t}s), fits social & web.` : `Fast drafts (${t}s) for volume iteration.`}`;
-  }
-  if (mode === "video") {
-    return isFr
-      ? `${mInfo.bestFor}. ${tier === "premium" ? `Rendu cinématique en ${t}s — ads, formats longs.` : tier === "standard" ? `Polyvalent (${t}s), social organique & storyboards animés.` : `Itération rapide (${t}s), concepts & previews.`}`
-      : `${mInfo.bestFor}. ${tier === "premium" ? `Cinematic grade in ${t}s — ads & long formats.` : tier === "standard" ? `Versatile (${t}s), organic social & animated boards.` : `Fast iteration (${t}s), concepts & previews.`}`;
-  }
-  if (mode === "music") {
-    return isFr
-      ? `${mInfo.bestFor}. Piste générée en ${t}s, qualité studio prête pour pub, film, podcast ou social.`
-      : `${mInfo.bestFor}. Track generated in ${t}s, studio quality ready for ads, film, podcast or social.`;
-  }
-  return isFr
-    ? `${mInfo.bestFor}. ${tier === "premium" ? `Raisonnement profond pour briefs stratégiques (${t}s).` : tier === "standard" ? `Production quotidienne social/web (${t}s).` : `Copies volume low-cost (${t}s).`}`
-    : `${mInfo.bestFor}. ${tier === "premium" ? `Deep reasoning for strategic briefs (${t}s).` : tier === "standard" ? `Daily social/web output (${t}s).` : `High-volume low-cost copy (${t}s).`}`;
-}
-
 /* ── Glassmorphism KPI overlay (hover) ── */
 
 function MiniGauge({ value, size = 38 }: { value: number; size?: number }) {
@@ -535,60 +373,102 @@ function MiniGauge({ value, size = 38 }: { value: number; size?: number }) {
 }
 
 function KpiOverlay({ result, mInfo, mode, isFr }: { result: CreativeResult; mInfo: ModelDef | undefined; mode: CreativeMode; isFr: boolean }) {
-  const kpis = computeKpis(result, mInfo, mode, isFr);
-  const usage = buildUsageAnalysis(result, mInfo, mode, isFr);
   const { color: gradeColor, label: gradeLabel } = getGradeLabel(result.scores.overall, isFr);
+  const strengths = mInfo?.strengths || [];
+  const has = (s: string) => strengths.includes(s);
+  const cost = mInfo?.credits ?? 5;
+  const timeStr = (result.timeMs / 1000).toFixed(1);
+  const q = result.scores.quality;
+
+  // ── Client-facing metrics derived from scores + model DNA ──
+  const metrics: { label: string; value: number; icon: string }[] = [];
+
+  if (mode === "image" || mode === "video") {
+    // Realism: base quality + boost for realism-oriented models
+    const realism = Math.min(100, q + (has("photo-realism") || has("realism") ? 12 : 0) + (has("lighting") ? 5 : 0) + (has("realistic") || has("physics") ? 8 : 0));
+    metrics.push({ label: isFr ? "Réalisme" : "Realism", value: realism, icon: "📷" });
+
+    // Detail & sharpness
+    const detail = Math.min(100, q + (has("detail") || has("high-detail") ? 10 : 0) + (has("textures") ? 8 : 0) + (has("precision") ? 5 : 0));
+    metrics.push({ label: isFr ? "Détails" : "Detail", value: detail, icon: "🔍" });
+
+    // Creativity / artistic quality
+    const creativity = Math.min(100, q + (has("artistic") || has("creative") ? 12 : 0) + (has("cinematic") ? 8 : 0) + (has("stylized") ? 10 : 0) + (has("narrative") ? 5 : 0));
+    metrics.push({ label: isFr ? "Créativité" : "Creativity", value: creativity, icon: "🎨" });
+
+    // Text rendering (critical for branding clients)
+    if (mode === "image") {
+      const text = has("text-rendering") ? 92 : has("branding") ? 85 : has("precision") ? 55 : 30;
+      metrics.push({ label: isFr ? "Rendu texte" : "Text rendering", value: text, icon: "🔤" });
+    }
+  } else if (mode === "text") {
+    const creativity = Math.min(100, q + (has("creativity") || has("storytelling") || has("creative") || has("copy") ? 12 : 0));
+    metrics.push({ label: isFr ? "Créativité" : "Creativity", value: creativity, icon: "✍️" });
+    const precision = Math.min(100, q + (has("reasoning") || has("depth") || has("factual") ? 10 : 0) + (has("nuance") ? 8 : 0));
+    metrics.push({ label: isFr ? "Précision" : "Precision", value: precision, icon: "🎯" });
+    const multi = Math.min(100, q + (has("multilingual") || has("french") ? 15 : 0));
+    metrics.push({ label: isFr ? "Multilingue" : "Multilingual", value: multi, icon: "🌍" });
+  } else {
+    // Music
+    const quality = Math.min(100, q + (has("studio-grade") ? 12 : 0) + (has("vocals") ? 8 : 0));
+    metrics.push({ label: isFr ? "Qualité audio" : "Audio quality", value: quality, icon: "🎵" });
+    const versatility = Math.min(100, q + (has("versatile") ? 12 : 0) + (has("multilingual") ? 8 : 0));
+    metrics.push({ label: isFr ? "Polyvalence" : "Versatility", value: versatility, icon: "🎼" });
+  }
+
+  // Universal metrics: speed & value
+  metrics.push({ label: isFr ? "Rapidité" : "Speed", value: result.scores.speed, icon: "⚡" });
+  metrics.push({ label: isFr ? "Rapport prix" : "Value", value: result.scores.value, icon: "💰" });
+
+  // Best-for description from model metadata
+  const bestFor = mInfo?.bestFor || (isFr ? "Polyvalent" : "Versatile");
+
   return (
     <div
       className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col pointer-events-none group-hover:pointer-events-auto"
       style={{
-        background: "linear-gradient(135deg, rgba(15,10,30,0.78) 0%, rgba(40,15,50,0.85) 100%)",
+        background: "linear-gradient(135deg, rgba(15,10,30,0.82) 0%, rgba(40,15,50,0.88) 100%)",
         backdropFilter: "blur(22px) saturate(140%)",
         WebkitBackdropFilter: "blur(22px) saturate(140%)",
         border: "1px solid rgba(255,255,255,0.14)",
       }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+      {/* Header — score + model name */}
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
         <div className="min-w-0">
           <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }} className="truncate">{result.label}</div>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>{mInfo?.badge} · {(result.timeMs / 1000).toFixed(1)}s · {mInfo?.tier}</div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>{cost} cr · {timeStr}s</div>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full flex-shrink-0" style={{ background: `${gradeColor}22`, border: `1px solid ${gradeColor}55` }}>
-          <span style={{ fontSize: 18, fontWeight: 900, color: gradeColor, lineHeight: 1 }}>{result.scores.overall}</span>
-          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>/100</span>
-          <span style={{ fontSize: 9, color: gradeColor, fontWeight: 700, marginLeft: 2 }}>{gradeLabel}</span>
+        <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+          <MiniGauge value={result.scores.overall} size={48} />
+          <span style={{ fontSize: 8.5, color: gradeColor, fontWeight: 700 }}>{gradeLabel}</span>
         </div>
       </div>
 
-      {/* Scrollable KPI area */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.2) transparent" }}>
-        {/* Usage analysis */}
-        <div className="rounded-xl px-3.5 py-2.5" style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)" }}>
-          <div style={{ fontSize: 8.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.5)", marginBottom: 5 }}>
-            {isFr ? "Analyse d'usage" : "Usage analysis"}
-          </div>
-          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.92)", lineHeight: 1.5 }}>{usage}</div>
-        </div>
-
-        {/* KPI Categories */}
-        {kpis.map(cat => (
-          <div key={cat.id}>
-            <div className="flex items-baseline justify-between mb-1.5">
-              <span style={{ fontSize: 10, fontWeight: 800, color: "#fff", letterSpacing: "0.01em" }}>{cat.label}</span>
-              <span style={{ fontSize: 8.5, color: "rgba(255,255,255,0.45)", fontStyle: "italic", textAlign: "right", marginLeft: 8 }} className="truncate">{cat.usage}</span>
+      {/* Client-facing metrics */}
+      <div className="px-4 py-3 space-y-1.5 flex-1 overflow-hidden">
+        {metrics.map(m => (
+          <div key={m.label} className="flex items-center gap-2">
+            <span style={{ fontSize: 11, width: 16, textAlign: "center", flexShrink: 0 }}>{m.icon}</span>
+            <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.7)", width: 80, flexShrink: 0 }}>{m.label}</span>
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+              <div className="h-full rounded-full" style={{
+                width: `${m.value}%`,
+                background: m.value >= 80 ? "linear-gradient(90deg, #22c55e, #4ade80)" : m.value >= 60 ? "linear-gradient(90deg, #84cc16, #a3e635)" : m.value >= 40 ? "linear-gradient(90deg, #f59e0b, #fbbf24)" : "linear-gradient(90deg, #ef4444, #f87171)",
+                transition: "width 0.6s ease",
+              }} />
             </div>
-            <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cat.items.length}, 1fr)` }}>
-              {cat.items.map(it => (
-                <div key={it.key} className="flex flex-col items-center gap-1 py-2 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <MiniGauge value={it.value} size={38} />
-                  <span style={{ fontSize: 8.5, color: "rgba(255,255,255,0.7)", textAlign: "center", lineHeight: 1.15, padding: "0 4px", fontWeight: 500 }}>{it.label}</span>
-                </div>
-              ))}
-            </div>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", width: 22, textAlign: "right", flexShrink: 0 }}>{m.value}</span>
           </div>
         ))}
+      </div>
+
+      {/* Best for — from model catalog */}
+      <div className="px-4 pb-3 mt-auto">
+        <div style={{ fontSize: 8, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
+          {isFr ? "Idéal pour" : "Best for"}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", fontWeight: 600, lineHeight: 1.4 }}>{bestFor}</div>
       </div>
     </div>
   );
@@ -623,6 +503,14 @@ export function ComparePage() {
   const [brandDNA, setBrandDNA] = useState<BrandDNA | null>(null);
   // Intent preset — shapes the copy framework + visual direction. "auto" = no template.
   const [intent, setIntent] = useState<IntentId>("auto");
+  // Dropdown open state for compact toolbar (intent + models popovers)
+  const [showIntentDropdown, setShowIntentDropdown] = useState(false);
+  const intentDropdownRef = useRef<HTMLDivElement>(null);
+  // "Inspire me" — contextual scene suggestions after scraping
+  const [sceneSuggestions, setSceneSuggestions] = useState<string[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  // Persisted brief enrichment from scraping — reused by "Inspire me" when brandDNA already exists
+  const [storedEnrichment, setStoredEnrichment] = useState("");
 
   // ── Music options (used when mode === "music") ──
   const [musicDurationSec, setMusicDurationSec] = useState(30);       // 10–180s
@@ -722,6 +610,21 @@ export function ComparePage() {
   useEffect(() => {
     if (results.length > 0) resultsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [results]);
+
+  // Close dropdowns on click outside
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (showIntentDropdown && intentDropdownRef.current && !intentDropdownRef.current.contains(e.target as Node)) {
+        setShowIntentDropdown(false);
+      }
+      if (showModelPicker && modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showIntentDropdown, showModelPicker]);
 
   const toggleModel = (id: string) => {
     setSelectedModels(prev => prev.includes(id) ? prev.filter(m => m !== id) : prev.length >= maxModels ? prev : [...prev, id]);
@@ -932,6 +835,9 @@ export function ComparePage() {
     return r.json();
   }, []);
 
+  // ── Auto-save: resolve "Brouillons" folder for generated assets ──
+  const draftsFolderId = useDraftsFolder(serverGet, serverPost);
+
   const pollVideo = useCallback(async (genId: string): Promise<string | null> => {
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 5000));
@@ -956,6 +862,55 @@ export function ComparePage() {
     return null;
   }, [serverGet]);
 
+  // ── "Inspire me" — scrape URL + get scene suggestions ──
+  const runInspireMe = useCallback(async () => {
+    const urlRe = /https?:\/\/[^\s<>"')]+/gi;
+    const urls = (prompt.match(urlRe) || []).slice(0, 3);
+    if (urls.length === 0 && !brandDNA) return;
+
+    setIsLoadingSuggestions(true);
+    setSceneSuggestions([]);
+    try {
+      // Step 1: scrape if not already done, or reuse stored enrichment
+      let enrichment = storedEnrichment;
+      let brand = brandDNA;
+      if (urls.length > 0 && !brandDNA) {
+        setIsScraping(true);
+        const scrapeRes = await serverPost("/compare/scrape-urls", { urls }, 45_000);
+        setIsScraping(false);
+        if (scrapeRes?.success) {
+          enrichment = String(scrapeRes.briefEnrichment || "");
+          setStoredEnrichment(enrichment);
+          if (scrapeRes.brand) { brand = scrapeRes.brand as BrandDNA; setBrandDNA(brand); }
+          if (scrapeRes.productImages?.length > 0) {
+            setScrapedUrls({ pagesScraped: scrapeRes.pagesScraped || 0, imagesFound: scrapeRes.imagesFound || 0 });
+          }
+        }
+      }
+
+      // Step 2: get scene suggestions
+      const intentPreset = intent !== "auto" ? getIntentPreset(intent) : null;
+      const res = await serverPost("/compare/suggest-scenes", {
+        briefEnrichment: enrichment,
+        brandName: brand?.meta?.title || "",
+        brandDescription: brand?.meta?.description || "",
+        intentId: intent,
+        intentLabel: intentPreset ? (isFr ? intentPreset.labelFr : intentPreset.labelEn) : "",
+        locale,
+      }, 15_000);
+
+      if (res?.success && res.scenes?.length > 0) {
+        setSceneSuggestions(res.scenes);
+      } else {
+        toast.error(isFr ? "Pas de suggestions trouvées" : "No suggestions found");
+      }
+    } catch (err) {
+      console.warn("[inspire-me] failed:", err);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  }, [prompt, brandDNA, storedEnrichment, intent, isFr, locale, serverPost]);
+
   // ── Generate ──
   const runGeneration = useCallback(async () => {
     if (!prompt.trim() || selectedModels.length < 1 || isRunning) return;
@@ -979,6 +934,7 @@ export function ComparePage() {
     setResults([]);
     setScrapedUrls(null);
     setBrandDNA(null);
+    setStoredEnrichment("");
 
     const modelSteps = selectedModels.map(id => ({ label: catalog.find(m => m.id === id)?.label || id, status: "pending" as StepStatus }));
     setSteps(modelSteps);
@@ -996,6 +952,7 @@ export function ComparePage() {
         const scrapeRes = await serverPost("/compare/scrape-urls", { urls: urlsInBrief }, 45_000);
         if (scrapeRes?.success) {
           briefEnrichment = String(scrapeRes.briefEnrichment || "");
+          setStoredEnrichment(briefEnrichment);
           scrapedProductImages = Array.isArray(scrapeRes.productImages) ? scrapeRes.productImages : [];
           setScrapedUrls({ pagesScraped: scrapeRes.pagesScraped || 0, imagesFound: scrapeRes.imagesFound || 0 });
           // Persist the brand DNA so the preview banner + downstream prompts can use it.
@@ -1157,12 +1114,47 @@ USER REQUEST: `;
                 // Without a scene directive, they just do minimal edits on the reference.
                 // Formula: "Place [subject] in [user's scene]. Keep the exact [product]. [Style hint]"
                 const subjectDesc = refSubject?.subject || "the product from the reference image";
-                const intentHint = (() => {
-                  if (intent === "auto") return "";
-                  const p = getIntentPreset(intent);
-                  return p.visualDirection ? ` Visual style: ${p.visualDirection.slice(0, 150)}.` : "";
-                })();
-                const img2imgPrompt = `Place ${subjectDesc} in this scene: ${prompt}. Change the background and environment completely to match the scene description. Keep the exact product/subject from the reference photo — same shape, colors, textures, details.${intentHint} Photorealistic photography.`.slice(0, 1500);
+                const intentPreset = intent !== "auto" ? getIntentPreset(intent) : null;
+                const intentHint = intentPreset?.visualDirection
+                  ? ` Visual style: ${intentPreset.visualDirection.slice(0, 150)}.`
+                  : "";
+                // Strip URLs from user prompt — they're not scene descriptions.
+                // Also strip common French/English task-instructions that aren't scenes.
+                let sceneFromPrompt = prompt
+                  .replace(/https?:\/\/[^\s<>"')]+/gi, "")
+                  .replace(/\b(fais|crée|créer|génère|générer|make|create|generate|lance|lancer)\s+(une?\s+)?(campagne|pub|publicité|ad|campaign|visuel|visuels|contenu|content)\s*(pour|for|de|d')?\s*/gi, "")
+                  .replace(/\s*:\s*/g, " ")
+                  .trim();
+                // If no scene description left, auto-generate from intent preset
+                const INTENT_DEFAULT_SCENES: Record<string, string> = {
+                  "promo": "clean studio setting with soft white background and professional lighting",
+                  "brand-ad": "cinematic lifestyle scene with natural golden hour light and depth of field",
+                  "product-launch": "dramatic dark studio with rim lighting and gradient background",
+                  "social-organic": "casual natural setting with bright daylight, authentic feel",
+                  "editorial": "elegant minimalist interior with magazine-style composition and narrative light",
+                  "ugc": "casual home environment with natural window light, iPhone-style perspective",
+                  "lookbook": "minimalist textured backdrop with consistent fashion photography lighting",
+                  "b2b": "modern clean office environment with neutral corporate lighting",
+                };
+                if (sceneFromPrompt.length < 10) {
+                  // When we have scraped enrichment (from URL), build a scene from brand context
+                  // instead of falling back to generic intent scenes. This ensures hotel URLs
+                  // generate scenes that match the actual venue (lobby, rooms, spa, etc.).
+                  if (briefEnrichment.length > 50) {
+                    // Extract brand name + description from enrichment for a contextual scene
+                    const brandTitle = brandDNA?.meta?.title || "";
+                    const brandDesc = (brandDNA?.meta?.description || "")
+                      .replace(/https?:\/\/[^\s]+/gi, "").slice(0, 200);
+                    sceneFromPrompt = brandTitle && brandDesc
+                      ? `${brandTitle}: ${brandDesc}`
+                      : briefEnrichment
+                          .replace(/={2,}/g, " ").replace(/\n+/g, " ").replace(/\s{2,}/g, " ")
+                          .slice(0, 250).trim();
+                  } else {
+                    sceneFromPrompt = INTENT_DEFAULT_SCENES[intent] || "elegant professional setting with beautiful natural light";
+                  }
+                }
+                const img2imgPrompt = `Place ${subjectDesc} in this scene: ${sceneFromPrompt}. Change the background and environment completely to match the scene description. Keep the exact product/subject from the reference photo — same shape, colors, textures, details.${intentHint} Photorealistic photography.`.slice(0, 1500);
                 const r = await serverPost("/generate/image-start", {
                   prompt: img2imgPrompt,
                   model: modelId,
@@ -1175,6 +1167,10 @@ USER REQUEST: `;
                   refType, // "product" or "location" — drives backend dispatch (depth ControlNet for location)
                   provider: "ai",
                   preserveSubject: refType === "product",
+                  // Pass full intent metadata so backend can apply it to Photoroom/AI providers
+                  intentId: intent,
+                  intentVisualDirection: intentPreset?.visualDirection || "",
+                  intentPacing: intentPreset?.pacing || "",
                 }, timeoutMs);
                 url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
                 if (!url) {
@@ -1396,7 +1392,7 @@ USER REQUEST: `;
             audioUrl: r.audioUrl,
             text: r.text,
           },
-          folderId: null,
+          folderId: draftsFolderId || null,
           scores: r.scores,
           source: "compare",
         };
@@ -1650,6 +1646,36 @@ USER REQUEST: `;
                           </div>
                         )}
 
+                        {/* ── Edit button on hover (image/video only) ── */}
+                        {r.success && (mode === "image" || mode === "video") && (r.imageUrl || r.videoUrl) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate("/hub/editor", {
+                                state: {
+                                  assetUrl: r.imageUrl || r.videoUrl,
+                                  assetId: r.id,
+                                  assetType: mode,
+                                  prompt,
+                                  model: r.modelId,
+                                },
+                              });
+                            }}
+                            className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            style={{
+                              background: "rgba(255,255,255,0.92)",
+                              backdropFilter: "blur(12px)",
+                              border: "1px solid rgba(0,0,0,0.1)",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            <Pencil size={11} /> {isFr ? "Modifier" : "Edit"}
+                          </button>
+                        )}
+
                         {/* ── Glassmorphism KPI overlay on hover ── */}
                         {r.success && (
                           <KpiOverlay result={r} mInfo={mInfo} mode={mode} isFr={isFr} />
@@ -1720,7 +1746,7 @@ USER REQUEST: `;
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20, scale: 0.97 }}
                 transition={{ duration: 0.25 }}
-                className="rounded-3xl overflow-hidden relative"
+                className="rounded-3xl relative"
                 style={{
                   background: "rgba(255,255,255,0.72)",
                   backdropFilter: "blur(28px) saturate(170%)",
@@ -1760,57 +1786,200 @@ USER REQUEST: `;
                 ))}
               </div>
 
-              {/* Format picker — clients pick their format (aspect ratio / social format) */}
-              {FORMAT_OPTIONS.length > 0 && (
-                <div className="px-4 pt-1 pb-1 flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-                  <span className="flex-shrink-0" style={{ fontSize: 10, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em", marginRight: 4 }}>
-                    {isFr ? "Format" : "Format"}
-                  </span>
-                  {FORMAT_OPTIONS.map(f => {
-                    const on = currentFormat === f.id;
-                    return (
-                      <button key={f.id} onClick={() => setCurrentFormat(f.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
-                        style={{
-                          background: on ? "var(--foreground)" : "rgba(255,255,255,0.5)",
-                          color: on ? "var(--background)" : "var(--muted-foreground)",
-                          border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
-                          fontSize: 10, fontWeight: on ? 700 : 600,
-                        }}>
-                        {f.label}
-                        <span style={{ fontSize: 9, opacity: on ? 0.7 : 0.6, fontWeight: 500 }}>{f.sub}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* ═══ Compact toolbar: Format + Intent + Models — one row ═══ */}
+              <div className="px-4 pt-1 pb-1 flex items-center gap-2 flex-wrap">
 
-              {/* Intent picker — 8 presets that shape the copy framework + visual direction.
-                  Hidden for music mode (Suno/ElevenLabs have their own style system). */}
-              {mode !== "music" && (
-                <div className="px-4 pt-1 pb-1 flex items-center gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-                  <span className="flex-shrink-0" style={{ fontSize: 10, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em", marginRight: 4 }}>
-                    Intent
-                  </span>
-                  {INTENT_PRESETS.map(p => {
-                    const on = intent === p.id;
-                    return (
-                      <button key={p.id} onClick={() => setIntent(p.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                {/* FORMAT — segmented control */}
+                {FORMAT_OPTIONS.length > 0 && (
+                  <div className="flex items-center rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.02)" }}>
+                    {FORMAT_OPTIONS.map(f => {
+                      const on = currentFormat === f.id;
+                      return (
+                        <button key={f.id} onClick={() => setCurrentFormat(f.id)}
+                          className="flex items-center gap-1 px-2 py-1 cursor-pointer transition-all"
+                          style={{
+                            background: on ? "var(--foreground)" : "transparent",
+                            color: on ? "var(--background)" : "var(--muted-foreground)",
+                            fontSize: 10, fontWeight: on ? 700 : 500,
+                            borderRight: "1px solid rgba(0,0,0,0.06)",
+                          }}>
+                          <span>{f.sub}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Separator */}
+                {FORMAT_OPTIONS.length > 0 && mode !== "music" && (
+                  <div style={{ width: 1, height: 16, background: "rgba(0,0,0,0.08)", flexShrink: 0 }} />
+                )}
+
+                {/* INTENT — dropdown trigger + popover */}
+                {mode !== "music" && (
+                  <div ref={intentDropdownRef} className="relative flex-shrink-0">
+                    <button
+                      onClick={() => { setShowIntentDropdown(!showIntentDropdown); setShowModelPicker(false); }}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                      style={{
+                        background: intent !== "auto" ? "var(--foreground)" : "rgba(0,0,0,0.02)",
+                        color: intent !== "auto" ? "var(--background)" : "var(--muted-foreground)",
+                        border: `1px solid ${intent !== "auto" ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
+                        fontSize: 10, fontWeight: 600,
+                      }}>
+                      <span style={{ fontSize: 11 }}>{getIntentPreset(intent).icon}</span>
+                      <span>{isFr ? getIntentPreset(intent).labelFr : getIntentPreset(intent).labelEn}</span>
+                      <ChevronDown size={9} style={{ opacity: 0.6, transform: showIntentDropdown ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                    </button>
+                    <AnimatePresence>
+                      {showIntentDropdown && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                          transition={{ duration: 0.12 }}
+                          className="absolute left-0 bottom-full mb-1 z-50 rounded-xl overflow-hidden"
+                          style={{
+                            background: "rgba(255,255,255,0.97)",
+                            border: "1px solid rgba(0,0,0,0.08)",
+                            boxShadow: "0 -8px 32px rgba(0,0,0,0.12), 0 -2px 8px rgba(0,0,0,0.06)",
+                            minWidth: 220,
+                          }}>
+                          {INTENT_PRESETS.map(p => {
+                            const on = intent === p.id;
+                            return (
+                              <button key={p.id}
+                                onClick={() => { setIntent(p.id); setShowIntentDropdown(false); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 cursor-pointer transition-all text-left"
+                                style={{
+                                  background: on ? "var(--foreground)" : "transparent",
+                                  color: on ? "var(--background)" : "var(--foreground)",
+                                  borderBottom: "1px solid rgba(0,0,0,0.04)",
+                                }}>
+                                <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{p.icon}</span>
+                                <div className="flex flex-col min-w-0">
+                                  <span style={{ fontSize: 11, fontWeight: on ? 700 : 600 }}>
+                                    {isFr ? p.labelFr : p.labelEn}
+                                  </span>
+                                  <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 400 }}>
+                                    {isFr ? p.descFr : p.descEn}
+                                  </span>
+                                </div>
+                                {on && <CheckCircle2 size={10} className="ml-auto flex-shrink-0" style={{ opacity: 0.7 }} />}
+                              </button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* Separator before models */}
+                <div style={{ width: 1, height: 16, background: "rgba(0,0,0,0.08)", flexShrink: 0 }} />
+
+                {/* MODELS — dropdown trigger */}
+                <div ref={modelDropdownRef} className="relative flex-shrink-0">
+                  <button onClick={() => { setShowModelPicker(!showModelPicker); setShowIntentDropdown(false); }}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                    style={{
+                      background: selectedModels.length > 0 ? "var(--foreground)" : "rgba(0,0,0,0.02)",
+                      color: selectedModels.length > 0 ? "var(--background)" : "var(--muted-foreground)",
+                      border: `1px solid ${selectedModels.length > 0 ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
+                      fontSize: 10, fontWeight: 600,
+                    }}>
+                    <Zap size={9} />
+                    {selectedModels.length > 0
+                      ? `${selectedModels.length} ${isFr ? "modèle(s)" : "model(s)"} · ${totalCredits}cr`
+                      : (isFr ? "Modèles" : "Models")}
+                    <ChevronDown size={9} style={{ opacity: 0.6, transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                  </button>
+                  <AnimatePresence>
+                    {showModelPicker && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute left-0 bottom-full mb-1 z-50 rounded-xl"
                         style={{
-                          background: on ? "var(--foreground)" : "rgba(255,255,255,0.5)",
-                          color: on ? "var(--background)" : "var(--muted-foreground)",
-                          border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
-                          fontSize: 10, fontWeight: on ? 700 : 600,
-                        }}
-                        title={isFr ? p.descFr : p.descEn}>
-                        <span style={{ fontSize: 11 }}>{p.icon}</span>
-                        {isFr ? p.labelFr : p.labelEn}
-                      </button>
-                    );
-                  })}
+                          background: "rgba(255,255,255,0.97)",
+                          border: "1px solid rgba(0,0,0,0.08)",
+                          boxShadow: "0 -8px 32px rgba(0,0,0,0.12), 0 -2px 8px rgba(0,0,0,0.06)",
+                          minWidth: 340, maxWidth: 420, maxHeight: 360, overflowY: "auto",
+                        }}>
+                        <div className="flex flex-col gap-1 p-2.5">
+                          {SEGMENTS_BY_MODE[mode].map(seg => {
+                            const modelsInSeg = catalog.filter(m => m.segment === seg.id);
+                            if (modelsInSeg.length === 0) return null;
+                            return (
+                              <div key={seg.id} className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1.5 px-1 pt-1">
+                                  <span style={{ fontSize: 10 }}>{seg.icon}</span>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                    {isFr ? seg.labelFr : seg.labelEn}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {modelsInSeg.map(m => {
+                                    const on = selectedModels.includes(m.id);
+                                    const dis = !on && selectedModels.length >= maxModels;
+                                    const tierC = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
+                                    return (
+                                      <button key={m.id} onClick={() => !dis && toggleModel(m.id)}
+                                        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 cursor-pointer transition-all"
+                                        style={{
+                                          fontSize: 10, fontWeight: on ? 700 : 500,
+                                          background: on ? "var(--foreground)" : "rgba(0,0,0,0.03)",
+                                          color: on ? "var(--background)" : "var(--foreground)",
+                                          border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.06)"}`,
+                                          opacity: dis ? 0.3 : 1, cursor: dis ? "not-allowed" : "pointer",
+                                        }}>
+                                        {on && <CheckCircle2 size={8} />}
+                                        {m.label}
+                                        <span style={{ fontSize: 7, color: on ? "var(--background)" : tierC, opacity: on ? 0.7 : 1, fontWeight: 700 }}>{m.credits}cr</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-              )}
+
+                {/* Music options toggle — only in music mode */}
+                {mode === "music" && (
+                  <button onClick={() => setShowMusicOptions(!showMusicOptions)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
+                    style={{
+                      background: showMusicOptions ? "var(--foreground)" : "rgba(0,0,0,0.02)",
+                      color: showMusicOptions ? "var(--background)" : "var(--muted-foreground)",
+                      border: `1px solid ${showMusicOptions ? "var(--foreground)" : "rgba(0,0,0,0.08)"}`,
+                      fontSize: 10, fontWeight: 600,
+                    }}>
+                    <Music size={9} />
+                    {musicDurationSec}s{musicInstrumental ? " · instru" : ""}{musicLyrics.trim() ? " · paroles" : ""}
+                    <ChevronDown size={9} style={{ opacity: 0.6, transform: showMusicOptions ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                  </button>
+                )}
+
+                {/* Selected model pills — inline */}
+                {selectedModels.map(id => {
+                  const m = catalog.find(c => c.id === id);
+                  return m ? (
+                    <span key={id} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md flex-shrink-0"
+                      style={{ background: "rgba(0,0,0,0.06)", color: "var(--foreground)", fontSize: 9, fontWeight: 600 }}>
+                      {m.label}
+                      <button onClick={() => toggleModel(id)} className="cursor-pointer opacity-40 hover:opacity-100"><X size={7} /></button>
+                    </span>
+                  ) : null;
+                })}
+
+              </div>
 
               {/* Brand preview banner — shown once URL scraping has returned a brand DNA.
                   Compact inline card: logo thumbnail + palette dots + brand name + font. */}
@@ -1885,7 +2054,7 @@ USER REQUEST: `;
 
                       {/* Dismiss */}
                       <button
-                        onClick={() => setBrandDNA(null)}
+                        onClick={() => { setBrandDNA(null); setStoredEnrichment(""); }}
                         className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer flex-shrink-0"
                         style={{ background: "rgba(0,0,0,0.05)" }}
                         title={isFr ? "Ignorer la marque" : "Ignore brand"}
@@ -1900,7 +2069,7 @@ USER REQUEST: `;
               {/* Attached reference preview + type toggle (Product / Pixel-Perfect / Location)
                   Shown whenever a reference will be used: either uploaded image OR URL detected in prompt */}
               <AnimatePresence>
-                {(attachedImages.length > 0 || (promptHasUrl && mode === "image")) && (
+                {(attachedImages.length > 0 || (promptHasUrl && (mode === "image" || mode === "video"))) && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
                     className="px-4 pt-3">
                     <div className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
@@ -2030,96 +2199,7 @@ USER REQUEST: `;
                 )}
               </AnimatePresence>
 
-              {/* Model picker + selected pills — no more mode tabs (moved to header) */}
-              <div className="px-4 pt-3 pb-1 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-                <button onClick={() => setShowModelPicker(!showModelPicker)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
-                  style={{ background: showModelPicker ? "var(--foreground)" : "var(--secondary)", color: showModelPicker ? "var(--background)" : "var(--muted-foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
-                  <Zap size={10} />
-                  {selectedModels.length > 0 ? `${selectedModels.length} ${isFr ? "modèle(s)" : "model(s)"}` : (isFr ? "Modèles" : "Models")}
-                  <ChevronDown size={10} style={{ transform: showModelPicker ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                </button>
-
-                {/* Music options toggle — only in music mode */}
-                {mode === "music" && (
-                  <button onClick={() => setShowMusicOptions(!showMusicOptions)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg cursor-pointer transition-all flex-shrink-0"
-                    style={{ background: showMusicOptions ? "var(--foreground)" : "var(--secondary)", color: showMusicOptions ? "var(--background)" : "var(--muted-foreground)", fontSize: 11, fontWeight: 600, border: "1px solid var(--border)" }}>
-                    <Music size={10} />
-                    {musicDurationSec}s{musicInstrumental ? " · instru" : ""}{musicLyrics.trim() ? " · paroles" : ""}
-                    <ChevronDown size={10} style={{ transform: showMusicOptions ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                  </button>
-                )}
-                {selectedModels.map(id => {
-                  const m = catalog.find(c => c.id === id);
-                  return m ? (
-                    <span key={id} className="flex items-center gap-1 px-2 py-0.5 rounded-lg flex-shrink-0"
-                      style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 10, fontWeight: 600 }}>
-                      {m.label}
-                      <button onClick={() => toggleModel(id)} className="cursor-pointer opacity-60 hover:opacity-100"><X size={8} /></button>
-                    </span>
-                  ) : null;
-                })}
-                {selectedModels.length > 0 && (
-                  <span style={{ fontSize: 10, color: "var(--muted-foreground)", flexShrink: 0 }}>{totalCredits} cr</span>
-                )}
-              </div>
-
-              {/* Model picker dropdown — grouped by segment (usage) */}
-              <AnimatePresence>
-                {showModelPicker && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                    className="px-4 pb-3 overflow-hidden">
-                    <div className="flex flex-col gap-2 pt-1">
-                      {SEGMENTS_BY_MODE[mode].map(seg => {
-                        const modelsInSeg = catalog.filter(m => m.segment === seg.id);
-                        if (modelsInSeg.length === 0) return null;
-                        const selectedInSeg = modelsInSeg.filter(m => selectedModels.includes(m.id)).length;
-                        return (
-                          <div key={seg.id} className="flex flex-col gap-1">
-                            <div className="flex items-baseline gap-1.5">
-                              <span style={{ fontSize: 11 }}>{seg.icon}</span>
-                              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                                {isFr ? seg.labelFr : seg.labelEn}
-                              </span>
-                              <span style={{ fontSize: 9, color: "var(--muted-foreground)", fontWeight: 500 }}>
-                                · {isFr ? seg.descFr : seg.descEn}
-                              </span>
-                              {selectedInSeg > 0 && (
-                                <span className="ml-auto px-1.5 py-0.5 rounded-full" style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 8, fontWeight: 700 }}>
-                                  {selectedInSeg}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {modelsInSeg.map(m => {
-                                const on = selectedModels.includes(m.id);
-                                const dis = !on && selectedModels.length >= maxModels;
-                                const tierC = m.tier === "premium" ? "#7C3AED" : m.tier === "economy" ? "#22c55e" : "var(--muted-foreground)";
-                                return (
-                                  <button key={m.id} onClick={() => !dis && toggleModel(m.id)}
-                                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 cursor-pointer transition-all"
-                                    style={{
-                                      fontSize: 10, fontWeight: on ? 700 : 500,
-                                      background: on ? "var(--foreground)" : "var(--secondary)",
-                                      color: on ? "var(--background)" : "var(--foreground)",
-                                      border: `1px solid ${on ? "var(--foreground)" : "var(--border)"}`,
-                                      opacity: dis ? 0.3 : 1, cursor: dis ? "not-allowed" : "pointer",
-                                    }}>
-                                    {on && <CheckCircle2 size={9} />}
-                                    {m.label}
-                                    <span style={{ fontSize: 7, color: on ? "var(--background)" : tierC, opacity: on ? 0.7 : 1, fontWeight: 700 }}>{m.credits}cr</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* (Models picker is now integrated in the compact toolbar above) */}
 
               {/* Music options panel */}
               <AnimatePresence>
@@ -2202,8 +2282,8 @@ USER REQUEST: `;
 
               {/* Input row */}
               <div className="px-4 pb-3 flex items-end gap-2">
-                {/* Attach button (image mode only) */}
-                {mode === "image" && (
+                {/* Attach button (image & video modes) */}
+                {(mode === "image" || mode === "video") && (
                   <>
                     <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
                       onChange={e => { const files = e.target.files; if (files) { Array.from(files).forEach(f => handleAttachImage(f)); } e.target.value = ""; }} />
@@ -2218,23 +2298,46 @@ USER REQUEST: `;
 
                 {/* Textarea */}
                 <div className="flex-1 relative">
-                  {/* URL detection hint — shows when user pastes a URL in the brief */}
+                  {/* URL detection + Inspire me + scene suggestions */}
                   {(() => {
                     const urlRe = /https?:\/\/[^\s<>"')]+/gi;
                     const urls = (prompt.match(urlRe) || []).slice(0, 3);
-                    if (urls.length === 0) return null;
+                    const hasUrl = urls.length > 0;
+                    const showInspire = (hasUrl || brandDNA) && (mode === "image" || mode === "video") && !isRunning;
+                    if (!hasUrl && sceneSuggestions.length === 0 && !showInspire) return null;
                     return (
                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        {isScraping ? (
+                        {hasUrl && isScraping ? (
                           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(124, 58, 237, 0.1)", color: "#7C3AED", fontSize: 9, fontWeight: 700 }}>
                             <Loader2 size={8} className="animate-spin" />
                             {isFr ? "Analyse..." : "Scraping..."}
                           </span>
-                        ) : (
+                        ) : hasUrl ? (
                           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(34, 197, 94, 0.12)", color: "#16a34a", fontSize: 9, fontWeight: 700 }}>
                             🔗 {urls.length} {isFr ? `URL${urls.length > 1 ? "s" : ""} — seront analysées` : `URL${urls.length > 1 ? "s" : ""} — will be scraped`}
                           </span>
+                        ) : null}
+                        {/* Inspire me button */}
+                        {showInspire && sceneSuggestions.length === 0 && (
+                          <button
+                            onClick={runInspireMe}
+                            disabled={isLoadingSuggestions}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer transition-all disabled:opacity-50"
+                            style={{ background: "rgba(124, 58, 237, 0.08)", color: "#7C3AED", fontSize: 9, fontWeight: 700, border: "1px solid rgba(124, 58, 237, 0.15)" }}>
+                            {isLoadingSuggestions ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                            {isLoadingSuggestions ? (isFr ? "Inspiration..." : "Inspiring...") : (isFr ? "Inspire-moi" : "Inspire me")}
+                          </button>
                         )}
+                        {/* Scene suggestion chips */}
+                        {sceneSuggestions.map((scene, idx) => (
+                          <button key={idx}
+                            onClick={() => { setPrompt(prev => { const stripped = prev.replace(/https?:\/\/[^\s<>"')]+/gi, "").trim(); return stripped ? `${stripped} ${scene}` : scene; }); setSceneSuggestions([]); }}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-full cursor-pointer transition-all"
+                            style={{ background: "rgba(124, 58, 237, 0.06)", color: "#7C3AED", fontSize: 9, fontWeight: 600, border: "1px solid rgba(124, 58, 237, 0.12)" }}>
+                            <Sparkles size={7} />
+                            {scene}
+                          </button>
+                        ))}
                       </div>
                     );
                   })()}
@@ -2371,10 +2474,20 @@ USER REQUEST: `;
                   <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted-foreground)" }}>
                     {isFr ? "Détail des scores" : "Score breakdown"}
                   </span>
-                  <CategoryBar label={isFr ? "Vitesse" : "Speed"} value={lightbox.scores.speed} />
-                  <CategoryBar label={isFr ? "Valeur" : "Value"} value={lightbox.scores.value} />
-                  <CategoryBar label={isFr ? "Qualité" : "Quality"} value={lightbox.scores.quality} />
-                  <CategoryBar label={isFr ? "Fiabilité" : "Rely."} value={lightbox.scores.reliability} />
+                  {([
+                    { label: isFr ? "Vitesse" : "Speed", value: lightbox.scores.speed },
+                    { label: isFr ? "Valeur" : "Value", value: lightbox.scores.value },
+                    { label: isFr ? "Qualité" : "Quality", value: lightbox.scores.quality },
+                    { label: isFr ? "Fiabilité" : "Rely.", value: lightbox.scores.reliability },
+                  ] as const).map(m => (
+                    <div key={m.label} className="flex items-center gap-2" style={{ fontSize: 11 }}>
+                      <span style={{ width: 56, color: "var(--muted-foreground)", flexShrink: 0, fontWeight: 500 }}>{m.label}</span>
+                      <div style={{ flex: 1, height: 5, borderRadius: 3, background: "var(--secondary)" }}>
+                        <div style={{ width: `${Math.max(2, m.value)}%`, height: "100%", borderRadius: 3, background: m.value >= 70 ? "#22c55e" : m.value >= 50 ? "#f59e0b" : "#ef4444", transition: "width 0.6s ease" }} />
+                      </div>
+                      <span style={{ width: 24, textAlign: "right", color: "var(--foreground)", fontWeight: 600, fontSize: 10 }}>{m.value}</span>
+                    </div>
+                  ))}
                 </div>
 
                 {(() => {
@@ -2426,16 +2539,24 @@ USER REQUEST: `;
                       <Share2 size={14} /> {isFr ? "Publier sur les réseaux" : "Publish to networks"}
                     </button>
                   )}
-                  {lightbox.imageUrl && (
+                  {(lightbox.imageUrl || lightbox.videoUrl) && (
                     <button
-                      onClick={() => navigate("/hub/editor", { state: { assetUrl: lightbox.imageUrl, assetId: lightbox.id } })}
+                      onClick={() => navigate("/hub/editor", {
+                        state: {
+                          assetUrl: lightbox.imageUrl || lightbox.videoUrl,
+                          assetId: lightbox.id,
+                          assetType: lightbox.videoUrl && !lightbox.imageUrl ? "video" : "image",
+                          prompt,
+                          model: lightbox.modelId,
+                        },
+                      })}
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all cursor-pointer"
                       style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: 13, fontWeight: 600, border: "1px solid var(--border)" }}>
                       <Pencil size={14} /> {isFr ? "Modifier dans l'éditeur" : "Edit in editor"}
                     </button>
                   )}
-                  {lightbox.imageUrl && (
-                    <a href={lightbox.imageUrl} download target="_blank" rel="noreferrer"
+                  {(lightbox.imageUrl || lightbox.videoUrl) && (
+                    <a href={lightbox.imageUrl || lightbox.videoUrl} download target="_blank" rel="noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl transition-all"
                       style={{ background: "var(--foreground)", color: "var(--background)", fontSize: 13, fontWeight: 600 }}>
                       <Download size={14} /> {isFr ? "Télécharger" : "Download"}
