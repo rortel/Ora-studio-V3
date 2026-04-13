@@ -1879,6 +1879,86 @@ function isFalVideoModel(id: string): boolean {
   return !!falVideoModelMap[id];
 }
 
+// ── POLLO.AI — unified video provider (50+ models via single API) ──
+const POLLO_BASE = "https://pollo.ai/api/platform";
+
+// ORA model id → Pollo API path (relative to POLLO_BASE)
+const polloVideoModelMap: Record<string, { polloPath: string; defaultLength: number }> = {
+  "kling-2.5":        { polloPath: "/generation/kling-ai/kling-v2-5-turbo", defaultLength: 5 },
+  "kling-v2.1":       { polloPath: "/generation/kling-ai/kling-v2-1",      defaultLength: 5 },
+  "hailuo-02":        { polloPath: "/generation/minimax/minimax-hailuo-02", defaultLength: 6 },
+  "wan-2.2":          { polloPath: "/generation/wanx/wan-v2-2",            defaultLength: 5 },
+  "veo-3.1":          { polloPath: "/generation/google/veo3-1",            defaultLength: 5 },
+  "sora-2":           { polloPath: "/generation/sora/sora-2",              defaultLength: 5 },
+  "seedance-2.0":     { polloPath: "/generation/bytedance/seedance",       defaultLength: 5 },
+  "seedance-1.5-pro": { polloPath: "/generation/bytedance/seedance-1-5-pro", defaultLength: 5 },
+  "pika":             { polloPath: "/generation/pika/pika-v2-2",           defaultLength: 5 },
+  "runway-gen3":      { polloPath: "/generation/runway/runway-gen-4-turbo", defaultLength: 5 },
+  "ray-2":            { polloPath: "/generation/luma/luma-ray-2-0",        defaultLength: 5 },
+  "ray-flash-2":      { polloPath: "/generation/luma/luma-ray-2-0-flash",  defaultLength: 5 },
+  "ora-motion":       { polloPath: "/generation/luma/luma-ray-2-0",        defaultLength: 5 },
+};
+
+function isPolloVideoModel(id: string): boolean {
+  return !!polloVideoModelMap[id];
+}
+
+async function callPolloVideoStart(
+  polloPath: string,
+  opts: { prompt: string; imageUrl?: string; durationSec: number; aspectRatio: string },
+): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
+  const key = Deno.env.get("POLLO_API_KEY");
+  if (!key) return { ok: false, error: "POLLO_API_KEY not configured" };
+  try {
+    const input: Record<string, unknown> = {
+      prompt: opts.prompt,
+      aspectRatio: opts.aspectRatio,
+      length: opts.durationSec,
+    };
+    if (opts.imageUrl) input.image = opts.imageUrl;
+
+    const res = await fetch(`${POLLO_BASE}${polloPath}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key },
+      body: JSON.stringify({ input }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) return { ok: false, error: `Pollo ${polloPath} HTTP ${res.status}: ${txt.slice(0, 300)}` };
+    let data: any;
+    try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${polloPath}: non-JSON response` }; }
+    if (!data.taskId) return { ok: false, error: `Pollo ${polloPath}: no taskId (got: ${JSON.stringify(data).slice(0, 200)})` };
+    return { ok: true, taskId: data.taskId };
+  } catch (err) {
+    return { ok: false, error: `Pollo ${polloPath} error: ${err}` };
+  }
+}
+
+async function callPolloVideoStatus(taskId: string): Promise<{ state: string; videoUrl?: string; error?: string }> {
+  const key = Deno.env.get("POLLO_API_KEY");
+  if (!key) return { state: "error", error: "POLLO_API_KEY not configured" };
+  try {
+    const res = await fetch(`${POLLO_BASE}/generation/${taskId}/status`, {
+      headers: { "x-api-key": key },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json();
+    // Pollo status: "waiting" | "processing" | "succeed" | "failed"
+    const gen = data?.generations?.[0];
+    if (gen?.status === "succeed" && gen?.url) {
+      return { state: "completed", videoUrl: gen.url };
+    }
+    if (gen?.status === "failed") {
+      return { state: "failed", error: gen?.failMsg || "Pollo generation failed" };
+    }
+    // Map Pollo states to our states
+    const st = gen?.status || data?.status || "processing";
+    return { state: st === "waiting" ? "queued" : "processing" };
+  } catch (err) {
+    return { state: "error", error: `Pollo status error: ${err}` };
+  }
+}
+
 // Submit to FAL queue. Returns { requestId, statusUrl, responseUrl }.
 async function callFalVideoStart(falPath: string, body: any): Promise<{ ok: true; requestId: string; statusUrl: string; responseUrl: string } | { ok: false; error: string }> {
   const key = Deno.env.get("FAL_API_KEY");
@@ -4587,7 +4667,25 @@ app.get("/generate/video-start", async (c) => {
       }
     }
 
-    // ── Check if model routes through FAL (Minimax Hailuo, Wan 2.2, Kling 2.5) ──
+    // ── Check if model routes through POLLO (primary provider — 50+ models) ──
+    if (isPolloVideoModel(model)) {
+      const pm = polloVideoModelMap[model];
+      const aspectRatio = clientAspectRatio || "16:9";
+      console.log(`[video-start] POLLO: model=${model} path=${pm.polloPath} hasImage=${!!resolvedImageUrl}`);
+      const polloResult = await callPolloVideoStart(pm.polloPath, {
+        prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio,
+      });
+      if (polloResult.ok) {
+        const genId = `pollo:${polloResult.taskId}`;
+        console.log(`[video-start] POLLO OK in ${Date.now() - t0}ms, taskId=${polloResult.taskId}`);
+        if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+        logCost({ type: "video", model, provider: `pollo/${pm.polloPath.split("/").pop()}`, costUsd: 0.08, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
+        return c.json({ success: true, generationId: genId, state: "queued", model });
+      }
+      console.log(`[video-start] POLLO FAILED: ${polloResult.error} — falling through to FAL/Luma`);
+    }
+
+    // ── Check if model routes through FAL (fallback for Minimax Hailuo, Wan 2.2, Kling 2.5) ──
     if (isFalVideoModel(model)) {
       const fm = falVideoModelMap[model];
       const hasImage = !!resolvedImageUrl;
@@ -4696,12 +4794,221 @@ app.get("/generate/video-start", async (c) => {
   }
 });
 
+// ── VIDEO START (POST — avoids URI Too Long when _token is large) ──
+app.post("/generate/video-start", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch { }
+
+    const pb = c.get("parsedBody") || {};
+    const rawPrompt = pb.prompt || c.req.query("prompt");
+    const model = pb.model || c.req.query("model") || "ora-motion";
+    const imageUrl = pb.imageUrl || c.req.query("imageUrl") || undefined;
+    const clientAspectRatio = pb.aspectRatio || c.req.query("aspectRatio") || undefined;
+    const clientDuration = parseInt(pb.duration || c.req.query("duration") || "5", 10) || 5;
+    const videoDuration = Math.min(Math.max(clientDuration, 2), 30);
+    const brandVisualPrefix = pb.brandVisual || c.req.query("brandVisual") || "";
+
+    console.log(`[video-start/POST] raw prompt="${rawPrompt?.slice(0, 60)}", model=${model}, img2vid=${!!imageUrl}, aspectRatio=${clientAspectRatio || "default"}, duration=${videoDuration}s, user=${user?.id?.slice(0, 8) || "anon"}`);
+    if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
+
+    // ── SERVER-SIDE BRAND CONTEXT for video prompts ──
+    let prompt = rawPrompt;
+    let brandCtx: BrandContext | null = null;
+    if (user) {
+      try {
+        brandCtx = await buildBrandContext(user.id);
+      } catch (err) {
+        console.log(`[video-start/POST] buildBrandContext failed (continuing without): ${err}`);
+      }
+    }
+
+    if (brandCtx) {
+      const brandParts: string[] = [];
+      const allColors = [...new Set([...brandCtx.colorPalette, ...brandCtx.imageBankColors])].slice(0, 6);
+      if (allColors.length > 0) brandParts.push(`dominant color palette ${allColors.join(", ")}`);
+      if (brandCtx.imageBankMoods.length > 0) brandParts.push(`${brandCtx.imageBankMoods.slice(0, 3).join(", ")} mood`);
+      else if (brandCtx.photoStyle?.mood) brandParts.push(`${brandCtx.photoStyle.mood} mood`);
+      if (brandCtx.imageBankLighting.length > 0) brandParts.push(`${brandCtx.imageBankLighting.slice(0, 3).join(", ")} lighting`);
+      else if (brandCtx.photoStyle?.lighting) brandParts.push(`${brandCtx.photoStyle.lighting} lighting`);
+      if (brandCtx.imageBankStyles.length > 0) brandParts.push(`${brandCtx.imageBankStyles.slice(0, 2).join(", ")} style`);
+
+      if (brandParts.length > 0) {
+        prompt = `${rawPrompt}. Visual direction: ${brandParts.join(", ")}. Cinematic brand aesthetic.`;
+        console.log(`[video-start/POST] Brand-enriched prompt (${prompt.length} chars): ...${prompt.slice(-120)}`);
+      }
+    } else if (brandVisualPrefix && brandVisualPrefix.length > 10) {
+      prompt = `${rawPrompt}. Visual direction: ${brandVisualPrefix}. Cinematic brand aesthetic.`;
+      console.log(`[video-start/POST] Fallback brand visual from body (${prompt.length} chars)`);
+    }
+
+    const enhancedPrompt = await Promise.race([
+      enhanceImagePrompt(prompt, !!imageUrl),
+      new Promise<string>(resolve => setTimeout(() => resolve(prompt), 8_000)),
+    ]);
+    console.log(`[video-start/POST] enhanced prompt="${enhancedPrompt.slice(0, 80)}" (preserveBrand=${!!imageUrl})`);
+
+    if (user) deductCredit(user.id, getModelCreditCost("video", model)).catch(() => {});
+
+    const antiTextVideo = ". No visible text, no letters, no words, no brand names, no logos anywhere in the video.";
+    const finalVideoPrompt = enhancedPrompt.toLowerCase().includes("no visible text") ? enhancedPrompt : enhancedPrompt + antiTextVideo;
+
+    let resolvedImageUrl = imageUrl;
+    if (imageUrl) console.log(`[video-start/POST] Using client image as first frame: ${imageUrl.slice(0, 100)}...`);
+    if (!resolvedImageUrl && brandCtx && brandCtx.topRefImages.length > 0) {
+      try {
+        await ensureImageBankBucket();
+        const sb = supabaseAdmin();
+        const bestRef = brandCtx.topRefImages[0];
+        const { data } = await sb.storage.from(IMAGE_BANK_BUCKET).createSignedUrl(bestRef.storagePath, 3600);
+        if (data?.signedUrl) {
+          resolvedImageUrl = data.signedUrl;
+          console.log(`[video-start/POST] Auto-resolved brand ref as first frame: "${bestRef.description?.slice(0, 50)}"`);
+        }
+      } catch (err) {
+        console.log(`[video-start/POST] Auto-resolve brand ref failed (continuing without): ${err}`);
+      }
+    }
+
+    // ── POLLO (primary provider) ──
+    if (isPolloVideoModel(model)) {
+      const pm = polloVideoModelMap[model];
+      const aspectRatio = clientAspectRatio || "16:9";
+      console.log(`[video-start/POST] POLLO: model=${model} path=${pm.polloPath} hasImage=${!!resolvedImageUrl}`);
+      const polloResult = await callPolloVideoStart(pm.polloPath, {
+        prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio,
+      });
+      if (polloResult.ok) {
+        const genId = `pollo:${polloResult.taskId}`;
+        console.log(`[video-start/POST] POLLO OK in ${Date.now() - t0}ms, taskId=${polloResult.taskId}`);
+        if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+        logCost({ type: "video", model, provider: `pollo/${pm.polloPath.split("/").pop()}`, costUsd: 0.08, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
+        return c.json({ success: true, generationId: genId, state: "queued", model });
+      }
+      console.log(`[video-start/POST] POLLO FAILED: ${polloResult.error} — falling through to FAL/Luma`);
+    }
+
+    // ── FAL models (fallback) ──
+    if (isFalVideoModel(model)) {
+      const fm = falVideoModelMap[model];
+      const hasImage = !!resolvedImageUrl;
+      const falPath = hasImage ? fm.i2v : fm.t2v;
+      if (!falPath) {
+        return c.json({ success: false, error: `${model} does not support ${hasImage ? "image-to-video" : "text-to-video"}` }, 400);
+      }
+      const aspectRatio = clientAspectRatio || "16:9";
+      const falBody = fm.buildBody(
+        { prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio },
+        hasImage
+      );
+      console.log(`[video-start/POST] FAL: model=${model} path=${falPath} img2v=${hasImage}`);
+      const falResult = await callFalVideoStart(falPath, falBody);
+      if (falResult.ok) {
+        const genId = packFalGenerationId(falResult.statusUrl, falResult.responseUrl);
+        console.log(`[video-start/POST] FAL OK in ${Date.now() - t0}ms, requestId=${falResult.requestId}`);
+        if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+        logCost({ type: "video", model, provider: `fal/${fm.label}`, costUsd: 0.20, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
+        return c.json({ success: true, generationId: genId, state: "queued", model });
+      }
+      console.log(`[video-start/POST] FAL FAILED: ${falResult.error} — falling through to Luma`);
+    }
+
+    // ── Secondary provider ──
+    const hfMapping = hfVideoModelMap[model];
+    if (hfMapping) {
+      const aspectRatio = clientAspectRatio || hfMapping.aspectRatio;
+      const hfBody: any = { prompt: finalVideoPrompt, duration: videoDuration };
+      if (resolvedImageUrl) hfBody.image_url = resolvedImageUrl;
+      if (clientAspectRatio) hfBody.aspect_ratio = clientAspectRatio;
+
+      const modelChain = resolvedImageUrl ? hfMapping.hfModelsI2v : hfMapping.hfModelsT2v;
+      console.log(`[video-start/POST] Secondary provider: model=${model}, chain=${modelChain.join(",")}, hasImage=${!!resolvedImageUrl}`);
+      if (modelChain.length > 0) {
+        const result = await hfFetchWithFallback(modelChain, hfBody, "video-start-hf-post");
+        if (result.ok) {
+          const { data: hfGen, model: usedModel } = result;
+          const genId = `hf:${hfGen.request_id}`;
+          console.log(`[video-start/POST] Secondary OK in ${Date.now() - t0}ms, model=${usedModel}, genId=${genId}`);
+          if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+          logCost({ type: "video", model, provider: usedModel.split("/").slice(0, 2).join("/"), costUsd: 0.10, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
+          return c.json({ success: true, generationId: genId, state: "queued", model });
+        }
+        console.log(`[video-start/POST] Secondary provider FAILED: ${result.error} — falling through to Luma`);
+      }
+    }
+
+    // ── Luma path ──
+    const mapping = videoModelMap[model];
+    if (!mapping) return c.json({ error: `Unknown video model: ${model}` }, 400);
+
+    const aspectRatio = clientAspectRatio || mapping.aspectRatio;
+    const lumaDuration = mapping.lumaModel?.includes("ray")
+      ? (videoDuration <= 7 ? 5 : 9)
+      : videoDuration;
+
+    const body: any = {
+      prompt: finalVideoPrompt,
+      model: mapping.lumaModel,
+      aspect_ratio: aspectRatio,
+      duration: `${lumaDuration}s`,
+    };
+
+    if (resolvedImageUrl) {
+      body.keyframes = { frame0: { type: "image", url: resolvedImageUrl } };
+    }
+
+    const submitRes = await fetch(`${LUMA_BASE}/generations/video`, {
+      method: "POST",
+      headers: lumaHeaders(),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!submitRes.ok) {
+      const errBody = await submitRes.text();
+      console.log(`[video-start/POST] Luma submit failed ${submitRes.status}: ${errBody.slice(0, 200)}`);
+      return c.json({ success: false, error: `Video submit error ${submitRes.status}: ${errBody.slice(0, 200)}` }, 500);
+    }
+    const generation = await submitRes.json();
+    const genId = generation.id;
+    if (!genId) {
+      console.log(`[video-start/POST] No generation id:`, JSON.stringify(generation).slice(0, 300));
+      return c.json({ success: false, error: "No generation ID returned" }, 500);
+    }
+
+    console.log(`[video-start/POST] OK in ${Date.now() - t0}ms, genId=${genId}, state=${generation.state}`);
+    if (user) logEvent("generation", { userId: user.id, type: "video", model }).catch(() => {});
+
+    return c.json({
+      success: true,
+      generationId: genId,
+      state: generation.state || "queued",
+      model,
+      lumaModel: mapping.lumaModel,
+    });
+  } catch (err) {
+    console.log(`[video-start/POST] FAIL after ${Date.now() - t0}ms:`, err);
+    return c.json({ success: false, error: `Video start failed: ${err}` }, 500);
+  }
+});
+
 // ── VIDEO STATUS (poll Luma or secondary provider once, return current state) ──
 app.get("/generate/video-status", async (c) => {
   const t0 = Date.now();
   try {
     const rawId = c.req.query("id");
     if (!rawId) return c.json({ error: "id required" }, 400);
+
+    // Detect Pollo via "pollo:" prefix
+    if (rawId.startsWith("pollo:")) {
+      const taskId = rawId.slice(6);
+      const r = await callPolloVideoStatus(taskId);
+      console.log(`[video-status] POLLO state=${r.state} (${Date.now() - t0}ms)`);
+      if (r.state === "completed") return c.json({ success: true, state: "completed", videoUrl: r.videoUrl || null });
+      if (r.state === "failed") return c.json({ success: true, state: "failed", error: r.error || "Video generation failed" });
+      if (r.state === "error") return c.json({ success: false, state: "error", error: r.error });
+      return c.json({ success: true, state: r.state });
+    }
 
     // Detect FAL via "fal:" prefix
     if (rawId.startsWith("fal:")) {

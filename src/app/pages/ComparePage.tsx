@@ -838,13 +838,15 @@ export function ComparePage() {
     for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 5000));
       try {
-        const res = await serverGet(`/generate/video-status?id=${genId}`);
+        // video-status needs no auth — use simple GET with apikey only (avoids _token in URL)
+        const r = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}&apikey=${publicAnonKey}`, { signal: AbortSignal.timeout(30_000) });
+        const res = await r.json();
         if (res.state === "completed" && res.videoUrl) return res.videoUrl;
         if (res.state === "failed") return null;
       } catch { /* continue */ }
     }
     return null;
-  }, [serverGet]);
+  }, []);
 
   const pollSuno = useCallback(async (taskId: string): Promise<string | null> => {
     for (let i = 0; i < 60; i++) {
@@ -1228,9 +1230,14 @@ USER REQUEST: `;
         setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: "running" } : s));
         const t0 = Date.now();
         try {
-          const imgRefParam = effectiveProductRef ? `&imageUrl=${encodeURIComponent(effectiveProductRef)}` : "";
-          // Video uses the SHORT enriched prompt for URL-safety (same reason as image GET).
-          const startRes = await serverGet(`/generate/video-start?prompt=${encodeURIComponent(enrichedPromptShort.slice(0, 3000))}&model=${modelId}&aspectRatio=${encodeURIComponent(aspectRatio)}&duration=5${imgRefParam}`);
+          // Video uses POST to avoid URI Too Long with large _token
+          const startRes = await serverPost("/generate/video-start", {
+            prompt: enrichedPromptShort,
+            model: modelId,
+            aspectRatio,
+            duration: "5",
+            ...(effectiveProductRef ? { imageUrl: effectiveProductRef } : {}),
+          });
           if (!startRes.success || !startRes.generationId) throw new Error(startRes.error || "No generationId");
           const videoUrl = await pollVideo(startRes.generationId);
           const timeMs = Date.now() - t0;

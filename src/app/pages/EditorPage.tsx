@@ -1260,17 +1260,19 @@ function EditorPageContent() {
       const sourceImageUrl: string = upRes.imageUrl;
       setAnimate(a => ({ ...a, sourceImageUrl }));
 
-      // 2) Start video generation (simple GET — no Auth header to avoid CORS preflight)
-      const qs = new URLSearchParams({
-        prompt: animate.prompt,
-        model: animate.model,
-        imageUrl: sourceImageUrl,
-        duration: String(animate.duration),
-        aspectRatio: image.width >= image.height ? "16:9" : "9:16",
-        apikey: publicAnonKey,
-        _token: getAuthHeader(),
+      // 2) Start video generation (POST to avoid URI Too Long with large _token)
+      const startRes = await fetch(`${API_BASE}/generate/video-start`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          prompt: animate.prompt,
+          model: animate.model,
+          imageUrl: sourceImageUrl,
+          duration: String(animate.duration),
+          aspectRatio: image.width >= image.height ? "16:9" : "9:16",
+          _token: getAuthHeader(),
+        }),
       });
-      const startRes = await fetch(`${API_BASE}/generate/video-start?${qs.toString()}`);
       const startJson = await startRes.json();
       if (!startJson.success || !startJson.generationId) {
         throw new Error(startJson.error || "Video start failed");
