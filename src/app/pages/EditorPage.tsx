@@ -1260,20 +1260,17 @@ function EditorPageContent() {
       const sourceImageUrl: string = upRes.imageUrl;
       setAnimate(a => ({ ...a, sourceImageUrl }));
 
-      // 2) Start video generation (GET with query params)
+      // 2) Start video generation (simple GET — no Auth header to avoid CORS preflight)
       const qs = new URLSearchParams({
         prompt: animate.prompt,
         model: animate.model,
         imageUrl: sourceImageUrl,
         duration: String(animate.duration),
         aspectRatio: image.width >= image.height ? "16:9" : "9:16",
+        apikey: publicAnonKey,
+        _token: getAuthHeader(),
       });
-      const token = getAuthHeader();
-      const startUrl = `${API_BASE}/generate/video-start?${qs.toString()}${token ? `&_token=${encodeURIComponent(token)}` : ""}`;
-      const startRes = await fetch(startUrl, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
-      });
+      const startRes = await fetch(`${API_BASE}/generate/video-start?${qs.toString()}`);
       const startJson = await startRes.json();
       if (!startJson.success || !startJson.generationId) {
         throw new Error(startJson.error || "Video start failed");
@@ -1285,10 +1282,7 @@ function EditorPageContent() {
       for (let i = 0; i < 80; i++) {
         await new Promise(r => setTimeout(r, 5000));
         try {
-          const pollRes = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}`, {
-            method: "GET",
-            headers: { Authorization: `Bearer ${publicAnonKey}` },
-          });
+          const pollRes = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}&apikey=${publicAnonKey}`);
           const pollJson = await pollRes.json();
           if (pollJson.state === "completed" && pollJson.videoUrl) {
             videoUrl = pollJson.videoUrl;
