@@ -2189,6 +2189,70 @@ function EditorPageContent() {
             onDeleteLayer={deleteLayer}
             textLayerInputRef={textLayerInputRef}
             isFr={isFr}
+            onAiTool={async (toolName) => {
+              if (!imageUrl && !image) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); return; }
+              const url = imageUrl || "";
+              // Tools that need just the image URL
+              const simpleTools: Record<string, { path: string; body: Record<string, unknown>; msg: string }> = {
+                "image-bg-remove": { path: "/tools/image-bg-remove", body: { imageUrl: url }, msg: isFr ? "Suppression du fond..." : "Removing background..." },
+                "image-upscale": { path: "/tools/image-upscale", body: { imageUrl: url, scale: 2 }, msg: isFr ? "Upscale en cours..." : "Upscaling..." },
+                "image-watermark-remove": { path: "/tools/image-watermark-remove", body: { imageUrl: url }, msg: isFr ? "Suppression watermark..." : "Removing watermark..." },
+                "image-uncrop": { path: "/tools/image-uncrop", body: { imageUrl: url }, msg: isFr ? "Extension de l'image..." : "Extending image..." },
+              };
+              // Tools that need a prompt
+              const promptTools: Record<string, { path: string; placeholder: string }> = {
+                "image-bg-change": { path: "/tools/image-bg-change", placeholder: isFr ? "Décrivez le nouveau fond..." : "Describe the new background..." },
+                "image-object-remove": { path: "/tools/image-object-remove", placeholder: isFr ? "Décrivez l'objet à supprimer..." : "Describe the object to remove..." },
+                "image-inpaint": { path: "/tools/image-inpaint", placeholder: isFr ? "Quoi peindre dans la zone masquée..." : "What to paint in masked area..." },
+                "image-face-swap": { path: "/tools/image-face-swap", placeholder: isFr ? "URL du visage source" : "Source face image URL" },
+                "motion-transfer": { path: "/tools/motion-transfer", placeholder: isFr ? "URL de la vidéo de référence" : "Reference video URL" },
+                "lip-sync": { path: "/tools/lip-sync", placeholder: isFr ? "URL audio pour lip-sync" : "Audio URL for lip-sync" },
+                "video-to-video": { path: "/tools/video-to-video", placeholder: isFr ? "Code style (ex: anime_01)" : "Style code (e.g. anime_01)" },
+                "video-upscale": { path: "/tools/video-upscale", placeholder: "" },
+                "video-extend": { path: "/tools/video-extend", placeholder: isFr ? "Prompt de continuation..." : "Continuation prompt..." },
+                "video-bg-remove": { path: "/tools/video-bg-remove", placeholder: "" },
+                "video-add-audio": { path: "/tools/video-add-audio", placeholder: isFr ? "Décrivez l'ambiance sonore..." : "Describe the audio mood..." },
+              };
+              const simple = simpleTools[toolName];
+              if (simple) {
+                toast.info(simple.msg);
+                try {
+                  const res = await serverPost(simple.path, simple.body);
+                  if (res.success) {
+                    toast.success(isFr ? `Outil lancé ! ID: ${res.generationId?.slice(0, 20)}` : `Tool started! ID: ${res.generationId?.slice(0, 20)}`);
+                  } else {
+                    toast.error(res.error || "Error");
+                  }
+                } catch (e) { toast.error(`${e}`); }
+                return;
+              }
+              const pt = promptTools[toolName];
+              if (pt) {
+                const userInput = window.prompt(pt.placeholder);
+                if (!userInput && !["video-upscale", "video-bg-remove"].includes(toolName)) return;
+                const body: Record<string, unknown> = { imageUrl: url };
+                if (toolName === "image-bg-change") body.prompt = userInput;
+                else if (toolName === "image-object-remove") body.prompt = userInput;
+                else if (toolName === "image-inpaint") body.prompt = userInput;
+                else if (toolName === "image-face-swap") body.faceImageUrl = userInput;
+                else if (toolName === "motion-transfer") { body.videoUrl = userInput; }
+                else if (toolName === "lip-sync") { body.audioUrl = userInput; }
+                else if (toolName === "video-to-video") { body.videoUrl = url; body.styleCode = userInput; body.prompt = ""; }
+                else if (toolName === "video-upscale") { body.videoUrl = url; }
+                else if (toolName === "video-extend") { body.videoUrl = url; body.prompt = userInput; }
+                else if (toolName === "video-bg-remove") { body.videoUrl = url; }
+                else if (toolName === "video-add-audio") { body.videoUrl = url; body.prompt = userInput; }
+                toast.info(isFr ? "Traitement en cours..." : "Processing...");
+                try {
+                  const res = await serverPost(pt.path, body);
+                  if (res.success) {
+                    toast.success(isFr ? `Outil lancé ! ID: ${res.generationId?.slice(0, 20)}` : `Tool started! ID: ${res.generationId?.slice(0, 20)}`);
+                  } else {
+                    toast.error(res.error || "Error");
+                  }
+                } catch (e) { toast.error(`${e}`); }
+              }
+            }}
           />
 
           {/* ─── Variants overlay (bottom right, above toolbar) ─── */}

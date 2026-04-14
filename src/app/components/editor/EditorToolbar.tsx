@@ -10,7 +10,8 @@ import {
   Eraser, Paintbrush, ImageIcon, Expand, Sparkles,
   MousePointer2, Undo2, Redo2, Type, Image as ImageLucide,
   Shapes, Square as SquareIcon, Circle as CircleIcon, Star as StarIcon,
-  Scissors, Film,
+  Scissors, Film, Wand2, PersonStanding, Mic2, Palette, ArrowUpRight,
+  ScanEye, ImageOff, UserRound, PaintBucket, Maximize2 as UncropIcon,
   Layers3, Save, Share2, Download,
   ChevronLeft, ChevronDown, Loader2, Check, Clock, Video, Music2, Settings2,
   Plus, Minus, Maximize, FlipHorizontal2, RotateCcw, Trash2,
@@ -125,6 +126,8 @@ export interface EditorToolbarProps {
   onDeleteLayer: (id: string) => void;
   textLayerInputRef: RefObject<HTMLInputElement | null>;
   isFr: boolean;
+  /* AI Tools */
+  onAiTool?: (tool: string) => void;
 }
 
 export function EditorToolbar(props: EditorToolbarProps) {
@@ -146,7 +149,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
     reframeFormat, onReframeFormatChange,
     zoom, onZoomChange, onFitToScreen,
     selectedLayer, onUpdateLayer, onMoveLayer, onDeleteLayer,
-    textLayerInputRef, isFr,
+    textLayerInputRef, isFr, onAiTool,
   } = props;
 
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -435,6 +438,62 @@ export function EditorToolbar(props: EditorToolbarProps) {
                   onClick={() => { videoFileInputRef.current?.click(); setAddMenuOpen(false); }} />
                 <DropdownItem icon={<Music2 size={13} />} label={isFr ? "Piste audio" : "Audio track"}
                   onClick={() => { audioFileInputRef.current?.click(); setAddMenuOpen(false); }} />
+
+                {/* ── AI Tools ── */}
+                <div style={{ height: 1, background: "#f0f0f0", margin: "3px 0" }} />
+                <div style={{ padding: "4px 10px 2px", fontSize: 9, fontWeight: 600, color: "#7C3AED", textTransform: "uppercase", letterSpacing: 1 }}>
+                  {isFr ? "Outils IA" : "AI Tools"}
+                </div>
+                <DropdownItem icon={<ImageOff size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Supprimer le fond" : "Remove background"}
+                  onClick={() => { onAiTool?.("image-bg-remove"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<PaintBucket size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Changer le fond" : "Change background"}
+                  onClick={() => { onAiTool?.("image-bg-change"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<ScanEye size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Supprimer objet" : "Remove object"}
+                  onClick={() => { onAiTool?.("image-object-remove"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<ArrowUpRight size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Upscale image" : "Upscale image"}
+                  onClick={() => { onAiTool?.("image-upscale"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<UncropIcon size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Étendre l'image" : "Uncrop / Outpaint"}
+                  onClick={() => { onAiTool?.("image-uncrop"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<UserRound size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Face swap" : "Face swap"}
+                  onClick={() => { onAiTool?.("image-face-swap"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Wand2 size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Suppr. watermark" : "Remove watermark"}
+                  onClick={() => { onAiTool?.("image-watermark-remove"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Palette size={13} style={{ color: "#7C3AED" }} />}
+                  label={isFr ? "Inpainting" : "Inpainting"}
+                  onClick={() => { onAiTool?.("image-inpaint"); setAddMenuOpen(false); }} />
+
+                <div style={{ height: 1, background: "#f0f0f0", margin: "3px 0" }} />
+                <div style={{ padding: "4px 10px 2px", fontSize: 9, fontWeight: 600, color: "#E11D48", textTransform: "uppercase", letterSpacing: 1 }}>
+                  {isFr ? "Outils vidéo IA" : "AI Video Tools"}
+                </div>
+                <DropdownItem icon={<PersonStanding size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Transfert mouvement" : "Motion transfer"}
+                  onClick={() => { onAiTool?.("motion-transfer"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Mic2 size={13} style={{ color: "#E11D48" }} />}
+                  label="Lip sync / Avatar"
+                  onClick={() => { onAiTool?.("lip-sync"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Palette size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Style vidéo (V2V)" : "Video style (V2V)"}
+                  onClick={() => { onAiTool?.("video-to-video"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<ArrowUpRight size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Upscale vidéo" : "Video upscale"}
+                  onClick={() => { onAiTool?.("video-upscale"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Film size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Prolonger vidéo" : "Extend video"}
+                  onClick={() => { onAiTool?.("video-extend"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<ImageOff size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Supprimer fond vidéo" : "Video bg remove"}
+                  onClick={() => { onAiTool?.("video-bg-remove"); setAddMenuOpen(false); }} />
+                <DropdownItem icon={<Music2 size={13} style={{ color: "#E11D48" }} />}
+                  label={isFr ? "Ajouter audio à vidéo" : "Add audio to video"}
+                  onClick={() => { onAiTool?.("video-add-audio"); setAddMenuOpen(false); }} />
               </motion.div>
             )}
           </AnimatePresence>
