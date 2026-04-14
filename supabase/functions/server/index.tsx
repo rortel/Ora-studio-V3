@@ -7,7 +7,10 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-13T17:00Z — v563-api-balances");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-14T15:00Z — v564-pollo-webhooks");
+
+// ── Pollo webhook secret (for signature verification) ──
+const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
 
 const app = new Hono().basePath("/make-server-cad57f79");
 
@@ -1881,6 +1884,19 @@ function isFalVideoModel(id: string): boolean {
 
 // ── POLLO.AI — unified video provider (50+ models via single API) ──
 const POLLO_BASE = "https://pollo.ai/api/platform";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "https://kbvkjafkztbsewtaijuh.supabase.co";
+const POLLO_WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/make-server-cad57f79/webhook/pollo`;
+
+// ── KV helpers for Pollo webhook results (instant video status) ──
+async function kvSetPolloResult(taskId: string, result: { state: string; videoUrl?: string; error?: string }) {
+  try { await kv.set(`pollo:${taskId}`, result); } catch { /* best-effort */ }
+}
+async function kvGetPolloResult(taskId: string): Promise<{ state: string; videoUrl?: string; error?: string } | null> {
+  try {
+    const raw = await kv.get(`pollo:${taskId}`);
+    return raw || null;
+  } catch { return null; }
+}
 
 // ORA model id → Pollo API path (relative to POLLO_BASE)
 const polloVideoModelMap: Record<string, { polloPath: string; defaultLength: number }> = {
@@ -1920,7 +1936,7 @@ async function callPolloVideoStart(
     const res = await fetch(`${POLLO_BASE}${polloPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key },
-      body: JSON.stringify({ input }),
+      body: JSON.stringify({ input, webhookUrl: POLLO_WEBHOOK_URL }),
       signal: AbortSignal.timeout(20_000),
     });
     const txt = await res.text().catch(() => "");
@@ -1935,6 +1951,14 @@ async function callPolloVideoStart(
 }
 
 async function callPolloVideoStatus(taskId: string): Promise<{ state: string; videoUrl?: string; error?: string }> {
+  // ── Check KV first (populated by webhook — instant response) ──
+  const cached = await kvGetPolloResult(taskId);
+  if (cached && (cached.state === "completed" || cached.state === "failed")) {
+    console.log(`[pollo-status] KV hit for ${taskId.slice(0, 12)}: state=${cached.state}`);
+    return cached;
+  }
+
+  // ── Fallback: poll Pollo API directly ──
   const key = Deno.env.get("POLLO_API_KEY");
   if (!key) return { state: "error", error: "POLLO_API_KEY not configured" };
   try {
@@ -1946,10 +1970,14 @@ async function callPolloVideoStatus(taskId: string): Promise<{ state: string; vi
     // Pollo status: "waiting" | "processing" | "succeed" | "failed"
     const gen = data?.generations?.[0];
     if (gen?.status === "succeed" && gen?.url) {
-      return { state: "completed", videoUrl: gen.url };
+      const result = { state: "completed" as const, videoUrl: gen.url };
+      await kvSetPolloResult(taskId, result); // cache for future polls
+      return result;
     }
     if (gen?.status === "failed") {
-      return { state: "failed", error: gen?.failMsg || "Pollo generation failed" };
+      const result = { state: "failed" as const, error: gen?.failMsg || "Pollo generation failed" };
+      await kvSetPolloResult(taskId, result);
+      return result;
     }
     // Map Pollo states to our states
     const st = gen?.status || data?.status || "processing";
@@ -4989,6 +5017,75 @@ app.post("/generate/video-start", async (c) => {
   } catch (err) {
     console.log(`[video-start/POST] FAIL after ${Date.now() - t0}ms:`, err);
     return c.json({ success: false, error: `Video start failed: ${err}` }, 500);
+  }
+});
+
+// ── POLLO WEBHOOK — receives instant notification when video is done ──
+app.post("/webhook/pollo", async (c) => {
+  const t0 = Date.now();
+  try {
+    const webhookId = c.req.header("x-webhook-id") || "";
+    const webhookTimestamp = c.req.header("x-webhook-timestamp") || "";
+    const signature = c.req.header("x-webhook-signature") || "";
+    const body = await c.req.text();
+
+    console.log(`[webhook/pollo] received: id=${webhookId.slice(0, 12)}, ts=${webhookTimestamp}`);
+
+    // ── Verify HMAC-SHA-256 signature ──
+    if (POLLO_WEBHOOK_SECRET && signature) {
+      const signedContent = `${webhookId}.${webhookTimestamp}.${body}`;
+      const keyBuf = Uint8Array.from(atob(POLLO_WEBHOOK_SECRET), c => c.charCodeAt(0));
+      const cryptoKey = await crypto.subtle.importKey("raw", keyBuf, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const sigBuf = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(signedContent));
+      const computed = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+      if (computed !== signature) {
+        console.log(`[webhook/pollo] INVALID SIGNATURE — rejecting`);
+        return c.json({ error: "Invalid signature" }, 401);
+      }
+      console.log(`[webhook/pollo] signature verified ✓`);
+    }
+
+    // ── Parse event: { taskId, status: "succeed"|"failed" } ──
+    let event: { taskId?: string; status?: string };
+    try { event = JSON.parse(body); } catch { return c.json({ error: "Invalid JSON" }, 400); }
+    const { taskId, status } = event;
+    if (!taskId) return c.json({ error: "Missing taskId" }, 400);
+
+    console.log(`[webhook/pollo] taskId=${taskId.slice(0, 16)} status=${status}`);
+
+    if (status === "succeed") {
+      // Fetch video URL from Pollo API (webhook only sends taskId + status, not the URL)
+      const key = Deno.env.get("POLLO_API_KEY");
+      if (key) {
+        try {
+          const res = await fetch(`${POLLO_BASE}/generation/${taskId}/status`, {
+            headers: { "x-api-key": key },
+            signal: AbortSignal.timeout(10_000),
+          });
+          const data = await res.json();
+          const gen = data?.generations?.[0];
+          if (gen?.url) {
+            await kvSetPolloResult(taskId, { state: "completed", videoUrl: gen.url });
+            console.log(`[webhook/pollo] ✅ stored completed result for ${taskId.slice(0, 16)} (${Date.now() - t0}ms)`);
+          } else {
+            // URL not ready yet? Store succeed state, next poll will fetch URL
+            await kvSetPolloResult(taskId, { state: "completed", videoUrl: gen?.url || "" });
+            console.log(`[webhook/pollo] ⚠ succeed but no URL yet for ${taskId.slice(0, 16)}`);
+          }
+        } catch (err) {
+          console.log(`[webhook/pollo] fetch URL failed: ${err}`);
+          await kvSetPolloResult(taskId, { state: "completed" });
+        }
+      }
+    } else if (status === "failed") {
+      await kvSetPolloResult(taskId, { state: "failed", error: "Pollo generation failed (webhook)" });
+      console.log(`[webhook/pollo] ❌ stored failed result for ${taskId.slice(0, 16)}`);
+    }
+
+    return c.json({ ok: true });
+  } catch (err) {
+    console.log(`[webhook/pollo] ERROR: ${err}`);
+    return c.json({ error: "Webhook processing failed" }, 500);
   }
 });
 

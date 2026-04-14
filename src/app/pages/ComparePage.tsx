@@ -835,10 +835,10 @@ export function ComparePage() {
   const draftsFolderId = useDraftsFolder(serverGet, serverPost);
 
   const pollVideo = useCallback(async (genId: string): Promise<string | null> => {
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 5000));
+    // Fast polling: webhook populates KV so server responds instantly once done
+    for (let i = 0; i < 150; i++) {
+      await new Promise(r => setTimeout(r, i < 10 ? 2000 : 4000)); // 2s first 20s, then 4s
       try {
-        // video-status needs no auth — use simple GET with apikey only (avoids _token in URL)
         const r = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}&apikey=${publicAnonKey}`, { signal: AbortSignal.timeout(30_000) });
         const res = await r.json();
         if (res.state === "completed" && res.videoUrl) return res.videoUrl;

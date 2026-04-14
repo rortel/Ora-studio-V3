@@ -1279,10 +1279,10 @@ function EditorPageContent() {
       }
       const genId: string = startJson.generationId;
 
-      // 3) Poll until completed
+      // 3) Poll until completed (fast polling — webhook + KV makes server respond instantly)
       let videoUrl: string | null = null;
-      for (let i = 0; i < 80; i++) {
-        await new Promise(r => setTimeout(r, 5000));
+      for (let i = 0; i < 150; i++) {
+        await new Promise(r => setTimeout(r, i < 10 ? 2000 : 4000));
         try {
           const pollRes = await fetch(`${API_BASE}/generate/video-status?id=${encodeURIComponent(genId)}&apikey=${publicAnonKey}`);
           const pollJson = await pollRes.json();
