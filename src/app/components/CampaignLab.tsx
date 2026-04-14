@@ -257,23 +257,45 @@ const IMAGE_MODELS = [
   { id: "kontext-pro-leo",   label: "Kontext Pro",          badge: "Edit",       color: "#888888" },
 ];
 const VIDEO_MODELS = [
-  // Luma
-  { id: "ray-2",            label: "Luma Ray 2",         badge: "Quality",   color: "#666666" },
-  { id: "ray-flash-2",      label: "Ray Flash 2",        badge: "Fast",      color: "#666666" },
-  // Google / OpenAI
-  { id: "veo-3.1",          label: "Veo 3.1 (Google)",   badge: "Premium",   color: "#555555" },
-  { id: "sora-2",           label: "Sora 2 (OpenAI)",    badge: "Premium",   color: "#555555" },
-  // Runway
-  { id: "runway-gen3",      label: "Runway Gen-3",       badge: "Cinematic", color: "#888888" },
-  // Pika
-  { id: "pika",             label: "Pika",               badge: "Fast",      color: "#999999" },
-  // Kling / ByteDance
-  { id: "kling-v2.1",       label: "Kling v2.1",         badge: "Cinematic", color: "#777777" },
-  { id: "seedance-v1",      label: "Seedance v1",        badge: "TikTok",    color: "#777777" },
-  { id: "seedance-2.0",     label: "Seedance 2.0",       badge: "Quality",   color: "#777777" },
-  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro",   badge: "Pro",       color: "#777777" },
-  // Higgsfield
-  { id: "dop",              label: "DOP (Higgsfield)",    badge: "Creative",  color: "#777777" },
+  // Premium cinematic
+  { id: "veo-3.1",          label: "Veo 3.1 (Google)",     badge: "Premium",   color: "#4285F4" },
+  { id: "sora-2-pro",       label: "Sora 2 Pro",           badge: "Premium",   color: "#10A37F" },
+  { id: "kling-2.5",        label: "Kling 2.5 Turbo",      badge: "Pro",       color: "#7C3AED" },
+  { id: "kling-2.1-master", label: "Kling 2.1 Master",     badge: "Master",    color: "#7C3AED" },
+  { id: "runway-gen4",      label: "Runway Gen-4",         badge: "Latest",    color: "#E11D48" },
+  { id: "ray-2",            label: "Luma Ray 2",           badge: "Quality",   color: "#666666" },
+  // Audio + video
+  { id: "kling-2.6",        label: "Kling 2.6",            badge: "Audio",     color: "#7C3AED" },
+  { id: "veo-3",            label: "Veo 3 (Audio)",        badge: "Audio",     color: "#4285F4" },
+  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro",     badge: "Lip-sync",  color: "#FF6B35" },
+  { id: "pollo-2.0",        label: "Pollo 2.0",            badge: "Audio",     color: "#F59E0B" },
+  { id: "vidu-q3-pro",      label: "Vidu Q3 Pro",          badge: "Audio",     color: "#06B6D4" },
+  // Characters
+  { id: "sora-2",           label: "Sora 2",               badge: "Creative",  color: "#10A37F" },
+  { id: "kling-v2.1",       label: "Kling v2.1",           badge: "Cinematic", color: "#7C3AED" },
+  { id: "kling-o1",         label: "Kling O1",             badge: "Multi",     color: "#7C3AED" },
+  { id: "hailuo-2.3",       label: "Hailuo 2.3",           badge: "Realistic", color: "#8B5CF6" },
+  { id: "hailuo-02",        label: "Hailuo 02",            badge: "Precise",   color: "#8B5CF6" },
+  { id: "hailuo-live2d",    label: "Hailuo Live2D",        badge: "Animation", color: "#8B5CF6" },
+  // Versatile
+  { id: "ora-motion",       label: "ORA Motion",           badge: "Agence",    color: "#1a1a1a" },
+  { id: "seedance-2.0",     label: "Seedance 2.0",         badge: "Fast",      color: "#FF6B35" },
+  { id: "pixverse-5.5",     label: "PixVerse 5.5",         badge: "Multi-shot", color: "#EC4899" },
+  { id: "wan-2.6",          label: "Wan 2.6",              badge: "Multi-shot", color: "#F97316" },
+  { id: "hunyuan",          label: "Hunyuan",              badge: "Tencent",   color: "#2563EB" },
+  { id: "runway-gen3",      label: "Runway Gen-3",         badge: "Creative",  color: "#E11D48" },
+  { id: "veo-2",            label: "Veo 2",                badge: "Google",    color: "#4285F4" },
+  // Fast & budget
+  { id: "veo-3.1-fast",     label: "Veo 3.1 Fast",         badge: "Google⚡",  color: "#4285F4" },
+  { id: "ray-flash-2",      label: "Ray Flash 2",          badge: "Fast",      color: "#666666" },
+  { id: "hailuo-2.3-fast",  label: "Hailuo 2.3 Fast",      badge: "Fast",      color: "#8B5CF6" },
+  { id: "wan-2.2-flash",    label: "Wan 2.2 Flash",        badge: "Ultra-fast", color: "#F97316" },
+  { id: "wan-2.2",          label: "Wan 2.2",              badge: "Open",      color: "#F97316" },
+  { id: "vidu-q2-turbo",    label: "Vidu Q2 Turbo",        badge: "Fast",      color: "#06B6D4" },
+  { id: "pika",             label: "Pika 2.2",             badge: "Fun",       color: "#22C55E" },
+  { id: "pollo-1.6",        label: "Pollo 1.6",            badge: "Budget",    color: "#F59E0B" },
+  { id: "pixverse-5",       label: "PixVerse 5",           badge: "Versatile", color: "#EC4899" },
+  { id: "pika-2.1",         label: "Pika 2.1",             badge: "Creative",  color: "#22C55E" },
 ];
 
 const VAULT_PILLS = [

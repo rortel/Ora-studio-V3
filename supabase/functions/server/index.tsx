@@ -1900,19 +1900,53 @@ async function kvGetPolloResult(taskId: string): Promise<{ state: string; videoU
 
 // ORA model id → Pollo API path (relative to POLLO_BASE)
 const polloVideoModelMap: Record<string, { polloPath: string; defaultLength: number }> = {
+  // ── Kling AI ──
+  "kling-2.6":        { polloPath: "/generation/kling-ai/kling-v2-6",       defaultLength: 5 },
   "kling-2.5":        { polloPath: "/generation/kling-ai/kling-v2-5-turbo", defaultLength: 5 },
   "kling-v2.1":       { polloPath: "/generation/kling-ai/kling-v2-1",      defaultLength: 5 },
-  "hailuo-02":        { polloPath: "/generation/minimax/minimax-hailuo-02", defaultLength: 6 },
-  "wan-2.2":          { polloPath: "/generation/wanx/wan-v2-2",            defaultLength: 5 },
-  "veo-3.1":          { polloPath: "/generation/google/veo3-1",            defaultLength: 5 },
+  "kling-2.1-master": { polloPath: "/generation/kling-ai/kling-v2-1-master", defaultLength: 5 },
+  "kling-o1":         { polloPath: "/generation/kling-ai/kling-video-o1",   defaultLength: 5 },
+  // ── Google Veo ──
+  "veo-3.1":          { polloPath: "/generation/google/veo3-1",            defaultLength: 8 },
+  "veo-3.1-fast":     { polloPath: "/generation/google/veo3-1-fast",       defaultLength: 8 },
+  "veo-3":            { polloPath: "/generation/google/veo3",              defaultLength: 8 },
+  "veo-2":            { polloPath: "/generation/google/veo2",              defaultLength: 5 },
+  // ── OpenAI Sora ──
   "sora-2":           { polloPath: "/generation/sora/sora-2",              defaultLength: 5 },
-  "seedance-2.0":     { polloPath: "/generation/bytedance/seedance",       defaultLength: 5 },
-  "seedance-1.5-pro": { polloPath: "/generation/bytedance/seedance-1-5-pro", defaultLength: 5 },
+  "sora-2-pro":       { polloPath: "/generation/sora/sora-2-pro",          defaultLength: 5 },
+  // ── Runway ──
+  "runway-gen4":      { polloPath: "/generation/runway/runway-gen-4-turbo", defaultLength: 5 },
+  "runway-gen3":      { polloPath: "/generation/runway/runway-gen-3-turbo", defaultLength: 5 },
+  // ── Pika ──
   "pika":             { polloPath: "/generation/pika/pika-v2-2",           defaultLength: 5 },
-  "runway-gen3":      { polloPath: "/generation/runway/runway-gen-4-turbo", defaultLength: 5 },
-  "ray-2":            { polloPath: "/generation/luma/luma-ray-2-0",        defaultLength: 5 },
-  "ray-flash-2":      { polloPath: "/generation/luma/luma-ray-2-0-flash",  defaultLength: 5 },
-  "ora-motion":       { polloPath: "/generation/luma/luma-ray-2-0",        defaultLength: 5 },
+  "pika-2.1":         { polloPath: "/generation/pika/pika-v2-1",           defaultLength: 5 },
+  // ── PixVerse ──
+  "pixverse-5.5":     { polloPath: "/generation/pixverse/pixverse-v5-5",   defaultLength: 5 },
+  "pixverse-5":       { polloPath: "/generation/pixverse/pixverse-v5-0",   defaultLength: 5 },
+  // ── Pollo native ──
+  "pollo-2.0":        { polloPath: "/generation/pollo/pollo-v2-0",         defaultLength: 5 },
+  "pollo-1.6":        { polloPath: "/generation/pollo/pollo-v1-6",         defaultLength: 5 },
+  // ── Minimax / Hailuo ──
+  "hailuo-02":        { polloPath: "/generation/minimax/minimax-hailuo-02",    defaultLength: 6 },
+  "hailuo-2.3":       { polloPath: "/generation/minimax/minimax-hailuo-2.3",   defaultLength: 6 },
+  "hailuo-2.3-fast":  { polloPath: "/generation/minimax/minimax-hailuo-2.3-fast", defaultLength: 6 },
+  "hailuo-live2d":    { polloPath: "/generation/minimax/video-01-live2d",      defaultLength: 5 },
+  // ── Wan / Alibaba ──
+  "wan-2.6":          { polloPath: "/generation/wanx/wan-v2-6",               defaultLength: 5 },
+  "wan-2.2":          { polloPath: "/generation/wanx/wan-v2-2-plus",           defaultLength: 5 },
+  "wan-2.2-flash":    { polloPath: "/generation/wanx/wan-v2-2-flash",          defaultLength: 5 },
+  // ── Seedance / ByteDance ──
+  "seedance-2.0":     { polloPath: "/generation/bytedance/seedance-pro-fast",  defaultLength: 5 },
+  "seedance-1.5-pro": { polloPath: "/generation/bytedance/seedance-1-5-pro",   defaultLength: 5 },
+  // ── Luma ──
+  "ray-2":            { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5 },
+  "ray-flash-2":      { polloPath: "/generation/luma/luma-ray-2-0-flash",      defaultLength: 5 },
+  "ora-motion":       { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5 },
+  // ── Vidu ──
+  "vidu-q3-pro":      { polloPath: "/generation/vidu/viduq3-pro",             defaultLength: 5 },
+  "vidu-q2-turbo":    { polloPath: "/generation/vidu/viduq2-turbo",            defaultLength: 5 },
+  // ── Hunyuan / Tencent ──
+  "hunyuan":          { polloPath: "/generation/hunyuan/hunyuan",              defaultLength: 5 },
 };
 
 function isPolloVideoModel(id: string): boolean {
@@ -1928,10 +1962,15 @@ async function callPolloVideoStart(
   try {
     const input: Record<string, unknown> = {
       prompt: opts.prompt,
-      aspectRatio: opts.aspectRatio,
       length: opts.durationSec,
     };
-    if (opts.imageUrl) input.image = opts.imageUrl;
+    if (opts.imageUrl) {
+      // img2video: most Pollo models reject aspectRatio (additionalProperties: false)
+      input.image = opts.imageUrl;
+    } else {
+      // text2video: aspectRatio is accepted
+      input.aspectRatio = opts.aspectRatio;
+    }
 
     const res = await fetch(`${POLLO_BASE}${polloPath}`, {
       method: "POST",

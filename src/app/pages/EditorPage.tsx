@@ -2476,9 +2476,49 @@ function EditorPageContent() {
                         borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
                       }}
                     >
-                      <option value="kling-2.5">Kling 2.5 Turbo Pro</option>
-                      <option value="hailuo-02">Minimax Hailuo 02</option>
-                      <option value="ora-motion">Luma Ray 2</option>
+                      <optgroup label="🎬 Premium">
+                        <option value="veo-3.1">Veo 3.1 (Google)</option>
+                        <option value="sora-2-pro">Sora 2 Pro (OpenAI)</option>
+                        <option value="kling-2.5">Kling 2.5 Turbo</option>
+                        <option value="kling-2.1-master">Kling 2.1 Master</option>
+                        <option value="runway-gen4">Runway Gen-4</option>
+                        <option value="ray-2">Luma Ray 2</option>
+                      </optgroup>
+                      <optgroup label="🔊 Vidéo + Audio">
+                        <option value="kling-2.6">Kling 2.6 (audio sync)</option>
+                        <option value="veo-3">Veo 3 (audio natif)</option>
+                        <option value="seedance-1.5-pro">Seedance 1.5 Pro (lip-sync)</option>
+                        <option value="pollo-2.0">Pollo 2.0 (audio)</option>
+                        <option value="vidu-q3-pro">Vidu Q3 Pro (audio)</option>
+                      </optgroup>
+                      <optgroup label="👥 Personnages">
+                        <option value="sora-2">Sora 2</option>
+                        <option value="kling-v2.1">Kling v2.1</option>
+                        <option value="kling-o1">Kling O1 (multi-modal)</option>
+                        <option value="hailuo-2.3">Hailuo 2.3</option>
+                        <option value="hailuo-02">Hailuo 02</option>
+                        <option value="hailuo-live2d">Hailuo Live2D</option>
+                      </optgroup>
+                      <optgroup label="🎯 Polyvalent">
+                        <option value="ora-motion">ORA Motion</option>
+                        <option value="seedance-2.0">Seedance 2.0</option>
+                        <option value="pixverse-5.5">PixVerse 5.5</option>
+                        <option value="wan-2.6">Wan 2.6</option>
+                        <option value="hunyuan">Hunyuan (Tencent)</option>
+                        <option value="runway-gen3">Runway Gen-3</option>
+                        <option value="veo-2">Veo 2</option>
+                      </optgroup>
+                      <optgroup label="⚡ Rapide & économique">
+                        <option value="veo-3.1-fast">Veo 3.1 Fast</option>
+                        <option value="ray-flash-2">Ray Flash 2</option>
+                        <option value="hailuo-2.3-fast">Hailuo 2.3 Fast</option>
+                        <option value="wan-2.2-flash">Wan 2.2 Flash</option>
+                        <option value="wan-2.2">Wan 2.2</option>
+                        <option value="vidu-q2-turbo">Vidu Q2 Turbo</option>
+                        <option value="pika">Pika 2.2</option>
+                        <option value="pollo-1.6">Pollo 1.6</option>
+                        <option value="pixverse-5">PixVerse 5</option>
+                      </optgroup>
                     </select>
                   </div>
                   <div style={{ width: 140 }}>

@@ -32,7 +32,7 @@ type StepStatus = "pending" | "running" | "done" | "error";
 // Segment id per mode — drives grouping + segment pickers
 type TextSegment = "strategy" | "creative" | "multilingual" | "volume";
 type ImageSegment = "product" | "creative" | "text" | "portrait" | "draft";
-type VideoSegment = "cinematic" | "character" | "draft" | "versatile";
+type VideoSegment = "cinematic" | "audio" | "character" | "draft" | "versatile";
 type MusicSegment = "vocals" | "studio";
 type AnySegment = TextSegment | ImageSegment | VideoSegment | MusicSegment;
 
@@ -82,17 +82,45 @@ const IMAGE_MODELS: ModelDef[] = [
 ];
 
 const VIDEO_MODELS: ModelDef[] = [
-  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "cinematic"], bestFor: "Cinématique", tier: "premium", segment: "cinematic" },
-  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 20, costEur: 2.00, providerCostEur: 0.14, strengths: ["speed"], bestFor: "Itération vidéo rapide", tier: "economy", segment: "draft" },
-  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 30, costEur: 3.00, providerCostEur: 0.50, strengths: ["google", "quality"], bestFor: "Qualité Google", tier: "premium", segment: "cinematic" },
+  // ── Cinematic premium ──
+  { id: "veo-3.1", label: "Veo 3.1", badge: "Google", credits: 35, costEur: 3.50, providerCostEur: 0.50, strengths: ["google", "quality"], bestFor: "Qualité Google ultime", tier: "premium", segment: "cinematic" },
+  { id: "veo-3", label: "Veo 3", badge: "Audio", credits: 35, costEur: 3.50, providerCostEur: 0.45, strengths: ["google", "audio", "quality"], bestFor: "Vidéo + son natif Google", tier: "premium", segment: "audio" },
+  { id: "sora-2-pro", label: "Sora 2 Pro", badge: "OpenAI", credits: 40, costEur: 4.00, providerCostEur: 0.40, strengths: ["creative", "narrative", "premium"], bestFor: "Scènes complexes immersives", tier: "premium", segment: "cinematic" },
   { id: "sora-2", label: "Sora 2", badge: "OpenAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["creative", "narrative"], bestFor: "Narrations créatives", tier: "premium", segment: "character" },
-  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 40, costEur: 4.00, providerCostEur: 0.35, strengths: ["cinematic", "character"], bestFor: "Scènes à personnages", tier: "premium", segment: "character" },
-  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["versatile"], bestFor: "Contenu vidéo polyvalent", tier: "standard", segment: "versatile" },
-  { id: "pika", label: "Pika", badge: "Fun", credits: 20, costEur: 2.00, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy", segment: "draft" },
+  { id: "kling-2.5", label: "Kling 2.5 Turbo", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium", segment: "cinematic" },
+  { id: "kling-2.6", label: "Kling 2.6", badge: "Audio", credits: 35, costEur: 3.50, providerCostEur: 0.35, strengths: ["cinematic", "audio"], bestFor: "Vidéo + son synchronisé", tier: "premium", segment: "audio" },
+  { id: "kling-2.1-master", label: "Kling 2.1 Master", badge: "Master", credits: 40, costEur: 4.00, providerCostEur: 0.38, strengths: ["cinematic", "character", "realism"], bestFor: "Réalisme visuel extrême", tier: "premium", segment: "cinematic" },
+  { id: "kling-o1", label: "Kling O1", badge: "Multi", credits: 35, costEur: 3.50, providerCostEur: 0.35, strengths: ["multimodal", "creative"], bestFor: "Entrée multi-modale avancée", tier: "premium", segment: "character" },
+  { id: "ray-2", label: "Luma Ray 2", badge: "Quality", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["quality", "cinematic"], bestFor: "Cinématique fluide", tier: "premium", segment: "cinematic" },
+  { id: "runway-gen4", label: "Runway Gen-4", badge: "Latest", credits: 35, costEur: 3.50, providerCostEur: 0.35, strengths: ["cinematic", "creative"], bestFor: "Animation cinématique pro", tier: "premium", segment: "cinematic" },
+  { id: "vidu-q3-pro", label: "Vidu Q3 Pro", badge: "Audio", credits: 35, costEur: 3.50, providerCostEur: 0.30, strengths: ["audio", "cinematic"], bestFor: "Audio-vidéo + multi-plans", tier: "premium", segment: "audio" },
+  // ── Personnages & narratif ──
+  { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["cinematic", "character"], bestFor: "Scènes à personnages", tier: "standard", segment: "character" },
+  { id: "hailuo-2.3", label: "Hailuo 2.3", badge: "Realistic", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "character"], bestFor: "Mouvements naturels", tier: "standard", segment: "character" },
+  { id: "hailuo-02", label: "Hailuo 02", badge: "Precise", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "physics"], bestFor: "Physique réaliste 1080p", tier: "standard", segment: "character" },
+  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro", badge: "Lip-sync", credits: 30, costEur: 3.00, providerCostEur: 0.25, strengths: ["lipsync", "audio"], bestFor: "Lip-sync & audio natif", tier: "standard", segment: "audio" },
+  { id: "pollo-2.0", label: "Pollo 2.0", badge: "Audio", credits: 25, costEur: 2.50, providerCostEur: 0.18, strengths: ["audio", "character"], bestFor: "Audio intégré + personnages", tier: "standard", segment: "audio" },
+  // ── Polyvalent campagne ──
   { id: "ora-motion", label: "ORA Motion", badge: "Agence", credits: 30, costEur: 3.00, providerCostEur: 0.28, strengths: ["agency", "campaign"], bestFor: "Vidéo campagne", tier: "standard", segment: "versatile" },
-  { id: "hailuo-02", label: "Minimax Hailuo 02", badge: "Realistic", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["realistic", "physics"], bestFor: "Mouvements réalistes", tier: "standard", segment: "character" },
-  { id: "wan-2.2", label: "Wan 2.2", badge: "Open", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["versatile", "open"], bestFor: "Vidéo polyvalente", tier: "economy", segment: "versatile" },
-  { id: "kling-2.5", label: "Kling 2.5 Turbo Pro", badge: "Pro", credits: 35, costEur: 3.50, providerCostEur: 0.32, strengths: ["cinematic", "motion"], bestFor: "Image-to-video pro", tier: "premium", segment: "cinematic" },
+  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Fast", credits: 25, costEur: 2.50, providerCostEur: 0.20, strengths: ["versatile", "fast"], bestFor: "Contenu polyvalent rapide", tier: "standard", segment: "versatile" },
+  { id: "pixverse-5.5", label: "PixVerse 5.5", badge: "Multi-shot", credits: 25, costEur: 2.50, providerCostEur: 0.20, strengths: ["multishot", "sfx"], bestFor: "Multi-plans + effets sonores", tier: "standard", segment: "versatile" },
+  { id: "wan-2.6", label: "Wan 2.6", badge: "Multi-shot", credits: 25, costEur: 2.50, providerCostEur: 0.18, strengths: ["multishot", "versatile"], bestFor: "Séquences multi-plans", tier: "standard", segment: "versatile" },
+  { id: "hunyuan", label: "Hunyuan", badge: "Tencent", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["versatile", "realistic"], bestFor: "Synthèse réaliste 13B", tier: "standard", segment: "versatile" },
+  { id: "runway-gen3", label: "Runway Gen-3", badge: "Creative", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["creative", "animation"], bestFor: "Animation stylisée", tier: "standard", segment: "versatile" },
+  // ── Itération rapide / économique ──
+  { id: "veo-3.1-fast", label: "Veo 3.1 Fast", badge: "Google⚡", credits: 20, costEur: 2.00, providerCostEur: 0.30, strengths: ["google", "speed"], bestFor: "Google rapide -30%", tier: "economy", segment: "draft" },
+  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast", credits: 15, costEur: 1.50, providerCostEur: 0.14, strengths: ["speed"], bestFor: "Itération vidéo rapide", tier: "economy", segment: "draft" },
+  { id: "hailuo-2.3-fast", label: "Hailuo 2.3 Fast", badge: "Fast", credits: 15, costEur: 1.50, providerCostEur: 0.12, strengths: ["speed", "realistic"], bestFor: "Réaliste rapide", tier: "economy", segment: "draft" },
+  { id: "wan-2.2-flash", label: "Wan 2.2 Flash", badge: "Ultra-fast", credits: 10, costEur: 1.00, providerCostEur: 0.08, strengths: ["speed", "camera"], bestFor: "Ultra-rapide avec caméra", tier: "economy", segment: "draft" },
+  { id: "wan-2.2", label: "Wan 2.2", badge: "Open", credits: 15, costEur: 1.50, providerCostEur: 0.12, strengths: ["versatile", "open"], bestFor: "Vidéo polyvalente", tier: "economy", segment: "draft" },
+  { id: "vidu-q2-turbo", label: "Vidu Q2 Turbo", badge: "Fast", credits: 15, costEur: 1.50, providerCostEur: 0.10, strengths: ["speed", "motion"], bestFor: "Motion rapide short-form", tier: "economy", segment: "draft" },
+  { id: "pika", label: "Pika 2.2", badge: "Fun", credits: 15, costEur: 1.50, providerCostEur: 0.10, strengths: ["fun", "quick"], bestFor: "Animations fun", tier: "economy", segment: "draft" },
+  { id: "pollo-1.6", label: "Pollo 1.6", badge: "Budget", credits: 10, costEur: 1.00, providerCostEur: 0.06, strengths: ["speed", "budget"], bestFor: "Le moins cher", tier: "economy", segment: "draft" },
+  { id: "pixverse-5", label: "PixVerse 5", badge: "Versatile", credits: 15, costEur: 1.50, providerCostEur: 0.12, strengths: ["versatile", "camera"], bestFor: "Caméra dynamique", tier: "economy", segment: "draft" },
+  // ── Spécialité : animation ──
+  { id: "hailuo-live2d", label: "Hailuo Live2D", badge: "Animation", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["animation", "illustration"], bestFor: "Anime illustrations & logos", tier: "standard", segment: "character" },
+  { id: "veo-2", label: "Veo 2", badge: "Google", credits: 25, costEur: 2.50, providerCostEur: 0.35, strengths: ["realistic", "google"], bestFor: "Google réaliste", tier: "standard", segment: "versatile" },
+  { id: "pika-2.1", label: "Pika 2.1", badge: "Creative", credits: 15, costEur: 1.50, providerCostEur: 0.08, strengths: ["creative", "fun"], bestFor: "Stylisé & créatif", tier: "economy", segment: "draft" },
 ];
 
 const MUSIC_MODELS: ModelDef[] = [
@@ -117,6 +145,7 @@ const SEGMENTS_BY_MODE: Record<CreativeMode, { id: AnySegment; icon: string; lab
   ],
   video: [
     { id: "cinematic", icon: "🎬", labelFr: "Cinématique premium",     labelEn: "Premium cinematic",     descFr: "Ads TV, campagnes finales",           descEn: "TV ads, final campaigns" },
+    { id: "audio",     icon: "🔊", labelFr: "Vidéo + audio natif",     labelEn: "Video + native audio",  descFr: "Son, dialogue, lip-sync intégrés",    descEn: "Sound, dialogue, lip-sync built-in" },
     { id: "character", icon: "👥", labelFr: "Personnages & narratif",   labelEn: "Characters & narrative", descFr: "Humains, dialogue, scènes",           descEn: "People, dialogue, scenes" },
     { id: "versatile", icon: "🎯", labelFr: "Polyvalent campagne",      labelEn: "Versatile campaign",    descFr: "Mix qualité/prix, production",        descEn: "Balanced quality/price" },
     { id: "draft",     icon: "⚡",  labelFr: "Itération rapide",          labelEn: "Fast iteration",        descFr: "Brouillons, tests, concepts",         descEn: "Drafts, tests, concepts" },

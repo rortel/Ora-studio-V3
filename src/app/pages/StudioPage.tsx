@@ -3447,27 +3447,45 @@ const CONFIG_IMAGE_MODELS = [
 ];
 
 const CONFIG_VIDEO_MODELS = [
-  // Luma
-  { id: "ray-2", label: "Luma Ray 2", badge: "Quality" },
-  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast" },
-  // Google
+  // Premium cinematic
   { id: "veo-3.1", label: "Veo 3.1", badge: "Google" },
-  // OpenAI
-  { id: "sora-2", label: "Sora 2", badge: "OpenAI" },
-  // Kling
+  { id: "sora-2-pro", label: "Sora 2 Pro", badge: "OpenAI" },
+  { id: "kling-2.5", label: "Kling 2.5 Turbo", badge: "Pro" },
+  { id: "kling-2.1-master", label: "Kling 2.1 Master", badge: "Master" },
+  { id: "runway-gen4", label: "Runway Gen-4", badge: "Latest" },
+  { id: "ray-2", label: "Luma Ray 2", badge: "Quality" },
+  // Audio + video
+  { id: "kling-2.6", label: "Kling 2.6", badge: "Audio" },
+  { id: "veo-3", label: "Veo 3", badge: "Audio" },
+  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro", badge: "Lip-sync" },
+  { id: "pollo-2.0", label: "Pollo 2.0", badge: "Audio" },
+  { id: "vidu-q3-pro", label: "Vidu Q3 Pro", badge: "Audio" },
+  // Characters & narrative
+  { id: "sora-2", label: "Sora 2", badge: "Creative" },
   { id: "kling-v2.1", label: "Kling v2.1", badge: "Cinematic" },
-  // Seedance
-  { id: "seedance-v1", label: "Seedance v1", badge: "TikTok" },
-  { id: "seedance-1.5-pro", label: "Seedance 1.5 Pro", badge: "Pro" },
-  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Latest" },
-  // Runway
-  { id: "runway-gen3", label: "Runway Gen-3", badge: "Creative" },
-  // Pika
-  { id: "pika", label: "Pika", badge: "Fun" },
-  // Higgsfield
-  { id: "dop", label: "DOP", badge: "Artistic" },
-  // ORA
+  { id: "kling-o1", label: "Kling O1", badge: "Multi" },
+  { id: "hailuo-2.3", label: "Hailuo 2.3", badge: "Realistic" },
+  { id: "hailuo-02", label: "Hailuo 02", badge: "Precise" },
+  { id: "hailuo-live2d", label: "Hailuo Live2D", badge: "Animation" },
+  // Versatile campaign
   { id: "ora-motion", label: "ORA Motion", badge: "Agence" },
+  { id: "seedance-2.0", label: "Seedance 2.0", badge: "Fast" },
+  { id: "pixverse-5.5", label: "PixVerse 5.5", badge: "Multi-shot" },
+  { id: "wan-2.6", label: "Wan 2.6", badge: "Multi-shot" },
+  { id: "hunyuan", label: "Hunyuan", badge: "Tencent" },
+  { id: "runway-gen3", label: "Runway Gen-3", badge: "Creative" },
+  { id: "veo-2", label: "Veo 2", badge: "Google" },
+  // Fast & budget
+  { id: "veo-3.1-fast", label: "Veo 3.1 Fast", badge: "Google⚡" },
+  { id: "ray-flash-2", label: "Ray Flash 2", badge: "Fast" },
+  { id: "hailuo-2.3-fast", label: "Hailuo 2.3 Fast", badge: "Fast" },
+  { id: "wan-2.2-flash", label: "Wan 2.2 Flash", badge: "Ultra-fast" },
+  { id: "wan-2.2", label: "Wan 2.2", badge: "Open" },
+  { id: "vidu-q2-turbo", label: "Vidu Q2 Turbo", badge: "Fast" },
+  { id: "pika", label: "Pika 2.2", badge: "Fun" },
+  { id: "pollo-1.6", label: "Pollo 1.6", badge: "Budget" },
+  { id: "pixverse-5", label: "PixVerse 5", badge: "Versatile" },
+  { id: "pika-2.1", label: "Pika 2.1", badge: "Creative" },
 ];
 
 const TONE_OPTIONS = [
