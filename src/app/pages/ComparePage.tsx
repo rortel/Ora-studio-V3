@@ -870,9 +870,10 @@ export function ComparePage() {
 
   const serverGet = useCallback(async (path: string) => {
     const sep = path.includes("?") ? "&" : "?";
+    const token = getAuthHeader();
     const r = await fetch(`${API_BASE}${path}${sep}apikey=${publicAnonKey}`, {
       method: "GET",
-      headers: { "X-User-Token": getAuthHeader() },
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(180_000),
     });
     return r.json();

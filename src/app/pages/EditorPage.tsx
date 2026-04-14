@@ -727,6 +727,23 @@ function EditorPageContent() {
     );
   }, [editorProject, isFr, canvasSize]);
 
+  // --- Layers (text + logo) — declared early to avoid TDZ in useCallbacks below ---
+  const [layers, setLayers] = useState<EditorLayer[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const logoImagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const subjectImagesRef = useRef<Record<string, HTMLImageElement>>({});
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const layerNodesRef = useRef<Record<string, Konva.Node>>({});
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const textLayerInputRef = useRef<HTMLInputElement>(null);
+  const [pendingTextFocus, setPendingTextFocus] = useState<string | null>(null);
+  const [shapesOpen, setShapesOpen] = useState(false);
+
+  const selectedLayer = useMemo(
+    () => layers.find(l => l.id === selectedLayerId) || null,
+    [layers, selectedLayerId],
+  );
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // AI PROMPT — Prompt-first editor: user types, AI acts
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1328,23 +1345,6 @@ function EditorPageContent() {
       a.click();
     }
   }, [imageUrl, editorProject.project]);
-
-  // --- Layers (text + logo) ---
-  const [layers, setLayers] = useState<EditorLayer[]>([]);
-  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
-  const logoImagesRef = useRef<Record<string, HTMLImageElement>>({});
-  const subjectImagesRef = useRef<Record<string, HTMLImageElement>>({});
-  const transformerRef = useRef<Konva.Transformer>(null);
-  const layerNodesRef = useRef<Record<string, Konva.Node>>({});
-  const logoFileInputRef = useRef<HTMLInputElement>(null);
-  const textLayerInputRef = useRef<HTMLInputElement>(null);
-  const [pendingTextFocus, setPendingTextFocus] = useState<string | null>(null);
-  const [shapesOpen, setShapesOpen] = useState(false);
-
-  const selectedLayer = useMemo(
-    () => layers.find(l => l.id === selectedLayerId) || null,
-    [layers, selectedLayerId],
-  );
 
   // Compose layers onto an off-screen canvas (base image + text + logo overlays)
   const composeCanvasDataUrl = useCallback((): string | null => {

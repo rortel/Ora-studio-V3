@@ -42,7 +42,7 @@ export function BrandAssets({ accessToken }: { accessToken: string | null }) {
   const loadAssets = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE}/brand-assets`, { headers: { ...apiHeaders(false), "X-User-Token": accessToken } });
+      const res = await fetch(`${API_BASE}/brand-assets`, { headers: { ...apiHeaders(false), Authorization: `Bearer ${accessToken}` } });
       const data = await res.json();
       if (data.success) setAssets(data.assets || []);
     } catch {}
