@@ -21,14 +21,16 @@ import { LayersPanel } from "../components/editor/LayersPanel";
 import { PropertiesSidebar } from "../components/editor/PropertiesSidebar";
 import { EditorTimeline } from "../components/editor/EditorTimeline";
 import { ExportDialog } from "../components/editor/ExportDialog";
+import { AutoMontageDialog, type MontagePlan } from "../components/editor/AutoMontageDialog";
 import { composeCanvasDataUrl as composeUnifiedCanvas } from "../lib/editor/compose-export";
 import { useEditorProject, importFromVideoProject } from "../lib/editor/useEditorProject";
 import { AnimationEngine } from "../lib/editor/animation-engine";
 import {
-  createVideoClipLayer, createAudioTrack,
-  createDefaultSpatial, createDefaultTemporal,
+  createVideoClipLayer, createImageLayer, createTextLayer, createAudioTrack,
+  createDefaultSpatial, createDefaultTemporal, createDefaultProject,
+  FORMAT_PRESETS,
 } from "../lib/editor/types";
-import type { VideoClipLayer as VideoClipLayerType } from "../lib/editor/types";
+import type { VideoClipLayer as VideoClipLayerType, AnimationPreset } from "../lib/editor/types";
 import type { VideoProject } from "../lib/video-editor/types";
 
 /* ═══════════════════════════════════
@@ -223,6 +225,9 @@ function EditorPageContent() {
 
   // --- Publish modal ---
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+
+  // --- Auto Montage dialog ---
+  const [montageOpen, setMontageOpen] = useState(false);
 
   // --- Unified project model (timeline + layers + audio) ---
   const editorProject = useEditorProject("Untitled", 1024, 1024);
@@ -630,6 +635,91 @@ function EditorPageContent() {
       toast.error("Please drop an image or video file");
     }
   }, [loadImage, handleVideoFileChosen]);
+
+  // --- AI Auto Montage: convert plan to EditorProject ---
+  const handleMontageReady = useCallback((plan: MontagePlan) => {
+    const fmt = FORMAT_PRESETS[plan.format] || FORMAT_PRESETS.landscape;
+    const fps = 30;
+    const totalFrames = Math.max(30, Math.round(plan.totalDurationSec * fps));
+
+    const project = createDefaultProject(plan.projectName, fmt.width, fmt.height);
+    project.fps = fps;
+    project.durationInFrames = totalFrames;
+    project.layers = [];
+    project.audioTracks = [];
+
+    for (let i = 0; i < plan.clips.length; i++) {
+      const clip = plan.clips[i];
+      const startFrame = Math.round(clip.startSec * fps);
+      const durationInFrames = Math.max(15, Math.round(clip.durationSec * fps));
+      const preset = (clip.animation || "none") as AnimationPreset;
+
+      if (clip.assetType === "video") {
+        const layer = createVideoClipLayer(clip.assetUrl, {
+          name: `Clip ${i + 1}`,
+          spatial: createDefaultSpatial(0, 0, clip.width || fmt.width, clip.height || fmt.height),
+          temporal: { startFrame, durationInFrames, keyframes: [] },
+          animationPreset: preset,
+          trimStart: 0,
+          trimEnd: clip.durationSec,
+        });
+        layer.zIndex = i;
+        project.layers.push(layer);
+      } else {
+        const layer = createImageLayer(clip.assetUrl, {
+          name: `Image ${i + 1}`,
+          spatial: createDefaultSpatial(0, 0, clip.width || fmt.width, clip.height || fmt.height),
+          temporal: { startFrame, durationInFrames, keyframes: [] },
+          animationPreset: preset,
+        });
+        layer.zIndex = i;
+        project.layers.push(layer);
+      }
+
+      // Text overlay
+      if (clip.textOverlay) {
+        const fontSize = clip.textOverlay.fontSize === "large" ? 56 : clip.textOverlay.fontSize === "small" ? 24 : 36;
+        const yPos = clip.textOverlay.position === "top" ? fmt.height * 0.1
+          : clip.textOverlay.position === "bottom" ? fmt.height * 0.82
+          : fmt.height * 0.45;
+        const textLayer = createTextLayer({
+          name: `Title ${i + 1}`,
+          text: clip.textOverlay.text,
+          fontSize,
+          fontStyle: clip.textOverlay.style === "bold" ? "bold" : clip.textOverlay.style === "italic" ? "italic" : "normal",
+          fill: "#ffffff",
+          align: "center",
+          spatial: createDefaultSpatial(fmt.width * 0.05, yPos, fmt.width * 0.9, fontSize * 1.5),
+          temporal: { startFrame, durationInFrames: Math.min(durationInFrames, Math.round(3 * fps)), keyframes: [] },
+          animationPreset: "fade-in",
+          shadow: { enabled: true, color: "rgba(0,0,0,0.6)", blur: 8, offsetX: 0, offsetY: 2 },
+        });
+        textLayer.zIndex = plan.clips.length + i;
+        project.layers.push(textLayer);
+      }
+    }
+
+    editorProject.loadProject(project);
+    setTimelineOpen(true);
+    setMontageOpen(false);
+
+    // Auto-fit stage
+    const containerW = canvasSize.width;
+    const containerH = canvasSize.height;
+    const scaleX = (containerW * 0.85) / fmt.width;
+    const scaleY = (containerH * 0.85) / fmt.height;
+    const fitScale = Math.min(scaleX, scaleY, 1);
+    setZoom(fitScale);
+    setStagePos({
+      x: (containerW - fmt.width * fitScale) / 2,
+      y: (containerH - fmt.height * fitScale) / 2,
+    });
+
+    toast.success(isFr
+      ? `Montage "${plan.projectName}" créé avec ${plan.clips.length} clips`
+      : `Montage "${plan.projectName}" created with ${plan.clips.length} clips`
+    );
+  }, [editorProject, isFr, canvasSize]);
 
   // --- Drag & drop handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -2220,6 +2310,7 @@ function EditorPageContent() {
             onDownload={handleDownload}
             libraryOpen={libraryOpen}
             onOpenLibrary={() => setLibraryOpen(true)}
+            onOpenMontage={() => setMontageOpen(true)}
             isBrushTool={isBrushTool}
             brushSize={brushSize}
             onBrushSizeChange={setBrushSize}
@@ -2724,6 +2815,16 @@ function EditorPageContent() {
         onExportImage={handleExportImage}
         onExportVideo={handleExportVideo}
         hasTimeline={timelineOpen}
+        isFr={isFr}
+      />
+
+      {/* ═══ AUTO MONTAGE DIALOG ═══ */}
+      <AutoMontageDialog
+        open={montageOpen}
+        onClose={() => setMontageOpen(false)}
+        libraryItems={libraryItems}
+        onMontageReady={handleMontageReady}
+        serverPost={serverPost}
         isFr={isFr}
       />
 

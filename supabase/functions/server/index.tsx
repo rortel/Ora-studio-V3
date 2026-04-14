@@ -9456,6 +9456,140 @@ app.post("/editor/upscale", async (c) => {
   }
 });
 
+// ── /editor/auto-montage — AI plans a full video montage from user assets ──
+app.post("/editor/auto-montage", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { assets, format, style, musicPrompt, locale } = body;
+
+    if (!Array.isArray(assets) || assets.length === 0) {
+      return c.json({ success: false, error: "assets array required (at least 1)" }, 400);
+    }
+    if (!format) {
+      return c.json({ success: false, error: "format required (landscape | portrait | square | story | feed-4x5)" }, 400);
+    }
+
+    console.log(`[editor/auto-montage] user=${user.id.slice(0, 8)} assets=${assets.length} format=${format} style="${(style || "").slice(0, 40)}" locale=${locale || "en"}`);
+
+    // ── Build the asset summary for the AI ──
+    const assetSummary = assets.map((a: any, i: number) => {
+      const dur = a.type === "video" && a.durationSec ? ` (${a.durationSec}s)` : "";
+      const name = a.name ? ` "${a.name}"` : "";
+      return `[${i}] ${a.type} ${a.width}x${a.height}${dur}${name}`;
+    }).join("\n");
+
+    const formatDescriptions: Record<string, string> = {
+      "landscape": "16:9 landscape (YouTube, desktop)",
+      "portrait": "9:16 vertical portrait (TikTok, Reels)",
+      "square": "1:1 square (Instagram feed)",
+      "story": "9:16 vertical story (Instagram/Facebook Stories)",
+      "feed-4x5": "4:5 vertical feed (Instagram feed optimal)",
+    };
+    const formatDesc = formatDescriptions[format] || format;
+
+    const isFr = locale === "fr";
+
+    const systemPrompt = isFr
+      ? `Tu es un monteur vidéo professionnel travaillant pour ORA Studio. Tu planifies des montages vidéo à partir d'une sélection de photos et vidéos.
+
+Règles de montage :
+- Les IMAGES doivent durer entre 3 et 5 secondes avec une animation Ken Burns ou zoom pour donner du mouvement.
+- Les VIDÉOS jouent à leur durée naturelle (utilise durationSec de l'asset). Si durationSec n'est pas fourni, utilise 5 secondes.
+- Varie les animations — ne répète JAMAIS la même animation deux fois de suite.
+- Animations disponibles : "none", "ken-burns-in", "ken-burns-out", "fade-in", "fade-out", "zoom-in", "zoom-out", "slide-left", "slide-right".
+- N'ajoute des textOverlay que pour des moments clés : titre d'ouverture, moment fort, conclusion. Maximum 3 overlays pour l'ensemble du montage.
+- La durée totale doit être proportionnelle au nombre d'assets (environ 4-6 secondes par asset pour les images, durée naturelle pour les vidéos).
+- Le format de sortie est ${formatDesc} — adapte le rythme en conséquence (stories = plus rapide, YouTube = plus posé).
+- Chaque clip doit avoir un startSec qui correspond exactement à la fin du clip précédent (pas de gaps, pas de chevauchements).
+- Si un style/ambiance est demandé, adapte le choix des animations et des textes en conséquence.
+- projectName : suggère un nom court et créatif pour le projet.
+- musicStyle : suggère un style musical adapté à l'ambiance du montage (ex: "upbeat electronic", "acoustic folk", "cinematic orchestral").
+
+Réponds UNIQUEMENT en JSON valide, sans texte additionnel.`
+      : `You are a professional video editor working for ORA Studio. You plan video montages from a selection of photos and videos.
+
+Editing rules:
+- IMAGES should last 3-5 seconds with Ken Burns or zoom animations to create movement.
+- VIDEOS play at their natural duration (use the asset's durationSec). If durationSec is not provided, default to 5 seconds.
+- Vary animations — NEVER repeat the same animation two clips in a row.
+- Available animations: "none", "ken-burns-in", "ken-burns-out", "fade-in", "fade-out", "zoom-in", "zoom-out", "slide-left", "slide-right".
+- Only add textOverlay for key moments: opening title, highlights, closing. Maximum 3 overlays for the entire montage.
+- Total duration should be proportional to asset count (roughly 4-6 seconds per image asset, natural duration for videos).
+- Output format is ${formatDesc} — adjust pacing accordingly (stories = faster cuts, YouTube = more breathing room).
+- Each clip's startSec must equal the end of the previous clip exactly (no gaps, no overlaps).
+- If a style/mood is requested, adapt animation choices and text accordingly.
+- projectName: suggest a short creative name for the project.
+- musicStyle: suggest a music style fitting the montage mood (e.g. "upbeat electronic", "acoustic folk", "cinematic orchestral").
+
+Respond ONLY with valid JSON, no additional text.`;
+
+    const userPrompt = isFr
+      ? `Planifie un montage vidéo avec ces ${assets.length} assets au format ${formatDesc} :
+
+${assetSummary}
+${style ? `\nStyle/ambiance souhaité : "${style}"` : ""}
+${musicPrompt ? `\nMusique souhaitée : "${musicPrompt}"` : ""}
+
+Retourne le JSON suivant :
+{
+  "projectName": "string",
+  "clips": [{ "assetIndex": number, "startSec": number, "durationSec": number, "animation": "string", "textOverlay?": { "text": "string", "position": "top|center|bottom", "fontSize": "small|medium|large", "style": "bold|normal|italic" } }],
+  "musicStyle": "string",
+  "totalDurationSec": number
+}`
+      : `Plan a video montage with these ${assets.length} assets in ${formatDesc} format:
+
+${assetSummary}
+${style ? `\nDesired style/mood: "${style}"` : ""}
+${musicPrompt ? `\nDesired music: "${musicPrompt}"` : ""}
+
+Return the following JSON:
+{
+  "projectName": "string",
+  "clips": [{ "assetIndex": number, "startSec": number, "durationSec": number, "animation": "string", "textOverlay?": { "text": "string", "position": "top|center|bottom", "fontSize": "small|medium|large", "style": "bold|normal|italic" } }],
+  "musicStyle": "string",
+  "totalDurationSec": number
+}`;
+
+    // ── Call GPT-4o via APIPod ──
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.7,
+        max_tokens: 4096,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text().catch(() => "");
+      console.log(`[editor/auto-montage] APIPod ${aiRes.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `AI planning failed: ${aiRes.status}` }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content || "";
+    const plan = JSON.parse(raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim());
+
+    // ── Deduct 1 credit ──
+    deductCredit(user.id, 1).catch(() => {});
+
+    console.log(`[editor/auto-montage] OK in ${Date.now() - t0}ms — clips=${plan.clips?.length || 0} total=${plan.totalDurationSec}s`);
+    return c.json({ success: true, plan });
+  } catch (err: any) {
+    console.error("[editor/auto-montage] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // POST version — supports long imageRefUrl in body (signed URLs exceed GET length limits)
 // PRIMARY: Photoroom API — removes bg, replaces with studio scene, preserves product 100%
 // FALLBACK: Luma Photon modify_image_ref

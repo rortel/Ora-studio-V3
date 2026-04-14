@@ -104,6 +104,8 @@ export interface EditorToolbarProps {
   /* Library */
   libraryOpen: boolean;
   onOpenLibrary: () => void;
+  /* Auto Montage */
+  onOpenMontage?: () => void;
   /* Brush/Mask */
   isBrushTool: boolean;
   brushSize: number;
@@ -143,7 +145,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
     layersPanelOpen, onToggleLayersPanel,
     propertiesOpen, onToggleProperties,
     saving, savedAt, onSave, imageUrl, onPublish, onDownload,
-    libraryOpen, onOpenLibrary,
+    libraryOpen, onOpenLibrary, onOpenMontage,
     isBrushTool, brushSize, onBrushSizeChange,
     invertMask, onInvertMaskToggle, maskLinesCount, onClearMask,
     reframeFormat, onReframeFormatChange,
@@ -367,11 +369,10 @@ export function EditorToolbar(props: EditorToolbarProps) {
         <div style={{ position: "relative" }}>
           <button
             onClick={(e) => { e.stopPropagation(); setAddMenuOpen(o => !o); }}
-            disabled={!hasImage}
             style={{
               ...pillBtn,
               background: addMenuOpen ? "#f0f0f2" : "transparent",
-              color: hasImage ? "#555" : "#ccc",
+              color: "#555",
               fontWeight: 500, gap: 4,
             }}
           >
@@ -394,6 +395,21 @@ export function EditorToolbar(props: EditorToolbarProps) {
                   minWidth: 170,
                 }}
               >
+                {/* AI Montage — premium CTA */}
+                {onOpenMontage && (
+                  <button
+                    onClick={() => { onOpenMontage(); setAddMenuOpen(false); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      width: "100%", padding: "8px 10px", borderRadius: 6, border: "none",
+                      background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                      color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      margin: "2px 0 4px",
+                    }}
+                  >
+                    <Sparkles size={13} /> {isFr ? "Montage IA" : "AI Montage"}
+                  </button>
+                )}
                 <DropdownItem icon={<Type size={13} />} label={isFr ? "Texte" : "Text"} onClick={() => { onAddText(); setAddMenuOpen(false); }} />
                 <DropdownItem icon={<ImageLucide size={13} />} label="Logo" onClick={() => { logoFileInputRef.current?.click(); setAddMenuOpen(false); }} />
 
