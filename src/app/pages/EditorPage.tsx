@@ -512,13 +512,35 @@ function EditorPageContent() {
       const durationInFrames = Math.max(30, Math.round(probe.duration * fps));
       const vw = probe.videoWidth || 1920;
       const vh = probe.videoHeight || 1080;
+      // Stack sequentially: new clip starts after existing video layers
+      const existingEnd = editorProject.project.layers
+        .filter(l => l.type === "video")
+        .reduce((max, l) => Math.max(max, l.temporal.startFrame + l.temporal.durationInFrames), 0);
       const layer = createVideoClipLayer(url, {
         name: file.name.replace(/\.[^.]+$/, ""),
         spatial: createDefaultSpatial(0, 0, vw, vh),
-        temporal: createDefaultTemporal(durationInFrames),
+        temporal: { startFrame: existingEnd, durationInFrames, keyframes: [] },
         trimEnd: probe.duration,
       });
       editorProject.addLayer(layer);
+      // Auto-extend project duration if needed
+      const newEnd = existingEnd + durationInFrames;
+      if (newEnd > editorProject.project.durationInFrames) {
+        editorProject.loadProject({ ...editorProject.project, durationInFrames: newEnd, layers: [...editorProject.project.layers] });
+      }
+      // Auto-fit stage to video dimensions when no base image loaded
+      if (!image) {
+        const containerW = canvasSize.width;
+        const containerH = canvasSize.height;
+        const scaleX = (containerW * 0.85) / vw;
+        const scaleY = (containerH * 0.85) / vh;
+        const fitScale = Math.min(scaleX, scaleY, 1);
+        setZoom(fitScale);
+        setStagePos({
+          x: (containerW - vw * fitScale) / 2,
+          y: (containerH - vh * fitScale) / 2,
+        });
+      }
       setTimelineOpen(true);
       toast.success(isFr ? "Clip vidéo ajouté" : "Video clip added");
     };
@@ -535,13 +557,35 @@ function EditorPageContent() {
       const durationInFrames = Math.max(30, Math.round(probe.duration * fps));
       const vw = probe.videoWidth || 1920;
       const vh = probe.videoHeight || 1080;
+      // Stack sequentially: new clip starts after existing video layers
+      const existingEnd = editorProject.project.layers
+        .filter(l => l.type === "video")
+        .reduce((max, l) => Math.max(max, l.temporal.startFrame + l.temporal.durationInFrames), 0);
       const layer = createVideoClipLayer(url, {
         name: "Library video",
         spatial: createDefaultSpatial(0, 0, vw, vh),
-        temporal: createDefaultTemporal(durationInFrames),
+        temporal: { startFrame: existingEnd, durationInFrames, keyframes: [] },
         trimEnd: probe.duration,
       });
       editorProject.addLayer(layer);
+      // Auto-extend project duration if needed
+      const newEnd = existingEnd + durationInFrames;
+      if (newEnd > editorProject.project.durationInFrames) {
+        editorProject.loadProject({ ...editorProject.project, durationInFrames: newEnd, layers: [...editorProject.project.layers] });
+      }
+      // Auto-fit stage to video dimensions when no base image loaded
+      if (!image) {
+        const containerW = canvasSize.width;
+        const containerH = canvasSize.height;
+        const scaleX = (containerW * 0.85) / vw;
+        const scaleY = (containerH * 0.85) / vh;
+        const fitScale = Math.min(scaleX, scaleY, 1);
+        setZoom(fitScale);
+        setStagePos({
+          x: (containerW - vw * fitScale) / 2,
+          y: (containerH - vh * fitScale) / 2,
+        });
+      }
       setTimelineOpen(true);
       toast.success(isFr ? "Clip vidéo ajouté" : "Video clip added");
     };
@@ -2037,9 +2081,9 @@ function EditorPageContent() {
                 );
               })}
 
-              {/* Video clip layers (from unified model) */}
-              {editorProject.project.layers
-                .filter((l): l is VideoClipLayerType => l.type === "video" && l.visible)
+              {/* Video clip layers (from unified model) — only render if temporally active at current frame */}
+              {(editorProject.getVisibleLayersAtFrame(editorProject.playheadFrame)
+                .filter((l): l is VideoClipLayerType => l.type === "video") as VideoClipLayerType[])
                 .map(layer => {
                   const vid = videoElementsRef.current.get(layer.id);
                   if (!vid || vid.readyState < 2) return null;
