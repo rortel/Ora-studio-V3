@@ -4749,7 +4749,11 @@ app.get("/generate/video-start", async (c) => {
         logCost({ type: "video", model, provider: `pollo/${pm.polloPath.split("/").pop()}`, costUsd: 0.08, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
         return c.json({ success: true, generationId: genId, state: "queued", model });
       }
-      console.log(`[video-start] POLLO FAILED: ${polloResult.error} — falling through to FAL/Luma`);
+      console.log(`[video-start] POLLO FAILED: ${polloResult.error}`);
+      if (!isFalVideoModel(model) && !hfVideoModelMap[model] && !videoModelMap[model]) {
+        return c.json({ success: false, error: `Video generation failed: ${polloResult.error}` }, 500);
+      }
+      console.log(`[video-start] falling through to FAL/Luma for ${model}`);
     }
 
     // ── Check if model routes through FAL (fallback for Minimax Hailuo, Wan 2.2, Kling 2.5) ──
@@ -4953,7 +4957,12 @@ app.post("/generate/video-start", async (c) => {
         logCost({ type: "video", model, provider: `pollo/${pm.polloPath.split("/").pop()}`, costUsd: 0.08, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - t0, userId: user?.id || "guest", success: true }).catch(() => {});
         return c.json({ success: true, generationId: genId, state: "queued", model });
       }
-      console.log(`[video-start/POST] POLLO FAILED: ${polloResult.error} — falling through to FAL/Luma`);
+      console.log(`[video-start/POST] POLLO FAILED: ${polloResult.error}`);
+      // For Pollo-only models (not in FAL/HF/Luma maps), fail immediately instead of cascading
+      if (!isFalVideoModel(model) && !hfVideoModelMap[model] && !videoModelMap[model]) {
+        return c.json({ success: false, error: `Video generation failed: ${polloResult.error}` }, 500);
+      }
+      console.log(`[video-start/POST] falling through to FAL/Luma for ${model}`);
     }
 
     // ── FAL models (fallback) ──
