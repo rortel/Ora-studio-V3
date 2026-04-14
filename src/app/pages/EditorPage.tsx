@@ -731,49 +731,7 @@ function EditorPageContent() {
   // AI PROMPT — Prompt-first editor: user types, AI acts
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const handleAiPrompt = useCallback(async () => {
-    const text = aiPrompt.trim();
-    if (!text || aiProcessing) return;
-    setAiProcessing(true);
-
-    try {
-      // Build context for the AI
-      const hasVideo = editorProject.project.layers.some(l => l.type === "video");
-      const context: Record<string, unknown> = {
-        hasImage: !!imageUrl,
-        hasVideo,
-        hasAudio: editorProject.project.audioTracks.length > 0,
-        format: `${editorProject.project.width}x${editorProject.project.height}`,
-        layerCount: editorProject.project.layers.length + layers.length,
-        libraryCount: libraryItems.length,
-        selectedLayerType: editorProject.selectedLayer?.type || (selectedLayerId ? layers.find(l => l.id === selectedLayerId)?.type : null),
-      };
-
-      const res = await serverPost("/editor/ai-action", {
-        prompt: text,
-        context,
-        locale: isFr ? "fr" : "en",
-      });
-
-      if (!res.success || !res.actions?.length) {
-        toast.error(res.error || (isFr ? "Je n'ai pas compris la demande" : "I didn't understand the request"));
-        return;
-      }
-
-      setAiPrompt("");
-
-      // Execute each action returned by the AI
-      for (const action of res.actions) {
-        await executeAiAction(action);
-      }
-    } catch (err: any) {
-      toast.error(err?.message || "Erreur réseau");
-    } finally {
-      setAiProcessing(false);
-    }
-  }, [aiPrompt, aiProcessing, imageUrl, editorProject, layers, libraryItems, selectedLayerId, isFr, serverPost]);
-
-  // Execute a single AI-returned action
+  // Execute a single AI-returned action (must be declared before handleAiPrompt)
   const executeAiAction = useCallback(async (action: any) => {
     const { action: type } = action;
     const projectW = editorProject.project.width;
@@ -1103,6 +1061,48 @@ function EditorPageContent() {
       }
     }
   }, [editorProject, imageUrl, isFr, canvasSize, serverPost, getAuthHeader, layers, libraryItems, historyIndex]);
+
+  const handleAiPrompt = useCallback(async () => {
+    const text = aiPrompt.trim();
+    if (!text || aiProcessing) return;
+    setAiProcessing(true);
+
+    try {
+      // Build context for the AI
+      const hasVideo = editorProject.project.layers.some(l => l.type === "video");
+      const context: Record<string, unknown> = {
+        hasImage: !!imageUrl,
+        hasVideo,
+        hasAudio: editorProject.project.audioTracks.length > 0,
+        format: `${editorProject.project.width}x${editorProject.project.height}`,
+        layerCount: editorProject.project.layers.length + layers.length,
+        libraryCount: libraryItems.length,
+        selectedLayerType: editorProject.selectedLayer?.type || (selectedLayerId ? layers.find(l => l.id === selectedLayerId)?.type : null),
+      };
+
+      const res = await serverPost("/editor/ai-action", {
+        prompt: text,
+        context,
+        locale: isFr ? "fr" : "en",
+      });
+
+      if (!res.success || !res.actions?.length) {
+        toast.error(res.error || (isFr ? "Je n'ai pas compris la demande" : "I didn't understand the request"));
+        return;
+      }
+
+      setAiPrompt("");
+
+      // Execute each action returned by the AI
+      for (const action of res.actions) {
+        await executeAiAction(action);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Erreur réseau");
+    } finally {
+      setAiProcessing(false);
+    }
+  }, [aiPrompt, aiProcessing, imageUrl, editorProject, layers, libraryItems, selectedLayerId, isFr, serverPost, executeAiAction]);
 
   // --- Drag & drop handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
