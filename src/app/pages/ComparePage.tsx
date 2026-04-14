@@ -1547,26 +1547,37 @@ USER REQUEST: `;
                           <img src={r.imageUrl} className="absolute inset-0 w-full h-full object-cover" alt={r.label} />
                         )}
                         {r.success && mode === "video" && r.videoUrl && (
-                          <video
-                            src={r.videoUrl}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="absolute inset-0 w-full h-full object-cover"
-                            onLoadedMetadata={(e) => {
-                              // Force play attempt — some browsers require explicit .play() call
-                              // even when autoPlay+muted is set (Safari, Firefox with strict mode).
-                              const v = e.currentTarget;
-                              v.play().catch((err) => {
-                                console.warn("[compare] video autoplay blocked:", err?.message);
-                              });
-                            }}
-                            onError={(e) => {
-                              console.warn("[compare] video load error", e.currentTarget.error?.message, "src=", r.videoUrl?.slice(0, 80));
-                            }}
-                          />
+                          <div className="absolute inset-0">
+                            <video
+                              src={r.videoUrl}
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onLoadedMetadata={(e) => {
+                                const v = e.currentTarget;
+                                v.play().catch((err) => {
+                                  console.warn("[compare] video autoplay blocked:", err?.message);
+                                });
+                              }}
+                              onError={(e) => {
+                                console.warn("[compare] video load error", e.currentTarget.error?.message, "src=", r.videoUrl?.slice(0, 80));
+                              }}
+                            />
+                            {/* Unmute button — overlaid on video card */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const video = e.currentTarget.parentElement?.querySelector("video");
+                                if (video) { video.muted = !video.muted; e.currentTarget.textContent = video.muted ? "🔇" : "🔊"; }
+                              }}
+                              className="absolute bottom-2 right-2 z-10 rounded-full cursor-pointer"
+                              style={{ background: "rgba(0,0,0,0.55)", color: "#fff", width: 28, height: 28, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", border: "none", backdropFilter: "blur(4px)" }}
+                              title="Toggle sound"
+                            >🔇</button>
+                          </div>
                         )}
                         {r.success && mode === "music" && r.audioUrl && (
                           <div className="absolute inset-0 flex flex-col items-center justify-center px-6 py-5 gap-4" onClick={e => e.stopPropagation()}>
