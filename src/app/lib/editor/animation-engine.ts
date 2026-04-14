@@ -138,16 +138,21 @@ export class AnimationEngine {
         }
       }
 
-      // Video element sync
-      if (layer.type === "video" && inRange) {
+      // Video element sync — play when in range, pause + seek when out
+      if (layer.type === "video") {
         const vid = this.videoElements.get(layer.id);
         if (vid) {
-          const targetTime = layer.trimStart + relFrame / this.project.fps;
-          // Only seek if drift > 0.1s to avoid stuttering
-          if (Math.abs(vid.currentTime - targetTime) > 0.1) {
-            vid.currentTime = targetTime;
+          if (inRange) {
+            const targetTime = layer.trimStart + relFrame / this.project.fps;
+            // Only seek if drift > 0.1s to avoid stuttering during playback
+            if (Math.abs(vid.currentTime - targetTime) > 0.1) {
+              vid.currentTime = targetTime;
+            }
+            if (this.playing && vid.paused) vid.play().catch(() => {});
+          } else {
+            // Pause videos outside their temporal range (CapCut/Premiere behavior)
+            if (!vid.paused) vid.pause();
           }
-          if (this.playing && vid.paused) vid.play().catch(() => {});
         }
       }
     }

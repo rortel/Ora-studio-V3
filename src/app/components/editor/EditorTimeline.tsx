@@ -285,17 +285,43 @@ export function EditorTimeline({
               </div>
             ))}
 
-            {/* Playhead */}
+            {/* Playhead — draggable like CapCut/Premiere */}
             <div style={{
               position: "absolute", top: 0, bottom: 0,
               left: playheadFrame * ppf, width: 1,
               background: "#7C3AED", zIndex: 20, pointerEvents: "none",
             }}>
-              <div style={{
-                position: "absolute", top: 0, left: -4,
-                width: 9, height: 9, borderRadius: "50%",
-                background: "#7C3AED", border: "2px solid #c4b5fd",
-              }} />
+              <div
+                style={{
+                  position: "absolute", top: -2, left: -7,
+                  width: 15, height: 15, cursor: "ew-resize",
+                  pointerEvents: "auto", zIndex: 25,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  const scrollEl = scrollRef.current;
+                  const handleMove = (ev: MouseEvent) => {
+                    if (!scrollEl) return;
+                    const rect = scrollEl.getBoundingClientRect();
+                    const scrollLeft = scrollEl.scrollLeft;
+                    const x = ev.clientX - rect.left + scrollLeft;
+                    const frame = Math.max(0, Math.min(durationInFrames, Math.round(x / ppf)));
+                    onPlayheadChange(frame);
+                  };
+                  const handleUp = () => {
+                    window.removeEventListener("mousemove", handleMove);
+                    window.removeEventListener("mouseup", handleUp);
+                  };
+                  window.addEventListener("mousemove", handleMove);
+                  window.addEventListener("mouseup", handleUp);
+                }}
+              >
+                {/* Playhead head — inverted triangle */}
+                <svg width="11" height="11" viewBox="0 0 11 11" style={{ display: "block" }}>
+                  <polygon points="0,0 11,0 5.5,9" fill="#7C3AED" />
+                </svg>
+              </div>
             </div>
           </div>
         </div>

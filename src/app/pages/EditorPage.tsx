@@ -303,7 +303,10 @@ function EditorPageContent() {
     const engine = new AnimationEngine({
       onFrameChange: (frame) => editorProject.setPlayheadFrame(frame),
       onPlayStateChange: (playing) => editorProject.setIsPlaying(playing),
-      onEnd: () => {},
+      onEnd: () => {
+        // Auto-rewind to start after playback ends (like Premiere/CapCut)
+        editorProject.setPlayheadFrame(0);
+      },
     });
     animationEngineRef.current = engine;
     return () => engine.destroy();
@@ -333,6 +336,8 @@ function EditorPageContent() {
   useEffect(() => {
     if (!editorProject.isPlaying && editorProject.playheadFrame !== prevPlayheadRef.current) {
       animationEngineRef.current?.seek(editorProject.playheadFrame);
+      // Flush a batchDraw so Konva picks up the new video frame while paused
+      requestAnimationFrame(() => stageRef.current?.batchDraw());
     }
     prevPlayheadRef.current = editorProject.playheadFrame;
   }, [editorProject.playheadFrame, editorProject.isPlaying]);
