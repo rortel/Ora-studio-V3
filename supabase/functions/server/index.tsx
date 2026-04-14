@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-14T15:00Z — v564-pollo-webhooks");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-14T15:30Z — v671-pollo-full-suite");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -1899,71 +1899,129 @@ async function kvGetPolloResult(taskId: string): Promise<{ state: string; videoU
 }
 
 // ORA model id → Pollo API path (relative to POLLO_BASE)
-const polloVideoModelMap: Record<string, { polloPath: string; defaultLength: number }> = {
-  // ── Kling AI ──
-  "kling-2.6":        { polloPath: "/generation/kling-ai/kling-v2-6",       defaultLength: 5 },
-  "kling-2.5":        { polloPath: "/generation/kling-ai/kling-v2-5-turbo", defaultLength: 5 },
-  "kling-v2.1":       { polloPath: "/generation/kling-ai/kling-v2-1",      defaultLength: 5 },
-  "kling-2.1-master": { polloPath: "/generation/kling-ai/kling-v2-1-master", defaultLength: 5 },
-  "kling-o1":         { polloPath: "/generation/kling-ai/kling-video-o1",   defaultLength: 5 },
-  // ── Google Veo ──
-  "veo-3.1":          { polloPath: "/generation/google/veo3-1",            defaultLength: 8 },
-  "veo-3.1-fast":     { polloPath: "/generation/google/veo3-1-fast",       defaultLength: 8 },
-  "veo-3":            { polloPath: "/generation/google/veo3",              defaultLength: 8 },
-  "veo-2":            { polloPath: "/generation/google/veo2",              defaultLength: 5 },
-  // ── OpenAI Sora ──
-  "sora-2":           { polloPath: "/generation/sora/sora-2",              defaultLength: 5 },
-  "sora-2-pro":       { polloPath: "/generation/sora/sora-2-pro",          defaultLength: 5 },
-  // ── Runway ──
-  "runway-gen4":      { polloPath: "/generation/runway/runway-gen-4-turbo", defaultLength: 5 },
-  "runway-gen3":      { polloPath: "/generation/runway/runway-gen-3-turbo", defaultLength: 5 },
-  // ── Pika ──
-  "pika":             { polloPath: "/generation/pika/pika-v2-2",           defaultLength: 5 },
-  "pika-2.1":         { polloPath: "/generation/pika/pika-v2-1",           defaultLength: 5 },
-  // ── PixVerse ──
-  "pixverse-5.5":     { polloPath: "/generation/pixverse/pixverse-v5-5",   defaultLength: 5 },
-  "pixverse-5":       { polloPath: "/generation/pixverse/pixverse-v5-0",   defaultLength: 5 },
-  // ── Pollo native ──
-  "pollo-2.0":        { polloPath: "/generation/pollo/pollo-v2-0",         defaultLength: 5 },
-  "pollo-1.6":        { polloPath: "/generation/pollo/pollo-v1-6",         defaultLength: 5 },
-  // ── Minimax / Hailuo ──
-  "hailuo-02":        { polloPath: "/generation/minimax/minimax-hailuo-02",    defaultLength: 6 },
-  "hailuo-2.3":       { polloPath: "/generation/minimax/minimax-hailuo-2.3",   defaultLength: 6 },
-  "hailuo-2.3-fast":  { polloPath: "/generation/minimax/minimax-hailuo-2.3-fast", defaultLength: 6 },
-  "hailuo-live2d":    { polloPath: "/generation/minimax/video-01-live2d",      defaultLength: 5 },
-  // ── Wan / Alibaba ──
+// allowedLengths: if set, duration MUST be one of these values (closest match used)
+// maxPromptLen: if set, prompt is truncated to this length before sending
+type PolloModelEntry = { polloPath: string; defaultLength: number; allowedLengths?: number[]; maxPromptLen?: number };
+const polloVideoModelMap: Record<string, PolloModelEntry> = {
+  // ── Kling AI (9 models) ──
+  "kling-1.0":        { polloPath: "/generation/kling-ai/kling-v1",          defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-1.5":        { polloPath: "/generation/kling-ai/kling-v1-5",       defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-1.6":        { polloPath: "/generation/kling-ai/kling-v1-6",       defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-2.0":        { polloPath: "/generation/kling-ai/kling-v2",          defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-v2.1":       { polloPath: "/generation/kling-ai/kling-v2-1",       defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-2.1-master": { polloPath: "/generation/kling-ai/kling-v2-1-master", defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-2.5":        { polloPath: "/generation/kling-ai/kling-v2-5-turbo", defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-2.6":        { polloPath: "/generation/kling-ai/kling-v2-6",       defaultLength: 5, allowedLengths: [5, 10] },
+  "kling-o1":         { polloPath: "/generation/kling-ai/kling-video-o1",   defaultLength: 5, allowedLengths: [5, 10] },
+  // ── Google Veo (5 models — length MUST be 4, 6, or 8) ──
+  "veo-3.1":          { polloPath: "/generation/google/veo3-1",            defaultLength: 8, allowedLengths: [4, 6, 8] },
+  "veo-3.1-fast":     { polloPath: "/generation/google/veo3-1-fast",       defaultLength: 8, allowedLengths: [4, 6, 8] },
+  "veo-3":            { polloPath: "/generation/google/veo3",              defaultLength: 8, allowedLengths: [4, 6, 8] },
+  "veo-3-fast":       { polloPath: "/generation/google/veo3-fast",         defaultLength: 8, allowedLengths: [4, 6, 8] },
+  "veo-2":            { polloPath: "/generation/google/veo2",              defaultLength: 5, allowedLengths: [5, 8] },
+  // ── OpenAI Sora (2 models) ──
+  "sora-2":           { polloPath: "/generation/sora/sora-2",              defaultLength: 5, allowedLengths: [4, 8, 12], maxPromptLen: 4000 },
+  "sora-2-pro":       { polloPath: "/generation/sora/sora-2-pro",          defaultLength: 5, allowedLengths: [4, 8, 12], maxPromptLen: 4000 },
+  // ── Runway (2 models — I2V only) ──
+  "runway-gen4":      { polloPath: "/generation/runway/runway-gen-4-turbo", defaultLength: 5, allowedLengths: [5, 10] },
+  "runway-gen3":      { polloPath: "/generation/runway/runway-gen-3-turbo", defaultLength: 5, allowedLengths: [5, 10] },
+  // ── Pika (4 models) ──
+  "pika-2.2":         { polloPath: "/generation/pika/pika-v2-2",           defaultLength: 5, allowedLengths: [5, 10] },
+  "pika-2.1":         { polloPath: "/generation/pika/pika-v2-1",           defaultLength: 5, allowedLengths: [5, 10] },
+  "pika-2.0":         { polloPath: "/generation/pika/pika-v2-0",           defaultLength: 5 },
+  "pika-1.5":         { polloPath: "/generation/pika/pika-v1-5",           defaultLength: 5 },
+  "pika":             { polloPath: "/generation/pika/pika-v2-2",           defaultLength: 5, allowedLengths: [5, 10] },
+  // ── PixVerse (7 models) ──
+  "pixverse-5.5":     { polloPath: "/generation/pixverse/pixverse-v5-5",   defaultLength: 5, allowedLengths: [5, 8, 10] },
+  "pixverse-5":       { polloPath: "/generation/pixverse/pixverse-v5-0",   defaultLength: 5, allowedLengths: [5, 8] },
+  "pixverse-4.5":     { polloPath: "/generation/pixverse/pixverse-v4-5",   defaultLength: 5, allowedLengths: [5, 8] },
+  "pixverse-4":       { polloPath: "/generation/pixverse/pixverse-v4",     defaultLength: 5, allowedLengths: [5, 8] },
+  "pixverse-3.5":     { polloPath: "/generation/pixverse/pixverse-v3-5",   defaultLength: 5, allowedLengths: [5, 8] },
+  "pixverse-3":       { polloPath: "/generation/pixverse/v3",              defaultLength: 5, allowedLengths: [5, 8] },
+  "pixverse-2":       { polloPath: "/generation/pixverse/v2",              defaultLength: 5, allowedLengths: [5, 10] },
+  // ── Pollo native (4 models) ──
+  "pollo-2.5":        { polloPath: "/generation/pollo/pollo-v2-5",         defaultLength: 5 },
+  "pollo-2.0":        { polloPath: "/generation/pollo/pollo-v2-0",         defaultLength: 5, allowedLengths: [5, 10] },
+  "pollo-1.6":        { polloPath: "/generation/pollo/pollo-v1-6",         defaultLength: 5, allowedLengths: [5, 10] },
+  "pollo-1.5":        { polloPath: "/generation/pollo/pollo-v1-5",         defaultLength: 5, allowedLengths: [5, 10] },
+  // ── Minimax / Hailuo (5 models) ──
+  "hailuo-02":        { polloPath: "/generation/minimax/minimax-hailuo-02",        defaultLength: 6, allowedLengths: [6, 10] },
+  "hailuo-2.3":       { polloPath: "/generation/minimax/minimax-hailuo-2.3",       defaultLength: 6, allowedLengths: [6, 10] },
+  "hailuo-2.3-fast":  { polloPath: "/generation/minimax/minimax-hailuo-2.3-fast",  defaultLength: 6, allowedLengths: [6, 10] },
+  "hailuo-01":        { polloPath: "/generation/minimax/video-01",                 defaultLength: 5 },
+  "hailuo-live2d":    { polloPath: "/generation/minimax/video-01-live2d",          defaultLength: 5 },
+  // ── Wan / Alibaba (7 models) ──
   "wan-2.6":          { polloPath: "/generation/wanx/wan-v2-6",               defaultLength: 5 },
+  "wan-2.6-flash":    { polloPath: "/generation/wanx/wan-v2-6-flash",          defaultLength: 5 },
+  "wan-2.5":          { polloPath: "/generation/wanx/wan-v2-5-preview",        defaultLength: 5 },
   "wan-2.2":          { polloPath: "/generation/wanx/wan-v2-2-plus",           defaultLength: 5 },
+  "wan-2.2-std":      { polloPath: "/generation/wanx/wan-v2-2",               defaultLength: 5 },
   "wan-2.2-flash":    { polloPath: "/generation/wanx/wan-v2-2-flash",          defaultLength: 5 },
-  // ── Seedance / ByteDance ──
+  "wan-2.1":          { polloPath: "/generation/wanx/wanx-v2-1",              defaultLength: 5 },
+  // ── Seedance / ByteDance (4 models) ──
   "seedance-2.0":     { polloPath: "/generation/bytedance/seedance-pro-fast",  defaultLength: 5 },
   "seedance-1.5-pro": { polloPath: "/generation/bytedance/seedance-1-5-pro",   defaultLength: 5 },
-  // ── Luma ──
-  "ray-2":            { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5 },
-  "ray-flash-2":      { polloPath: "/generation/luma/luma-ray-2-0-flash",      defaultLength: 5 },
-  "ora-motion":       { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5 },
-  // ── Vidu ──
+  "seedance-1.0-pro": { polloPath: "/generation/bytedance/seedance-pro",       defaultLength: 5, allowedLengths: [5, 10] },
+  "seedance-1.0":     { polloPath: "/generation/bytedance/seedance",           defaultLength: 5, allowedLengths: [5, 10] },
+  // ── Luma (3 models) ──
+  "ray-2":            { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5, allowedLengths: [5, 9] },
+  "ray-flash-2":      { polloPath: "/generation/luma/luma-ray-2-0-flash",      defaultLength: 5, allowedLengths: [5, 9] },
+  "ray-1.6":          { polloPath: "/generation/luma/luma-ray-1-6",            defaultLength: 5 },
+  "ora-motion":       { polloPath: "/generation/luma/luma-ray-2-0",            defaultLength: 5, allowedLengths: [5, 9] },
+  // ── Vidu (7 models) ──
   "vidu-q3-pro":      { polloPath: "/generation/vidu/viduq3-pro",             defaultLength: 5 },
+  "vidu-q2-pro":      { polloPath: "/generation/vidu/viduq2-pro",             defaultLength: 5 },
   "vidu-q2-turbo":    { polloPath: "/generation/vidu/viduq2-turbo",            defaultLength: 5 },
-  // ── Hunyuan / Tencent ──
-  "hunyuan":          { polloPath: "/generation/hunyuan/hunyuan",              defaultLength: 5 },
+  "vidu-q2":          { polloPath: "/generation/vidu/viduq2",                  defaultLength: 5 },
+  "vidu-q1":          { polloPath: "/generation/vidu/vidu-q1",                defaultLength: 5, allowedLengths: [5] },
+  "vidu-2.0":         { polloPath: "/generation/vidu/vidu-v2-0",              defaultLength: 4, allowedLengths: [4, 8] },
+  "vidu-1.5":         { polloPath: "/generation/vidu/vidu-v1-5",              defaultLength: 4, allowedLengths: [4, 8] },
+  // ── Hunyuan / Tencent (prompt max 200 chars, length locked to 5) ──
+  "hunyuan":          { polloPath: "/generation/hunyuan/hunyuan",              defaultLength: 5, allowedLengths: [5], maxPromptLen: 200 },
+  // ── xAI / Grok ──
+  "grok-video":       { polloPath: "/generation/grok/grok-imagine-video",      defaultLength: 5 },
+  // ── Midjourney ──
+  "midjourney-video":  { polloPath: "/generation/midjourney/midjourney-video", defaultLength: 5, maxPromptLen: 8192 },
 };
 
 function isPolloVideoModel(id: string): boolean {
   return !!polloVideoModelMap[id];
 }
 
+// Pick the closest allowed length for models with restricted durations
+function pickClosestLength(requested: number, allowed: number[]): number {
+  let best = allowed[0];
+  let bestDist = Math.abs(requested - best);
+  for (const v of allowed) {
+    const d = Math.abs(requested - v);
+    if (d < bestDist) { best = v; bestDist = d; }
+  }
+  return best;
+}
+
 async function callPolloVideoStart(
-  polloPath: string,
+  pm: PolloModelEntry,
   opts: { prompt: string; imageUrl?: string; durationSec: number; aspectRatio: string },
 ): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
   const key = Deno.env.get("POLLO_API_KEY");
   if (!key) return { ok: false, error: "POLLO_API_KEY not configured" };
   try {
-    const input: Record<string, unknown> = {
-      prompt: opts.prompt,
-      length: opts.durationSec,
-    };
+    // Resolve duration: use allowedLengths if model has restrictions, else defaultLength as floor
+    let length = opts.durationSec;
+    if (pm.allowedLengths) {
+      length = pickClosestLength(opts.durationSec, pm.allowedLengths);
+    } else if (opts.durationSec < pm.defaultLength) {
+      length = pm.defaultLength;
+    }
+
+    // Truncate prompt if model has a max prompt length
+    let prompt = opts.prompt;
+    if (pm.maxPromptLen && prompt.length > pm.maxPromptLen) {
+      prompt = prompt.slice(0, pm.maxPromptLen - 1) + "…";
+      console.log(`[pollo] Truncated prompt to ${pm.maxPromptLen} chars for ${pm.polloPath}`);
+    }
+
+    const input: Record<string, unknown> = { prompt, length };
     if (opts.imageUrl) {
       // img2video: most Pollo models reject aspectRatio (additionalProperties: false)
       input.image = opts.imageUrl;
@@ -1972,20 +2030,21 @@ async function callPolloVideoStart(
       input.aspectRatio = opts.aspectRatio;
     }
 
-    const res = await fetch(`${POLLO_BASE}${polloPath}`, {
+    console.log(`[pollo] POST ${pm.polloPath} length=${length} promptLen=${prompt.length} hasImage=${!!opts.imageUrl}`);
+    const res = await fetch(`${POLLO_BASE}${pm.polloPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": key },
       body: JSON.stringify({ input, webhookUrl: POLLO_WEBHOOK_URL }),
       signal: AbortSignal.timeout(20_000),
     });
     const txt = await res.text().catch(() => "");
-    if (!res.ok) return { ok: false, error: `Pollo ${polloPath} HTTP ${res.status}: ${txt.slice(0, 300)}` };
+    if (!res.ok) return { ok: false, error: `Pollo ${pm.polloPath} HTTP ${res.status}: ${txt.slice(0, 300)}` };
     let data: any;
-    try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${polloPath}: non-JSON response` }; }
-    if (!data.taskId) return { ok: false, error: `Pollo ${polloPath}: no taskId (got: ${JSON.stringify(data).slice(0, 200)})` };
+    try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${pm.polloPath}: non-JSON response` }; }
+    if (!data.taskId) return { ok: false, error: `Pollo ${pm.polloPath}: no taskId (got: ${JSON.stringify(data).slice(0, 200)})` };
     return { ok: true, taskId: data.taskId };
   } catch (err) {
-    return { ok: false, error: `Pollo ${polloPath} error: ${err}` };
+    return { ok: false, error: `Pollo ${pm.polloPath} error: ${err}` };
   }
 }
 
@@ -4739,7 +4798,7 @@ app.get("/generate/video-start", async (c) => {
       const pm = polloVideoModelMap[model];
       const aspectRatio = clientAspectRatio || "16:9";
       console.log(`[video-start] POLLO: model=${model} path=${pm.polloPath} hasImage=${!!resolvedImageUrl}`);
-      const polloResult = await callPolloVideoStart(pm.polloPath, {
+      const polloResult = await callPolloVideoStart(pm, {
         prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio,
       });
       if (polloResult.ok) {
@@ -4944,7 +5003,7 @@ app.post("/generate/video-start", async (c) => {
       const pm = polloVideoModelMap[model];
       const aspectRatio = clientAspectRatio || "16:9";
       console.log(`[video-start/POST] POLLO: model=${model} path=${pm.polloPath} hasImage=${!!resolvedImageUrl}`);
-      const polloResult = await callPolloVideoStart(pm.polloPath, {
+      const polloResult = await callPolloVideoStart(pm, {
         prompt: finalVideoPrompt, imageUrl: resolvedImageUrl, durationSec: videoDuration, aspectRatio,
       });
       if (polloResult.ok) {
@@ -5129,6 +5188,339 @@ app.post("/webhook/pollo", async (c) => {
     console.log(`[webhook/pollo] ERROR: ${err}`);
     return c.json({ error: "Webhook processing failed" }, 500);
   }
+});
+
+// ══════════════════════════════════════════════════════════════
+// POLLO TOOLS — Generic proxy for Pollo API tools & features
+// Each tool is a POST that returns a taskId, polled via /tools/status
+// ══════════════════════════════════════════════════════════════
+
+async function callPolloTool(endpoint: string, body: Record<string, unknown>): Promise<{ ok: true; taskId: string } | { ok: false; error: string }> {
+  const key = Deno.env.get("POLLO_API_KEY");
+  if (!key) return { ok: false, error: "POLLO_API_KEY not configured" };
+  try {
+    const res = await fetch(`${POLLO_BASE}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": key },
+      body: JSON.stringify({ ...body, webhookUrl: POLLO_WEBHOOK_URL }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) return { ok: false, error: `Pollo ${endpoint} HTTP ${res.status}: ${txt.slice(0, 300)}` };
+    let data: any;
+    try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${endpoint}: non-JSON` }; }
+    if (!data.taskId) return { ok: false, error: `Pollo ${endpoint}: no taskId` };
+    return { ok: true, taskId: data.taskId };
+  } catch (err) {
+    return { ok: false, error: `Pollo ${endpoint}: ${err}` };
+  }
+}
+
+// ── Motion Transfer / Action Imitation ──
+app.post("/tools/motion-transfer", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    const imageUrl = pb.imageUrl;
+    const videoUrl = pb.videoUrl;
+    const modelName = pb.model || "action-imitation-v2";
+    if (!imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    if (!videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    const result = await callPolloTool("/generation/actionImitation", {
+      input: { imageUrl, video: { url: videoUrl }, modelName, prompt: pb.prompt || "", ratio: pb.ratio || "1280:720" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "motion-transfer")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Lip Sync / Avatar ──
+app.post("/tools/lip-sync", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    const imageUrl = pb.imageUrl;
+    const audioUrl = pb.audioUrl;
+    const videoModel = pb.model || "hedra-character-v3";
+    if (!imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    if (!audioUrl) return c.json({ error: "audioUrl required" }, 400);
+    const input: Record<string, unknown> = {
+      type: "imageAndAudio", videoModel, imageUrl, audioUrl,
+      prompt: pb.prompt || "", aspectRatio: pb.aspectRatio || "16:9",
+    };
+    if (pb.durationMs) input.durationMs = Math.min(Number(pb.durationMs), 60000);
+    const result = await callPolloTool("/generation/lipSync", { input });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "lip-sync")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Video-to-Video (style transfer) ──
+app.post("/tools/video-to-video", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    const videoUrl = pb.videoUrl;
+    const styleCode = pb.styleCode;
+    if (!videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    if (!styleCode) return c.json({ error: "styleCode required" }, 400);
+    const result = await callPolloTool("/generation/video2video", {
+      input: {
+        styleCode, prompt: pb.prompt || "", assets: [{ type: "video", url: videoUrl }],
+        promptStrength: pb.promptStrength || 50,
+      },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video2video")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Video Extender ──
+app.post("/tools/video-extend", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    const videoUrl = pb.videoUrl;
+    if (!videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    const result = await callPolloTool("/generation/video-extender", {
+      input: {
+        videoUri: videoUrl, videoModel: pb.model || "pollo-v2-extender",
+        prompt: pb.prompt || "", duration: pb.duration || 5,
+      },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video-extend")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Video Object Remover ──
+app.post("/tools/video-object-remove", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    if (!pb.prompt) return c.json({ error: "prompt required (describe object to remove)" }, 400);
+    const result = await callPolloTool("/generation/video-object-remover", {
+      input: { videoUri: pb.videoUrl, prompt: pb.prompt, videoModel: pb.model || "wan-v2-6" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video-edit")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Video Upscale ──
+app.post("/tools/video-upscale", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    const result = await callPolloTool("/tools/videoUpscale", {
+      input: { videoUrl: pb.videoUrl, scale: pb.scale || "2x", model: pb.model || "standard", capability: "enhance" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video-upscale")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Video Background Remover ──
+app.post("/tools/video-bg-remove", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    const result = await callPolloTool("/tools/videoBackgroundRemover", {
+      input: { videoUrl: pb.videoUrl, outputFormat: pb.format || "webm" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video-edit")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Add Audio to Video ──
+app.post("/tools/video-add-audio", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.videoUrl) return c.json({ error: "videoUrl required" }, 400);
+    const result = await callPolloTool("/generation/audioVideo", {
+      input: { videoModel: "mm-audio", videoUrl: pb.videoUrl, audioPrompt: pb.prompt || "cinematic background music", audioLength: pb.audioLength || 30 },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("video", "video-edit")).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── IMAGE TOOLS (all return taskId, polled via same /tools/status) ──
+
+// Image Background Remover
+app.post("/tools/image-bg-remove", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imageBackgroundRemover", {
+      input: { imageUrl: pb.imageUrl, bgcolor: pb.bgcolor },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Background Changer
+app.post("/tools/image-bg-change", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    if (!pb.prompt) return c.json({ error: "prompt required (new background description)" }, 400);
+    const result = await callPolloTool("/tools/imageBackgroundChanger", {
+      input: { imageUrl: pb.imageUrl, prompt: pb.prompt, aspectRatio: pb.aspectRatio || "1:1" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Face Swap
+app.post("/tools/image-face-swap", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    if (!pb.faceImageUrl) return c.json({ error: "faceImageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imageFaceSwap", {
+      input: { imageUrl: pb.imageUrl, faceImageUrl: pb.faceImageUrl },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Object Remover
+app.post("/tools/image-object-remove", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imageObjectRemover", {
+      input: { imageUrl: pb.imageUrl, maskBase64: pb.maskBase64, maskUrl: pb.maskUrl },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Inpainting
+app.post("/tools/image-inpaint", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imagePainting", {
+      input: { imageUrl: pb.imageUrl, maskBase64: pb.maskBase64, maskUrl: pb.maskUrl, text: pb.prompt || "" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Outpainting / Uncrop
+app.post("/tools/image-uncrop", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imageUncrop", {
+      input: {
+        imageUrl: pb.imageUrl,
+        extend: pb.extend || { top: 0.2, bottom: 0.2, left: 0.2, right: 0.2 },
+        resize: pb.resize || { width: 1920, height: 1080 },
+      },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Upscale
+app.post("/tools/image-upscale", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/imageUpscale", {
+      input: { imageUrl: pb.imageUrl, modelName: pb.model || "pollo-image-upscale", scale: pb.scale || 2, capability: pb.capability || "Enhance" },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// Image Watermark Remove
+app.post("/tools/image-watermark-remove", async (c) => {
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    if (!pb.imageUrl) return c.json({ error: "imageUrl required" }, 400);
+    const result = await callPolloTool("/tools/watermarkRemove", {
+      input: { imageUrl: pb.imageUrl, modelName: "wanx-v2-1", removeText: pb.removeText !== false, removeLogo: pb.removeLogo !== false },
+    });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, 1).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued" });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Tools status (reuses Pollo task status for all tools) ──
+app.get("/tools/status", async (c) => {
+  try {
+    const rawId = c.req.query("id");
+    if (!rawId) return c.json({ error: "id required" }, 400);
+    const taskId = rawId.startsWith("pollo:") ? rawId.slice(6) : rawId;
+    const r = await callPolloVideoStatus(taskId);
+    if (r.state === "completed") return c.json({ success: true, state: "completed", url: r.videoUrl || null });
+    if (r.state === "failed") return c.json({ success: true, state: "failed", error: r.error });
+    return c.json({ success: true, state: r.state });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
+});
+
+// ── Pollo Image Generation (text2image / image2image) ──
+app.post("/generate/pollo-image", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null; try { user = await getUser(c); } catch {}
+    const pb = c.get("parsedBody") || {};
+    const prompt = pb.prompt;
+    const modelName = pb.model || "nano-banana";
+    if (!prompt) return c.json({ error: "prompt required" }, 400);
+    const endpoint = pb.imageUrl ? "/generation/image2image" : "/generation/text2image";
+    const input: Record<string, unknown> = { prompt, modelName, aspectRatio: pb.aspectRatio || "1:1" };
+    if (pb.imageUrl) input.imageUrl = pb.imageUrl;
+    if (pb.negativePrompt) input.negativePrompt = pb.negativePrompt;
+    if (pb.style) input.style = pb.style;
+    if (pb.resolution) input.resolution = pb.resolution;
+    if (pb.numOutputs) input.numOutputs = Math.min(Number(pb.numOutputs), 4);
+    console.log(`[pollo-image] ${endpoint} model=${modelName} hasRef=${!!pb.imageUrl}`);
+    const result = await callPolloTool(endpoint, { input });
+    if (!result.ok) return c.json({ success: false, error: result.error }, 500);
+    if (user) deductCredit(user.id, getModelCreditCost("image", modelName)).catch(() => {});
+    return c.json({ success: true, generationId: `pollo:${result.taskId}`, state: "queued", model: modelName });
+  } catch (err) { return c.json({ success: false, error: `${err}` }, 500); }
 });
 
 // ── VIDEO STATUS (poll Luma or secondary provider once, return current state) ──

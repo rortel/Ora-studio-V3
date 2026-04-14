@@ -121,6 +121,21 @@ const VIDEO_MODELS: ModelDef[] = [
   { id: "hailuo-live2d", label: "Hailuo Live2D", badge: "Animation", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["animation", "illustration"], bestFor: "Anime illustrations & logos", tier: "standard", segment: "character" },
   { id: "veo-2", label: "Veo 2", badge: "Google", credits: 25, costEur: 2.50, providerCostEur: 0.35, strengths: ["realistic", "google"], bestFor: "Google réaliste", tier: "standard", segment: "versatile" },
   { id: "pika-2.1", label: "Pika 2.1", badge: "Creative", credits: 15, costEur: 1.50, providerCostEur: 0.08, strengths: ["creative", "fun"], bestFor: "Stylisé & créatif", tier: "economy", segment: "draft" },
+  // ── Nouveaux providers & modèles étendus ──
+  { id: "grok-video", label: "Grok Video", badge: "xAI", credits: 30, costEur: 3.00, providerCostEur: 0.30, strengths: ["creative", "xai"], bestFor: "Créativité xAI (jusqu'à 15s)", tier: "premium", segment: "cinematic" },
+  { id: "midjourney-video", label: "Midjourney Video", badge: "MJ", credits: 35, costEur: 3.50, providerCostEur: 0.40, strengths: ["artistic", "cinematic"], bestFor: "Esthétique Midjourney en vidéo", tier: "premium", segment: "cinematic" },
+  { id: "pollo-2.5", label: "Pollo 2.5", badge: "Audio", credits: 25, costEur: 2.50, providerCostEur: 0.18, strengths: ["audio", "versatile"], bestFor: "Audio natif + jusqu'à 15s", tier: "standard", segment: "audio" },
+  { id: "veo-3-fast", label: "Veo 3 Fast", badge: "Google⚡", credits: 25, costEur: 2.50, providerCostEur: 0.35, strengths: ["google", "audio", "speed"], bestFor: "Veo 3 + audio, -30% temps", tier: "standard", segment: "audio" },
+  { id: "wan-2.6-flash", label: "Wan 2.6 Flash", badge: "Fast", credits: 15, costEur: 1.50, providerCostEur: 0.10, strengths: ["fast", "audio"], bestFor: "Wan 2.6 rapide + audio", tier: "economy", segment: "draft" },
+  { id: "wan-2.5", label: "Wan 2.5", badge: "Audio", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["audio", "versatile"], bestFor: "Audio intégré + Wan quality", tier: "standard", segment: "audio" },
+  { id: "vidu-q2-pro", label: "Vidu Q2 Pro", badge: "Audio", credits: 25, costEur: 2.50, providerCostEur: 0.20, strengths: ["audio", "quality"], bestFor: "Audio + end-frame", tier: "standard", segment: "audio" },
+  { id: "vidu-q2", label: "Vidu Q2", badge: "Audio", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["audio"], bestFor: "Audio natif Vidu (T2V)", tier: "standard", segment: "audio" },
+  { id: "kling-2.0", label: "Kling 2.0", badge: "Standard", credits: 25, costEur: 2.50, providerCostEur: 0.22, strengths: ["cinematic"], bestFor: "Cinématique standard Kling", tier: "standard", segment: "versatile" },
+  { id: "seedance-1.0-pro", label: "Seedance Pro", badge: "HD", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["hd", "camera"], bestFor: "1080p + contrôle caméra", tier: "standard", segment: "versatile" },
+  { id: "pixverse-4.5", label: "PixVerse 4.5", badge: "Styles", credits: 20, costEur: 2.00, providerCostEur: 0.15, strengths: ["styles", "anime"], bestFor: "Anime, 3D, cyberpunk", tier: "standard", segment: "character" },
+  { id: "pika-2.0", label: "Pika 2.0", badge: "Camera", credits: 15, costEur: 1.50, providerCostEur: 0.08, strengths: ["camera", "creative"], bestFor: "Contrôle caméra avancé", tier: "economy", segment: "draft" },
+  { id: "hailuo-01", label: "Hailuo 01", badge: "Classic", credits: 15, costEur: 1.50, providerCostEur: 0.10, strengths: ["classic"], bestFor: "Hailuo classique", tier: "economy", segment: "draft" },
+  { id: "pollo-1.5", label: "Pollo 1.5", badge: "Budget", credits: 8, costEur: 0.80, providerCostEur: 0.04, strengths: ["budget"], bestFor: "Ultra-économique", tier: "economy", segment: "draft" },
 ];
 
 const MUSIC_MODELS: ModelDef[] = [
