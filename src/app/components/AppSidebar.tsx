@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Home, FolderOpen, Calendar, Palette, Sparkles,
+  Home, FolderOpen, Calendar, Palette, Sparkles, Scissors,
   User, LogOut, Shield, Zap, CreditCard,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
@@ -37,6 +37,7 @@ export function AppSidebar() {
   const allNavItems = [
     { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
+    { icon: Scissors,  label: t("sidebar.editor") || "Éditeur", href: "/hub/editor", phase1: true  },
     { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
     { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
     { icon: Palette,   label: t("sidebar.brandKit"), href: "/hub/vault",   phase1: false },
@@ -46,6 +47,7 @@ export function AppSidebar() {
   const allMobileNavItems = [
     { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
+    { icon: Scissors,  label: t("sidebar.editor") || "Éditeur", href: "/hub/editor", phase1: true  },
     { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
     { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
   ];

@@ -1704,34 +1704,64 @@ USER REQUEST: `;
                           </div>
                         )}
 
-                        {/* ── Edit button on hover (image/video only) ── */}
+                        {/* ── Action buttons on hover (image/video only) ── */}
                         {r.success && (mode === "image" || mode === "video") && (r.imageUrl || r.videoUrl) && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate("/hub/editor", {
-                                state: {
-                                  assetUrl: r.imageUrl || r.videoUrl,
-                                  assetId: r.id,
-                                  assetType: mode,
-                                  prompt,
-                                  model: r.modelId,
-                                },
-                              });
-                            }}
-                            className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                            style={{
-                              background: "rgba(255,255,255,0.92)",
-                              backdropFilter: "blur(12px)",
-                              border: "1px solid rgba(0,0,0,0.1)",
-                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: "#1a1a1a",
-                            }}
-                          >
-                            <Pencil size={11} /> {isFr ? "Modifier" : "Edit"}
-                          </button>
+                          <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Download */}
+                            <a
+                              href={r.imageUrl || r.videoUrl}
+                              download
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                              style={{
+                                background: "rgba(255,255,255,0.92)", backdropFilter: "blur(12px)",
+                                border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                fontSize: 11, fontWeight: 700, color: "#1a1a1a",
+                              }}
+                            >
+                              <Download size={11} /> {isFr ? "Télécharger" : "Download"}
+                            </a>
+                            {/* Edit in Editor */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate("/hub/editor", {
+                                  state: {
+                                    assetUrl: r.imageUrl || r.videoUrl,
+                                    assetId: r.id,
+                                    assetType: mode,
+                                    prompt,
+                                    model: r.modelId,
+                                  },
+                                });
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                              style={{
+                                background: "rgba(124,58,237,0.92)", backdropFilter: "blur(12px)",
+                                border: "1px solid rgba(124,58,237,0.3)", boxShadow: "0 4px 12px rgba(124,58,237,0.25)",
+                                fontSize: 11, fontWeight: 700, color: "#fff",
+                              }}
+                            >
+                              <Pencil size={11} /> {isFr ? "Éditer" : "Edit"}
+                            </button>
+                            {/* Publish */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPublishTarget({ imageUrl: (r.imageUrl || r.videoUrl)!, defaultCaption: prompt });
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg cursor-pointer"
+                              style={{
+                                background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)",
+                                border: "1px solid rgba(255,255,255,0.15)", boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                                fontSize: 11, fontWeight: 700, color: "#fff",
+                              }}
+                            >
+                              <Share2 size={11} /> {isFr ? "Publier" : "Publish"}
+                            </button>
+                          </div>
                         )}
 
                         {/* ── Glassmorphism KPI overlay on hover ── */}
