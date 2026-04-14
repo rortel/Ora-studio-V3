@@ -4750,10 +4750,7 @@ app.get("/generate/video-start", async (c) => {
         return c.json({ success: true, generationId: genId, state: "queued", model });
       }
       console.log(`[video-start] POLLO FAILED: ${polloResult.error}`);
-      if (!isFalVideoModel(model) && !hfVideoModelMap[model] && !videoModelMap[model]) {
-        return c.json({ success: false, error: `Video generation failed: ${polloResult.error}` }, 500);
-      }
-      console.log(`[video-start] falling through to FAL/Luma for ${model}`);
+      return c.json({ success: false, error: `Video generation failed (${model}): ${polloResult.error}` }, 500);
     }
 
     // ── Check if model routes through FAL (fallback for Minimax Hailuo, Wan 2.2, Kling 2.5) ──
@@ -4958,11 +4955,8 @@ app.post("/generate/video-start", async (c) => {
         return c.json({ success: true, generationId: genId, state: "queued", model });
       }
       console.log(`[video-start/POST] POLLO FAILED: ${polloResult.error}`);
-      // For Pollo-only models (not in FAL/HF/Luma maps), fail immediately instead of cascading
-      if (!isFalVideoModel(model) && !hfVideoModelMap[model] && !videoModelMap[model]) {
-        return c.json({ success: false, error: `Video generation failed: ${polloResult.error}` }, 500);
-      }
-      console.log(`[video-start/POST] falling through to FAL/Luma for ${model}`);
+      // Pollo is the primary provider — if it fails, return the error directly
+      return c.json({ success: false, error: `Video generation failed (${model}): ${polloResult.error}` }, 500);
     }
 
     // ── FAL models (fallback) ──
