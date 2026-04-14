@@ -1730,8 +1730,8 @@ function EditorPageContent() {
             )}
           </AnimatePresence>
 
-          {/* Empty state */}
-          {!image && (
+          {/* Empty state — hide when video layers exist on timeline */}
+          {!image && !editorProject.project.layers.some(l => l.type === "video") && (
             <div style={{
               position: "absolute", inset: 0,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
