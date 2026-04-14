@@ -5,6 +5,7 @@ import Konva from "konva";
 import {
   ImageIcon, Loader2, Maximize,
   Upload, X as XIcon, Film,
+  Sparkles, Send, Music2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "react-router";
@@ -27,8 +28,8 @@ import { useEditorProject, importFromVideoProject } from "../lib/editor/useEdito
 import { AnimationEngine } from "../lib/editor/animation-engine";
 import {
   createVideoClipLayer, createImageLayer, createTextLayer, createAudioTrack,
-  createDefaultSpatial, createDefaultTemporal, createDefaultProject,
-  FORMAT_PRESETS,
+  createShapeLayer, createDefaultSpatial, createDefaultTemporal, createDefaultProject,
+  FORMAT_PRESETS, type FormatPresetKey,
 } from "../lib/editor/types";
 import type { VideoClipLayer as VideoClipLayerType, AnimationPreset } from "../lib/editor/types";
 import type { VideoProject } from "../lib/video-editor/types";
@@ -239,6 +240,11 @@ function EditorPageContent() {
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const videoFileInputRef = useRef<HTMLInputElement>(null);
   const audioFileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- AI Prompt bar (prompt-first editor) ---
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const aiInputRef = useRef<HTMLInputElement>(null);
 
   // --- Core state ---
   const [tool, setTool] = useState<EditorTool>("move");
@@ -720,6 +726,383 @@ function EditorPageContent() {
       : `Montage "${plan.projectName}" created with ${plan.clips.length} clips`
     );
   }, [editorProject, isFr, canvasSize]);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // AI PROMPT — Prompt-first editor: user types, AI acts
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  const handleAiPrompt = useCallback(async () => {
+    const text = aiPrompt.trim();
+    if (!text || aiProcessing) return;
+    setAiProcessing(true);
+
+    try {
+      // Build context for the AI
+      const hasVideo = editorProject.project.layers.some(l => l.type === "video");
+      const context: Record<string, unknown> = {
+        hasImage: !!imageUrl,
+        hasVideo,
+        hasAudio: editorProject.project.audioTracks.length > 0,
+        format: `${editorProject.project.width}x${editorProject.project.height}`,
+        layerCount: editorProject.project.layers.length + layers.length,
+        libraryCount: libraryItems.length,
+        selectedLayerType: editorProject.selectedLayer?.type || (selectedLayerId ? layers.find(l => l.id === selectedLayerId)?.type : null),
+      };
+
+      const res = await serverPost("/editor/ai-action", {
+        prompt: text,
+        context,
+        locale: isFr ? "fr" : "en",
+      });
+
+      if (!res.success || !res.actions?.length) {
+        toast.error(res.error || (isFr ? "Je n'ai pas compris la demande" : "I didn't understand the request"));
+        return;
+      }
+
+      setAiPrompt("");
+
+      // Execute each action returned by the AI
+      for (const action of res.actions) {
+        await executeAiAction(action);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Erreur réseau");
+    } finally {
+      setAiProcessing(false);
+    }
+  }, [aiPrompt, aiProcessing, imageUrl, editorProject, layers, libraryItems, selectedLayerId, isFr, serverPost]);
+
+  // Execute a single AI-returned action
+  const executeAiAction = useCallback(async (action: any) => {
+    const { action: type } = action;
+    const projectW = editorProject.project.width;
+    const projectH = editorProject.project.height;
+
+    switch (type) {
+      // ── FORMAT ──
+      case "change-format":
+      case "reframe": {
+        const formatMap: Record<string, FormatPresetKey> = {
+          square: "square", "1:1": "square", carré: "square",
+          portrait: "portrait", "9:16": "portrait",
+          landscape: "landscape", "16:9": "landscape", paysage: "landscape",
+          story: "story", reel: "story", "story insta": "story",
+          "feed-4x5": "feed-4x5", "4:5": "feed-4x5", feed: "feed-4x5",
+        };
+        const key = formatMap[action.format] || "square";
+        const fmt = FORMAT_PRESETS[key];
+        editorProject.updateProjectProps({ width: fmt.width, height: fmt.height });
+        // Auto-fit stage
+        const containerW = canvasSize.width;
+        const containerH = canvasSize.height;
+        const scaleX = (containerW * 0.85) / fmt.width;
+        const scaleY = (containerH * 0.85) / fmt.height;
+        const fitScale = Math.min(scaleX, scaleY, 1);
+        setZoom(fitScale);
+        setStagePos({
+          x: (containerW - fmt.width * fitScale) / 2,
+          y: (containerH - fmt.height * fitScale) / 2,
+        });
+        toast.success(isFr ? `Format changé : ${fmt.label}` : `Format changed: ${fmt.label}`);
+        break;
+      }
+
+      // ── BACKGROUND ──
+      case "change-background": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Changement du fond en cours..." : "Changing background...");
+        try {
+          const bgRes = await fetch(`${API_BASE}/editor/background`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+            body: JSON.stringify({ imageUrl, prompt: action.prompt, _token: getAuthHeader() }),
+          });
+          const bgData = await bgRes.json();
+          if (bgData.success && bgData.imageUrl) {
+            const img = new window.Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              setImage(img);
+              setImageUrl(bgData.imageUrl);
+              setHistory(prev => [...prev.slice(0, historyIndex + 1), { imageData: bgData.imageUrl, maskData: [] }]);
+              setHistoryIndex(prev => prev + 1);
+              toast.success(isFr ? "Fond remplacé !" : "Background replaced!");
+            };
+            img.src = bgData.imageUrl;
+          } else {
+            toast.error(bgData.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── REMOVE BACKGROUND ──
+      case "remove-background": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Suppression du fond..." : "Removing background...");
+        try {
+          const rbRes = await serverPost("/editor/segment-subject", { imageUrl });
+          if (rbRes.success && rbRes.subjectUrl) {
+            const img = new window.Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              setImage(img);
+              setImageUrl(rbRes.subjectUrl);
+              setHistory(prev => [...prev.slice(0, historyIndex + 1), { imageData: rbRes.subjectUrl, maskData: [] }]);
+              setHistoryIndex(prev => prev + 1);
+              toast.success(isFr ? "Fond supprimé !" : "Background removed!");
+            };
+            img.src = rbRes.subjectUrl;
+          } else {
+            toast.error(rbRes.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── ADD TEXT ──
+      case "add-text": {
+        const posMap: Record<string, number> = {
+          top: projectH * 0.08,
+          center: projectH * 0.42,
+          bottom: projectH * 0.82,
+        };
+        const sizeMap: Record<string, number> = { small: 24, medium: 36, large: 56 };
+        const fontSize = sizeMap[action.fontSize] || 36;
+        const yPos = posMap[action.position] || posMap.center;
+        const textLayer = createTextLayer({
+          name: action.text?.slice(0, 25) || "Text",
+          text: action.text || "Text",
+          fontSize,
+          fontStyle: action.fontStyle || "bold",
+          fill: action.color || "#ffffff",
+          align: "center",
+          spatial: createDefaultSpatial(projectW * 0.05, yPos, projectW * 0.9, fontSize * 2),
+          temporal: createDefaultTemporal(editorProject.project.durationInFrames),
+          shadow: { enabled: true, color: "rgba(0,0,0,0.5)", blur: 6, offsetX: 0, offsetY: 2 },
+        });
+        editorProject.addLayer(textLayer);
+        setTimelineOpen(true);
+        toast.success(isFr ? "Texte ajouté" : "Text added");
+        break;
+      }
+
+      // ── UPDATE TEXT ──
+      case "update-text": {
+        const textLayers = editorProject.project.layers.filter(l => l.type === "text");
+        const target = textLayers[textLayers.length - 1]; // last added text
+        if (target) {
+          const updates: any = {};
+          if (action.text) updates.text = action.text;
+          if (action.color) updates.fill = action.color;
+          if (action.fontSize) {
+            const sizeMap: Record<string, number> = { small: 24, medium: 36, large: 56 };
+            updates.fontSize = sizeMap[action.fontSize] || 36;
+          }
+          editorProject.updateLayer(target.id, updates);
+          toast.success(isFr ? "Texte mis à jour" : "Text updated");
+        } else {
+          toast.info(isFr ? "Aucun texte à modifier" : "No text to update");
+        }
+        break;
+      }
+
+      // ── ADD LOGO ──
+      case "add-logo": {
+        // Trigger logo file input
+        const logoInput = document.querySelector('input[accept="image/png,image/svg+xml,image/webp"]') as HTMLInputElement;
+        if (logoInput) {
+          toast.info(isFr ? "Sélectionnez votre logo" : "Select your logo");
+          logoInput.click();
+        } else {
+          toast.info(isFr ? "Sélectionnez votre logo via le bouton + dans la toolbar" : "Select your logo via the + button in toolbar");
+        }
+        break;
+      }
+
+      // ── ADD SHAPE ──
+      case "add-shape": {
+        const shape = action.shape || "rect";
+        const posMap: Record<string, number> = {
+          top: projectH * 0.05,
+          center: projectH * 0.35,
+          bottom: projectH * 0.7,
+        };
+        const yPos = posMap[action.position] || posMap.center;
+        const shapeLayer = createShapeLayer(shape, {
+          fill: action.color || "rgba(124, 58, 237, 0.85)",
+          spatial: createDefaultSpatial(projectW * 0.1, yPos, projectW * 0.8, projectH * 0.25),
+          temporal: createDefaultTemporal(editorProject.project.durationInFrames),
+        });
+        editorProject.addLayer(shapeLayer);
+        toast.success(isFr ? "Forme ajoutée" : "Shape added");
+        break;
+      }
+
+      // ── UPSCALE ──
+      case "upscale": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Upscale en cours..." : "Upscaling...");
+        try {
+          const upRes = await fetch(`${API_BASE}/editor/upscale`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+            body: JSON.stringify({ imageUrl, _token: getAuthHeader() }),
+          });
+          const upData = await upRes.json();
+          if (upData.success && upData.imageUrl) {
+            const img = new window.Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              setImage(img);
+              setImageUrl(upData.imageUrl);
+              setHistory(prev => [...prev.slice(0, historyIndex + 1), { imageData: upData.imageUrl, maskData: [] }]);
+              setHistoryIndex(prev => prev + 1);
+              toast.success(isFr ? "Image améliorée !" : "Image upscaled!");
+            };
+            img.src = upData.imageUrl;
+          } else {
+            toast.error(upData.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── CLEAN (remove object) ──
+      case "clean": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        setTool("clean");
+        toast.info(isFr ? "Peignez sur la zone à nettoyer, puis appuyez Entrée" : "Paint over the area to clean, then press Enter");
+        break;
+      }
+
+      // ── REPLACE (inpaint) ──
+      case "replace": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        setTool("replace");
+        setPrompt(action.description || "");
+        toast.info(isFr ? "Peignez sur la zone à remplacer, puis appuyez Entrée" : "Paint over the area to replace, then press Enter");
+        break;
+      }
+
+      // ── SEGMENT SUBJECT ──
+      case "segment-subject": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Détourage du sujet..." : "Segmenting subject...");
+        try {
+          const segRes = await serverPost("/editor/segment-subject", { imageUrl });
+          if (segRes.success && segRes.subjectUrl) {
+            // Add subject as a new layer
+            const subjectLayer = { id: crypto.randomUUID(), type: "subject" as const, sourceUrl: segRes.subjectUrl };
+            editorProject.addLayer({
+              ...subjectLayer,
+              name: isFr ? "Sujet détouré" : "Cutout Subject",
+              visible: true, locked: false, zIndex: 0,
+              spatial: createDefaultSpatial(0, 0, projectW, projectH),
+              temporal: createDefaultTemporal(editorProject.project.durationInFrames),
+              animationPreset: "none" as AnimationPreset,
+            });
+            toast.success(isFr ? "Sujet détouré !" : "Subject segmented!");
+          } else {
+            toast.error(segRes.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── AUTO MONTAGE ──
+      case "auto-montage": {
+        if (libraryItems.length < 2) {
+          toast.error(isFr ? "Ajoutez au moins 2 éléments à votre bibliothèque" : "Add at least 2 items to your library");
+          break;
+        }
+        setMontageOpen(true);
+        toast.info(isFr ? "Sélectionnez les assets pour le montage" : "Select assets for the montage");
+        break;
+      }
+
+      // ── ADD MUSIC ──
+      case "add-music": {
+        toast.info(isFr ? "Génération de musique..." : "Generating music...");
+        try {
+          const musicRes = await serverPost("/generate/music-elevenlabs", {
+            prompt: action.style || "upbeat background music",
+            durationMs: Math.round((editorProject.project.durationInFrames / editorProject.project.fps) * 1000),
+          });
+          if (musicRes.success && musicRes.audioUrl) {
+            const fps = editorProject.project.fps;
+            const durationInFrames = Math.max(30, Math.round((musicRes.durationMs || 20000) / 1000 * fps));
+            const track = createAudioTrack(musicRes.audioUrl, action.style || "Music", { durationInFrames });
+            editorProject.addAudioTrack(track);
+            setTimelineOpen(true);
+            toast.success(isFr ? "Musique ajoutée !" : "Music added!");
+          } else {
+            toast.error(musicRes.error || "Music generation failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── ANIMATE (image → video) ──
+      case "animate": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Lancement de l'animation..." : "Starting animation...");
+        try {
+          const animRes = await serverPost("/generate/video-start", {
+            imageUrl,
+            prompt: action.prompt || "",
+            model: "wan-2.1",
+          });
+          if (animRes.success) {
+            toast.success(isFr
+              ? `Animation lancée ! ID: ${animRes.generationId?.slice(0, 20)}`
+              : `Animation started! ID: ${animRes.generationId?.slice(0, 20)}`);
+          } else {
+            toast.error(animRes.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── UNCROP ──
+      case "uncrop": {
+        if (!imageUrl) { toast.error(isFr ? "Chargez d'abord une image" : "Load an image first"); break; }
+        toast.info(isFr ? "Extension de l'image..." : "Extending image...");
+        try {
+          const uncropRes = await serverPost("/tools/image-uncrop", { imageUrl });
+          if (uncropRes.success) {
+            toast.success(isFr ? `Extension lancée ! ID: ${uncropRes.generationId?.slice(0, 20)}` : `Uncrop started! ID: ${uncropRes.generationId?.slice(0, 20)}`);
+          } else {
+            toast.error(uncropRes.error || "Failed");
+          }
+        } catch (e: any) { toast.error(e?.message || "Erreur réseau"); }
+        break;
+      }
+
+      // ── SAVE ──
+      case "save": {
+        toast.info(isFr ? "Sauvegarde..." : "Saving...");
+        // Trigger the existing save flow
+        const saveBtn = document.querySelector('[data-action="save"]') as HTMLButtonElement;
+        if (saveBtn) saveBtn.click();
+        break;
+      }
+
+      // ── EXPORT ──
+      case "export": {
+        setExportOpen(true);
+        break;
+      }
+
+      // ── UNKNOWN ──
+      case "unknown":
+      default: {
+        toast.info(action.message || (isFr ? "Je n'ai pas compris. Reformulez ?" : "I didn't understand. Could you rephrase?"));
+        break;
+      }
+    }
+  }, [editorProject, imageUrl, isFr, canvasSize, serverPost, getAuthHeader, layers, libraryItems, historyIndex]);
 
   // --- Drag & drop handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -1817,7 +2200,7 @@ function EditorPageContent() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
 
         {/* ─── Canvas + Timeline (resizable split) ─── */}
-        <PanelGroup direction="vertical" style={{ flex: 1 }}>
+        <PanelGroup direction="vertical" style={{ flex: 1, minHeight: 0 }}>
           <Panel defaultSize={timelineOpen ? 75 : 100} minSize={30}>
         {/* ─── Canvas area ─── */}
         <div
@@ -2465,65 +2848,99 @@ function EditorPageContent() {
           )}
         </PanelGroup>
 
-        {/* ─── Bottom prompt bar ─── */}
+        {/* ─── AI Prompt Bar — always visible ─── */}
+        <div style={{
+          height: 56, background: "#fff", borderTop: "1px solid #e8e8e8",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "0 20px", gap: 10, flexShrink: 0,
+        }}>
+          <div style={{
+            flex: 1, maxWidth: 640, display: "flex", alignItems: "center",
+            background: "#f5f5f7", borderRadius: 12, padding: "0 6px 0 14px",
+            border: aiProcessing ? "1.5px solid #7C3AED" : "1.5px solid #e8e8e8",
+            height: 42, transition: "border-color 0.2s",
+          }}>
+            <Sparkles size={15} style={{ color: "#7C3AED", flexShrink: 0, marginRight: 8 }} />
+            <input
+              ref={aiInputRef}
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+              placeholder={isFr
+                ? "Décrivez ce que vous voulez : changer le fond, ajouter du texte, animer..."
+                : "Describe what you want: change background, add text, animate..."}
+              onKeyDown={e => { if (e.key === "Enter" && aiPrompt.trim() && !aiProcessing) handleAiPrompt(); }}
+              disabled={aiProcessing}
+              style={{
+                flex: 1, background: "none", border: "none", outline: "none",
+                color: "#1a1a1a", fontSize: 13, fontWeight: 400,
+              }}
+            />
+            <motion.button
+              whileHover={{ scale: aiPrompt.trim() ? 1.08 : 1 }}
+              whileTap={{ scale: aiPrompt.trim() ? 0.92 : 1 }}
+              onClick={handleAiPrompt}
+              disabled={!aiPrompt.trim() || aiProcessing}
+              style={{
+                width: 32, height: 32, borderRadius: 8, border: "none",
+                background: aiPrompt.trim() ? "#7C3AED" : "transparent",
+                color: aiPrompt.trim() ? "#fff" : "#ccc",
+                cursor: aiPrompt.trim() ? "pointer" : "default",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s", flexShrink: 0,
+              }}
+            >
+              {aiProcessing ? (
+                <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <Send size={15} />
+              )}
+            </motion.button>
+          </div>
+        </div>
+
+        {/* ─── Tool-specific action bar (only when brush tool is active) ─── */}
         <AnimatePresence>
           {showActionBar && image && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
+              exit={{ opacity: 0, y: 10 }}
               style={{
-                height: showPromptBar ? 64 : 52,
-                background: "#fff", borderTop: "1px solid #e8e8e8",
+                height: showPromptBar ? 52 : 44,
+                background: "#fafafa", borderTop: "1px solid #f0f0f0",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 padding: "0 20px", gap: 12, flexShrink: 0,
               }}
             >
-              {/* Prompt input (only for tools that need it) */}
               {showPromptBar && (
                 <div style={{
-                  flex: 1, maxWidth: 560, display: "flex", alignItems: "center",
-                  background: "#f5f5f7", borderRadius: 10, padding: "0 14px",
-                  border: "1px solid #e8e8e8", height: 40,
+                  flex: 1, maxWidth: 400, display: "flex", alignItems: "center",
+                  background: "#fff", borderRadius: 8, padding: "0 12px",
+                  border: "1px solid #e8e8e8", height: 36,
                 }}>
                   <input
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
                     placeholder={PROMPT_PLACEHOLDERS[tool]}
                     onKeyDown={e => { if (e.key === "Enter" && canExecute()) handleAction(); }}
-                    style={{
-                      flex: 1, background: "none", border: "none", outline: "none",
-                      color: "#1a1a1a", fontSize: 13,
-                    }}
+                    style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#1a1a1a", fontSize: 12 }}
                   />
                 </div>
               )}
-
-              {/* Action button */}
               <motion.button
                 whileHover={{ scale: canExecute() ? 1.02 : 1 }}
                 whileTap={{ scale: canExecute() ? 0.98 : 1 }}
                 onClick={handleAction}
                 disabled={!canExecute()}
                 style={{
-                  padding: "0 24px", height: 40, borderRadius: 10, border: "none",
-                  background: canExecute()
-                    ? "#7C3AED"
-                    : "#e8e8e8",
+                  padding: "0 18px", height: 36, borderRadius: 8, border: "none",
+                  background: canExecute() ? "#7C3AED" : "#e8e8e8",
                   color: canExecute() ? "#fff" : "#bbb",
-                  fontSize: 13, fontWeight: 600, cursor: canExecute() ? "pointer" : "default",
-                  display: "flex", alignItems: "center", gap: 8,
-                  transition: "all 0.15s",
+                  fontSize: 12, fontWeight: 600, cursor: canExecute() ? "pointer" : "default",
+                  display: "flex", alignItems: "center", gap: 6,
                 }}
               >
-                {processing ? (
-                  <>
-                    <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
-                    Processing...
-                  </>
-                ) : (
-                  getActionLabel()
-                )}
+                {processing ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : getActionLabel()}
               </motion.button>
             </motion.div>
           )}

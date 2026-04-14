@@ -175,7 +175,10 @@ export function AutoMontageDialog({
         locale: isFr ? "fr" : "en",
       };
 
-      const plan: MontagePlan = await serverPost("/editor/auto-montage", body);
+      const res = await serverPost("/editor/auto-montage", body);
+      if (!res.success) throw new Error(res.error || "Montage failed");
+      const plan: MontagePlan = res.plan;
+      if (!plan || !Array.isArray(plan.clips)) throw new Error("Invalid montage plan");
       onMontageReady(plan);
       onClose();
       toast.success(isFr ? "Montage prêt !" : "Montage ready!");

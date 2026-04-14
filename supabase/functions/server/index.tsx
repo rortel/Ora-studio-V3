@@ -2041,8 +2041,10 @@ async function callPolloVideoStart(
     if (!res.ok) return { ok: false, error: `Pollo ${pm.polloPath} HTTP ${res.status}: ${txt.slice(0, 300)}` };
     let data: any;
     try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${pm.polloPath}: non-JSON response` }; }
-    if (!data.taskId) return { ok: false, error: `Pollo ${pm.polloPath}: no taskId (got: ${JSON.stringify(data).slice(0, 200)})` };
-    return { ok: true, taskId: data.taskId };
+    // Pollo wraps responses: { code, message, data: { taskId } } or flat { taskId }
+    const taskId = data.data?.taskId || data.taskId;
+    if (!taskId) return { ok: false, error: `Pollo ${pm.polloPath}: no taskId (got: ${JSON.stringify(data).slice(0, 200)})` };
+    return { ok: true, taskId };
   } catch (err) {
     return { ok: false, error: `Pollo ${pm.polloPath} error: ${err}` };
   }
@@ -2064,7 +2066,9 @@ async function callPolloVideoStatus(taskId: string): Promise<{ state: string; vi
       headers: { "x-api-key": key },
       signal: AbortSignal.timeout(15_000),
     });
-    const data = await res.json();
+    const raw = await res.json();
+    // Pollo may wrap: { code, data: { generations: [...] } } or flat { generations: [...] }
+    const data = raw?.data || raw;
     // Pollo status: "waiting" | "processing" | "succeed" | "failed"
     const gen = data?.generations?.[0];
     if (gen?.status === "succeed" && gen?.url) {
@@ -5209,8 +5213,10 @@ async function callPolloTool(endpoint: string, body: Record<string, unknown>): P
     if (!res.ok) return { ok: false, error: `Pollo ${endpoint} HTTP ${res.status}: ${txt.slice(0, 300)}` };
     let data: any;
     try { data = JSON.parse(txt); } catch { return { ok: false, error: `Pollo ${endpoint}: non-JSON` }; }
-    if (!data.taskId) return { ok: false, error: `Pollo ${endpoint}: no taskId` };
-    return { ok: true, taskId: data.taskId };
+    // Pollo wraps responses: { code, message, data: { taskId } } or flat { taskId }
+    const taskId = data.data?.taskId || data.taskId;
+    if (!taskId) return { ok: false, error: `Pollo ${endpoint}: no taskId` };
+    return { ok: true, taskId };
   } catch (err) {
     return { ok: false, error: `Pollo ${endpoint}: ${err}` };
   }
@@ -9586,6 +9592,134 @@ Return the following JSON:
     return c.json({ success: true, plan });
   } catch (err: any) {
     console.error("[editor/auto-montage] Error:", err?.message || err);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── /editor/ai-action — Prompt-first editor: AI parses user intent → returns structured action(s) ──
+app.post("/editor/ai-action", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { prompt, context, locale } = body;
+
+    if (!prompt || typeof prompt !== "string") {
+      return c.json({ success: false, error: "prompt required" }, 400);
+    }
+
+    const isFr = locale === "fr";
+
+    // Build context string for the AI
+    const contextParts: string[] = [];
+    if (context?.hasImage) contextParts.push("User has an image loaded on canvas.");
+    if (context?.hasVideo) contextParts.push("User has video clip(s) in timeline.");
+    if (context?.format) contextParts.push(`Current format: ${context.format}.`);
+    if (context?.layerCount) contextParts.push(`${context.layerCount} layer(s) on canvas.`);
+    if (context?.hasAudio) contextParts.push("Audio track(s) present.");
+    if (context?.selectedLayerType) contextParts.push(`Selected layer type: ${context.selectedLayerType}.`);
+    if (context?.libraryCount) contextParts.push(`${context.libraryCount} items in user's library.`);
+    const contextStr = contextParts.length > 0 ? `\nCurrent state:\n${contextParts.join("\n")}` : "";
+
+    const systemPrompt = `You are the AI brain of ORA Studio, a creative editor. The user gives instructions in natural language. You must return ONE JSON action (or an array of actions) to execute.
+
+Available actions:
+- { "action": "change-format", "format": "square"|"portrait"|"landscape"|"story"|"feed-4x5" }
+  Aliases: "story insta" or "story" or "9:16" → "story", "carré" or "1:1" → "square", "paysage" or "16:9" → "landscape", "portrait" or "4:5" → "feed-4x5"
+- { "action": "change-background", "prompt": "description of new background in English" }
+  Use when user wants to change/replace the background of their image.
+- { "action": "remove-background" }
+  Use when user wants a transparent/removed background.
+- { "action": "add-text", "text": "the text content", "position": "top"|"center"|"bottom", "fontSize": "small"|"medium"|"large", "fontStyle": "bold"|"normal"|"italic", "color": "#hex" }
+  Use when user wants to add text. Infer position/style from context.
+- { "action": "add-logo", "position": "top-left"|"top-right"|"bottom-left"|"bottom-right"|"center" }
+  Use when user wants to add their logo. Infer best position from context.
+- { "action": "add-shape", "shape": "rect"|"circle"|"star"|"pill", "color": "#hex", "position": "center"|"top"|"bottom" }
+  Use for badges, stickers, decorative elements.
+- { "action": "upscale" }
+  Use when user wants higher resolution / better quality.
+- { "action": "clean", "description": "what to remove" }
+  Use when user wants to remove an object/element from the image.
+- { "action": "replace", "description": "what to replace and with what" }
+  Use when user wants to replace part of the image.
+- { "action": "auto-montage", "style": "optional mood/style", "musicStyle": "optional music description" }
+  Use when user wants to create a video/montage from their library assets.
+- { "action": "add-music", "style": "description of desired music mood" }
+  Use when user wants background music.
+- { "action": "animate", "prompt": "optional animation description" }
+  Use when user wants to animate their image into a video.
+- { "action": "segment-subject" }
+  Use when user wants to cut out / isolate the subject from background.
+- { "action": "reframe" }
+  Alias for change-format when user says "recadrer" or "extend".
+- { "action": "uncrop", "direction": "all"|"left"|"right"|"top"|"bottom" }
+  Use when user wants to extend/expand the canvas beyond current borders.
+- { "action": "face-swap", "description": "context about the face swap" }
+  Use when user wants to swap faces.
+- { "action": "update-text", "text": "new text content", "color": "#hex", "fontSize": "small"|"medium"|"large" }
+  Use when user wants to modify existing text on canvas.
+- { "action": "update-layer", "property": "opacity"|"position"|"size", "value": any }
+  Use for fine-tuning layers.
+- { "action": "save" }
+  Use when user explicitly wants to save.
+- { "action": "export", "format": "image"|"video" }
+  Use when user wants to export/download.
+- { "action": "unknown", "message": "clarification message to show user" }
+  Use ONLY when you truly cannot understand the request.
+${contextStr}
+
+Rules:
+- ALWAYS return valid JSON. No extra text.
+- For background changes, translate the user's description to English for the AI model.
+- Be smart about position inference: logos usually go in corners, text titles go top or center, subtitles go bottom.
+- If the user asks for multiple things at once, return an array of actions.
+- If user says "supprime" or "enlève" something specific → use "clean". If they say the whole background → "remove-background".
+- Music style should be descriptive in English (e.g. "upbeat electronic", "calm acoustic guitar").
+- For format: "story" and "reel" mean 9:16 portrait. "post" usually means square.
+- When user asks for a montage/film/video from their content → "auto-montage".
+
+Respond ONLY with valid JSON, nothing else.`;
+
+    const userPrompt = `User instruction: "${prompt}"`;
+
+    const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: apipodHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        max_tokens: 1024,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text().catch(() => "");
+      console.log(`[editor/ai-action] APIPod ${aiRes.status}: ${errText.slice(0, 200)}`);
+      return c.json({ success: false, error: `AI parsing failed: ${aiRes.status}` }, 502);
+    }
+
+    const aiData = await aiRes.json();
+    const raw = aiData.choices?.[0]?.message?.content || "";
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim());
+    } catch {
+      console.error("[editor/ai-action] Failed to parse AI response:", raw.slice(0, 200));
+      return c.json({ success: false, error: "Failed to parse AI response" }, 500);
+    }
+
+    // Normalize: ensure we always return an array of actions
+    const actions = Array.isArray(parsed) ? parsed : (parsed.actions ? parsed.actions : [parsed]);
+
+    console.log(`[editor/ai-action] OK in ${Date.now() - t0}ms — actions=${actions.length} prompt="${prompt.slice(0, 60)}"`);
+    return c.json({ success: true, actions });
+  } catch (err: any) {
+    console.error("[editor/ai-action] Error:", err?.message || err);
     return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
