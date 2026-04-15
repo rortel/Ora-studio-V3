@@ -10434,10 +10434,11 @@ app.post("/generate/audio-start", async (c) => {
   }
 });
 
-// Audio POLL — frontend calls this every 5s with taskId
-app.get("/generate/audio-poll", async (c) => {
+// Audio POLL — frontend calls this every 5s with taskId (supports GET and POST)
+app.all("/generate/audio-poll", async (c) => {
   try {
-    const taskId = c.req.query("taskId");
+    const pb = c.get?.("parsedBody") || {};
+    const taskId = c.req.query("taskId") || pb.taskId;
     if (!taskId) return c.json({ error: "taskId required" }, 400);
     const result = await sunoPollStatus(taskId);
     return c.json({ success: true, ...result });
@@ -21676,15 +21677,17 @@ app.get("/debug/image-noauth", async (c) => {
   }
 });
 
-// ── IMAGE GENERATION VIA GET — workaround for POST not reaching server ──
-app.get("/generate/image-via-get", async (c) => {
+// ── IMAGE GENERATION VIA GET (also accepts POST with query params in body) ──
+app.all("/generate/image-via-get", async (c) => {
   const t0 = Date.now();
-  console.log(`[image-via-get] ENTERED at ${new Date().toISOString()}`);
+  console.log(`[image-via-get] ENTERED at ${new Date().toISOString()} method=${c.req.method}`);
   try {
-    const prompt = c.req.query("prompt") || "";
-    const modelsRaw = c.req.query("models") || "";
-    const aspectRatio = c.req.query("aspectRatio") || "";
-    const models = modelsRaw.split(",").filter(Boolean);
+    // Support both GET (query params) and POST (body params) — POST avoids 414 URI Too Long
+    const pb = c.get?.("parsedBody") || {};
+    const prompt = c.req.query("prompt") || pb.prompt || "";
+    const modelsRaw = c.req.query("models") || pb.models || "";
+    const aspectRatio = c.req.query("aspectRatio") || pb.aspectRatio || "";
+    const models = (typeof modelsRaw === "string" ? modelsRaw.split(",") : Array.isArray(modelsRaw) ? modelsRaw : []).filter(Boolean);
     if (!prompt || !models.length) {
       return c.json({ error: "prompt and models query params required" }, 400);
     }

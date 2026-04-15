@@ -869,11 +869,22 @@ export function ComparePage() {
   }, [getAuthHeader]);
 
   const serverGet = useCallback(async (path: string) => {
-    const sep = path.includes("?") ? "&" : "?";
+    // Use POST with token + query params in body to avoid 414 URI Too Long / CORS issues
+    // (JWT is ~33KB due to ora_activity in user_metadata — too large for URL or headers)
     const token = getAuthHeader();
-    const r = await fetch(`${API_BASE}${path}${sep}apikey=${publicAnonKey}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
+    // Extract query params from the path and move them to the POST body
+    const [basePath, qs] = path.split("?");
+    const params: Record<string, string> = {};
+    if (qs) {
+      for (const pair of qs.split("&")) {
+        const [k, v] = pair.split("=");
+        if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || "");
+      }
+    }
+    const r = await fetch(`${API_BASE}${basePath}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ _token: token, ...params }),
       signal: AbortSignal.timeout(180_000),
     });
     return r.json();
