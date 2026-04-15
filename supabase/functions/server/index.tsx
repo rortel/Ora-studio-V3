@@ -1314,6 +1314,10 @@ async function enhanceImagePrompt(rawPrompt: string, preserveBrandName: boolean 
   const enhanceModels = ["gpt-4o", "gpt-5"];
   const isVague = rawPrompt.trim().split(/\s+/).length < 20;
 
+  // ── ARTISTIC STYLE DETECTION — bypass photo-realism when user requests a painting style ──
+  const artisticPatterns = /\b(style\s+(of|de|du|d')\s*|à la (manière|façon)\s+(de|du|d')\s*|in the style of\s*|inspired by\s*|comme\s+|like\s+)(monet|van\s*gogh|picasso|basquiat|klimt|warhol|hokusai|dali|matisse|kandinsky|mondrian|rembrandt|vermeer|caravage|caravaggio|turner|cézanne|cezanne|renoir|degas|gauguin|munch|rothko|pollock|banksy|frida\s*kahlo|kahlo|magritte|hockney|lichtenstein|seurat|chagall|klee|miró|miro|schiele|bacon|haring|keith\s*haring|botticelli|raphael|raphaël|michelangelo|michel-ange|léonard\s*de\s*vinci|da\s*vinci|toulouse-lautrec|impressionnist|impressionist|cubis[mt]|surrealis[mt]|expressionnis[mt]|pop\s*art|art\s*nouveau|art\s*deco|fauvism|fauvis[mt]|renaissance|baroque|pointillis[mt]|abstract\s*expressionism)/i;
+  const isArtistic = artisticPatterns.test(rawPrompt);
+
   // Build brand direction block — injected into system prompt so the AI composes a unified creative vision
   let brandDirectionBlock = "";
   if (brandCtx) {
@@ -1337,6 +1341,62 @@ ${bd.join("\n")}
 
 YOUR JOB: Compose a SINGLE unified prompt where the brand direction is woven INTO the scene description — not appended as keywords. The lighting, color grading, props, wardrobe, and atmosphere should all serve the brand's visual identity. Think like an art director briefing a photographer: "I want the viewer to feel X, using Y light, with Z color accents."`;
     }
+  }
+
+  // ── ARTISTIC MODE — completely different system prompt for painting/art styles ──
+  if (isArtistic) {
+    console.log(`[enhancePrompt] ARTISTIC MODE detected for: "${rawPrompt.slice(0, 60)}"`);
+    const artisticSystemPrompt = `You are a world-class art director specializing in fine art reproduction and style transfer. Your ONLY job: transform the user's request into a single, detailed English prompt that will generate an image faithfully reproducing the ARTISTIC STYLE of the referenced painter or movement.
+
+CRITICAL RULES:
+1. PRESERVE THE ARTIST/STYLE — The named painter or art movement is the #1 priority. Every visual choice must serve that style.
+2. STUDY THE MASTER — For each artist, invoke their SIGNATURE techniques:
+   - Monet: loose impressionist brushstrokes, dappled light, soft edges, plein-air feel, pastel color harmonics
+   - Van Gogh: thick impasto swirls, bold expressive color, visible heavy brushwork, emotional intensity, starry/turbulent energy
+   - Picasso: cubist fragmentation, multiple perspectives simultaneously, geometric forms, bold outlines, muted earth + blue/rose
+   - Basquiat: raw neo-expressionist marks, graffiti-like text fragments, crown motifs, chaotic layering, primal energy
+   - Klimt: golden decorative patterns, Art Nouveau ornament, mosaic-like flat areas mixed with realistic faces, sensual
+   - Warhol: pop art flat colors, screen-print aesthetic, repetition, bold outlines, commercial/ironic
+   - Hokusai: ukiyo-e woodblock style, precise linework, flat color planes, waves/nature, Japanese composition
+   - Dalí: surrealist melting forms, hyper-detailed dreamscapes, impossible physics, desert landscapes
+   - Matisse: bold fauve colors, simplified organic shapes, joyful flat patterns, decorative
+   - Rembrandt: dramatic chiaroscuro, rich dark palette, luminous skin, theatrical lighting
+   - Renaissance: balanced composition, sfumato, idealized forms, classical perspective, religious grandeur
+   - Impressionism: broken color, visible brushwork, light effects, outdoor scenes, fleeting moments
+   - Cubism: fragmented forms, multiple viewpoints, geometric planes, muted palette
+   - Expressionism: distorted forms, intense emotion, bold non-naturalistic color
+   - Pop Art: commercial imagery, flat bold color, screen-print dots, irony
+3. DESCRIBE AS A PAINTING — Use terms like "oil on canvas", "watercolor", "brushstrokes visible", "painted in the style of". NEVER use photography terms (no camera, no lens, no film stock).
+4. PRESERVE THE SUBJECT — Keep the user's subject matter (the scene, objects, people they described) but render it through the artist's visual language.
+5. OUTPUT ONLY the prompt text. No quotes, no explanation. 80-150 words.
+6. If the user's request is in another language, translate faithfully to English.
+7. End with: "No text, no watermarks, no AI artifacts. Fine art painting, museum quality, high resolution."`;
+
+    for (const m of enhanceModels) {
+      try {
+        const res = await fetch(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: m,
+            messages: [
+              { role: "system", content: artisticSystemPrompt },
+              { role: "user", content: rawPrompt },
+            ],
+            max_tokens: 400,
+          }),
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (!res.ok) { console.log(`[enhancePrompt/artistic] ${m} returned ${res.status}, trying next...`); continue; }
+        const data = await res.json();
+        const enhanced = data.choices?.[0]?.message?.content?.trim();
+        if (enhanced && enhanced.length > 20) {
+          console.log(`[enhancePrompt/artistic] OK via ${m} (${Date.now() - t0}ms): "${rawPrompt.slice(0, 40)}" → "${enhanced.slice(0, 120)}"`);
+          return enhanced;
+        }
+      } catch (err) { console.log(`[enhancePrompt/artistic] ${m} error: ${err}`); }
+    }
+    return rawPrompt;
   }
 
   const systemPrompt = `You are a world-class image prompt engineer — trained at Magnum Photos, Tyler Mitchell's studio, and Stink Studios. You create images that look like they were shot TODAY by a top-tier photographer for Vogue, Kinfolk, or Apple. Your ONLY job: transform the user's request into a single, hyper-detailed English prompt that produces AUTHENTIC, MODERN, ANTI-STOCK images.
