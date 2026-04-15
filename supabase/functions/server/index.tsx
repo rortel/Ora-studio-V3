@@ -2731,27 +2731,29 @@ async function generateImageLeonardoV2WithGuidance(req: {
 }
 
 // ── IMAGE WITH REFERENCE (img2img — FAL Flux primary for preserve, Luma fallback) ──
-async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; imageRefUrls?: string[]; strength?: number; preserveContent?: boolean; aspectRatio?: string; intentId?: string; intentVisualDirection?: string; intentPacing?: string }) {
+async function generateImageWithRef(req: { prompt: string; model: string; imageRefUrl: string; imageRefUrls?: string[]; strength?: number; preserveContent?: boolean; artisticMode?: boolean; aspectRatio?: string; intentId?: string; intentVisualDirection?: string; intentPacing?: string }) {
   const start = Date.now();
   const rawStrength = req.strength ?? 0.80;
   const preserveContent = req.preserveContent ?? false;
+  const artisticMode = req.artisticMode ?? false;
   // Map client aspect ratio to FAL image_size
   const falSizeMap: Record<string, string> = { "1:1": "square_hd", "9:16": "portrait_16_9", "16:9": "landscape_16_9", "4:3": "landscape_4_3", "3:4": "portrait_4_3", "2:3": "portrait_4_3" };
   const falImageSize = falSizeMap[req.aspectRatio || ""] || "landscape_4_3";
   // For preserveContent: strength=0.65 — 65% new scene from prompt, 35% product identity from ref.
-  // Balance: enough ref influence to keep the product recognizable, enough prompt influence
-  // to actually CHANGE THE SCENE (party, outdoor, studio, etc.). Previous values:
-  //   0.80 = product invisible (too prompt-heavy)
-  //   0.55 = scene unchanged (too ref-heavy, model can't change background)
-  const strength = preserveContent ? 0.65 : rawStrength;
-  const negativePrompt = preserveContent
-    ? "wrong brand, wrong logo, competitor brand, different product, altered product, wrong product, text overlay, watermark, visible letters, visible words, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime"
-    : "";
-  const realisticSuffix = preserveContent
-    ? ". Photorealistic commercial photography, natural lighting, shallow depth of field"
-    : "";
+  // For artisticMode: strength=0.82 — heavy style transformation while keeping composition from drawing.
+  const strength = artisticMode ? (req.strength ?? 0.82) : preserveContent ? 0.65 : rawStrength;
+  const negativePrompt = artisticMode
+    ? "photograph, photo, realistic, photorealistic, 3D render, CGI, text overlay, watermark, blurry, low quality"
+    : preserveContent
+      ? "wrong brand, wrong logo, competitor brand, different product, altered product, wrong product, text overlay, watermark, visible letters, visible words, 3D render, CGI, illustration, digital art, cartoon, painting, drawing, sketch, anime"
+      : "";
+  const realisticSuffix = artisticMode
+    ? "" // No photorealistic suffix for artistic mode
+    : preserveContent
+      ? ". Photorealistic commercial photography, natural lighting, shallow depth of field"
+      : "";
   const finalPrompt = req.prompt + realisticSuffix;
-  console.log(`[img2img] model=${req.model}, strength=${strength} (raw=${rawStrength}, preserve=${preserveContent}), ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
+  console.log(`[img2img] model=${req.model}, strength=${strength} (raw=${rawStrength}, preserve=${preserveContent}, artistic=${artisticMode}), ar=${req.aspectRatio}, ref=${req.imageRefUrl.slice(0, 80)}`);
 
   // ═══ MODEL DISPATCH — route to the actual selected backend ═══
   // CRITICAL: previously this function ignored req.model and always ran Luma Photon character_ref.
@@ -2764,7 +2766,9 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
   // because edit models can only do MINIMAL changes to the input image — they can't recompose
   // a completely new scene. For scene placement ("shirt at a Paris party"), we need the
   // character_ref / image_ref pipeline below that GENERATES a new image inspired by the ref.
-  if (!preserveContent) {
+  // EXCEPTION: artisticMode=true USES edit dispatches — they're perfect for style transfer
+  // from a child's drawing to an art masterpiece (high strength → heavy transformation).
+  if (!preserveContent || artisticMode) {
     // ── DISPATCH 1: Leonardo v2 edit models (Nano Banana, Flux Pro 2, SeedDream v4, GPT Image, etc.) ──
     if (leonardoV2ModelMap[selectedModel]) {
       try {
@@ -9809,13 +9813,46 @@ app.post("/generate/image-start", async (c) => {
     const intentId = body.intentId || "";
     const intentVisualDirection = body.intentVisualDirection || "";
     const intentPacing = body.intentPacing || "";
-    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, intent=${intentId || "auto"}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, imageRefUrls=${imageRefUrls.length}, refSource=${refSource}`);
+    // Artistic style transfer mode — "child's drawing → masterpiece"
+    const styleMode = body.styleMode || ""; // "artistic" | ""
+    const artistStyle = body.artistStyle || ""; // full style description
+    console.log(`[image-start-POST] prompt="${rawPrompt?.slice(0, 60)}", ratio=${aspectRatio}, model=${model}, provider=${provider || "auto"}, refType=${refType}, intent=${intentId || "auto"}, styleMode=${styleMode || "standard"}, user=${user?.id?.slice(0, 8) || "anon"}, imageRefUrl=${imageRefUrl ? `YES (${imageRefUrl.length} chars)` : "NO"}, imageRefUrls=${imageRefUrls.length}, refSource=${refSource}`);
     if (!rawPrompt) return c.json({ error: "prompt required" }, 400);
 
     const imgCredits = getModelCreditCost("image", model);
     if (user) deductCredit(user.id, imgCredits).catch(() => {});
 
     const isUploadRef = refSource === "upload";
+
+    // ═══ ARTISTIC STYLE TRANSFER: child's drawing → masterpiece ═══
+    // Skip Photoroom, skip product preservation. Use edit models with HIGH strength
+    // to reimagine the drawing in the selected painter's style.
+    if (imageRefUrl && styleMode === "artistic") {
+      console.log(`[image-start-POST] ARTISTIC STYLE TRANSFER path — transforming drawing to art style`);
+      try {
+        const result = await generateImageWithRef({
+          prompt: rawPrompt,
+          model: model || "kontext-pro-leo",
+          imageRefUrl,
+          imageRefUrls: imageRefUrls.length > 0 ? imageRefUrls : undefined,
+          preserveContent: false,
+          artisticMode: true,
+          strength: 0.82,
+          aspectRatio,
+          intentId,
+          intentVisualDirection: artistStyle || intentVisualDirection,
+          intentPacing,
+        });
+        if (result?.imageUrl) {
+          console.log(`[image-start-POST] ARTISTIC OK in ${Date.now() - t0}ms — provider=${result.provider}`);
+          if (user) logEvent("generation", { userId: user.id, type: "image", model, provider: result.provider, styleMode: "artistic" }).catch(() => {});
+          return c.json({ success: true, imageUrl: result.imageUrl, provider: result.provider, directResult: true, styleMode: "artistic" });
+        }
+        console.log(`[image-start-POST] ARTISTIC returned no image, falling back to standard...`);
+      } catch (err) {
+        console.log(`[image-start-POST] ARTISTIC failed: ${err}, falling back...`);
+      }
+    }
 
     // ═══ LOCATION REFERENCE: ControlNet Depth path (preserve architecture) ═══
     // For hotel rooms, interiors, venues — preserves walls/windows/geometry, restyles everything else.

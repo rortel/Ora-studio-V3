@@ -172,6 +172,33 @@ const SEGMENTS_BY_MODE: Record<CreativeMode, { id: AnySegment; icon: string; lab
 };
 
 /* ═══════════════════════════════════════════════════════════
+   ARTIST STYLES — for "child's drawing → masterpiece" feature
+   Each artist has a style prompt that guides img2img transformation
+   ═══════════════════════════════════════════════════════════ */
+const ARTIST_STYLES = [
+  { id: "monet",    label: "Monet",    emoji: "🌸", style: "Claude Monet impressionist painting, soft luminous brushstrokes, light reflections on water, pastel palette, plein-air atmosphere, dreamy garden scenes" },
+  { id: "van-gogh", label: "Van Gogh", emoji: "🌻", style: "Vincent van Gogh post-impressionist painting, thick impasto swirling brushstrokes, vibrant blues and yellows, starry night energy, expressive dynamic movement" },
+  { id: "picasso",  label: "Picasso",  emoji: "🎭", style: "Pablo Picasso cubist painting, fragmented geometric shapes, multiple perspectives simultaneously, bold outlines, vivid contrasting colors" },
+  { id: "basquiat", label: "Basquiat", emoji: "👑", style: "Jean-Michel Basquiat neo-expressionist painting, raw energetic marks, crown motifs, street art graffiti texture, bold primary colors on rough surface" },
+  { id: "klimt",    label: "Klimt",    emoji: "✨", style: "Gustav Klimt Art Nouveau painting, ornate golden patterns, mosaic decorative elements, Byzantine influence, luxurious gold leaf texture" },
+  { id: "hokusai",  label: "Hokusai",  emoji: "🌊", style: "Katsushika Hokusai ukiyo-e Japanese woodblock print, flowing wave patterns, Mount Fuji, delicate line work, traditional Japanese color palette" },
+  { id: "warhol",   label: "Warhol",   emoji: "🍌", style: "Andy Warhol pop art silkscreen print, bold flat colors, repeated graphic patterns, high contrast, commercial art aesthetic, vibrant neon palette" },
+  { id: "kahlo",    label: "Frida Kahlo", emoji: "🌺", style: "Frida Kahlo surrealist painting, vivid Mexican folk art colors, symbolic flora and fauna, emotional intensity, rich botanical elements" },
+  { id: "matisse",  label: "Matisse",  emoji: "🎨", style: "Henri Matisse fauvist painting, bold simplified shapes, pure vivid colors, joyful decorative patterns, paper cut-out aesthetic" },
+  { id: "mondrian", label: "Mondrian", emoji: "🔲", style: "Piet Mondrian De Stijl painting, primary colors red blue yellow, black grid lines, geometric abstraction, balanced asymmetric composition" },
+  { id: "dali",     label: "Dali",     emoji: "⏰", style: "Salvador Dali surrealist painting, melting dreamlike forms, hyper-detailed desert landscapes, impossible perspectives, photorealistic surrealism" },
+  { id: "haring",   label: "Keith Haring", emoji: "💃", style: "Keith Haring pop art, bold black outlines, radiant baby figures, energetic dancing forms, bright primary colors, graffiti-inspired" },
+] as const;
+
+const PRINT_FORMATS = [
+  { id: "tableau",       label: "Tableau",       emoji: "🖼️",  aspectRatio: "4:3",  promptSuffix: "presented as a fine art canvas painting with visible brush texture, museum-quality framed artwork" },
+  { id: "carte-postale", label: "Carte postale", emoji: "💌",  aspectRatio: "16:9", promptSuffix: "composed as a vintage artistic postcard with soft edges and a warm nostalgic feel" },
+  { id: "poster",        label: "Poster",        emoji: "📐",  aspectRatio: "2:3",  promptSuffix: "designed as a large format art poster, bold composition, gallery exhibition quality" },
+  { id: "portrait",      label: "Portrait",      emoji: "🖼️",  aspectRatio: "3:4",  promptSuffix: "as a portrait-oriented fine art print, elegant vertical composition" },
+  { id: "carre",         label: "Carré",         emoji: "⬜",  aspectRatio: "1:1",  promptSuffix: "as a square format art print, perfectly balanced centered composition" },
+] as const;
+
+/* ═══════════════════════════════════════════════════════════
    INTENT PRESETS — 8 content intents that shape the creative brief
    Each preset injects a framework (copywriting recipe), visual
    direction (mood + composition) and pacing hints before we call
@@ -591,6 +618,10 @@ export function ComparePage() {
   // VLM-derived factual description of what the reference shows. Populated asynchronously when an image is attached
   // and then injected into the preservation prefix so non-vision models know what to preserve.
   const [refSubject, setRefSubject] = useState<{ subject: string; category: string } | null>(null);
+  // ── Artistic style transfer ("child's drawing → masterpiece") ──
+  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
+  const [selectedPrintFormat, setSelectedPrintFormat] = useState("tableau");
+  const isArtisticMode = !!selectedArtist && mode === "image";
   // True when the brief contains a URL → enables ref-type toggle even without an uploaded image,
   // so the user can pick "Location" mode for URL-scraped hotel/venue references.
   const promptHasUrl = useMemo(() => /https?:\/\/[^\s<>"')]+/i.test(prompt), [prompt]);
@@ -1201,22 +1232,33 @@ USER REQUEST: `;
                     sceneFromPrompt = INTENT_DEFAULT_SCENES[intent] || "elegant professional setting with beautiful natural light";
                   }
                 }
-                const img2imgPrompt = `Place ${subjectDesc} in this scene: ${sceneFromPrompt}. Change the background and environment completely to match the scene description. Keep the exact product/subject from the reference photo — same shape, colors, textures, details.${intentHint} Photorealistic photography.`.slice(0, 1500);
+                // ── Artistic style transfer vs standard product placement ──
+                const artistDef = selectedArtist ? ARTIST_STYLES.find(a => a.id === selectedArtist) : null;
+                const printDef = PRINT_FORMATS.find(f => f.id === selectedPrintFormat) || PRINT_FORMATS[0];
+                let img2imgPrompt: string;
+                let styleMode: string = "product";
+
+                if (artistDef) {
+                  // ARTISTIC MODE: transform child's drawing into masterpiece
+                  styleMode = "artistic";
+                  img2imgPrompt = `Transform this child's drawing into a magnificent artwork in the style of ${artistDef.label}. ${artistDef.style}. Reinterpret the shapes, characters and composition from the original drawing while applying the artist's signature technique, color palette and brushwork. ${printDef.promptSuffix}. The result should look like a genuine ${artistDef.label} painting inspired by a child's imagination.`.slice(0, 1500);
+                } else {
+                  img2imgPrompt = `Place ${subjectDesc} in this scene: ${sceneFromPrompt}. Change the background and environment completely to match the scene description. Keep the exact product/subject from the reference photo — same shape, colors, textures, details.${intentHint} Photorealistic photography.`.slice(0, 1500);
+                }
                 const r = await serverPost("/generate/image-start", {
                   prompt: img2imgPrompt,
                   model: modelId,
-                  aspectRatio,
+                  aspectRatio: artistDef ? printDef.aspectRatio : aspectRatio,
                   imageRefUrl: effectiveProductRef!,
-                  // Multi-ref: pass all reference URLs so providers that support arrays
-                  // (Luma image_ref, Leonardo image_reference) can use multiple angles.
                   imageRefUrls: allProductRefs.length > 1 ? allProductRefs : undefined,
                   refSource: attachedImagesRef.current.some(img => img.signedUrl) ? "upload" : "scrape",
-                  refType, // "product" or "location" — drives backend dispatch (depth ControlNet for location)
+                  refType: artistDef ? "artistic" : refType,
                   provider: "ai",
-                  preserveSubject: refType === "product",
-                  // Pass full intent metadata so backend can apply it to Photoroom/AI providers
+                  preserveSubject: artistDef ? false : refType === "product",
+                  styleMode,
+                  artistStyle: artistDef?.style || "",
                   intentId: intent,
-                  intentVisualDirection: intentPreset?.visualDirection || "",
+                  intentVisualDirection: artistDef ? artistDef.style : (intentPreset?.visualDirection || ""),
                   intentPacing: intentPreset?.pacing || "",
                 }, timeoutMs);
                 url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : "";
@@ -1452,7 +1494,7 @@ USER REQUEST: `;
           console.warn(`[compare] auto-save failed for ${r.modelId}:`, err);
         });
       });
-  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImages, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat, intent]);
+  }, [prompt, selectedModels, mode, isRunning, catalog, locale, serverGet, serverPost, pollVideo, pollSuno, attachedImages, refType, refSubject, musicDurationSec, musicInstrumental, musicLyrics, musicStyle, aspectRatio, textFormat, intent, selectedArtist, selectedPrintFormat]);
 
   const bestResult = results.filter(r => r.success).sort((a, b) => b.scores.overall - a.scores.overall)[0];
 
@@ -2073,6 +2115,76 @@ USER REQUEST: `;
                 })}
 
               </div>
+
+              {/* ═══ ARTISTIC MODE — Artist & Print Format picker (image mode only) ═══ */}
+              {mode === "image" && (
+                <div className="px-4 pt-1 pb-1">
+                  {/* Artist toggle row */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => setSelectedArtist(null)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                      style={{
+                        background: !selectedArtist ? "rgba(0,0,0,0.06)" : "transparent",
+                        color: !selectedArtist ? "var(--foreground)" : "var(--muted-foreground)",
+                        fontSize: 10, fontWeight: !selectedArtist ? 700 : 500,
+                        border: `1px solid ${!selectedArtist ? "rgba(0,0,0,0.12)" : "transparent"}`,
+                      }}>
+                      📷 {isFr ? "Photo" : "Photo"}
+                    </button>
+                    {ARTIST_STYLES.map(a => {
+                      const on = selectedArtist === a.id;
+                      return (
+                        <button key={a.id}
+                          onClick={() => setSelectedArtist(on ? null : a.id)}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                          style={{
+                            background: on ? "linear-gradient(135deg, #7C3AED15, #EC489915)" : "transparent",
+                            color: on ? "#7C3AED" : "var(--muted-foreground)",
+                            fontSize: 10, fontWeight: on ? 700 : 500,
+                            border: `1px solid ${on ? "#7C3AED44" : "transparent"}`,
+                          }}
+                          title={a.style}>
+                          <span>{a.emoji}</span>
+                          <span>{a.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Print format row — only visible when artist selected */}
+                  <AnimatePresence>
+                    {selectedArtist && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="flex items-center gap-1.5 mt-1.5"
+                      >
+                        <span style={{ fontSize: 9, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                          {isFr ? "Format" : "Format"}:
+                        </span>
+                        {PRINT_FORMATS.map(f => {
+                          const on = selectedPrintFormat === f.id;
+                          return (
+                            <button key={f.id}
+                              onClick={() => setSelectedPrintFormat(f.id)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                              style={{
+                                background: on ? "var(--foreground)" : "rgba(0,0,0,0.03)",
+                                color: on ? "var(--background)" : "var(--muted-foreground)",
+                                fontSize: 10, fontWeight: on ? 700 : 500,
+                                border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.06)"}`,
+                              }}>
+                              <span>{f.emoji}</span> {f.label}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               {/* Brand preview banner — shown once URL scraping has returned a brand DNA.
                   Compact inline card: logo thumbnail + palette dots + brand name + font. */}
