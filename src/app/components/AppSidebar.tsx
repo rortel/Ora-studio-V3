@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Home, FolderOpen, Calendar, Palette, Sparkles, Scissors,
-  User, LogOut, Shield, Zap, CreditCard,
+  User, LogOut, Shield, Zap, CreditCard, BarChart3, Eye,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
@@ -19,7 +19,8 @@ import { useState, useRef, useEffect } from "react";
 function isNavActive(href: string, pathname: string): boolean {
   if (href === "/hub/library") return pathname.startsWith("/hub/library");
   if (href === "/hub/vault") return pathname.startsWith("/hub/vault");
-
+  if (href === "/hub/analyze") return pathname.startsWith("/hub/analyze");
+  if (href === "/hub/dashboard") return pathname.startsWith("/hub/dashboard");
   if (href === "/hub/compare") return pathname.startsWith("/hub/compare");
   if (href === "/hub") return pathname === "/hub";
   return pathname.startsWith(href);
@@ -35,21 +36,23 @@ export function AppSidebar() {
   // Phase 2 items (Studio, Calendar, Brand Vault) are hidden in Phase 1.
   // Keep the definitions so we can restore them by flipping PHASE_1_ONLY.
   const allNavItems = [
-    { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
-    { icon: Scissors,  label: t("sidebar.editor") || "Éditeur", href: "/hub/editor", phase1: true  },
-    { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
-    { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
-    { icon: Palette,   label: t("sidebar.brandKit"), href: "/hub/vault",   phase1: false },
+    { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
+    { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
+    { icon: Sparkles,   label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library",   phase1: true  },
+    { icon: Palette,    label: t("sidebar.brandKit"),href: "/hub/vault",     phase1: true  },
+    { icon: Home,       label: t("sidebar.home"),    href: "/hub",           phase1: false },
+    { icon: Calendar,   label: t("sidebar.calendar"),href: "/hub/calendar",  phase1: false },
   ];
   const navItems = allNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
 
   const allMobileNavItems = [
-    { icon: Sparkles,  label: t("sidebar.compare"),  href: "/hub/compare", phase1: true  },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library", phase1: true  },
-    { icon: Scissors,  label: t("sidebar.editor") || "Éditeur", href: "/hub/editor", phase1: true  },
-    { icon: Home,      label: t("sidebar.home"),     href: "/hub",         phase1: false },
-    { icon: Calendar,  label: t("sidebar.calendar"), href: "/hub/calendar", phase1: false },
+    { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
+    { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
+    { icon: Sparkles,   label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
+    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library",   phase1: true  },
+    { icon: Home,       label: t("sidebar.home"),    href: "/hub",           phase1: false },
+    { icon: Calendar,   label: t("sidebar.calendar"),href: "/hub/calendar",  phase1: false },
   ];
   const mobileNavItems = allMobileNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
   const [avatarOpen, setAvatarOpen] = useState(false);

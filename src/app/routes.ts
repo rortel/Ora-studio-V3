@@ -53,6 +53,8 @@ const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage"
 const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
 const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
 const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
+const AnalyzePage = lazyRetry(() => import("./pages/AnalyzePage"), "AnalyzePage");
+const DashboardPage = lazyRetry(() => import("./pages/DashboardPage"), "DashboardPage");
 
 
 /*
@@ -98,12 +100,12 @@ export const router = createBrowserRouter([
 
       // Authenticated routes (guard inside component)
       { path: "onboarding", Component: OnboardingPage },
-      // Phase 1: /hub redirects to the comparator. Studio is kept warm
+      // Phase 1: /hub redirects to analyze (Yuka mode). Studio is kept warm
       // under /hub/studio so Phase 2 can flip PHASE_1_ONLY to restore it.
       {
         path: "hub",
         Component: PHASE_1_ONLY
-          ? () => createElement(Navigate, { to: "/hub/compare", replace: true })
+          ? () => createElement(Navigate, { to: "/hub/analyze", replace: true })
           : StudioPage,
       },
       { path: "hub/studio", Component: StudioPage },
@@ -115,6 +117,8 @@ export const router = createBrowserRouter([
       { path: "hub/calendar", Component: CalendarPage },
       { path: "hub/music", Component: MusicPage },
       { path: "hub/video-editor", Component: VideoAssemblerPage },
+      { path: "hub/analyze", Component: AnalyzePage },
+      { path: "hub/dashboard", Component: DashboardPage },
       { path: "hub/compare", Component: ComparePage },
       { path: "hub/editor", Component: EditorPage },
       { path: "profile", Component: ProfilePage },

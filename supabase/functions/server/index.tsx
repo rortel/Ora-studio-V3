@@ -7644,6 +7644,252 @@ Return ONLY valid JSON (no markdown, no prose):
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// ANALYZE/SCORE — "Yuka for AI Content" — AI visual quality auditor
+// ═══════════════════════════════════════════════════════════════════
+
+app.post("/analyze/score", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const {
+      imageUrl,
+      videoUrl,
+      prompt,
+      brandVault,
+    } = body;
+
+    const targetUrl = imageUrl || videoUrl;
+    if (!targetUrl) {
+      return c.json({ success: false, error: "imageUrl or videoUrl is required" }, 400);
+    }
+
+    const key = Deno.env.get("APIPOD_API_KEY");
+    if (!key) {
+      return c.json({ success: false, error: "APIPOD_API_KEY not configured" }, 500);
+    }
+
+    // --- Build brand context block ---
+    let brandBlock = "";
+    if (brandVault) {
+      const parts: string[] = [];
+      if (brandVault.company_name) parts.push(`Company: ${brandVault.company_name}`);
+      if (Array.isArray(brandVault.colors) && brandVault.colors.length > 0) {
+        parts.push(`Brand colors: ${brandVault.colors.map((cl: any) => `${cl.name} (${cl.hex})`).join(", ")}`);
+      }
+      if (brandVault.tone?.primary_tone) parts.push(`Brand tone: ${brandVault.tone.primary_tone}`);
+      if (brandVault.photo_style) {
+        const ps = brandVault.photo_style;
+        parts.push(`Photo style — framing: ${ps.framing || "N/A"}, mood: ${ps.mood || "N/A"}, lighting: ${ps.lighting || "N/A"}`);
+      }
+      if (brandVault.logo_url) parts.push(`Logo URL: ${brandVault.logo_url}`);
+      if (Array.isArray(brandVault.key_messages) && brandVault.key_messages.length > 0) {
+        parts.push(`Key messages: ${brandVault.key_messages.join("; ")}`);
+      }
+      brandBlock = `\n\nBRAND VAULT (use this for Brand Fit scoring):\n${parts.join("\n")}`;
+    }
+
+    // --- Build prompt context block ---
+    let promptBlock = "";
+    if (prompt) {
+      promptBlock = `\n\nORIGINAL GENERATION PROMPT (analyze quality and suggest improvements):\n"${String(prompt).slice(0, 1000)}"`;
+    }
+
+    const systemPrompt = `You are a senior creative director and AI content quality auditor with 20 years of advertising experience at top agencies (Publicis, BBDO, Droga5). You specialize in evaluating AI-generated visuals for commercial use.
+
+Your mission: score the provided AI-generated image across 4 axes and return a structured JSON audit.
+
+═══ SCORING AXES ═══
+
+1. TECHNICAL (weight: 40%)
+Evaluate the raw quality of the AI output.
+Criteria:
+- Artefacts: hands (wrong finger count, fused digits), faces (asymmetry, uncanny valley), text/typography (garbled, misspelled, distorted letters)
+- Resolution & sharpness: overall clarity, absence of blur, noise, or compression artefacts
+- Shadow & light coherence: consistent light direction, realistic shadows, no floating shadows or impossible reflections
+- Perspective consistency: vanishing points align, no warped geometry, objects sit naturally in the scene
+- Anatomical correctness: body proportions, limb placement, joint articulation
+
+High score (90-100): No visible artefacts, crisp details, perfect lighting, flawless anatomy.
+Medium score (60-79): Minor issues a non-expert wouldn't notice (slightly odd finger, subtle shadow mismatch).
+Low score (0-39): Obvious deformities, garbled text, broken perspective, nightmare hands.
+
+2. CREATIVE (weight: 35%)
+Evaluate artistic merit and commercial viability.
+Criteria:
+- Composition: rule of thirds, visual balance, clear focal point, leading lines, negative space usage
+- Visual impact: contrast ratio, readability, visual hierarchy, attention flow
+- Originality: does it feel fresh and intentional, or generic stock-like / "default AI aesthetic" (overly saturated, plastic skin, HDR look)
+
+High score (90-100): Striking composition, clear creative intent, would stand out in a campaign.
+Medium score (60-79): Competent but forgettable, standard AI aesthetic, decent but not memorable.
+Low score (0-39): Flat composition, no focal point, generic stock-photo feel, AI slop.
+
+3. BRAND FIT (weight: 15%)
+${brandVault ? "A Brand Vault has been provided — score this axis based on alignment." : "No Brand Vault was provided — default this score to 75 (neutral)."}
+Criteria (when brand context is available):
+- Color palette match: does the image use colors that align with or complement the brand palette?
+- Visual tone alignment: does the mood/atmosphere match the brand's stated tone?
+- Style consistency: does the framing, lighting, and overall aesthetic match the brand's photo style guidelines?
+- Message reinforcement: does the visual support or contradict the brand's key messages?
+
+High score (90-100): Perfect brand alignment, could go straight into the brand's campaign.
+Medium score (60-79): Acceptable but needs color grading or mood adjustment.
+Low score (0-39): Contradicts brand guidelines, wrong palette, wrong mood entirely.
+
+4. COMPLIANCE (weight: 10%)
+Evaluate risks for commercial deployment.
+Criteria:
+- AI detectability: obvious AI tells (plastic skin, over-symmetry, impossible reflections, watermark remnants, "AI glow")
+- Bias & representation: stereotypical depictions, lack of diversity when context demands it
+- Stereotype risks: reinforcement of harmful clichés, problematic visual tropes
+- Ethical red flags: deepfake-adjacent content, misleading imagery, IP concerns
+
+High score (90-100): Could pass as professional photography, no ethical concerns.
+Medium score (60-79): Detectable as AI by experts but acceptable for most uses.
+Low score (0-39): Screams AI, contains problematic representations or ethical issues.
+${brandBlock}${promptBlock}
+
+═══ OUTPUT FORMAT ═══
+
+Return ONLY valid JSON (no markdown, no backticks, no prose outside the JSON). Use this exact structure:
+{
+  "overall": <0-100 weighted score: technical*0.40 + creative*0.35 + brandFit*0.15 + compliance*0.10>,
+  "technical": {
+    "score": <0-100>,
+    "issues": ["list of specific problems found — empty array if none"],
+    "positives": ["list of specific strengths — always include at least one"]
+  },
+  "creative": {
+    "score": <0-100>,
+    "issues": ["specific creative weaknesses"],
+    "positives": ["specific creative strengths"]
+  },
+  "brandFit": {
+    "score": <0-100${brandVault ? "" : ", default 75 since no brand vault provided"}>,
+    "issues": ["brand alignment issues${brandVault ? "" : " — empty since no brand context"}"],
+    "positives": ["brand alignment strengths${brandVault ? "" : " — note neutral score"}"]
+  },
+  "compliance": {
+    "score": <0-100>,
+    "issues": ["compliance risks found"],
+    "positives": ["compliance strengths"]
+  },
+  "recommendations": ["3 to 5 actionable improvement tips prioritized by impact"],
+  "promptTips": [${prompt ? '"suggestions to improve the original generation prompt"' : '"empty array — no prompt was provided"'}],
+  "bestModelFor": "suggest which AI model (Midjourney, DALL-E 3, Stable Diffusion XL, Flux, Firefly, etc.) would likely produce better results for this specific use case and why",
+  "summary": "one-sentence verdict${prompt ? " in the same language as the user's prompt" : " in French"}"
+}
+
+IMPORTANT RULES:
+- Be precise and specific in issues/positives — reference exact visual elements, not vague generalities
+- recommendations must be ACTIONABLE (e.g. "Add rim lighting on the left side to separate subject from background" not "improve lighting")
+- If a prompt was provided, promptTips must suggest concrete wording improvements
+- summary must be in the SAME LANGUAGE as the user's prompt. If no prompt was provided, default to French.
+- Always ensure "overall" equals the weighted sum (rounded to nearest integer)
+- Each issues/positives array should have 1-5 items`;
+
+    const userContent: any[] = [
+      { type: "text", text: "Analyze and score this AI-generated visual:" },
+      { type: "image_url", image_url: { url: targetUrl, detail: "high" } },
+    ];
+    if (prompt) {
+      userContent.push({ type: "text", text: `The prompt used to generate this image was: "${String(prompt).slice(0, 1000)}"` });
+    }
+    userContent.push({ type: "text", text: "Return the full JSON audit now." });
+
+    const visionRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        max_tokens: 1500,
+        temperature: 0.15,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!visionRes.ok) {
+      const errText = await visionRes.text();
+      console.log(`[analyze/score] vision error ${visionRes.status}: ${errText.slice(0, 300)}`);
+      return c.json({ success: false, error: `Vision API error ${visionRes.status}` }, 502);
+    }
+
+    const visionData = await visionRes.json();
+    const raw = (visionData.choices?.[0]?.message?.content || "").trim();
+    const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+
+    let parsed: any = {};
+    try { parsed = JSON.parse(cleaned); }
+    catch {
+      const m = cleaned.match(/\{[\s\S]*\}/);
+      if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
+    }
+
+    // --- Normalize & clamp scores ---
+    const clamp = (v: any, fallback = 50) => Math.max(0, Math.min(100, Number(v) || fallback));
+    const normalizeAxis = (axis: any, fallbackScore = 50) => ({
+      score: clamp(axis?.score, fallbackScore),
+      issues: Array.isArray(axis?.issues) ? axis.issues.map(String).slice(0, 5) : [],
+      positives: Array.isArray(axis?.positives) ? axis.positives.map(String).slice(0, 5) : [],
+    });
+
+    const technical = normalizeAxis(parsed.technical, 50);
+    const creative = normalizeAxis(parsed.creative, 50);
+    const brandFit = normalizeAxis(parsed.brandFit, brandVault ? 50 : 75);
+    const compliance = normalizeAxis(parsed.compliance, 50);
+
+    const overall = Math.round(
+      technical.score * 0.40 +
+      creative.score * 0.35 +
+      brandFit.score * 0.15 +
+      compliance.score * 0.10
+    );
+
+    const result = {
+      success: true as const,
+      overall,
+      technical,
+      creative,
+      brandFit,
+      compliance,
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(String).slice(0, 5) : [],
+      promptTips: Array.isArray(parsed.promptTips) ? parsed.promptTips.map(String).slice(0, 5) : [],
+      bestModelFor: String(parsed.bestModelFor || "").slice(0, 500),
+      summary: String(parsed.summary || "").slice(0, 500),
+      tookMs: Date.now() - t0,
+    };
+
+    console.log(`[analyze/score] overall=${overall} tech=${technical.score} creative=${creative.score} brand=${brandFit.score} compliance=${compliance.score} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
+
+    if (user) {
+      logCost({
+        type: "text",
+        model: "gpt-4o-vision",
+        provider: "apipod",
+        costUsd: 0.02,
+        revenueEur: 0,
+        latencyMs: result.tookMs,
+        userId: user.id,
+        success: true,
+      }).catch(() => {});
+    }
+
+    return c.json(result);
+  } catch (err: any) {
+    console.log(`[analyze/score] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
 // ═══════════════════════════════════════════════════════════════════
 // Pipeline: non-generative subject extraction (Photoroom) → cutout stored →
