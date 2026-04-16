@@ -2116,75 +2116,7 @@ USER REQUEST: `;
 
               </div>
 
-              {/* ═══ ARTISTIC MODE — Artist & Print Format picker (image mode only) ═══ */}
-              {mode === "image" && (
-                <div className="px-4 pt-1 pb-1">
-                  {/* Artist toggle row */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      onClick={() => setSelectedArtist(null)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
-                      style={{
-                        background: !selectedArtist ? "rgba(0,0,0,0.06)" : "transparent",
-                        color: !selectedArtist ? "var(--foreground)" : "var(--muted-foreground)",
-                        fontSize: 10, fontWeight: !selectedArtist ? 700 : 500,
-                        border: `1px solid ${!selectedArtist ? "rgba(0,0,0,0.12)" : "transparent"}`,
-                      }}>
-                      📷 {isFr ? "Photo" : "Photo"}
-                    </button>
-                    {ARTIST_STYLES.map(a => {
-                      const on = selectedArtist === a.id;
-                      return (
-                        <button key={a.id}
-                          onClick={() => setSelectedArtist(on ? null : a.id)}
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
-                          style={{
-                            background: on ? "linear-gradient(135deg, #7C3AED15, #EC489915)" : "transparent",
-                            color: on ? "#7C3AED" : "var(--muted-foreground)",
-                            fontSize: 10, fontWeight: on ? 700 : 500,
-                            border: `1px solid ${on ? "#7C3AED44" : "transparent"}`,
-                          }}
-                          title={a.style}>
-                          <span>{a.emoji}</span>
-                          <span>{a.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {/* Print format row — only visible when artist selected */}
-                  <AnimatePresence>
-                    {selectedArtist && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.15 }}
-                        className="flex items-center gap-1.5 mt-1.5"
-                      >
-                        <span style={{ fontSize: 9, fontWeight: 600, color: "var(--muted-foreground)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                          {isFr ? "Format" : "Format"}:
-                        </span>
-                        {PRINT_FORMATS.map(f => {
-                          const on = selectedPrintFormat === f.id;
-                          return (
-                            <button key={f.id}
-                              onClick={() => setSelectedPrintFormat(f.id)}
-                              className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer transition-all"
-                              style={{
-                                background: on ? "var(--foreground)" : "rgba(0,0,0,0.03)",
-                                color: on ? "var(--background)" : "var(--muted-foreground)",
-                                fontSize: 10, fontWeight: on ? 700 : 500,
-                                border: `1px solid ${on ? "var(--foreground)" : "rgba(0,0,0,0.06)"}`,
-                              }}>
-                              <span>{f.emoji}</span> {f.label}
-                            </button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
+              {/* ═══ ARTISTIC MODE — hidden for now (Phase 2) ═══ */}
 
               {/* Brand preview banner — shown once URL scraping has returned a brand DNA.
                   Compact inline card: logo thumbnail + palette dots + brand name + font. */}
