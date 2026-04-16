@@ -183,35 +183,15 @@ export function AnalyzePage() {
     }
   }, [getAuthHeader]);
 
-  // ── Upload to Supabase Storage ──
-  const uploadImage = useCallback(async (file: File): Promise<string | null> => {
-    const token = getAuthHeader();
-    const ext = file.name.split(".").pop() || "jpg";
-    const fileName = `analyze/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    try {
-      const res = await serverPost("/storage/upload-url", { fileName, contentType: file.type });
-      if (res?.signedUrl) {
-        await fetch(res.signedUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-        return res.publicUrl || res.signedUrl.split("?")[0];
-      }
-      // Fallback: try direct upload
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("_token", token || "");
-      const r = await fetch(`${API_BASE}/storage/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}` },
-        body: formData,
-        signal: AbortSignal.timeout(30_000),
-      });
-      const data = await r.json();
-      return data?.url || data?.publicUrl || null;
-    } catch (err) {
-      console.warn("[analyze] upload failed:", err);
-      return null;
-    }
-  }, [getAuthHeader, serverPost]);
+  // ── Convert file to data URL (sent directly to VLM, no storage needed) ──
+  const fileToDataUrl = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }, []);
 
   // ── Handle file selection ──
   const handleFile = useCallback(async (file: File) => {
@@ -251,22 +231,10 @@ export function AnalyzePage() {
     try {
       let url = imageUrl;
 
-      // If we have a local file, upload it first
+      // Convert local file to data URL (no storage upload needed)
       if (imageFile && imageUrl?.startsWith("blob:")) {
-        toast.info(isFr ? "Upload en cours..." : "Uploading...");
-        const uploaded = await uploadImage(imageFile);
-        if (!uploaded) {
-          // Fallback: use object URL directly won't work for server.
-          // Try converting to data URL
-          const reader = new FileReader();
-          const dataUrl = await new Promise<string>((resolve) => {
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(imageFile);
-          });
-          url = dataUrl;
-        } else {
-          url = uploaded;
-        }
+        toast.info(isFr ? "Préparation de l'image..." : "Preparing image...");
+        url = await fileToDataUrl(imageFile);
       }
 
       toast.info(isFr ? "Analyse en cours..." : "Analyzing...");
@@ -307,7 +275,7 @@ export function AnalyzePage() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [imageFile, imageUrl, prompt, isFr, serverPost, uploadImage]);
+  }, [imageFile, imageUrl, prompt, isFr, serverPost, fileToDataUrl]);
 
   // ── Reset ──
   const reset = useCallback(() => {
