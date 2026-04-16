@@ -7644,7 +7644,7 @@ Return ONLY valid JSON (no markdown, no prose):
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// ANALYZE/SCORE — "Yuka for AI Content" — AI visual quality auditor
+// ANALYZE/SCORE — AI visual quality auditor & scoring engine
 // ═══════════════════════════════════════════════════════════════════
 
 app.post("/analyze/score", async (c) => {

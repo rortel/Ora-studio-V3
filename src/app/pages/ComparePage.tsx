@@ -16,7 +16,7 @@ import { PublishModal, type PublishableAsset } from "../components/PublishModal"
 import { useDraftsFolder } from "../lib/editor/useDraftsFolder";
 
 /* ═══════════════════════════════════════════════════════════
-   CREATIVE LAB — Free creation playground with Yuka scoring
+   CREATIVE LAB — Free creation playground with quality scoring
    Generate · Compare · Save · Download
    Layout: results scroll up, input bar fixed at bottom
    ═══════════════════════════════════════════════════════════ */

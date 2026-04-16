@@ -100,7 +100,7 @@ export const router = createBrowserRouter([
 
       // Authenticated routes (guard inside component)
       { path: "onboarding", Component: OnboardingPage },
-      // Phase 1: /hub redirects to analyze (Yuka mode). Studio is kept warm
+      // Phase 1: /hub redirects to analyze. Studio is kept warm
       // under /hub/studio so Phase 2 can flip PHASE_1_ONLY to restore it.
       {
         path: "hub",

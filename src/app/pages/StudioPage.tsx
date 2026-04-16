@@ -28,7 +28,7 @@ import { AMBIANCE_PRESETS, LAYOUT_PRESETS, getModelsForAmbiances, getPromptDirec
    "Aussi simple qu'un SMS"
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-/* ═══ YUKA SCORING COMPONENTS (reused from ComparePage) ═══ */
+/* ═══ SCORING COMPONENTS (reused from ComparePage) ═══ */
 
 type ModelTier = "economy" | "standard" | "premium";
 
@@ -272,7 +272,7 @@ function CompareResultView({ results, isFr, onSelect }: {
   );
 }
 
-/* ═══ END YUKA SCORING COMPONENTS ═══ */
+/* ═══ END SCORING COMPONENTS ═══ */
 
 type ActionType =
   | "generate-image"
@@ -1144,7 +1144,7 @@ export function StudioPage() {
               }
             }
 
-            // Compute Yuka scores
+            // Compute quality scores
             const scoreMap = computeCompareScores(compareRawResults);
 
             compareResults = compareRawResults.map(r => {
@@ -3246,7 +3246,7 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVers
     };
     return (
       <div className="space-y-3">
-        {/* ═══ COMPARE MODE RESULTS — Yuka-style analysis ═══ */}
+        {/* ═══ COMPARE MODE RESULTS — Scored analysis ═══ */}
         {result.compareResults && result.compareResults.length > 0 && (
           <CompareResultViewWrapper
             compareResults={result.compareResults}
@@ -4609,7 +4609,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
           </div>
         </div>
 
-        {/* ═══ COMPARE MODE — Yuka-style AI comparison ═══ */}
+        {/* ═══ COMPARE MODE — Scored AI comparison ═══ */}
         <div className="rounded-xl overflow-hidden" style={{ border: compareMode ? "2px solid var(--accent)" : "1px solid var(--border)", background: compareMode ? "var(--accent-warm-light)" : "var(--secondary)" }}>
           <button
             onClick={() => setCompareMode(!compareMode)}
@@ -4624,7 +4624,7 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
                 Mode Comparaison
               </div>
               <div style={{ fontSize: "10px", color: "var(--muted-foreground)", lineHeight: 1.3 }}>
-                Comparez 2 à 4 IA — scores Yuka, choisissez le meilleur visuel
+                Comparez 2 à 4 IA — scores qualité, choisissez le meilleur visuel
               </div>
             </div>
             <div className="w-10 h-5 rounded-full flex-shrink-0 relative transition-all"

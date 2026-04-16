@@ -11,7 +11,7 @@ import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 
 /* ═══════════════════════════════════════════════════════════
-   ANALYZE PAGE — "Yuka for AI Content"
+   ANALYZE PAGE — AI Content Auditor
    Upload a visual → get scored → get recommendations
    ═══════════════════════════════════════════════════════════ */
 

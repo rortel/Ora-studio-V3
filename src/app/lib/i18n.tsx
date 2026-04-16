@@ -64,7 +64,7 @@ const en = {
     dashboard: "Dashboard",
   },
   hero: {
-    badge: "The Yuka for AI-generated content",
+    badge: "AI content quality score — audit any visual in seconds",
     headline1: "Audit. Score.",
     headline2: "Improve.",
     subtitle1: "Upload any AI visual — Ora scores it, tells you what's wrong,",
@@ -1711,7 +1711,7 @@ const fr = {
     dashboard: "Tableau de bord",
   },
   hero: {
-    badge: "Le Yuka du contenu IA",
+    badge: "Score qualité IA — audite n'importe quel visuel en secondes",
     headline1: "Audite. Score.",
     headline2: "Améliore.",
     subtitle1: "Upload n'importe quel visuel IA — Ora le note, dit ce qui cloche,",

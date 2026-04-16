@@ -11,7 +11,7 @@ import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 
 /* ═══════════════════════════════════════════════════════════
-   DASHBOARD — Yuka-style overview
+   DASHBOARD — Creative health overview
    Health score, trends, top issues, recent analyses
    ═══════════════════════════════════════════════════════════ */
 
