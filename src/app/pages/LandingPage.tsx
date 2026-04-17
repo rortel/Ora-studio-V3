@@ -12,17 +12,50 @@ import { useAuth } from "../lib/auth-context";
 const BLUE = "#1D4ED8";
 const BLACK = "#0A0A0A";
 
-const HERO_IMG = "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=900&h=1100&fit=crop&q=85";
+/**
+ * Coherent visual theme: high-end fashion/beauty portraits.
+ * All images from Unsplash (known-stable IDs). Each <img> has a gradient
+ * fallback via onError so a broken URL never shows a broken icon.
+ */
+const HERO_IMG = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1000&h=1250&fit=crop&q=90";
+
 const GALLERY: { img: string; verdict: "safe" | "revise" | "block"; score: number; tag: string }[] = [
-  { img: "https://images.unsplash.com/photo-1604077350837-bc6e35b91c15?w=700&h=900&fit=crop&q=85", verdict: "safe",   score: 91, tag: "Portrait éditorial" },
-  { img: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=700&h=900&fit=crop&q=85", verdict: "revise", score: 68, tag: "Packshot produit" },
-  { img: "https://images.unsplash.com/photo-1526318472351-c75fcf070305?w=700&h=900&fit=crop&q=85", verdict: "safe",   score: 86, tag: "Lifestyle" },
-  { img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=700&h=900&fit=crop&q=85", verdict: "revise", score: 72, tag: "Architecture" },
-  { img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=700&h=900&fit=crop&q=85", verdict: "safe",   score: 89, tag: "Interior" },
-  { img: "https://images.unsplash.com/photo-1533973427779-4b8c6f9e1d1f?w=700&h=900&fit=crop&q=85", verdict: "block",  score: 42, tag: "Logo visible" },
+  { img: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=1200&h=900&fit=crop&q=90",  verdict: "safe",   score: 91, tag: "Campagne beauté" },
+  { img: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900&h=1100&fit=crop&q=90",  verdict: "revise", score: 68, tag: "Portrait studio" },
+  { img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=900&h=1100&fit=crop&q=90",  verdict: "safe",   score: 86, tag: "Éditorial mode" },
+  { img: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=800&h=1100&fit=crop&q=90",  verdict: "safe",   score: 88, tag: "Lookbook" },
+  { img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&h=1100&fit=crop&q=90",  verdict: "revise", score: 72, tag: "Portrait brand" },
+  { img: "https://images.unsplash.com/photo-1552058544-f2b08422138a?w=800&h=1100&fit=crop&q=90",  verdict: "block",  score: 42, tag: "Logo visible" },
 ];
-// Same visual for before/after — filter applied to BEFORE to simulate AI artefacts/off-brand
-const BEFORE_AFTER_IMG = "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=800&h=1000&fit=crop&q=85";
+
+// Same image for before/after — filter applied to BEFORE simulates AI artefacts.
+const BEFORE_AFTER_IMG = "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=900&h=1100&fit=crop&q=90";
+
+/** Inline SVG gradient fallback — used by onError to guarantee no broken images. */
+function fallbackDataUri(seed: number): string {
+  const hues = [220, 210, 200, 230, 240, 250];
+  const h = hues[seed % hues.length];
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1000'>
+    <defs>
+      <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+        <stop offset='0%' stop-color='hsl(${h}, 40%, 88%)'/>
+        <stop offset='100%' stop-color='hsl(${h}, 35%, 65%)'/>
+      </linearGradient>
+    </defs>
+    <rect width='800' height='1000' fill='url(#g)'/>
+    <circle cx='400' cy='400' r='180' fill='hsl(${h}, 30%, 50%)' opacity='0.35'/>
+    <rect x='250' y='580' width='300' height='320' rx='150' fill='hsl(${h}, 30%, 45%)' opacity='0.45'/>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+function handleImgError(seed: number) {
+  return (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.dataset.fallback === "1") return;
+    img.dataset.fallback = "1";
+    img.src = fallbackDataUri(seed);
+  };
+}
 
 function verdictColor(v: "safe" | "revise" | "block") {
   if (v === "safe") return { bg: "#DCFCE7", fg: "#15803D", label: { fr: "Publier", en: "Publish" } };
@@ -71,7 +104,7 @@ export function LandingPage() {
           {/* Big visual showcase in hero */}
           <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.15 }} className="relative">
             <div className="relative rounded-3xl overflow-hidden" style={{ aspectRatio: "4 / 5", boxShadow: "0 30px 60px -20px rgba(0,0,0,0.25)" }}>
-              <img src={HERO_IMG} alt="" className="w-full h-full object-cover" />
+              <img src={HERO_IMG} alt="" className="w-full h-full object-cover" onError={handleImgError(0)} />
               {/* Score overlay top */}
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="absolute top-5 left-5 right-5 flex items-center justify-between">
                 <div className="px-3 py-2 rounded-full flex items-center gap-2" style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)" }}>
@@ -172,6 +205,7 @@ export function LandingPage() {
                   alt=""
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   loading="lazy"
+                  onError={handleImgError(i + 1)}
                 />
                 <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.1) 40%, transparent 60%)" }} />
                 <div className="absolute top-4 left-4 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5" style={{ background: v.bg, color: v.fg }}>
@@ -229,6 +263,7 @@ export function LandingPage() {
                   alt=""
                   className="w-full h-full object-cover"
                   loading="lazy"
+                  onError={handleImgError(side.isBefore ? 10 : 11)}
                   style={side.isBefore ? { filter: "grayscale(0.35) saturate(0.6) contrast(0.82) brightness(0.92)" } : undefined}
                 />
                 {side.isBefore && (
