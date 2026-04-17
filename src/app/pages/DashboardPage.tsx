@@ -1,32 +1,35 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
 import {
   BarChart3, TrendingUp, TrendingDown, Minus,
-  Eye, Sparkles, Palette, Shield, ArrowRight,
-  AlertTriangle, CheckCircle2, Image as ImageIcon,
+  Shield, Scale, Target, MessageCircle, Users, Palette, FileText,
+  Sparkles, AlertTriangle, Loader2,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 
-/* ═══════════════════════════════════════════════════════════
-   DASHBOARD — Creative health overview
-   Health score, trends, top issues, recent analyses
-   ═══════════════════════════════════════════════════════════ */
-
-// ── Types ──
+const API_BASE = import.meta.env.VITE_API_BASE || "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtidmtqYWZrenRic2V3dGFpanVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU2NDEzNjMsImV4cCI6MjA1MTIxNzM2M30.lGpbCMbfaFA47OdAkVMfIEJiKlhNOb9_el4MfW5hMsc";
 
 interface AnalysisEntry {
   id: string;
+  userId?: string;
   imageUrl: string;
+  prompt?: string;
+  briefContext?: string;
+  objective?: string;
   overall: number;
-  technical: number;
-  creative: number;
-  brandFit: number;
-  compliance: number;
+  ethique: { score: number; issues: string[]; positives: string[] };
+  legal: { score: number; issues: string[]; positives: string[] };
+  brief: { score: number; issues: string[]; positives: string[] };
+  objectif: { score: number; issues: string[]; positives: string[] };
+  coherence: { score: number; issues: string[]; positives: string[] };
+  cible: { score: number; issues: string[]; positives: string[] };
+  creatif: { score: number; issues: string[]; positives: string[] };
+  recommendations: string[];
   summary: string;
-  topIssue: string;
   date: string;
 }
 
@@ -52,25 +55,20 @@ function MiniGauge({ value, size = 44 }: { value: number; size?: number }) {
         style={{ transition: "stroke-dashoffset 0.8s ease" }}
       />
       <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="central"
-        fill={color} fontSize={12} fontWeight={800}>{value}</text>
+        fill={color} fontSize={size >= 48 ? 14 : 12} fontWeight={800}>{value}</text>
     </svg>
   );
 }
-
-// ── Score card ──
 
 function ScoreCard({ label, icon, score, trend }: {
   label: string; icon: React.ReactNode; score: number; trend?: "up" | "down" | "flat";
 }) {
   const { color } = getGradeLabel(score);
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 rounded-xl"
-      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-    >
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <span style={{ color }}>{icon}</span>
-      <div className="flex-1">
-        <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{label}</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{label}</div>
         <div className="text-lg font-bold" style={{ color }}>{score}<span className="text-xs font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span></div>
       </div>
       {trend === "up" && <TrendingUp size={16} style={{ color: "#22c55e" }} />}
@@ -80,72 +78,160 @@ function ScoreCard({ label, icon, score, trend }: {
   );
 }
 
+function computeTrend(recent: number[], previous: number[]): "up" | "down" | "flat" {
+  if (recent.length < 2 || previous.length < 2) return "flat";
+  const r = recent.reduce((s, v) => s + v, 0) / recent.length;
+  const p = previous.reduce((s, v) => s + v, 0) / previous.length;
+  const diff = r - p;
+  if (diff > 3) return "up";
+  if (diff < -3) return "down";
+  return "flat";
+}
+
 /* ═══ MAIN ═══ */
 
 export function DashboardPage() {
+  const { getAuthHeader } = useAuth();
   const { locale } = useI18n();
   const isFr = locale === "fr";
 
-  // For now, use localStorage to store analysis history
-  // Later this will be backed by Supabase
   const [analyses, setAnalyses] = useState<AnalysisEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const serverPost = useCallback(async (path: string, body: any, timeoutMs = 30_000) => {
+    const token = getAuthHeader();
+    try {
+      const r = await fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ ...body, _token: token }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const text = await r.text();
+      try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
+    } catch (err: any) {
+      return { success: false, error: err?.message || "Network error" };
+    }
+  }, [getAuthHeader]);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("ora-analyses");
-      if (stored) setAnalyses(JSON.parse(stored));
-    } catch {}
-  }, []);
+    setLoading(true);
+    serverPost("/analyze/history", {}).then(res => {
+      if (res?.success) {
+        setAnalyses(Array.isArray(res.analyses) ? res.analyses : []);
+      } else {
+        setError(res?.error || "Failed to load analyses");
+      }
+    }).finally(() => setLoading(false));
+  }, [serverPost]);
 
   // ── Computed stats ──
-  const total = analyses.length;
-  const avgOverall = total > 0 ? Math.round(analyses.reduce((s, a) => s + a.overall, 0) / total) : 0;
-  const avgTechnical = total > 0 ? Math.round(analyses.reduce((s, a) => s + a.technical, 0) / total) : 0;
-  const avgCreative = total > 0 ? Math.round(analyses.reduce((s, a) => s + a.creative, 0) / total) : 0;
-  const avgBrandFit = total > 0 ? Math.round(analyses.reduce((s, a) => s + a.brandFit, 0) / total) : 0;
-  const avgCompliance = total > 0 ? Math.round(analyses.reduce((s, a) => s + a.compliance, 0) / total) : 0;
+  const stats = useMemo(() => {
+    const total = analyses.length;
+    if (total === 0) return null;
 
-  // Top recurring issues
-  const allIssues = analyses.map(a => a.topIssue).filter(Boolean);
-  const issueCounts = new Map<string, number>();
-  allIssues.forEach(issue => issueCounts.set(issue, (issueCounts.get(issue) || 0) + 1));
-  const topIssues = [...issueCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+    const avg = (key: keyof AnalysisEntry) => {
+      const vals = analyses.map(a => {
+        const v = a[key];
+        if (typeof v === "number") return v;
+        if (v && typeof v === "object" && "score" in (v as any)) return (v as any).score as number;
+        return 0;
+      });
+      return Math.round(vals.reduce((s, v) => s + v, 0) / total);
+    };
+
+    // Trends: last 5 vs previous 5
+    const last5 = analyses.slice(0, 5);
+    const prev5 = analyses.slice(5, 10);
+    const trendKey = (k: keyof AnalysisEntry) => {
+      const recent = last5.map(a => {
+        const v = a[k];
+        if (typeof v === "number") return v;
+        if (v && typeof v === "object" && "score" in (v as any)) return (v as any).score as number;
+        return 0;
+      });
+      const previous = prev5.map(a => {
+        const v = a[k];
+        if (typeof v === "number") return v;
+        if (v && typeof v === "object" && "score" in (v as any)) return (v as any).score as number;
+        return 0;
+      });
+      return computeTrend(recent, previous);
+    };
+
+    return {
+      total,
+      avgOverall: avg("overall"),
+      avgEthique: avg("ethique"),
+      avgLegal: avg("legal"),
+      avgBrief: avg("brief"),
+      avgObjectif: avg("objectif"),
+      avgCoherence: avg("coherence"),
+      avgCible: avg("cible"),
+      avgCreatif: avg("creatif"),
+      trendOverall: trendKey("overall"),
+      trendEthique: trendKey("ethique"),
+      trendLegal: trendKey("legal"),
+      trendBrief: trendKey("brief"),
+      trendObjectif: trendKey("objectif"),
+      trendCoherence: trendKey("coherence"),
+      trendCible: trendKey("cible"),
+      trendCreatif: trendKey("creatif"),
+    };
+  }, [analyses]);
+
+  // Top recurring issues aggregated from all KPIs
+  const topIssues = useMemo(() => {
+    const counts = new Map<string, number>();
+    analyses.forEach(a => {
+      const allIssues = [
+        ...(a.ethique?.issues || []),
+        ...(a.legal?.issues || []),
+        ...(a.brief?.issues || []),
+        ...(a.objectif?.issues || []),
+        ...(a.coherence?.issues || []),
+        ...(a.cible?.issues || []),
+        ...(a.creatif?.issues || []),
+      ];
+      allIssues.forEach(issue => {
+        if (issue) counts.set(issue, (counts.get(issue) || 0) + 1);
+      });
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [analyses]);
 
   return (
     <RouteGuard>
       <div className="h-screen flex flex-col" style={{ background: "var(--background)", paddingLeft: 52 }}>
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="max-w-5xl mx-auto px-6 py-8">
 
-            {/* Header */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)" }}>
                 {isFr ? "Dashboard" : "Dashboard"}
               </h1>
               <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-                {isFr
-                  ? "Ta santé créative IA en un coup d'œil."
-                  : "Your AI creative health at a glance."}
+                {isFr ? "Ta santé créative IA en un coup d'œil." : "Your AI creative health at a glance."}
               </p>
             </div>
 
-            {total === 0 ? (
-              /* ── Empty state ── */
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center py-16"
-              >
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 size={24} className="animate-spin" style={{ color: "var(--muted-foreground)" }} />
+              </div>
+            ) : error ? (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: "#ef444420", color: "#ef4444" }}>
+                <AlertTriangle size={16} /> {error}
+              </div>
+            ) : !stats ? (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
                 <BarChart3 size={48} style={{ color: "var(--muted-foreground)", margin: "0 auto 16px" }} />
                 <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>
                   {isFr ? "Aucune analyse encore" : "No analyses yet"}
                 </h2>
-                <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)", maxWidth: 400, margin: "0 auto" }}>
-                  {isFr
-                    ? "Analyse ton premier visuel IA pour commencer à suivre ta santé créative."
-                    : "Analyze your first AI visual to start tracking your creative health."}
+                <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)", maxWidth: 400, margin: "0 auto 24px" }}>
+                  {isFr ? "Analyse ton premier visuel IA pour commencer à suivre ta santé créative." : "Analyze your first AI visual to start tracking your creative health."}
                 </p>
                 <Link
                   to="/hub/analyze"
@@ -157,37 +243,41 @@ export function DashboardPage() {
                 </Link>
               </motion.div>
             ) : (
-              /* ── Dashboard content ── */
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-6"
-              >
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+
                 {/* Overall health */}
-                <div
-                  className="flex items-center gap-6 p-5 rounded-2xl"
-                  style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-                >
-                  <MiniGauge value={avgOverall} size={64} />
-                  <div>
+                <div className="flex items-center gap-6 p-5 rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <MiniGauge value={stats.avgOverall} size={72} />
+                  <div className="flex-1">
                     <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>
                       {isFr ? "Score moyen global" : "Average overall score"}
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: getGradeLabel(avgOverall).color }}>
-                      {avgOverall}/100 — {getGradeLabel(avgOverall).labelFr}
+                    <div className="text-2xl font-bold" style={{ color: getGradeLabel(stats.avgOverall).color }}>
+                      {stats.avgOverall}/100 — {getGradeLabel(stats.avgOverall).labelFr}
                     </div>
                     <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
-                      {isFr ? `${total} visuel(s) analysé(s)` : `${total} visual(s) analyzed`}
+                      {isFr ? `${stats.total} visuel(s) analysé(s)` : `${stats.total} visual(s) analyzed`}
                     </div>
                   </div>
+                  {stats.trendOverall === "up" && <TrendingUp size={20} style={{ color: "#22c55e" }} />}
+                  {stats.trendOverall === "down" && <TrendingDown size={20} style={{ color: "#ef4444" }} />}
+                  {stats.trendOverall === "flat" && <Minus size={20} style={{ color: "var(--muted-foreground)" }} />}
                 </div>
 
-                {/* Axis cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <ScoreCard label={isFr ? "Technique" : "Technical"} icon={<Eye size={18} />} score={avgTechnical} trend="flat" />
-                  <ScoreCard label={isFr ? "Créatif" : "Creative"} icon={<Sparkles size={18} />} score={avgCreative} trend="flat" />
-                  <ScoreCard label="Brand Fit" icon={<Palette size={18} />} score={avgBrandFit} trend="flat" />
-                  <ScoreCard label={isFr ? "Conformité" : "Compliance"} icon={<Shield size={18} />} score={avgCompliance} trend="flat" />
+                {/* 7 KPIs */}
+                <div>
+                  <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
+                    {isFr ? "Moyennes par KPI" : "Averages per KPI"}
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <ScoreCard label={isFr ? "Éthique" : "Ethics"} icon={<Shield size={18} />} score={stats.avgEthique} trend={stats.trendEthique} />
+                    <ScoreCard label={isFr ? "Légal" : "Legal"} icon={<Scale size={18} />} score={stats.avgLegal} trend={stats.trendLegal} />
+                    <ScoreCard label="Brief" icon={<FileText size={18} />} score={stats.avgBrief} trend={stats.trendBrief} />
+                    <ScoreCard label={isFr ? "Objectif" : "Objective"} icon={<Target size={18} />} score={stats.avgObjectif} trend={stats.trendObjectif} />
+                    <ScoreCard label={isFr ? "Cohérence" : "Coherence"} icon={<MessageCircle size={18} />} score={stats.avgCoherence} trend={stats.trendCoherence} />
+                    <ScoreCard label={isFr ? "Cible" : "Target"} icon={<Users size={18} />} score={stats.avgCible} trend={stats.trendCible} />
+                    <ScoreCard label={isFr ? "Créatif" : "Creative"} icon={<Palette size={18} />} score={stats.avgCreatif} trend={stats.trendCreatif} />
+                  </div>
                 </div>
 
                 {/* Top issues */}
@@ -199,8 +289,8 @@ export function DashboardPage() {
                     </h3>
                     <div className="space-y-2">
                       {topIssues.map(([issue, count], i) => (
-                        <div key={i} className="flex items-center gap-2 text-sm">
-                          <span className="px-1.5 py-0.5 rounded text-xs font-bold" style={{ background: "#f59e0b20", color: "#f59e0b" }}>
+                        <div key={i} className="flex items-start gap-2 text-sm">
+                          <span className="px-1.5 py-0.5 rounded text-xs font-bold shrink-0" style={{ background: "#f59e0b20", color: "#f59e0b" }}>
                             {count}x
                           </span>
                           <span style={{ color: "var(--foreground)" }}>{issue}</span>
@@ -210,23 +300,26 @@ export function DashboardPage() {
                   </div>
                 )}
 
-                {/* Recent analyses */}
+                {/* Recent analyses — click through to compare */}
                 <div>
                   <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Analyses récentes" : "Recent analyses"}
                   </h3>
                   <div className="space-y-2">
                     {analyses.slice(0, 10).map((a) => (
-                      <div
+                      <Link
                         key={a.id}
+                        to={`/hub/compare?id=${a.id}`}
                         className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--muted)]/30 transition-colors"
                         style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                       >
-                        <img
-                          src={a.imageUrl}
-                          alt=""
-                          style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }}
-                        />
+                        {a.imageUrl ? (
+                          <img src={a.imageUrl} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }} />
+                        ) : (
+                          <div style={{ width: 48, height: 48, borderRadius: 8, background: "var(--muted)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <BarChart3 size={18} style={{ color: "var(--muted-foreground)" }} />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
                             {a.summary || "—"}
@@ -235,13 +328,12 @@ export function DashboardPage() {
                             {new Date(a.date).toLocaleDateString(isFr ? "fr-FR" : "en-US")}
                           </div>
                         </div>
-                        <MiniGauge value={a.overall} size={36} />
-                      </div>
+                        <MiniGauge value={a.overall} size={40} />
+                      </Link>
                     ))}
                   </div>
                 </div>
 
-                {/* CTA */}
                 <Link
                   to="/hub/analyze"
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm transition-opacity hover:opacity-80"
