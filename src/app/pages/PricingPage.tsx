@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Link } from "react-router";
-import { Check, ArrowRight, ChevronDown, Menu, X } from "lucide-react";
-import { OraLogo } from "../components/OraLogo";
+import { Check, ArrowRight, ChevronDown } from "lucide-react";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
 
@@ -16,79 +15,15 @@ const BLACK = "#0A0A0A";
 type Billing = "monthly" | "yearly";
 
 export function PricingPage() {
-  const { locale, setLocale } = useI18n();
+  const { locale } = useI18n();
   const { user } = useAuth();
   const isFr = locale === "fr";
   const [billing, setBilling] = useState<Billing>("monthly");
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const plans = buildPlans(isFr, billing);
 
   return (
-    <div style={{ background: "#FFFFFF", color: BLACK, minHeight: "100vh" }}>
-      {/* NAV */}
-      <nav
-        className="sticky top-0 z-50"
-        style={{
-          background: "rgba(255,255,255,0.85)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #E4E4E7",
-        }}
-      >
-        <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center">
-            <OraLogo size={32} variant="full" animate={false} color={BLACK} />
-          </Link>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
-            <Link to="/pricing" className="font-semibold" style={{ color: BLUE }}>
-              {isFr ? "Tarifs" : "Pricing"}
-            </Link>
-            <Link to="/about" className="hover:opacity-60">{isFr ? "À propos" : "About"}</Link>
-            <button onClick={() => setLocale(isFr ? "en" : "fr")} className="hover:opacity-60">
-              {isFr ? "EN" : "FR"}
-            </button>
-            {user ? (
-              <Link
-                to="/hub/analyze"
-                className="px-4 py-2 rounded-full text-sm font-semibold"
-                style={{ background: BLACK, color: "#FFFFFF" }}
-              >
-                {isFr ? "Ouvrir l'app" : "Open app"}
-              </Link>
-            ) : (
-              <Link
-                to="/login"
-                className="px-4 py-2 rounded-full text-sm font-semibold"
-                style={{ background: BLUE, color: "#FFFFFF" }}
-              >
-                {isFr ? "Commencer" : "Get started"}
-              </Link>
-            )}
-          </div>
-          <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
-            {menuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="md:hidden px-5 pb-5 space-y-3 border-t" style={{ borderColor: "#E4E4E7" }}>
-            <Link to="/about" className="block py-2" onClick={() => setMenuOpen(false)}>
-              {isFr ? "À propos" : "About"}
-            </Link>
-            <button onClick={() => { setLocale(isFr ? "en" : "fr"); setMenuOpen(false); }} className="block py-2">
-              {isFr ? "English" : "Français"}
-            </button>
-            <Link
-              to={user ? "/hub/analyze" : "/login"}
-              className="block py-3 text-center rounded-full font-semibold"
-              style={{ background: BLUE, color: "#FFFFFF" }}
-              onClick={() => setMenuOpen(false)}
-            >
-              {user ? (isFr ? "Ouvrir l'app" : "Open app") : (isFr ? "Commencer" : "Get started")}
-            </Link>
-          </div>
-        )}
-      </nav>
-
+    <div style={{ background: "#FFFFFF", color: BLACK }}>
       {/* HEADER */}
       <section className="max-w-6xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-10 text-center">
         <motion.h1
@@ -325,21 +260,6 @@ export function PricingPage() {
         </div>
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-t" style={{ borderColor: "#E4E4E7" }}>
-        <div className="max-w-6xl mx-auto px-5 md:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <OraLogo size={24} variant="mark" animate={false} color={BLACK} />
-            <span className="text-sm font-medium">© {new Date().getFullYear()} Ora</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm" style={{ color: "#71717A" }}>
-            <Link to="/about" className="hover:opacity-70">{isFr ? "À propos" : "About"}</Link>
-            <Link to="/pricing" className="hover:opacity-70">{isFr ? "Tarifs" : "Pricing"}</Link>
-            <Link to="/privacy" className="hover:opacity-70">{isFr ? "Confidentialité" : "Privacy"}</Link>
-            <Link to="/terms" className="hover:opacity-70">{isFr ? "CGU" : "Terms"}</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

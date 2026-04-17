@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import {
   Shield, Palette, Sparkles, ArrowRight, Check, Upload,
-  Eye, RefreshCw, Menu, X, ChevronDown, Play,
+  Eye, RefreshCw, ChevronDown,
 } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
@@ -31,52 +31,12 @@ function verdictColor(v: "safe" | "revise" | "block") {
 }
 
 export function LandingPage() {
-  const { locale, setLocale } = useI18n();
+  const { locale } = useI18n();
   const { user } = useAuth();
   const isFr = locale === "fr";
-  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div style={{ background: "#FFFFFF", color: BLACK, minHeight: "100vh" }}>
-      {/* ─── NAV ─── */}
-      <nav className="sticky top-0 z-50" style={{ background: "rgba(255,255,255,0.9)", backdropFilter: "blur(14px)", borderBottom: "1px solid #E4E4E7" }}>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center">
-            <OraLogo size={32} variant="full" animate={false} color={BLACK} />
-          </Link>
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
-            <Link to="/pricing" className="hover:opacity-60">{isFr ? "Tarifs" : "Pricing"}</Link>
-            <Link to="/about" className="hover:opacity-60">{isFr ? "À propos" : "About"}</Link>
-            <button onClick={() => setLocale(isFr ? "en" : "fr")} className="hover:opacity-60">{isFr ? "EN" : "FR"}</button>
-            {user ? (
-              <Link to="/hub/analyze" className="px-4 py-2 rounded-full text-sm font-semibold" style={{ background: BLACK, color: "#FFFFFF" }}>
-                {isFr ? "Ouvrir l'app" : "Open app"}
-              </Link>
-            ) : (
-              <>
-                <Link to="/login" className="hover:opacity-60">{isFr ? "Connexion" : "Sign in"}</Link>
-                <Link to="/login" className="px-4 py-2 rounded-full text-sm font-semibold" style={{ background: BLUE, color: "#FFFFFF" }}>
-                  {isFr ? "Commencer" : "Get started"}
-                </Link>
-              </>
-            )}
-          </div>
-          <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
-            {menuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="md:hidden px-5 pb-5 space-y-3 border-t" style={{ borderColor: "#E4E4E7" }}>
-            <Link to="/pricing" className="block py-2" onClick={() => setMenuOpen(false)}>{isFr ? "Tarifs" : "Pricing"}</Link>
-            <Link to="/about" className="block py-2" onClick={() => setMenuOpen(false)}>{isFr ? "À propos" : "About"}</Link>
-            <button onClick={() => { setLocale(isFr ? "en" : "fr"); setMenuOpen(false); }} className="block py-2">{isFr ? "English" : "Français"}</button>
-            <Link to={user ? "/hub/analyze" : "/login"} className="block py-3 text-center rounded-full font-semibold" style={{ background: BLUE, color: "#FFFFFF" }} onClick={() => setMenuOpen(false)}>
-              {user ? (isFr ? "Ouvrir l'app" : "Open app") : (isFr ? "Commencer" : "Get started")}
-            </Link>
-          </div>
-        )}
-      </nav>
-
+    <div style={{ background: "#FFFFFF", color: BLACK }}>
       {/* ─── HERO ─── */}
       <section className="max-w-7xl mx-auto px-5 md:px-8 pt-14 md:pt-20 pb-16 md:pb-24">
         <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-center">
@@ -156,50 +116,81 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ─── GALLERY — real examples ─── */}
-      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+      {/* ─── GALLERY — editorial full-bleed ─── */}
+      <section style={{ background: "#0A0A0A", color: "#FFFFFF" }}>
+        {/* Intro */}
         <div className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-10">
+          <div className="grid md:grid-cols-[1fr_auto] gap-5 items-end mb-10 md:mb-16">
             <div>
-              <p className="text-sm font-semibold mb-2" style={{ color: BLUE }}>{isFr ? "Exemples d'audits" : "Real audits"}</p>
-              <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-                {isFr ? "Des visuels. Des verdicts." : "Visuals. Verdicts."}
+              <p className="text-sm font-semibold mb-3" style={{ color: "#60A5FA" }}>{isFr ? "Exemples d'audits" : "Real audits"}</p>
+              <h2 style={{ fontSize: "clamp(2rem, 5vw, 4rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
+                {isFr ? "Des visuels." : "Visuals."}<br />
+                <span style={{ color: "#71717A" }}>{isFr ? "Des verdicts." : "Verdicts."}</span>
               </h2>
             </div>
-            <p className="max-w-sm text-base" style={{ color: "#52525B" }}>
+            <p className="max-w-xs text-base md:text-right" style={{ color: "#A1A1AA" }}>
               {isFr
                 ? "Pour chaque visuel IA : trois scores, un verdict, des conseils actionnables."
                 : "For each AI visual: three scores, a verdict, actionable advice."}
             </p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
-            {GALLERY.map((g, i) => {
-              const v = verdictColor(g.verdict);
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-80px" }}
-                  transition={{ delay: i * 0.05, duration: 0.5 }}
-                  className="relative rounded-2xl overflow-hidden group cursor-pointer"
-                  style={{ aspectRatio: "3 / 4", background: "#E4E4E7" }}
-                >
-                  <img src={g.img} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500" loading="lazy" />
-                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 45%)" }} />
-                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1" style={{ background: v.bg, color: v.fg }}>
-                    {g.verdict === "safe" && <Check size={11} />}
-                    {isFr ? v.label.fr : v.label.en}
-                  </div>
-                  <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between text-white">
-                    <span className="text-xs font-medium opacity-90">{g.tag}</span>
-                    <span className="text-2xl font-black leading-none">{g.score}</span>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
+        {/* Full-bleed editorial grid: 1 big + 2 medium + 3 tall, full width */}
+        <div className="grid grid-cols-6 gap-1 md:gap-2">
+          {GALLERY.map((g, i) => {
+            const v = verdictColor(g.verdict);
+            // Layout: big first, then 2 square-ish, then 3 tall. Responsive.
+            const spans = [
+              "col-span-6 md:col-span-4 md:row-span-2",   // hero image
+              "col-span-3 md:col-span-2",
+              "col-span-3 md:col-span-2",
+              "col-span-2",
+              "col-span-2",
+              "col-span-2",
+            ];
+            const aspects = [
+              "aspect-[16/10] md:aspect-[16/11]",
+              "aspect-square md:aspect-[5/4]",
+              "aspect-square md:aspect-[5/4]",
+              "aspect-[3/4]",
+              "aspect-[3/4]",
+              "aspect-[3/4]",
+            ];
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ delay: i * 0.05, duration: 0.5 }}
+                className={`relative overflow-hidden group ${spans[i]} ${aspects[i]}`}
+                style={{ background: "#1A1A1A" }}
+              >
+                <img
+                  src={g.img}
+                  alt=""
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.1) 40%, transparent 60%)" }} />
+                <div className="absolute top-4 left-4 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5" style={{ background: v.bg, color: v.fg }}>
+                  {g.verdict === "safe" && <Check size={11} />}
+                  {isFr ? v.label.fr : v.label.en}
+                </div>
+                <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between text-white">
+                  <span className="text-xs md:text-sm font-medium opacity-90">{g.tag}</span>
+                  <span className="text-3xl md:text-5xl font-black leading-none tracking-tight">{g.score}</span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="max-w-7xl mx-auto px-5 md:px-8 py-16 text-center">
+          <Link to={user ? "/hub/analyze" : "/login"} className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold" style={{ background: "#FFFFFF", color: BLACK }}>
+            {isFr ? "Scanner mon premier visuel" : "Scan my first visual"} <ArrowRight size={15} />
+          </Link>
         </div>
       </section>
 
@@ -417,21 +408,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ─── FOOTER ─── */}
-      <footer className="border-t" style={{ borderColor: "#E4E4E7" }}>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-3">
-            <OraLogo size={24} variant="mark" animate={false} color={BLACK} />
-            <span className="text-sm font-medium">© {new Date().getFullYear()} Ora</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm" style={{ color: "#71717A" }}>
-            <Link to="/about" className="hover:opacity-70">{isFr ? "À propos" : "About"}</Link>
-            <Link to="/pricing" className="hover:opacity-70">{isFr ? "Tarifs" : "Pricing"}</Link>
-            <Link to="/privacy" className="hover:opacity-70">{isFr ? "Confidentialité" : "Privacy"}</Link>
-            <Link to="/terms" className="hover:opacity-70">{isFr ? "CGU" : "Terms"}</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
