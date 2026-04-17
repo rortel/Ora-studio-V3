@@ -7658,6 +7658,8 @@ app.post("/analyze/score", async (c) => {
       imageUrl,
       videoUrl,
       prompt,
+      briefContext,
+      objective,
       brandVault,
     } = body;
 
@@ -7688,7 +7690,20 @@ app.post("/analyze/score", async (c) => {
       if (Array.isArray(brandVault.key_messages) && brandVault.key_messages.length > 0) {
         parts.push(`Key messages: ${brandVault.key_messages.join("; ")}`);
       }
-      brandBlock = `\n\nBRAND VAULT (use this for Brand Fit scoring):\n${parts.join("\n")}`;
+      if (Array.isArray(brandVault.target_audiences) && brandVault.target_audiences.length > 0) {
+        parts.push(`Target audiences: ${brandVault.target_audiences.map((a: any) => typeof a === "string" ? a : a.name || a.label || "").join(", ")}`);
+      }
+      brandBlock = `\n\nBRAND VAULT (use this for scoring — especially Cohérence message, Cible, and Brief alignment):\n${parts.join("\n")}`;
+    }
+
+    // --- Build brief & objective context blocks ---
+    let briefBlock = "";
+    if (briefContext) {
+      briefBlock = `\n\nBRIEF CONTEXT (use this to score "Brief" alignment — does the visual match what was asked?):\n"${String(briefContext).slice(0, 2000)}"`;
+    }
+    let objectiveBlock = "";
+    if (objective) {
+      objectiveBlock = `\n\nCAMPAIGN OBJECTIVE (use this to score "Objectif" alignment — does the visual serve this goal?):\n"${String(objective).slice(0, 1000)}"`;
     }
 
     // --- Build prompt context block ---
@@ -7699,96 +7714,155 @@ app.post("/analyze/score", async (c) => {
 
     const systemPrompt = `You are a senior creative director and AI content quality auditor with 20 years of advertising experience at top agencies (Publicis, BBDO, Droga5). You specialize in evaluating AI-generated visuals for commercial use.
 
-Your mission: score the provided AI-generated image across 4 axes and return a structured JSON audit.
+Your mission: score the provided AI-generated image across 7 KPIs and return a structured JSON audit.
 
-═══ SCORING AXES ═══
+═══ 7 KPIs ═══
 
-1. TECHNICAL (weight: 40%)
-Evaluate the raw quality of the AI output.
+1. ÉTHIQUE (weight: 10%)
+Evaluate ethical risks for commercial deployment.
 Criteria:
-- Artefacts: hands (wrong finger count, fused digits), faces (asymmetry, uncanny valley), text/typography (garbled, misspelled, distorted letters)
-- Resolution & sharpness: overall clarity, absence of blur, noise, or compression artefacts
-- Shadow & light coherence: consistent light direction, realistic shadows, no floating shadows or impossible reflections
-- Perspective consistency: vanishing points align, no warped geometry, objects sit naturally in the scene
-- Anatomical correctness: body proportions, limb placement, joint articulation
-
-High score (90-100): No visible artefacts, crisp details, perfect lighting, flawless anatomy.
-Medium score (60-79): Minor issues a non-expert wouldn't notice (slightly odd finger, subtle shadow mismatch).
-Low score (0-39): Obvious deformities, garbled text, broken perspective, nightmare hands.
-
-2. CREATIVE (weight: 35%)
-Evaluate artistic merit and commercial viability.
-Criteria:
-- Composition: rule of thirds, visual balance, clear focal point, leading lines, negative space usage
-- Visual impact: contrast ratio, readability, visual hierarchy, attention flow
-- Originality: does it feel fresh and intentional, or generic stock-like / "default AI aesthetic" (overly saturated, plastic skin, HDR look)
-
-High score (90-100): Striking composition, clear creative intent, would stand out in a campaign.
-Medium score (60-79): Competent but forgettable, standard AI aesthetic, decent but not memorable.
-Low score (0-39): Flat composition, no focal point, generic stock-photo feel, AI slop.
-
-3. BRAND FIT (weight: 15%)
-${brandVault ? "A Brand Vault has been provided — score this axis based on alignment." : "No Brand Vault was provided — default this score to 75 (neutral)."}
-Criteria (when brand context is available):
-- Color palette match: does the image use colors that align with or complement the brand palette?
-- Visual tone alignment: does the mood/atmosphere match the brand's stated tone?
-- Style consistency: does the framing, lighting, and overall aesthetic match the brand's photo style guidelines?
-- Message reinforcement: does the visual support or contradict the brand's key messages?
-
-High score (90-100): Perfect brand alignment, could go straight into the brand's campaign.
-Medium score (60-79): Acceptable but needs color grading or mood adjustment.
-Low score (0-39): Contradicts brand guidelines, wrong palette, wrong mood entirely.
-
-4. COMPLIANCE (weight: 10%)
-Evaluate risks for commercial deployment.
-Criteria:
-- AI detectability: obvious AI tells (plastic skin, over-symmetry, impossible reflections, watermark remnants, "AI glow")
 - Bias & representation: stereotypical depictions, lack of diversity when context demands it
 - Stereotype risks: reinforcement of harmful clichés, problematic visual tropes
 - Ethical red flags: deepfake-adjacent content, misleading imagery, IP concerns
+- Responsible AI usage: no deceptive or manipulative visual techniques
 
-High score (90-100): Could pass as professional photography, no ethical concerns.
-Medium score (60-79): Detectable as AI by experts but acceptable for most uses.
-Low score (0-39): Screams AI, contains problematic representations or ethical issues.
-${brandBlock}${promptBlock}
+High score (90-100): No ethical concerns, inclusive and responsible visual.
+Medium score (60-79): Minor concerns a reviewer might flag.
+Low score (0-39): Contains problematic representations or ethical issues.
+
+2. LÉGAL (weight: 10%)
+Evaluate legal risks for commercial use.
+Criteria:
+- AI detectability: obvious AI tells (plastic skin, over-symmetry, watermark remnants, "AI glow")
+- Copyright/IP risks: resemblance to copyrighted works, celebrity likenesses, trademarked elements
+- Regulatory compliance: no false claims, misleading info, or regulated content without disclaimers
+- Commercial deployment safety: could this be published without legal review?
+
+High score (90-100): No legal risks, safe for commercial use.
+Medium score (60-79): Minor risks manageable with disclaimers.
+Low score (0-39): Significant legal risks, needs review before use.
+
+3. BRIEF (weight: 15%)
+${briefContext ? "A brief context has been provided — score alignment with the brief." : "No brief context was provided — default this score to 70 (neutral)."}
+Criteria (when brief is available):
+- Does the visual match what was described in the brief?
+- Are the key elements from the brief present in the image?
+- Does the visual fulfill the creative direction specified?
+
+High score (90-100): Perfect match with the brief, all elements present.
+Medium score (60-79): Partially aligned, some elements missing or off.
+Low score (0-39): Completely off-brief, wrong subject/mood/elements.
+
+4. OBJECTIF (weight: 15%)
+${objective ? "A campaign objective has been provided — score how well the visual serves it." : "No campaign objective was provided — default this score to 70 (neutral)."}
+Criteria (when objective is available):
+- Does the visual drive the desired action (awareness, conversion, engagement)?
+- Is the visual appropriate for the stated goal?
+- Would a viewer understand the intended message?
+
+High score (90-100): Visual perfectly serves the campaign objective.
+Medium score (60-79): Somewhat aligned but could be more effective.
+Low score (0-39): Contradicts or ignores the stated objective.
+
+5. COHÉRENCE MESSAGE (weight: 15%)
+${brandVault ? "A Brand Vault has been provided — score message coherence with brand." : "No Brand Vault was provided — default this score to 70 (neutral)."}
+Criteria:
+- Does the visual reinforce the brand's key messages?
+- Is the tone consistent with the brand's voice?
+- Color palette, mood, and atmosphere alignment with brand identity
+- Would this fit naturally in the brand's existing campaigns?
+
+High score (90-100): Perfect brand alignment, could go straight into a campaign.
+Medium score (60-79): Acceptable but needs adjustment.
+Low score (0-39): Contradicts brand identity.
+
+6. CIBLE (weight: 15%)
+${brandVault?.target_audiences ? "Target audiences are defined in the Brand Vault." : "No target audience specified — default this score to 70 (neutral)."}
+Criteria:
+- Is the visual appropriate for the target audience?
+- Does it resonate with the audience's values, aesthetics, and expectations?
+- Would the target demographic engage with this visual?
+
+High score (90-100): Perfectly tailored to the target audience.
+Medium score (60-79): Generally appropriate but could be more targeted.
+Low score (0-39): Wrong audience, would not resonate or could alienate.
+
+7. CRÉATIF (weight: 20%)
+Evaluate artistic merit, technical quality, and commercial viability.
+Criteria:
+- Composition: rule of thirds, visual balance, focal point, leading lines
+- Visual impact: contrast, readability, visual hierarchy, attention flow
+- Originality: fresh and intentional, or generic "default AI aesthetic"
+- Technical quality: artefacts, resolution, anatomy, lighting coherence
+- Commercial viability: would this stand out in a real campaign?
+
+High score (90-100): Striking composition, flawless execution, campaign-ready.
+Medium score (60-79): Competent but forgettable, minor technical issues.
+Low score (0-39): Flat, generic, obvious AI artefacts.
+${brandBlock}${briefBlock}${objectiveBlock}${promptBlock}
 
 ═══ OUTPUT FORMAT ═══
 
 Return ONLY valid JSON (no markdown, no backticks, no prose outside the JSON). Use this exact structure:
 {
-  "overall": <0-100 weighted score: technical*0.40 + creative*0.35 + brandFit*0.15 + compliance*0.10>,
-  "technical": {
+  "overall": <0-100 weighted score>,
+  "ethique": {
     "score": <0-100>,
-    "issues": ["list of specific problems found — empty array if none"],
-    "positives": ["list of specific strengths — always include at least one"]
+    "issues": ["specific ethical problems found — empty array if none"],
+    "positives": ["specific ethical strengths"]
   },
-  "creative": {
+  "legal": {
     "score": <0-100>,
-    "issues": ["specific creative weaknesses"],
-    "positives": ["specific creative strengths"]
+    "issues": ["specific legal risks"],
+    "positives": ["specific legal strengths"]
   },
-  "brandFit": {
-    "score": <0-100${brandVault ? "" : ", default 75 since no brand vault provided"}>,
-    "issues": ["brand alignment issues${brandVault ? "" : " — empty since no brand context"}"],
-    "positives": ["brand alignment strengths${brandVault ? "" : " — note neutral score"}"]
+  "brief": {
+    "score": <0-100${briefContext ? "" : ", default 70 since no brief provided"}>,
+    "issues": ["brief alignment issues"],
+    "positives": ["brief alignment strengths"]
   },
-  "compliance": {
+  "objectif": {
+    "score": <0-100${objective ? "" : ", default 70 since no objective provided"}>,
+    "issues": ["objective alignment issues"],
+    "positives": ["objective alignment strengths"]
+  },
+  "coherence": {
+    "score": <0-100${brandVault ? "" : ", default 70 since no brand vault provided"}>,
+    "issues": ["message coherence issues"],
+    "positives": ["message coherence strengths"]
+  },
+  "cible": {
+    "score": <0-100${brandVault?.target_audiences ? "" : ", default 70 since no target audience provided"}>,
+    "issues": ["target audience alignment issues"],
+    "positives": ["target audience alignment strengths"]
+  },
+  "creatif": {
     "score": <0-100>,
-    "issues": ["compliance risks found"],
-    "positives": ["compliance strengths"]
+    "issues": ["creative/technical weaknesses"],
+    "positives": ["creative/technical strengths"]
   },
   "recommendations": ["3 to 5 actionable improvement tips prioritized by impact"],
-  "promptTips": [${prompt ? '"suggestions to improve the original generation prompt"' : '"empty array — no prompt was provided"'}],
-  "bestModelFor": "suggest which AI model (Midjourney, DALL-E 3, Stable Diffusion XL, Flux, Firefly, etc.) would likely produce better results for this specific use case and why",
+  "optimizedPrompt": "a rewritten, improved version of the original prompt that would score higher across all 7 KPIs (if no prompt was provided, suggest an ideal prompt for this type of visual)",
+  "predictedScores": {
+    "ethique": <predicted score if optimizedPrompt were used>,
+    "legal": <predicted>,
+    "brief": <predicted>,
+    "objectif": <predicted>,
+    "coherence": <predicted>,
+    "cible": <predicted>,
+    "creatif": <predicted>,
+    "overall": <predicted weighted>
+  },
   "summary": "one-sentence verdict${prompt ? " in the same language as the user's prompt" : " in French"}"
 }
 
 IMPORTANT RULES:
 - Be precise and specific in issues/positives — reference exact visual elements, not vague generalities
 - recommendations must be ACTIONABLE (e.g. "Add rim lighting on the left side to separate subject from background" not "improve lighting")
-- If a prompt was provided, promptTips must suggest concrete wording improvements
+- optimizedPrompt must be a concrete, usable prompt — not vague advice
+- predictedScores should be realistic estimates of what the optimized prompt would achieve
 - summary must be in the SAME LANGUAGE as the user's prompt. If no prompt was provided, default to French.
-- Always ensure "overall" equals the weighted sum (rounded to nearest integer)
+- overall = ethique*0.10 + legal*0.10 + brief*0.15 + objectif*0.15 + coherence*0.15 + cible*0.15 + creatif*0.20
 - Each issues/positives array should have 1-5 items`;
 
     const userContent: any[] = [
@@ -7797,6 +7871,12 @@ IMPORTANT RULES:
     ];
     if (prompt) {
       userContent.push({ type: "text", text: `The prompt used to generate this image was: "${String(prompt).slice(0, 1000)}"` });
+    }
+    if (briefContext) {
+      userContent.push({ type: "text", text: `Brief context: "${String(briefContext).slice(0, 2000)}"` });
+    }
+    if (objective) {
+      userContent.push({ type: "text", text: `Campaign objective: "${String(objective).slice(0, 1000)}"` });
     }
     userContent.push({ type: "text", text: "Return the full JSON audit now." });
 
@@ -7809,11 +7889,11 @@ IMPORTANT RULES:
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },
         ],
-        max_tokens: 1500,
+        max_tokens: 2500,
         temperature: 0.15,
         response_format: { type: "json_object" },
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!visionRes.ok) {
@@ -7841,33 +7921,71 @@ IMPORTANT RULES:
       positives: Array.isArray(axis?.positives) ? axis.positives.map(String).slice(0, 5) : [],
     });
 
-    const technical = normalizeAxis(parsed.technical, 50);
-    const creative = normalizeAxis(parsed.creative, 50);
-    const brandFit = normalizeAxis(parsed.brandFit, brandVault ? 50 : 75);
-    const compliance = normalizeAxis(parsed.compliance, 50);
+    const ethique = normalizeAxis(parsed.ethique, 50);
+    const legal = normalizeAxis(parsed.legal, 50);
+    const brief = normalizeAxis(parsed.brief, briefContext ? 50 : 70);
+    const objectifKpi = normalizeAxis(parsed.objectif, objective ? 50 : 70);
+    const coherence = normalizeAxis(parsed.coherence, brandVault ? 50 : 70);
+    const cible = normalizeAxis(parsed.cible, brandVault?.target_audiences ? 50 : 70);
+    const creatif = normalizeAxis(parsed.creatif, 50);
 
     const overall = Math.round(
-      technical.score * 0.40 +
-      creative.score * 0.35 +
-      brandFit.score * 0.15 +
-      compliance.score * 0.10
+      ethique.score * 0.10 +
+      legal.score * 0.10 +
+      brief.score * 0.15 +
+      objectifKpi.score * 0.15 +
+      coherence.score * 0.15 +
+      cible.score * 0.15 +
+      creatif.score * 0.20
     );
 
     const result = {
       success: true as const,
       overall,
-      technical,
-      creative,
-      brandFit,
-      compliance,
+      ethique,
+      legal,
+      brief,
+      objectif: objectifKpi,
+      coherence,
+      cible,
+      creatif,
       recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(String).slice(0, 5) : [],
-      promptTips: Array.isArray(parsed.promptTips) ? parsed.promptTips.map(String).slice(0, 5) : [],
-      bestModelFor: String(parsed.bestModelFor || "").slice(0, 500),
+      optimizedPrompt: String(parsed.optimizedPrompt || "").slice(0, 2000),
+      predictedScores: parsed.predictedScores && typeof parsed.predictedScores === "object" ? {
+        ethique: clamp(parsed.predictedScores.ethique, 70),
+        legal: clamp(parsed.predictedScores.legal, 70),
+        brief: clamp(parsed.predictedScores.brief, 70),
+        objectif: clamp(parsed.predictedScores.objectif, 70),
+        coherence: clamp(parsed.predictedScores.coherence, 70),
+        cible: clamp(parsed.predictedScores.cible, 70),
+        creatif: clamp(parsed.predictedScores.creatif, 70),
+        overall: clamp(parsed.predictedScores.overall, 70),
+      } : null,
       summary: String(parsed.summary || "").slice(0, 500),
       tookMs: Date.now() - t0,
     };
 
-    console.log(`[analyze/score] overall=${overall} tech=${technical.score} creative=${creative.score} brand=${brandFit.score} compliance=${compliance.score} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
+    console.log(`[analyze/score] overall=${overall} ethique=${ethique.score} legal=${legal.score} brief=${brief.score} objectif=${objectifKpi.score} coherence=${coherence.score} cible=${cible.score} creatif=${creatif.score} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
+
+    // --- Persist to KV ---
+    if (user) {
+      const analysisId = `ana-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const entry = {
+        id: analysisId,
+        userId: user.id,
+        imageUrl: targetUrl.startsWith("data:") ? "" : targetUrl,
+        prompt: prompt ? String(prompt).slice(0, 1000) : "",
+        briefContext: briefContext ? String(briefContext).slice(0, 2000) : "",
+        objective: objective ? String(objective).slice(0, 1000) : "",
+        ...result,
+        date: new Date().toISOString(),
+      };
+      kv.set(`analysis:${user.id}:${analysisId}`, entry).catch((e: any) =>
+        console.log(`[analyze/score] KV persist failed: ${e?.message || e}`)
+      );
+      // Return the ID so frontend can link to detail
+      (result as any).id = analysisId;
+    }
 
     if (user) {
       logCost({
@@ -7885,6 +8003,50 @@ IMPORTANT RULES:
     return c.json(result);
   } catch (err: any) {
     console.log(`[analyze/score] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── POST /analyze/history — List user's analyses ──
+app.post("/analyze/history", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const entries = await kv.getByPrefix(`analysis:${user.id}:`);
+    // Sort by date descending
+    const sorted = (entries || [])
+      .filter((e: any) => e && e.id)
+      .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
+    return c.json({ success: true, analyses: sorted });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── POST /analyze/detail — Get a single analysis by ID ──
+app.post("/analyze/detail", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { id } = body;
+    if (!id) return c.json({ success: false, error: "id is required" }, 400);
+    const entry = await kv.get(`analysis:${user.id}:${id}`);
+    if (!entry) return c.json({ success: false, error: "Analysis not found" }, 404);
+    return c.json({ success: true, analysis: entry });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── POST /analyze/delete — Delete an analysis ──
+app.post("/analyze/delete", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { id } = body;
+    if (!id) return c.json({ success: false, error: "id is required" }, 400);
+    await kv.del(`analysis:${user.id}:${id}`);
+    return c.json({ success: true });
+  } catch (err: any) {
     return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
 });
