@@ -1,380 +1,272 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
+import { Shield, Palette, Sparkles, ArrowRight, Mail, Menu, X } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
-import { Layers, GitCompareArrows, Shield, Zap } from "lucide-react";
 import { useI18n } from "../lib/i18n";
+import { useAuth } from "../lib/auth-context";
 
-const featureIcons = [Layers, GitCompareArrows, Shield, Zap] as const;
+/* ═══════════════════════════════════════════════════════════
+   ABOUT — Positioning, honest scope, team/contact
+   ═══════════════════════════════════════════════════════════ */
+
+const BLUE = "#1D4ED8";
+const BLACK = "#0A0A0A";
 
 export function AboutPage() {
-  const { t } = useI18n();
-
-  const features = [
-    { icon: featureIcons[0], title: t("about.feature1Title"), description: t("about.feature1Desc") },
-    { icon: featureIcons[1], title: t("about.feature2Title"), description: t("about.feature2Desc") },
-    { icon: featureIcons[2], title: t("about.feature3Title"), description: t("about.feature3Desc") },
-    { icon: featureIcons[3], title: t("about.feature4Title"), description: t("about.feature4Desc") },
-  ];
-
-  const values = [
-    { title: t("about.value1Title"), description: t("about.value1Desc") },
-    { title: t("about.value2Title"), description: t("about.value2Desc") },
-    { title: t("about.value3Title"), description: t("about.value3Desc") },
-    { title: t("about.value4Title"), description: t("about.value4Desc") },
-  ];
+  const { locale, setLocale } = useI18n();
+  const { user } = useAuth();
+  const isFr = locale === "fr";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div>
-      {/* Hero — dark */}
-      <div
-        className="relative overflow-hidden pt-24 pb-20 px-6"
-        style={{ background: "#111111" }}
+    <div style={{ background: "#FFFFFF", color: BLACK, minHeight: "100vh" }}>
+      {/* NAV */}
+      <nav
+        className="sticky top-0 z-50"
+        style={{
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "1px solid #E4E4E7",
+        }}
       >
-        <div className="max-w-[900px] mx-auto text-center relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
-          >
-            <div className="flex justify-center mb-8">
-              <OraLogo size={40} animate={false} color="rgba(255,255,255,0.6)" />
-            </div>
-            <h1
-              style={{
-                fontSize: "clamp(32px, 6vw, 56px)",
-                fontWeight: 700,
-                fontFamily: "'Inter', sans-serif",
-                color: "#FFFFFF",
-                letterSpacing: "-0.035em",
-                lineHeight: 1.1,
-              }}
-            >
-              {t("about.heroHeadline")}
-            </h1>
-            <p
-              className="mt-2"
-              style={{
-                fontSize: "clamp(20px, 4vw, 32px)",
-                fontWeight: 500,
-                fontFamily: "'Inter', sans-serif",
-                color: "rgba(255,255,255,0.4)",
-                letterSpacing: "-0.02em",
-                lineHeight: 1.3,
-              }}
-            >
-              {t("about.heroSubHeadline")}
-            </p>
-          </motion.div>
-
-          <motion.p
-            className="mt-8 mx-auto"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
-            style={{
-              fontSize: "16px",
-              fontFamily: "'Inter', sans-serif",
-              color: "rgba(255,255,255,0.45)",
-              lineHeight: 1.7,
-              maxWidth: 560,
-            }}
-          >
-            {t("about.heroDesc")}
-          </motion.p>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center">
+            <OraLogo size={32} variant="full" animate={false} color={BLACK} />
+          </Link>
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            <Link to="/pricing" className="hover:opacity-60">{isFr ? "Tarifs" : "Pricing"}</Link>
+            <Link to="/about" className="font-semibold" style={{ color: BLUE }}>
+              {isFr ? "À propos" : "About"}
+            </Link>
+            <button onClick={() => setLocale(isFr ? "en" : "fr")} className="hover:opacity-60">
+              {isFr ? "EN" : "FR"}
+            </button>
+            {user ? (
+              <Link to="/hub/analyze" className="px-4 py-2 rounded-full text-sm font-semibold" style={{ background: BLACK, color: "#FFFFFF" }}>
+                {isFr ? "Ouvrir l'app" : "Open app"}
+              </Link>
+            ) : (
+              <Link to="/login" className="px-4 py-2 rounded-full text-sm font-semibold" style={{ background: BLUE, color: "#FFFFFF" }}>
+                {isFr ? "Commencer" : "Get started"}
+              </Link>
+            )}
+          </div>
+          <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+            {menuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
+        {menuOpen && (
+          <div className="md:hidden px-5 pb-5 space-y-3 border-t" style={{ borderColor: "#E4E4E7" }}>
+            <Link to="/pricing" className="block py-2" onClick={() => setMenuOpen(false)}>{isFr ? "Tarifs" : "Pricing"}</Link>
+            <button onClick={() => { setLocale(isFr ? "en" : "fr"); setMenuOpen(false); }} className="block py-2">
+              {isFr ? "English" : "Français"}
+            </button>
+            <Link to={user ? "/hub/analyze" : "/login"} className="block py-3 text-center rounded-full font-semibold" style={{ background: BLUE, color: "#FFFFFF" }} onClick={() => setMenuOpen(false)}>
+              {user ? (isFr ? "Ouvrir l'app" : "Open app") : (isFr ? "Commencer" : "Get started")}
+            </Link>
+          </div>
+        )}
+      </nav>
 
-        {/* Subtle gradient orb */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full pointer-events-none"
-          style={{
-            width: 600,
-            height: 600,
-            background: "radial-gradient(circle, rgba(255,255,255,0.03) 0%, transparent 70%)",
-          }}
-        />
-      </div>
+      {/* HERO */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-10 text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex justify-center mb-8"
+        >
+          <OraLogo size={88} variant="mascot" animate={true} color={BLACK} />
+        </motion.div>
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05 }}
+          className="mb-5"
+        >
+          {isFr ? "Le copilote qualité\npour tes visuels IA." : "The quality copilot\nfor AI visuals."}
+        </motion.h1>
+        <p className="text-lg leading-relaxed" style={{ color: "#52525B" }}>
+          {isFr
+            ? "Ora aide les créateurs, marques et agences à publier des visuels IA sans stress : on-brand, sans risque, et vraiment bons."
+            : "Ora helps creators, brands, and agencies publish AI visuals with confidence: on-brand, risk-free, and genuinely good."}
+        </p>
+      </section>
 
-      {/* Mission */}
-      <div className="py-20 px-6" style={{ background: "var(--background)" }}>
-        <div className="max-w-[760px] mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-60px" }}
-            transition={{ duration: 0.5 }}
-          >
-            <p
-              className="mb-3"
-              style={{
-                fontSize: "12px",
-                fontWeight: 600,
-                fontFamily: "'Inter', sans-serif",
-                color: "var(--muted-foreground)",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-              }}
-            >
-              {t("about.missionLabel")}
-            </p>
-            <h2
-              style={{
-                fontSize: "clamp(24px, 4vw, 36px)",
-                fontWeight: 700,
-                fontFamily: "'Inter', sans-serif",
-                color: "var(--foreground)",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.15,
-              }}
-            >
-              {t("about.missionTitle")}
-            </h2>
-            <p
-              className="mt-6"
-              style={{
-                fontSize: "16px",
-                fontFamily: "'Inter', sans-serif",
-                color: "var(--muted-foreground)",
-                lineHeight: 1.75,
-                maxWidth: 600,
-              }}
-            >
-              {t("about.missionDesc")}
-            </p>
-          </motion.div>
+      {/* MISSION */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-16">
+        <div className="space-y-6 text-lg leading-relaxed" style={{ color: "#27272A" }}>
+          <p>
+            {isFr
+              ? "Depuis l'explosion des modèles génératifs, tout le monde peut produire un visuel en 30 secondes. Mais publier un visuel IA reste risqué : logos qui traînent, célébrités reconnaissables, artefacts grossiers, ambiance à côté de la marque."
+              : "Since generative models exploded, anyone can produce a visual in 30 seconds. But publishing AI visuals stays risky: stray logos, recognizable celebrities, clumsy artefacts, off-brand mood."}
+          </p>
+          <p>
+            {isFr
+              ? "Les seuls outils qui auditent les créations existent — mais sont réservés aux gros annonceurs à $50k/an. Le freelance, la PME, l'agence indé n'ont rien."
+              : "Tools that audit creative work exist — but are reserved for big advertisers at $50k/year. Freelancers, SMBs, and indie agencies have nothing."}
+          </p>
+          <p className="font-semibold" style={{ color: BLACK }}>
+            {isFr
+              ? "Ora comble ce vide : un audit de qualité, accessible, rapide, honnête."
+              : "Ora fills that gap: a quality audit — accessible, fast, honest."}
+          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Features grid */}
-      <div className="py-20 px-6" style={{ background: "var(--secondary)" }}>
-        <div className="max-w-[960px] mx-auto">
-          <motion.p
-            className="mb-3 text-center"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "'Inter', sans-serif",
-              color: "var(--muted-foreground)",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-            }}
-          >
-            {t("about.featuresLabel")}
-          </motion.p>
-          <motion.h2
+      {/* APPROACH */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="max-w-5xl mx-auto px-5 md:px-8 py-20">
+          <h2
             className="text-center mb-14"
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            style={{
-              fontSize: "clamp(24px, 4vw, 32px)",
-              fontWeight: 700,
-              fontFamily: "'Inter', sans-serif",
-              color: "var(--foreground)",
-              letterSpacing: "-0.03em",
-              lineHeight: 1.2,
-              marginTop: 8,
-            }}
+            style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
           >
-            {t("about.featuresTitle")}
-          </motion.h2>
+            {isFr ? "Notre approche" : "Our approach"}
+          </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {features.map((f, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ duration: 0.4, delay: i * 0.08 }}
-                className="rounded-2xl p-8"
-                style={{
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                }}
+          <div className="grid md:grid-cols-3 gap-5">
+            {[
+              {
+                icon: Shield, color: "#B91C1C", bg: "#FEF2F2",
+                title: isFr ? "Risques" : "Legal flags",
+                body: isFr
+                  ? "Détection heuristique des drapeaux rouges : logos déposés, ressemblances célébrités, allégations régulées, biais."
+                  : "Heuristic red-flag detection: visible trademarks, celebrity likenesses, regulated claims, bias.",
+              },
+              {
+                icon: Palette, color: BLUE, bg: "#EFF6FF",
+                title: isFr ? "Cohérence marque" : "Brand fit",
+                body: isFr
+                  ? "Score d'alignement avec ta marque : palette, ton, style photo, messages clés, audience cible."
+                  : "Alignment score with your brand: palette, tone, photo style, key messages, target audience.",
+              },
+              {
+                icon: Sparkles, color: "#15803D", bg: "#F0FDF4",
+                title: isFr ? "Créatif" : "Creative",
+                body: isFr
+                  ? "Qualité artistique et technique : composition, impact, artefacts IA, originalité, potentiel campagne."
+                  : "Artistic and technical quality: composition, impact, AI artefacts, originality, campaign potential.",
+              },
+            ].map(({ icon: Icon, color, bg, title, body }) => (
+              <div
+                key={title}
+                className="p-6 rounded-2xl"
+                style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
               >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center mb-5"
-                  style={{ background: "var(--primary)" }}
-                >
-                  <f.icon size={18} color="var(--primary-foreground)" strokeWidth={2} />
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4" style={{ background: bg, color }}>
+                  <Icon size={20} />
                 </div>
-                <h3
-                  style={{
-                    fontSize: "17px",
-                    fontWeight: 700,
-                    fontFamily: "'Inter', sans-serif",
-                    color: "var(--foreground)",
-                    letterSpacing: "-0.02em",
-                    marginBottom: 8,
-                  }}
-                >
-                  {f.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: "15px",
-                    fontFamily: "'Inter', sans-serif",
-                    color: "var(--muted-foreground)",
-                    lineHeight: 1.65,
-                  }}
-                >
-                  {f.description}
-                </p>
-              </motion.div>
+                <h3 className="font-bold text-base mb-2">{title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+              </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Values */}
-      <div className="py-20 px-6" style={{ background: "var(--background)" }}>
-        <div className="max-w-[760px] mx-auto">
-          <motion.p
-            className="mb-3"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              fontFamily: "'Inter', sans-serif",
-              color: "var(--muted-foreground)",
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-            }}
+      {/* HONEST DISCLOSURE */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-20">
+        <div
+          className="p-8 md:p-10 rounded-3xl"
+          style={{ background: "#0A0A0A", color: "#FAFAFA" }}
+        >
+          <h2
+            className="mb-4"
+            style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15 }}
           >
-            {t("about.valuesLabel")}
-          </motion.p>
-          <motion.h2
-            className="mb-12"
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
-            style={{
-              fontSize: "clamp(24px, 4vw, 32px)",
-              fontWeight: 700,
-              fontFamily: "'Inter', sans-serif",
-              color: "var(--foreground)",
-              letterSpacing: "-0.03em",
-              lineHeight: 1.2,
-            }}
-          >
-            {t("about.valuesTitle")}
-          </motion.h2>
-
-          <div className="flex flex-col gap-8">
-            {values.map((v, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -12 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ duration: 0.4, delay: i * 0.06 }}
-                className="flex gap-6 items-start"
-              >
-                <div
-                  className="w-1 rounded-full shrink-0 mt-1"
-                  style={{ height: 40, background: "var(--foreground)" }}
-                />
-                <div>
-                  <h3
-                    style={{
-                      fontSize: "17px",
-                      fontWeight: 700,
-                      fontFamily: "'Inter', sans-serif",
-                      color: "var(--foreground)",
-                      letterSpacing: "-0.02em",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {v.title}
-                  </h3>
-                  <p
-                    style={{
-                      fontSize: "15px",
-                      fontFamily: "'Inter', sans-serif",
-                      color: "var(--muted-foreground)",
-                      lineHeight: 1.65,
-                    }}
-                  >
-                    {v.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+            {isFr ? "Ce qu'Ora n'est PAS." : "What Ora is NOT."}
+          </h2>
+          <ul className="space-y-3 text-sm md:text-base" style={{ color: "#D4D4D8" }}>
+            <li>
+              <span className="font-semibold" style={{ color: "#FFFFFF" }}>
+                {isFr ? "Pas un avis juridique." : "Not legal advice."}
+              </span>{" "}
+              {isFr
+                ? "Notre score « Risques » est une détection heuristique. Pour les campagnes à fort enjeu, consulte un conseil."
+                : "Our \"Risks\" score is heuristic detection. For high-stakes campaigns, consult counsel."}
+            </li>
+            <li>
+              <span className="font-semibold" style={{ color: "#FFFFFF" }}>
+                {isFr ? "Pas un générateur." : "Not a generator."}
+              </span>{" "}
+              {isFr
+                ? "On audite ce que tu produis ailleurs (MidJourney, Flux, DALL-E…). On peut régénérer une version améliorée avec ton contexte."
+                : "We audit what you produce elsewhere (MidJourney, Flux, DALL-E…). We can regenerate an improved version with your context."}
+            </li>
+            <li>
+              <span className="font-semibold" style={{ color: "#FFFFFF" }}>
+                {isFr ? "Pas une oracle." : "Not an oracle."}
+              </span>{" "}
+              {isFr
+                ? "Les scores sont des opinions de modèles vision qualifiés. Ton jugement humain reste la dernière étape."
+                : "Scores are opinions from qualified vision models. Your human judgement is the final step."}
+            </li>
+          </ul>
         </div>
-      </div>
+      </section>
+
+      {/* CONTACT */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-20 text-center">
+        <h2
+          className="mb-4"
+          style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}
+        >
+          {isFr ? "Une question ? Un besoin custom ?" : "A question? Custom needs?"}
+        </h2>
+        <p className="text-base mb-7" style={{ color: "#52525B" }}>
+          {isFr
+            ? "Équipes de +5, SSO, audit log signé, SLA, intégration API — parlons-en."
+            : "Teams of 5+, SSO, signed audit log, SLA, API integration — let's talk."}
+        </p>
+        <a
+          href="mailto:hello@ora.studio"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{ background: BLACK, color: "#FFFFFF" }}
+        >
+          <Mail size={15} /> hello@ora.studio
+        </a>
+      </section>
 
       {/* CTA */}
-      <div className="py-24 px-6" style={{ background: "#111111" }}>
-        <div className="max-w-[600px] mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5 }}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pb-20">
+        <div
+          className="rounded-3xl p-10 md:p-14 text-center"
+          style={{ background: "#F4F4F5" }}
+        >
+          <h2
+            style={{ fontSize: "clamp(1.5rem, 3vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+            className="mb-3"
           >
-            <h2
-              style={{
-                fontSize: "clamp(24px, 5vw, 36px)",
-                fontWeight: 700,
-                fontFamily: "'Inter', sans-serif",
-                color: "#FFFFFF",
-                letterSpacing: "-0.03em",
-                lineHeight: 1.15,
-              }}
-            >
-              {t("about.ctaTitle")}
-            </h2>
-            <p
-              className="mt-4 mx-auto"
-              style={{
-                fontSize: "16px",
-                fontFamily: "'Inter', sans-serif",
-                color: "rgba(255,255,255,0.45)",
-                lineHeight: 1.7,
-                maxWidth: 440,
-              }}
-            >
-              {t("about.ctaDesc")}
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                to="/login?mode=signup"
-                className="px-8 py-3.5 rounded-full transition-all duration-200 hover:shadow-lg active:scale-[0.98]"
-                style={{
-                  background: "#FFFFFF",
-                  color: "#111111",
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  fontFamily: "'Inter', sans-serif",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                {t("about.ctaButton")}
-              </Link>
-              <a
-                href="mailto:hello@ora-studio.app"
-                className="px-6 py-3.5 rounded-full transition-opacity hover:opacity-80"
-                style={{
-                  fontSize: "15px",
-                  fontWeight: 500,
-                  fontFamily: "'Inter', sans-serif",
-                  color: "rgba(255,255,255,0.5)",
-                }}
-              >
-                hello@ora-studio.app
-              </a>
-            </div>
-          </motion.div>
+            {isFr ? "Essaie Ora sur un visuel." : "Try Ora on a visual."}
+          </h2>
+          <p className="mb-6" style={{ color: "#52525B" }}>
+            {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card."}
+          </p>
+          <Link
+            to={user ? "/hub/analyze" : "/login"}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-opacity hover:opacity-90"
+            style={{ background: BLUE, color: "#FFFFFF" }}
+          >
+            {isFr ? "Scanner maintenant" : "Scan now"} <ArrowRight size={16} />
+          </Link>
         </div>
-      </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="border-t" style={{ borderColor: "#E4E4E7" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <OraLogo size={24} variant="mark" animate={false} color={BLACK} />
+            <span className="text-sm font-medium">© {new Date().getFullYear()} Ora</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm" style={{ color: "#71717A" }}>
+            <Link to="/about" className="hover:opacity-70">{isFr ? "À propos" : "About"}</Link>
+            <Link to="/pricing" className="hover:opacity-70">{isFr ? "Tarifs" : "Pricing"}</Link>
+            <Link to="/privacy" className="hover:opacity-70">{isFr ? "Confidentialité" : "Privacy"}</Link>
+            <Link to="/terms" className="hover:opacity-70">{isFr ? "CGU" : "Terms"}</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

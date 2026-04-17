@@ -1,747 +1,524 @@
-import { motion } from "motion/react";
+import { useState } from "react";
 import { Link } from "react-router";
+import { motion } from "motion/react";
 import {
-  Upload,
-  BarChart3,
-  Sparkles,
-  ArrowRight,
-  AlertTriangle,
-  CheckCircle2,
-  TrendingUp,
-  Layers,
+  Shield, Palette, Sparkles, ArrowRight, Check, Upload,
+  Eye, RefreshCw, Menu, X, ChevronDown,
 } from "lucide-react";
-import { Hero } from "../components/Hero";
-import { Pricing } from "../components/Pricing";
+import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
+import { useAuth } from "../lib/auth-context";
 
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Landing Page — Ora Studio V3: AI Content Auditor
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+/* ═══════════════════════════════════════════════════════════
+   LANDING — Ora copilote qualité pour visuels IA
+   3 KPIs (Legal, Brand, Creative) · Mascotte Border Collie
+   ═══════════════════════════════════════════════════════════ */
 
-const FONT = "'Inter', sans-serif";
+const BLUE = "#1D4ED8";
+const BLACK = "#0A0A0A";
 
-/* ── Animated SVG score gauge ─────────────────── */
+export function LandingPage() {
+  const { locale, setLocale } = useI18n();
+  const { user } = useAuth();
+  const isFr = locale === "fr";
+  const [menuOpen, setMenuOpen] = useState(false);
 
-function ScoreGauge({
-  score,
-  size = 120,
-  strokeWidth = 8,
-  label,
-  color,
-  delay = 0,
-}: {
-  score: number;
-  size?: number;
-  strokeWidth?: number;
-  label: string;
-  color: string;
-  delay?: number;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (score / 100) * circumference;
+  const headline = isFr
+    ? "Publie tes visuels IA\nsans stress."
+    : "Publish AI visuals\nwith confidence.";
+
+  const sub = isFr
+    ? "Ora est ton copilote qualité. Dépose un visuel IA, il l'audite en 30 secondes et te dit comment le rendre meilleur — on-brand, sans risque."
+    : "Ora is your quality copilot. Drop an AI visual, get an audit in 30 seconds, and know exactly how to make it better — on-brand, risk-free.";
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {/* Track */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="var(--border)"
-          strokeWidth={strokeWidth}
-        />
-        {/* Filled arc */}
-        <motion.circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          whileInView={{ strokeDashoffset: offset }}
-          viewport={{ once: true }}
-          transition={{ duration: 1.2, delay, ease: "easeOut" }}
-          style={{
-            transform: "rotate(-90deg)",
-            transformOrigin: "center",
-          }}
-        />
-        {/* Score text */}
-        <motion.text
-          x="50%"
-          y="50%"
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="var(--foreground)"
-          style={{ fontFamily: FONT, fontSize: size * 0.26, fontWeight: 600 }}
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: delay + 0.6 }}
-        >
-          {score}
-        </motion.text>
-      </svg>
-      <span
+    <div style={{ background: "#FFFFFF", color: BLACK, minHeight: "100vh" }}>
+      {/* ─── NAV ─── */}
+      <nav
+        className="sticky top-0 z-50"
         style={{
-          fontFamily: FONT,
-          fontSize: 13,
-          fontWeight: 500,
-          color: "var(--muted-foreground)",
-          letterSpacing: "-0.01em",
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "1px solid #E4E4E7",
         }}
       >
-        {label}
-      </span>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center">
+            <OraLogo size={32} variant="full" animate={false} color={BLACK} />
+          </Link>
+
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            <Link to="/pricing" className="hover:opacity-60 transition-opacity">
+              {isFr ? "Tarifs" : "Pricing"}
+            </Link>
+            <Link to="/about" className="hover:opacity-60 transition-opacity">
+              {isFr ? "À propos" : "About"}
+            </Link>
+            <button
+              onClick={() => setLocale(isFr ? "en" : "fr")}
+              className="hover:opacity-60 transition-opacity"
+              aria-label="Toggle language"
+            >
+              {isFr ? "EN" : "FR"}
+            </button>
+            {user ? (
+              <Link
+                to="/hub/analyze"
+                className="px-4 py-2 rounded-full text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: BLACK, color: "#FFFFFF" }}
+              >
+                {isFr ? "Ouvrir l'app" : "Open app"}
+              </Link>
+            ) : (
+              <>
+                <Link to="/login" className="hover:opacity-60 transition-opacity">
+                  {isFr ? "Connexion" : "Sign in"}
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-4 py-2 rounded-full text-sm font-semibold transition-all hover:opacity-90"
+                  style={{ background: BLUE, color: "#FFFFFF" }}
+                >
+                  {isFr ? "Commencer" : "Get started"}
+                </Link>
+              </>
+            )}
+          </div>
+
+          <button
+            className="md:hidden p-2"
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Menu"
+          >
+            {menuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
+
+        {menuOpen && (
+          <div className="md:hidden px-5 pb-5 space-y-3 border-t" style={{ borderColor: "#E4E4E7" }}>
+            <Link to="/pricing" className="block py-2" onClick={() => setMenuOpen(false)}>
+              {isFr ? "Tarifs" : "Pricing"}
+            </Link>
+            <Link to="/about" className="block py-2" onClick={() => setMenuOpen(false)}>
+              {isFr ? "À propos" : "About"}
+            </Link>
+            <button onClick={() => { setLocale(isFr ? "en" : "fr"); setMenuOpen(false); }} className="block py-2">
+              {isFr ? "English" : "Français"}
+            </button>
+            {user ? (
+              <Link
+                to="/hub/analyze"
+                className="block py-3 text-center rounded-full font-semibold"
+                style={{ background: BLACK, color: "#FFFFFF" }}
+                onClick={() => setMenuOpen(false)}
+              >
+                {isFr ? "Ouvrir l'app" : "Open app"}
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="block py-3 text-center rounded-full font-semibold"
+                style={{ background: BLUE, color: "#FFFFFF" }}
+                onClick={() => setMenuOpen(false)}
+              >
+                {isFr ? "Commencer" : "Get started"}
+              </Link>
+            )}
+          </div>
+        )}
+      </nav>
+
+      {/* ─── HERO ─── */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-20 md:pb-32">
+        <div className="grid md:grid-cols-[1.2fr_1fr] gap-10 md:gap-16 items-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-6"
+              style={{ background: "#EFF6FF", color: BLUE }}
+            >
+              <Sparkles size={12} />
+              {isFr ? "Audit IA · Cohérence marque · Risques" : "AI audit · Brand · Risks"}
+            </div>
+            <h1
+              className="mb-6 whitespace-pre-line"
+              style={{
+                fontSize: "clamp(2.25rem, 5vw, 4.25rem)",
+                fontWeight: 800,
+                lineHeight: 1.05,
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {headline}
+            </h1>
+            <p
+              className="mb-8 max-w-xl"
+              style={{
+                fontSize: "clamp(1rem, 1.5vw, 1.15rem)",
+                lineHeight: 1.55,
+                color: "#52525B",
+              }}
+            >
+              {sub}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                to={user ? "/hub/analyze" : "/login"}
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-sm font-semibold transition-all hover:opacity-90"
+                style={{ background: BLUE, color: "#FFFFFF" }}
+              >
+                {isFr ? "Scanner un visuel" : "Scan a visual"} <ArrowRight size={16} />
+              </Link>
+              <Link
+                to="/pricing"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-sm font-semibold transition-colors"
+                style={{ background: "#F4F4F5", color: BLACK }}
+              >
+                {isFr ? "Voir les offres" : "See pricing"}
+              </Link>
+            </div>
+
+            <div className="mt-8 flex items-center gap-5 text-xs" style={{ color: "#71717A" }}>
+              <span className="flex items-center gap-1.5">
+                <Check size={13} style={{ color: "#15803D" }} /> {isFr ? "5 scans gratuits / mois" : "5 free scans / month"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Check size={13} style={{ color: "#15803D" }} /> {isFr ? "Sans carte" : "No card required"}
+              </span>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="flex items-center justify-center"
+          >
+            <div
+              className="relative flex items-center justify-center w-full aspect-square max-w-md rounded-3xl"
+              style={{
+                background: "linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 100%)",
+                border: "1px solid #E4E4E7",
+              }}
+            >
+              <OraLogo size={280} variant="mascot" animate={true} color={BLACK} />
+              <motion.div
+                className="absolute top-8 left-6 px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm"
+                style={{ background: "#FFFFFF", color: "#15803D", border: "1px solid #DCFCE7" }}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.8 }}
+              >
+                ✓ Legal OK
+              </motion.div>
+              <motion.div
+                className="absolute top-24 right-4 px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm"
+                style={{ background: "#FFFFFF", color: BLUE, border: "1px solid #DBEAFE" }}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1 }}
+              >
+                Brand fit 92
+              </motion.div>
+              <motion.div
+                className="absolute bottom-10 left-8 px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm"
+                style={{ background: "#FFFFFF", color: "#C2410C", border: "1px solid #FED7AA" }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.2 }}
+              >
+                {isFr ? "À peaufiner" : "Needs polish"}
+              </motion.div>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ─── */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="text-center mb-14">
+            <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>
+              {isFr ? "Comment ça marche" : "How it works"}
+            </p>
+            <h2 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              {isFr ? "3 étapes. 30 secondes." : "3 steps. 30 seconds."}
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { icon: Upload, step: "01", title: isFr ? "Dépose" : "Drop", body: isFr ? "Glisse ton visuel IA — image ou vidéo, jusqu'à 20 Mo." : "Drop your AI visual — image or video, up to 20 MB." },
+              { icon: Eye, step: "02", title: isFr ? "Ora audite" : "Ora audits", body: isFr ? "3 KPIs : risques, cohérence marque, qualité créative. Verdict clair." : "3 KPIs: risks, brand fit, creative quality. Clear verdict." },
+              { icon: RefreshCw, step: "03", title: isFr ? "Régénère" : "Regenerate", body: isFr ? "Un clic pour régénérer une version meilleure, avec ton contexte." : "One click to regenerate a better version, with your context." },
+            ].map(({ icon: Icon, step, title, body }, i) => (
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1, duration: 0.4 }}
+                className="p-7 rounded-2xl"
+                style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center"
+                    style={{ background: "#EFF6FF", color: BLUE }}
+                  >
+                    <Icon size={20} />
+                  </div>
+                  <span className="text-2xl font-black" style={{ color: "#E4E4E7" }}>
+                    {step}
+                  </span>
+                </div>
+                <h3 className="text-lg font-bold mb-2">{title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 3 KPIs ─── */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+        <div className="grid md:grid-cols-[1fr_1.3fr] gap-12 items-center">
+          <div>
+            <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>
+              {isFr ? "Ce qu'Ora vérifie" : "What Ora checks"}
+            </p>
+            <h2
+              className="mb-5"
+              style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+            >
+              {isFr ? "3 questions. Une réponse nette." : "3 questions. One clear answer."}
+            </h2>
+            <p className="text-base leading-relaxed mb-6" style={{ color: "#52525B" }}>
+              {isFr
+                ? "Pas de rapport de 40 pages. 3 KPIs ciblés, un verdict (publier, retoucher, bloquer), et des conseils concrets par axe."
+                : "No 40-page report. 3 sharp KPIs, a verdict (publish, revise, block), and concrete advice per axis."}
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                icon: Shield,
+                color: "#B91C1C",
+                bg: "#FEF2F2",
+                title: isFr ? "Risques" : "Legal flags",
+                q: isFr ? "Puis-je publier sans risque ?" : "Can I publish safely?",
+                body: isFr ? "Logos déposés visibles, célébrités reconnaissables, allégations régulées, biais — détection heuristique." : "Visible trademarks, celebrity likenesses, regulated claims, bias — heuristic detection.",
+              },
+              {
+                icon: Palette,
+                color: BLUE,
+                bg: "#EFF6FF",
+                title: isFr ? "Cohérence marque" : "Brand fit",
+                q: isFr ? "Est-ce que ça ressemble à ma marque ?" : "Does this match my brand?",
+                body: isFr ? "Palette, ton, style photo, messages clés, audience cible — scoré contre ton Brand Vault." : "Palette, tone, photo style, key messages, target audience — scored against your Brand Vault.",
+              },
+              {
+                icon: Sparkles,
+                color: "#15803D",
+                bg: "#F0FDF4",
+                title: isFr ? "Créatif" : "Creative",
+                q: isFr ? "Est-ce que ça tape vraiment ?" : "Is this actually good?",
+                body: isFr ? "Composition, impact visuel, artefacts IA, originalité, potentiel campagne." : "Composition, visual impact, AI artefacts, originality, campaign potential.",
+              },
+            ].map(({ icon: Icon, color, bg, title, q, body }) => (
+              <div
+                key={title}
+                className="flex gap-4 p-5 rounded-2xl"
+                style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
+              >
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: bg, color }}
+                >
+                  <Icon size={20} />
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 mb-1">
+                    <h3 className="font-bold text-base">{title}</h3>
+                    <span className="text-xs font-medium" style={{ color: "#A1A1AA" }}>— {q}</span>
+                  </div>
+                  <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FOR WHO ─── */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="text-center mb-14">
+            <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>
+              {isFr ? "Pour qui" : "For whom"}
+            </p>
+            <h2 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              {isFr ? "Du freelance à l'agence." : "From freelance to agency."}
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-5">
+            {[
+              {
+                title: isFr ? "Créateurs & freelances" : "Creators & freelancers",
+                sub: isFr ? "Scan rapide, verdict clair" : "Fast scan, clear verdict",
+                points: isFr
+                  ? ["Check en 30 s avant de livrer", "Régénération 1-clic", "Historique 30 jours"]
+                  : ["30-second check before delivery", "One-click regeneration", "30-day history"],
+                cta: isFr ? "Essayer gratuit" : "Try free",
+                price: isFr ? "À partir de €0" : "Starting at €0",
+              },
+              {
+                title: isFr ? "Agences & brands" : "Agencies & brands",
+                sub: isFr ? "Brand Vault, rapports, équipe" : "Brand Vault, reports, team",
+                points: isFr
+                  ? ["Brand Vault complet (logo, palette, ton)", "Rapports PDF par client", "Multi-comptes équipe & audit log"]
+                  : ["Full Brand Vault (logo, palette, tone)", "PDF reports per client", "Team seats & audit log"],
+                cta: isFr ? "Voir l'offre Agency" : "See Agency plan",
+                price: isFr ? "€199/mois" : "€199/mo",
+              },
+            ].map((p) => (
+              <div
+                key={p.title}
+                className="p-8 rounded-2xl"
+                style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
+              >
+                <h3 className="text-xl font-bold mb-1">{p.title}</h3>
+                <p className="text-sm mb-6" style={{ color: "#71717A" }}>{p.sub}</p>
+                <ul className="space-y-2.5 mb-6">
+                  {p.points.map((pt) => (
+                    <li key={pt} className="flex items-start gap-2.5 text-sm">
+                      <Check size={16} style={{ color: BLUE }} className="mt-0.5 shrink-0" />
+                      <span>{pt}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex items-center justify-between pt-5 border-t" style={{ borderColor: "#E4E4E7" }}>
+                  <span className="font-semibold text-sm">{p.price}</span>
+                  <Link
+                    to="/pricing"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold"
+                    style={{ color: BLUE }}
+                  >
+                    {p.cta} <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── FAQ ─── */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-20 md:py-28">
+        <div className="text-center mb-12">
+          <h2 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+            {isFr ? "Questions fréquentes" : "Frequently asked"}
+          </h2>
+        </div>
+
+        <div className="space-y-2">
+          {(isFr
+            ? [
+                { q: "Ora est-il un conseil juridique ?", a: "Non. Le score \"Risques\" est une détection heuristique, pas un avis juridique. Pour les campagnes à fort enjeu, consulte un conseil." },
+                { q: "Ora génère-t-il les visuels ?", a: "Non, Ora audite. On ne remplace pas MidJourney ou Flux — on te dit si ce que tu as généré est bon, on-brand, et publiable. On propose un prompt amélioré et une régénération avec ton contexte." },
+                { q: "Mes images sont-elles stockées ?", a: "Les scans gratuits sont éphémères. Les plans payants persistent tes analyses pour l'historique. Tu peux supprimer à tout moment." },
+                { q: "Ça marche sur mobile ?", a: "Oui. L'app est mobile-first. Tu peux scanner depuis ton téléphone, partager le verdict, régénérer." },
+                { q: "Puis-je annuler ?", a: "Oui, à tout moment. Pas d'engagement." },
+              ]
+            : [
+                { q: "Is Ora legal advice?", a: "No. The \"Risks\" score is heuristic detection, not legal advice. For high-stakes campaigns, consult counsel." },
+                { q: "Does Ora generate visuals?", a: "No — Ora audits. We don't replace MidJourney or Flux. We tell you if what you generated is good, on-brand, and publishable, propose an improved prompt, and can regenerate with your context." },
+                { q: "Are my images stored?", a: "Free scans are ephemeral. Paid plans persist analyses for history. You can delete anytime." },
+                { q: "Does it work on mobile?", a: "Yes. The app is mobile-first. Scan from your phone, share the verdict, regenerate." },
+                { q: "Can I cancel?", a: "Yes, anytime. No commitment." },
+              ]
+          ).map((f, i) => (
+            <FaqItem key={i} q={f.q} a={f.a} />
+          ))}
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA ─── */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+        <div
+          className="rounded-3xl p-10 md:p-16 text-center"
+          style={{ background: BLACK, color: "#FFFFFF" }}
+        >
+          <div className="flex justify-center mb-6">
+            <OraLogo size={64} variant="mark" animate={false} color="#FFFFFF" />
+          </div>
+          <h2
+            className="mb-4"
+            style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+          >
+            {isFr ? "Publie mieux. Publie sereinement." : "Publish better. Publish with peace of mind."}
+          </h2>
+          <p className="text-lg mb-8 max-w-xl mx-auto" style={{ color: "#A1A1AA" }}>
+            {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card required."}
+          </p>
+          <Link
+            to={user ? "/hub/analyze" : "/login"}
+            className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold transition-all hover:opacity-90"
+            style={{ background: BLUE, color: "#FFFFFF" }}
+          >
+            {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
+
+      {/* ─── FOOTER ─── */}
+      <footer className="border-t" style={{ borderColor: "#E4E4E7" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <OraLogo size={24} variant="mark" animate={false} color={BLACK} />
+            <span className="text-sm font-medium">© {new Date().getFullYear()} Ora</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm" style={{ color: "#71717A" }}>
+            <Link to="/about" className="hover:opacity-70">{isFr ? "À propos" : "About"}</Link>
+            <Link to="/pricing" className="hover:opacity-70">{isFr ? "Tarifs" : "Pricing"}</Link>
+            <Link to="/privacy" className="hover:opacity-70">{isFr ? "Confidentialité" : "Privacy"}</Link>
+            <Link to="/terms" className="hover:opacity-70">{isFr ? "CGU" : "Terms"}</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
 
-/* ── How It Works ─────────────────────────────── */
-
-function HowItWorks() {
-  const { locale } = useI18n();
-  const isFr = locale === "fr";
-
-  const steps = [
-    {
-      icon: <Upload size={24} />,
-      title: isFr ? "Importez" : "Upload",
-      desc: isFr
-        ? "Glissez n'importe quel visuel IA dans Ora. PNG, JPG, WebP \u2014 c'est tout."
-        : "Drop any AI-generated visual into Ora. PNG, JPG, WebP \u2014 that's it.",
-    },
-    {
-      icon: <BarChart3 size={24} />,
-      title: isFr ? "Analysez" : "Score",
-      desc: isFr
-        ? "Recevez un score sur 4 axes : Technique, Cr\u00e9atif, Brand Fit, Conformit\u00e9."
-        : "Get scored across 4 axes: Technical, Creative, Brand Fit, Compliance.",
-    },
-    {
-      icon: <Sparkles size={24} />,
-      title: isFr ? "Am\u00e9liorez" : "Improve",
-      desc: isFr
-        ? "Suivez les recommandations, corrigez vos prompts et reg\u00e9n\u00e9rez en un clic."
-        : "Follow actionable recommendations, fix your prompts, and regenerate in one click.",
-    },
-  ];
-
+/* ─── FAQ item ─── */
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <section
-      id="how-it-works"
-      className="py-28 md:py-36"
-      style={{ background: "var(--background)" }}
+    <div
+      className="rounded-xl transition-all"
+      style={{ background: open ? "#FAFAFA" : "#FFFFFF", border: "1px solid #E4E4E7" }}
     >
-      <div className="max-w-[960px] mx-auto px-6">
-        {/* Section heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-20"
-        >
-          <p
-            style={{
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "#7C3AED",
-              marginBottom: 12,
-            }}
-          >
-            {isFr ? "Comment \u00e7a marche" : "How it works"}
-          </p>
-          <h2
-            style={{
-              fontFamily: FONT,
-              fontSize: "clamp(2rem, 4vw, 3rem)",
-              fontWeight: 300,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              color: "var(--foreground)",
-            }}
-          >
-            {isFr ? "Trois \u00e9tapes. Z\u00e9ro friction." : "Three steps. Zero friction."}
-          </h2>
-        </motion.div>
-
-        {/* Steps */}
-        <div className="grid md:grid-cols-3 gap-12 md:gap-8">
-          {steps.map((step, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.15 }}
-              className="flex flex-col items-center text-center"
-            >
-              {/* Step number + icon */}
-              <div
-                className="mb-6 flex items-center justify-center"
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 16,
-                  background: "var(--card)",
-                  border: "1px solid var(--border)",
-                  color: "#7C3AED",
-                }}
-              >
-                {step.icon}
-              </div>
-              <span
-                style={{
-                  fontFamily: FONT,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: "var(--muted-foreground)",
-                  marginBottom: 8,
-                }}
-              >
-                {isFr ? `\u00c9tape ${i + 1}` : `Step ${i + 1}`}
-              </span>
-              <h3
-                style={{
-                  fontFamily: FONT,
-                  fontSize: 22,
-                  fontWeight: 600,
-                  letterSpacing: "-0.02em",
-                  color: "var(--foreground)",
-                  marginBottom: 8,
-                }}
-              >
-                {step.title}
-              </h3>
-              <p
-                style={{
-                  fontFamily: FONT,
-                  fontSize: 15,
-                  lineHeight: 1.6,
-                  color: "var(--muted-foreground)",
-                  maxWidth: 280,
-                }}
-              >
-                {step.desc}
-              </p>
-            </motion.div>
-          ))}
+      <button
+        className="w-full flex items-center justify-between gap-4 p-5 text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="font-semibold text-sm md:text-base">{q}</span>
+        <ChevronDown
+          size={18}
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}
+        />
+      </button>
+      {open && (
+        <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>
+          {a}
         </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Score Demo ───────────────────────────────── */
-
-function ScoreDemo() {
-  const { locale } = useI18n();
-  const isFr = locale === "fr";
-
-  const axes = [
-    { label: isFr ? "Technique" : "Technical", score: 81, color: "#7C3AED" },
-    { label: isFr ? "Cr\u00e9atif" : "Creative", score: 70, color: "#EC4899" },
-    { label: "Brand Fit", score: 68, color: "#F59E0B" },
-    { label: isFr ? "Conformit\u00e9" : "Compliance", score: 77, color: "#10B981" },
-  ];
-
-  const issues = [
-    {
-      icon: <AlertTriangle size={14} />,
-      text: isFr
-        ? "R\u00e9solution insuffisante pour l'impression grand format"
-        : "Resolution too low for large-format print",
-      severity: "warning" as const,
-    },
-    {
-      icon: <AlertTriangle size={14} />,
-      text: isFr
-        ? "Palette de couleurs hors charte de marque"
-        : "Color palette outside brand guidelines",
-      severity: "warning" as const,
-    },
-    {
-      icon: <CheckCircle2 size={14} />,
-      text: isFr
-        ? "Composition respecte la r\u00e8gle des tiers"
-        : "Composition follows rule of thirds",
-      severity: "ok" as const,
-    },
-  ];
-
-  const recommendations = [
-    isFr
-      ? "Ajoutez \u00ab\u2009--quality 2 --upscale 4x\u2009\u00bb \u00e0 votre prompt pour am\u00e9liorer la r\u00e9solution"
-      : "Add \"--quality 2 --upscale 4x\" to your prompt to improve resolution",
-    isFr
-      ? "Sp\u00e9cifiez les codes HEX de votre marque dans le prompt pour corriger la palette"
-      : "Specify your brand HEX codes in the prompt to correct the palette",
-    isFr
-      ? "Essayez Midjourney v6 ou DALL\u00b7E 3 pour un meilleur rendu des textures"
-      : "Try Midjourney v6 or DALL\u00b7E 3 for better texture rendering",
-  ];
-
-  return (
-    <section
-      className="py-28 md:py-36"
-      style={{ background: "var(--card)" }}
-    >
-      <div className="max-w-[1080px] mx-auto px-6">
-        {/* Section heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-20"
-        >
-          <p
-            style={{
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "#7C3AED",
-              marginBottom: 12,
-            }}
-          >
-            {isFr ? "Votre score Ora" : "Your Ora Score"}
-          </p>
-          <h2
-            style={{
-              fontFamily: FONT,
-              fontSize: "clamp(2rem, 4vw, 3rem)",
-              fontWeight: 300,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              color: "var(--foreground)",
-            }}
-          >
-            {isFr
-              ? "Chaque visuel, not\u00e9 et expliqu\u00e9"
-              : "Every visual, scored and explained"}
-          </h2>
-        </motion.div>
-
-        {/* Score card */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.7 }}
-          className="rounded-2xl overflow-hidden"
-          style={{
-            background: "var(--background)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <div className="grid md:grid-cols-[1fr_1.4fr] gap-0">
-            {/* Left — image placeholder + overall score */}
-            <div
-              className="flex flex-col items-center justify-center p-10 md:p-12"
-              style={{ borderRight: "1px solid var(--border)" }}
-            >
-              {/* Sample image placeholder */}
-              <div
-                className="w-full rounded-xl mb-8 flex items-center justify-center"
-                style={{
-                  aspectRatio: "4/3",
-                  background:
-                    "linear-gradient(135deg, rgba(124,58,237,0.08), rgba(236,72,153,0.08))",
-                  border: "1px solid var(--border)",
-                  maxWidth: 320,
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: FONT,
-                    fontSize: 13,
-                    color: "var(--muted-foreground)",
-                  }}
-                >
-                  {isFr ? "visuel_campagne_v3.png" : "campaign_visual_v3.png"}
-                </span>
-              </div>
-
-              {/* Overall score */}
-              <ScoreGauge
-                score={74}
-                size={140}
-                strokeWidth={10}
-                label={isFr ? "Score global" : "Overall Score"}
-                color="#7C3AED"
-              />
-            </div>
-
-            {/* Right — axis breakdown + issues + recommendations */}
-            <div className="p-10 md:p-12">
-              {/* 4 axis gauges */}
-              <div className="grid grid-cols-4 gap-4 mb-10">
-                {axes.map((axis, i) => (
-                  <ScoreGauge
-                    key={axis.label}
-                    score={axis.score}
-                    size={88}
-                    strokeWidth={6}
-                    label={axis.label}
-                    color={axis.color}
-                    delay={i * 0.12}
-                  />
-                ))}
-              </div>
-
-              {/* Divider */}
-              <div
-                className="mb-8"
-                style={{ height: 1, background: "var(--border)" }}
-              />
-
-              {/* Issues */}
-              <div className="mb-8">
-                <h4
-                  style={{
-                    fontFamily: FONT,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    color: "var(--muted-foreground)",
-                    marginBottom: 12,
-                  }}
-                >
-                  {isFr ? "Probl\u00e8mes d\u00e9tect\u00e9s" : "Issues detected"}
-                </h4>
-                <ul className="space-y-3">
-                  {issues.map((issue, i) => (
-                    <motion.li
-                      key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.4, delay: 0.3 + i * 0.1 }}
-                      className="flex items-start gap-2.5"
-                    >
-                      <span
-                        className="mt-0.5"
-                        style={{
-                          color:
-                            issue.severity === "warning"
-                              ? "#F59E0B"
-                              : "#10B981",
-                        }}
-                      >
-                        {issue.icon}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: FONT,
-                          fontSize: 14,
-                          color: "var(--foreground)",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {issue.text}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Recommendations */}
-              <div>
-                <h4
-                  style={{
-                    fontFamily: FONT,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    color: "var(--muted-foreground)",
-                    marginBottom: 12,
-                  }}
-                >
-                  {isFr ? "Recommandations" : "Recommendations"}
-                </h4>
-                <ol className="space-y-3">
-                  {recommendations.map((rec, i) => (
-                    <motion.li
-                      key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.4, delay: 0.5 + i * 0.1 }}
-                      className="flex items-start gap-2.5"
-                    >
-                      <span
-                        className="flex-shrink-0 flex items-center justify-center rounded-full"
-                        style={{
-                          width: 20,
-                          height: 20,
-                          background: "rgba(124,58,237,0.1)",
-                          fontFamily: FONT,
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: "#7C3AED",
-                          marginTop: 1,
-                        }}
-                      >
-                        {i + 1}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: FONT,
-                          fontSize: 14,
-                          color: "var(--foreground)",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {rec}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ol>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Benefits ─────────────────────────────────── */
-
-function Benefits() {
-  const { locale } = useI18n();
-  const isFr = locale === "fr";
-
-  const cards = [
-    {
-      icon: <AlertTriangle size={22} />,
-      title: isFr ? "Identifiez les probl\u00e8mes" : "Know what's wrong",
-      desc: isFr
-        ? "Chaque visuel est analys\u00e9 sur 4 axes. Fini les discussions subjectives \u2014 vos d\u00e9cisions sont guid\u00e9es par des donn\u00e9es."
-        : "Every visual is analyzed across 4 axes. No more subjective debates \u2014 decisions are backed by data.",
-      color: "#7C3AED",
-    },
-    {
-      icon: <Sparkles size={22} />,
-      title: isFr ? "Corrigez vos prompts" : "Fix your prompts",
-      desc: isFr
-        ? "Des recommandations concr\u00e8tes pour am\u00e9liorer vos r\u00e9sultats \u2014 ajustements de prompt, param\u00e8tres, mod\u00e8les sugg\u00e9r\u00e9s."
-        : "Actionable recommendations to improve your output \u2014 prompt tweaks, parameter adjustments, suggested models.",
-      color: "#EC4899",
-    },
-    {
-      icon: <TrendingUp size={22} />,
-      title: isFr ? "Suivez votre progression" : "Track your progress",
-      desc: isFr
-        ? "Un tableau de bord pour mesurer la qualit\u00e9 de vos cr\u00e9ations dans le temps et identifier les tendances."
-        : "A dashboard to measure your creative quality over time and spot trends across your team.",
-      color: "#10B981",
-    },
-    {
-      icon: <Layers size={22} />,
-      title: isFr ? "Comparez 50+ mod\u00e8les" : "Compare 50+ models",
-      desc: isFr
-        ? "Testez le m\u00eame prompt sur plusieurs mod\u00e8les IA et comparez les scores pour trouver le meilleur outil."
-        : "Test the same prompt across multiple AI models and compare scores to find the best tool for the job.",
-      color: "#F59E0B",
-    },
-  ];
-
-  return (
-    <section
-      className="py-28 md:py-36"
-      style={{ background: "var(--background)" }}
-    >
-      <div className="max-w-[1080px] mx-auto px-6">
-        {/* Section heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-20"
-        >
-          <p
-            style={{
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "#7C3AED",
-              marginBottom: 12,
-            }}
-          >
-            {isFr ? "Pourquoi Ora" : "Why Ora"}
-          </p>
-          <h2
-            style={{
-              fontFamily: FONT,
-              fontSize: "clamp(2rem, 4vw, 3rem)",
-              fontWeight: 300,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              color: "var(--foreground)",
-            }}
-          >
-            {isFr
-              ? "De meilleurs visuels, \u00e0 chaque it\u00e9ration"
-              : "Better visuals, every iteration"}
-          </h2>
-        </motion.div>
-
-        {/* Cards grid */}
-        <div className="grid sm:grid-cols-2 gap-6">
-          {cards.map((card, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="rounded-2xl p-8 md:p-10 transition-shadow duration-300 hover:shadow-lg"
-              style={{
-                background: "var(--card)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <div
-                className="flex items-center justify-center rounded-xl mb-6"
-                style={{
-                  width: 48,
-                  height: 48,
-                  background: `${card.color}12`,
-                  color: card.color,
-                }}
-              >
-                {card.icon}
-              </div>
-              <h3
-                style={{
-                  fontFamily: FONT,
-                  fontSize: 20,
-                  fontWeight: 600,
-                  letterSpacing: "-0.02em",
-                  color: "var(--foreground)",
-                  marginBottom: 8,
-                }}
-              >
-                {card.title}
-              </h3>
-              <p
-                style={{
-                  fontFamily: FONT,
-                  fontSize: 15,
-                  lineHeight: 1.65,
-                  color: "var(--muted-foreground)",
-                }}
-              >
-                {card.desc}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Final CTA ────────────────────────────────── */
-
-function FinalCTA() {
-  const { locale } = useI18n();
-  const isFr = locale === "fr";
-
-  return (
-    <section className="py-28 md:py-36" style={{ background: "var(--background)" }}>
-      <div className="max-w-[640px] mx-auto px-6 text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-        >
-          <h2
-            style={{
-              fontFamily: FONT,
-              fontSize: "clamp(2rem, 4vw, 3rem)",
-              fontWeight: 300,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              color: "var(--foreground)",
-              marginBottom: 16,
-            }}
-          >
-            {isFr
-              ? "Analysez votre premier visuel"
-              : "Analyze your first visual"}
-          </h2>
-          <p
-            style={{
-              fontFamily: FONT,
-              fontSize: 17,
-              lineHeight: 1.6,
-              color: "var(--muted-foreground)",
-              marginBottom: 32,
-            }}
-          >
-            {isFr
-              ? "Gratuit. Sans carte bancaire. R\u00e9sultats en moins de 30 secondes."
-              : "Free. No credit card. Results in under 30 seconds."}
-          </p>
-          <Link
-            to="/hub/analyze"
-            className="group inline-flex items-center gap-2.5 px-8 py-4 rounded-full transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/25 active:scale-[0.98]"
-            style={{
-              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
-              color: "#FFFFFF",
-              fontFamily: FONT,
-              fontSize: 15,
-              fontWeight: 500,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {isFr
-              ? "Analyser un visuel gratuitement"
-              : "Analyze a visual for free"}
-            <ArrowRight
-              size={16}
-              className="group-hover:translate-x-0.5 transition-transform"
-            />
-          </Link>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ── Landing page composition ─────────────────── */
-
-export function LandingPage() {
-  return (
-    <>
-      <Hero />
-      <HowItWorks />
-      <ScoreDemo />
-      <Benefits />
-      <Pricing />
-      <FinalCTA />
-    </>
+      )}
+    </div>
   );
 }
