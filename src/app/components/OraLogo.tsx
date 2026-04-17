@@ -7,23 +7,20 @@ interface OraLogoProps {
   className?: string;
   variant?: "full" | "mark" | "mascot";
   color?: string;
-  /** Mascot pupils follow the cursor. Mascot variant only. */
   eyesFollow?: boolean;
-  /** Periodic natural blink. */
   blink?: boolean;
-  /** Deeper head tilt on hover. */
   interactive?: boolean;
 }
 
 /**
- * Ora — Border Collie mascot
- * Refined silhouette inspired by realistic illustration:
- * - Two forward-pointing ears with jagged fur at base
- * - Continuous black "hood" that frames the face
- * - White blaze wedge down the center
- * - Almond eyes with highlight
+ * Ora — Border Collie mascot (clean geometric style, recognizable)
+ * - Rounded head with clear dog proportions
+ * - Two pointed asymmetric ears (one up, one slightly tilted)
+ * - Prominent white muzzle (the "tuxedo" face)
+ * - Almond eyes with pupils + highlight
  * - Proper triangular dog nose
- * - Heart-shaped chest tuxedo hint below
+ * - Small smile
+ * - Blue bandana on mascot variant only
  */
 export function OraLogo({
   size = 32,
@@ -39,7 +36,6 @@ export function OraLogo({
   const fillColor = color || "#0A0A0A";
   const blue = "#1D4ED8";
 
-  /* ── Eye tracking (mascot only) ── */
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [eyeOffset, setEyeOffset] = useState({ x: 0, y: 0 });
 
@@ -54,8 +50,8 @@ export function OraLogo({
       const dx = e.clientX - cx;
       const dy = e.clientY - cy;
       const dist = Math.hypot(dx, dy);
-      const max = 1.6;
-      const scale = Math.min(1, dist / 130);
+      const max = 1.5;
+      const scale = Math.min(1, dist / 140);
       setEyeOffset({
         x: (dx / (dist || 1)) * max * scale,
         y: (dy / (dist || 1)) * max * scale,
@@ -65,7 +61,6 @@ export function OraLogo({
     return () => window.removeEventListener("mousemove", handleMove);
   }, [variant, eyesFollow]);
 
-  /* ── Natural blink ── */
   const [isBlinking, setIsBlinking] = useState(false);
   useEffect(() => {
     if (!blink || !animate) return;
@@ -86,229 +81,195 @@ export function OraLogo({
     return () => { cancelled = true; };
   }, [blink, animate]);
 
-  /* ── Hover tilt ── */
   const headControls = useAnimationControls();
   function onHoverStart() {
     if (!interactive || !animate) return;
     headControls.start({
-      rotate: [0, -5, 0, 3, 0],
+      rotate: [0, -6, 0, 4, 0],
       transition: { duration: 0.7, ease: "easeInOut" },
     });
   }
 
-  /* ─── Realistic silhouette SVG ─── */
-  const Silhouette = ({ showBandana = false }: { showBandana?: boolean }) => (
+  /* ─── Mascot / mark geometry ─── */
+  const Head = ({ showBandana = false }: { showBandana?: boolean }) => (
     <>
-      {/* === HEAD "HOOD" — single continuous silhouette === */}
-      {/*
-        Traces ear → side of face → jagged fur cheek → chin line →
-        crosses under muzzle → up other cheek → other ear.
-        The inner white face is carved out by the blaze path.
-      */}
-      <path
-        d="
-          M 28 22
-          C 24 18, 22 10, 26 6
-          C 30 3, 35 6, 38 12
-          L 42 24
-          L 44 32
-          C 43 36, 42 40, 40 44
-          L 36 48
-          L 32 54
-          L 30 60
-          L 28 64
-          L 32 66
-          L 38 70
-          C 40 72, 42 73, 44 74
-          L 48 75
-          L 50 77
-          L 52 75
-          L 56 74
-          C 58 73, 60 72, 62 70
-          L 68 66
-          L 72 64
-          L 70 60
-          L 68 54
-          L 64 48
-          L 60 44
-          C 58 40, 57 36, 56 32
-          L 58 24
-          L 62 12
-          C 65 6, 70 3, 74 6
-          C 78 10, 76 18, 72 22
-          L 68 28
-          L 66 34
-          C 63 36, 60 37, 57 37
-          L 50 36
-          L 43 37
-          C 40 37, 37 36, 34 34
-          L 32 28
-          Z
-        "
-        fill={fillColor}
-      />
+      {/* BANDANA (mascot only) — behind head */}
+      {showBandana && (
+        <>
+          <path
+            d="M 20 82 Q 50 95, 80 82 L 84 92 Q 50 102, 16 92 Z"
+            fill={blue}
+          />
+          <path
+            d="M 64 86 L 74 84 L 72 96 L 62 94 Z"
+            fill={blue}
+          />
+          <path
+            d="M 72 84 L 80 82 L 78 90 L 70 92 Z"
+            fill="#1E40AF"
+          />
+        </>
+      )}
 
-      {/* === Jagged fur wisps on ear bases (left ear) === */}
-      <path
-        d="M 28 22 L 26 26 L 29 27 L 27 30 L 31 30 L 30 34 L 34 33 Z"
-        fill={fillColor}
-      />
-      {/* Jagged fur on right ear */}
-      <path
-        d="M 72 22 L 74 26 L 71 27 L 73 30 L 69 30 L 70 34 L 66 33 Z"
-        fill={fillColor}
-      />
+      {/* HEAD — wider than tall (dog proportions) */}
+      <ellipse cx={50} cy={54} rx={36} ry={30} fill={fillColor} />
 
-      {/* === Blue inner ear (left) === */}
+      {/* LEFT EAR — short triangle on the SIDE, angled outward */}
       <path
-        d="M 30 10 L 32 16 L 36 22 L 34 24 L 31 20 L 29 14 Z"
-        fill={blue}
+        d="M 14 48 Q 10 32, 20 28 Q 30 30, 32 42 Z"
+        fill={fillColor}
       />
-      {/* === Blue inner ear (right) === */}
+      {/* Left ear blue inner */}
       <path
-        d="M 70 10 L 68 16 L 64 22 L 66 24 L 69 20 L 71 14 Z"
+        d="M 18 42 Q 16 34, 22 32 Q 28 34, 29 42 Z"
         fill={blue}
       />
 
-      {/* === WHITE BLAZE — central wedge === */}
-      {/*
-        Starts from forehead, widens to brow, narrows between eyes,
-        widens again to muzzle, ends in the furry chin.
-      */}
+      {/* RIGHT EAR — mirror, folded/flopped tip (typical Border Collie semi-prick) */}
+      <path
+        d="M 86 48 Q 90 32, 80 28 Q 70 30, 68 42 Z"
+        fill={fillColor}
+      />
+      {/* Right ear blue inner */}
+      <path
+        d="M 82 42 Q 84 34, 78 32 Q 72 34, 71 42 Z"
+        fill={blue}
+      />
+
+      {/* WHITE MUZZLE MASK — large blaze down the center covering lower face */}
       <path
         d="
-          M 50 18
-          C 48 22, 47 28, 46 32
-          L 43 38
-          L 42 44
-          C 43 46, 45 48, 48 49
-          L 48 53
-          L 44 58
-          L 42 64
-          L 44 68
-          C 46 71, 48 73, 50 74
-          C 52 73, 54 71, 56 68
-          L 58 64
-          L 56 58
-          L 52 53
-          L 52 49
-          C 55 48, 57 46, 58 44
-          L 57 38
-          L 54 32
-          C 53 28, 52 22, 50 18
+          M 50 28
+          Q 44 40, 42 50
+          Q 40 62, 42 72
+          Q 46 78, 50 78
+          Q 54 78, 58 72
+          Q 60 62, 58 50
+          Q 56 40, 50 28
           Z
         "
         fill="#FFFFFF"
       />
+      {/* Muzzle bulge (makes white area fuller at bottom) */}
+      <ellipse cx={50} cy={68} rx={16} ry={11} fill="#FFFFFF" />
 
-      {/* === EYES — almond shaped === */}
-      {/* Left eye white */}
-      <ellipse cx={40} cy={42} rx={3.2} ry={2.4} fill="#FFFFFF" transform="rotate(-15 40 42)" />
-      {/* Left pupil */}
-      <motion.ellipse
-        cx={40}
-        cy={42}
-        rx={2}
-        ry={isBlinking ? 0.2 : 2.1}
-        fill={fillColor}
-        animate={{ cx: 40 + eyeOffset.x * 0.7, cy: 42 + eyeOffset.y * 0.7, ry: isBlinking ? 0.2 : 2.1 }}
-        transition={{ type: "spring", stiffness: 160, damping: 22 }}
-      />
-      {!isBlinking && (
-        <motion.circle
-          r={0.6}
+      {/* LEFT EYE — almond shape */}
+      <g>
+        <ellipse
+          cx={40}
+          cy={50}
+          rx={4.3}
+          ry={3.4}
           fill="#FFFFFF"
-          animate={{ cx: 40.5 + eyeOffset.x * 0.7, cy: 41.3 + eyeOffset.y * 0.7 }}
-          transition={{ type: "spring", stiffness: 160, damping: 22 }}
+          transform="rotate(-12 40 50)"
         />
-      )}
+        <motion.ellipse
+          cx={40}
+          cy={50}
+          rx={2.6}
+          ry={isBlinking ? 0.3 : 2.9}
+          fill={fillColor}
+          animate={{
+            cx: 40 + eyeOffset.x * 0.6,
+            cy: 50 + eyeOffset.y * 0.6,
+            ry: isBlinking ? 0.3 : 2.9,
+          }}
+          transition={{ type: "spring", stiffness: 180, damping: 22 }}
+        />
+        {!isBlinking && (
+          <motion.circle
+            r={0.9}
+            fill="#FFFFFF"
+            animate={{
+              cx: 40.8 + eyeOffset.x * 0.6,
+              cy: 48.8 + eyeOffset.y * 0.6,
+            }}
+            transition={{ type: "spring", stiffness: 180, damping: 22 }}
+          />
+        )}
+      </g>
 
-      {/* Right eye white */}
-      <ellipse cx={60} cy={42} rx={3.2} ry={2.4} fill="#FFFFFF" transform="rotate(15 60 42)" />
-      <motion.ellipse
-        cx={60}
-        cy={42}
-        rx={2}
-        ry={isBlinking ? 0.2 : 2.1}
-        fill={fillColor}
-        animate={{ cx: 60 + eyeOffset.x * 0.7, cy: 42 + eyeOffset.y * 0.7, ry: isBlinking ? 0.2 : 2.1 }}
-        transition={{ type: "spring", stiffness: 160, damping: 22 }}
-      />
-      {!isBlinking && (
-        <motion.circle
-          r={0.6}
+      {/* RIGHT EYE — almond shape */}
+      <g>
+        <ellipse
+          cx={60}
+          cy={50}
+          rx={4.3}
+          ry={3.4}
           fill="#FFFFFF"
-          animate={{ cx: 60.5 + eyeOffset.x * 0.7, cy: 41.3 + eyeOffset.y * 0.7 }}
-          transition={{ type: "spring", stiffness: 160, damping: 22 }}
+          transform="rotate(12 60 50)"
         />
-      )}
+        <motion.ellipse
+          cx={60}
+          cy={50}
+          rx={2.6}
+          ry={isBlinking ? 0.3 : 2.9}
+          fill={fillColor}
+          animate={{
+            cx: 60 + eyeOffset.x * 0.6,
+            cy: 50 + eyeOffset.y * 0.6,
+            ry: isBlinking ? 0.3 : 2.9,
+          }}
+          transition={{ type: "spring", stiffness: 180, damping: 22 }}
+        />
+        {!isBlinking && (
+          <motion.circle
+            r={0.9}
+            fill="#FFFFFF"
+            animate={{
+              cx: 60.8 + eyeOffset.x * 0.6,
+              cy: 48.8 + eyeOffset.y * 0.6,
+            }}
+            transition={{ type: "spring", stiffness: 180, damping: 22 }}
+          />
+        )}
+      </g>
 
-      {/* === NOSE — triangular dog nose with V bottom === */}
+      {/* NOSE — proper triangular dog nose */}
       <path
         d="
-          M 46 52
-          C 46 50, 48 49, 50 49
-          C 52 49, 54 50, 54 52
-          L 53 56
-          L 51 58
-          L 50 57
-          L 49 58
-          L 47 56
+          M 46 60
+          Q 46 57, 50 57
+          Q 54 57, 54 60
+          L 52.5 65
+          L 50.5 66.5
+          L 50 66
+          L 49.5 66.5
+          L 47.5 65
           Z
         "
         fill={fillColor}
       />
-      {/* Nose nostrils (small white dots) */}
-      <ellipse cx={48.3} cy={53.5} rx={0.7} ry={1.1} fill="#FFFFFF" opacity={0.6} />
-      <ellipse cx={51.7} cy={53.5} rx={0.7} ry={1.1} fill="#FFFFFF" opacity={0.6} />
+      {/* Nose highlight (tiny) */}
+      <ellipse cx={48.5} cy={58.5} rx={0.7} ry={0.5} fill="#FFFFFF" opacity={0.5} />
 
-      {/* === MOUTH — subtle smile === */}
+      {/* MOUTH — small smile with center line */}
       <path
-        d="M 46 62 Q 50 65, 54 62"
+        d="M 50 66.5 L 50 71"
         stroke={fillColor}
-        strokeWidth={1.1}
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M 46 72 Q 50 75, 54 72"
+        stroke={fillColor}
+        strokeWidth={1.3}
         strokeLinecap="round"
         fill="none"
       />
 
-      {/* === CHEST tuxedo hint — below the head === */}
+      {/* Tiny medallion on bandana */}
       {showBandana && (
         <>
-          {/* Blue bandana wrapping the chest */}
-          <path
-            d="
-              M 36 76
-              L 46 78
-              L 50 76
-              L 54 78
-              L 64 76
-              L 68 85
-              L 58 90
-              L 50 88
-              L 42 90
-              L 32 85
-              Z
-            "
-            fill={blue}
-          />
-          {/* Bandana knot */}
-          <path
-            d="M 62 79 L 70 77 L 68 86 L 60 84 Z"
-            fill={blue}
-          />
-          <path
-            d="M 68 77 L 74 75 L 72 82 L 66 84 Z"
-            fill="#1E40AF"
-          />
-          {/* Small medallion */}
-          <circle cx={50} cy={82} r={2.2} fill="#FFFFFF" />
-          <circle cx={50} cy={82} r={1} fill={blue} />
+          <circle cx={50} cy={88} r={2.5} fill="#FFFFFF" />
+          <circle cx={50} cy={88} r={1.2} fill={blue} />
         </>
       )}
     </>
   );
 
-  /* ─── MASCOT variant (with bandana, animated) ─── */
+  /* ─── MASCOT variant ─── */
   if (variant === "mascot") {
     const mascotSvg = (
       <motion.svg
@@ -323,8 +284,8 @@ export function OraLogo({
         animate={animate ? { y: [0, -1.5, 0] } : undefined}
         transition={animate ? { duration: 3.5, repeat: Infinity, ease: "easeInOut" } : undefined}
       >
-        <motion.g animate={headControls} style={{ transformOrigin: "50px 50px" }}>
-          <Silhouette showBandana />
+        <motion.g animate={headControls} style={{ transformOrigin: "50px 52px" }}>
+          <Head showBandana />
         </motion.g>
       </motion.svg>
     );
@@ -341,7 +302,7 @@ export function OraLogo({
     );
   }
 
-  /* ─── MARK variant (no bandana, compact, still animated) ─── */
+  /* ─── MARK variant ─── */
   const markSvg = (
     <motion.svg
       ref={svgRef}
@@ -353,8 +314,8 @@ export function OraLogo({
       aria-hidden="true"
       onHoverStart={onHoverStart}
     >
-      <motion.g animate={headControls} style={{ transformOrigin: "50px 50px" }}>
-        <Silhouette showBandana={false} />
+      <motion.g animate={headControls} style={{ transformOrigin: "50px 52px" }}>
+        <Head showBandana={false} />
       </motion.g>
     </motion.svg>
   );
