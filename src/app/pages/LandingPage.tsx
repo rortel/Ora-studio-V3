@@ -8,57 +8,16 @@ import {
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
+import heroNissan from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.png";
+import serviceNissan from "../../assets/fd1a1304c95304459d525edabe5b548965b73ee0.png";
+import sunsetNissan from "../../assets/e770a4caf934a7f0a280cbbe70316b0d298cff32.png";
 
 /* ═══════════════════════════════════════════════════════════
-   LANDING — product-focused, no stock photos
-   Tells a clear story: problem → how → what we check → pricing
+   LANDING — real visuals from Library, product-focused
    ═══════════════════════════════════════════════════════════ */
 
 const BLUE = "#1D4ED8";
 const BLACK = "#0A0A0A";
-
-/** Fake "AI visual" using gradient + noise — always renders, coherent, no external deps. */
-function FakeVisual({ seed = 0, className = "", children }: { seed?: number; className?: string; children?: React.ReactNode }) {
-  const palettes = [
-    ["#F5D0A9", "#D4A574", "#8B6F47"], // warm
-    ["#C8B5E8", "#9B7EBD", "#5D4A8A"], // purple
-    ["#A8D5BA", "#6FA890", "#3E6B5A"], // green
-    ["#F5B5B5", "#D97979", "#8B3A3A"], // red
-    ["#B5CEEB", "#7AA3D4", "#3E6B9A"], // blue
-    ["#E8D5C4", "#C4A584", "#7A5A3D"], // neutral
-  ];
-  const p = palettes[seed % palettes.length];
-  return (
-    <div
-      className={`relative overflow-hidden ${className}`}
-      style={{
-        background: `
-          radial-gradient(circle at 30% 25%, ${p[0]} 0%, transparent 45%),
-          radial-gradient(circle at 75% 60%, ${p[1]} 0%, transparent 55%),
-          radial-gradient(circle at 45% 85%, ${p[2]} 0%, transparent 50%),
-          linear-gradient(135deg, ${p[0]} 0%, ${p[2]} 100%)
-        `,
-      }}
-    >
-      {/* Fake "subject silhouette" — abstract portrait suggestion */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="w-2/5 h-3/5 rounded-full opacity-30"
-          style={{ background: `radial-gradient(circle, ${p[2]} 0%, transparent 70%)`, filter: "blur(20px)" }}
-        />
-      </div>
-      {/* Subtle noise/grain to read as "photo" */}
-      <div
-        className="absolute inset-0 opacity-[0.12] mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><filter id='n'><feTurbulence baseFrequency='0.9' seed='5'/></filter><rect width='100' height='100' filter='url(%23n)' opacity='0.4'/></svg>\")",
-        }}
-      />
-      {children}
-    </div>
-  );
-}
 
 export function LandingPage() {
   const { locale } = useI18n();
@@ -200,13 +159,87 @@ export function LandingPage() {
             title={isFr ? "Régénère mieux" : "Regenerate better"}
             body={isFr ? "Un clic. Nouveau visuel, contexte préservé." : "One click. New visual, context preserved."}
           >
-            <div className="aspect-[4/3] rounded-2xl flex items-center justify-center gap-3"
+            <div className="aspect-[4/3] rounded-2xl flex items-center justify-center gap-3 p-3"
                  style={{ background: "#FAFAFA", border: "1px solid #E4E4E7" }}>
-              <FakeVisual seed={2} className="w-20 h-24 rounded-lg" />
+              <img src={serviceNissan} alt="" className="w-24 h-28 rounded-lg object-cover" style={{ filter: "grayscale(0.6) contrast(0.85)" }} />
               <RefreshCw size={22} style={{ color: BLUE }} />
-              <FakeVisual seed={4} className="w-20 h-24 rounded-lg" />
+              <img src={sunsetNissan} alt="" className="w-24 h-28 rounded-lg object-cover" />
             </div>
           </StepCard>
+        </div>
+      </section>
+
+      {/* ═══ GALLERY — real audits ═══ */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10 md:mb-14">
+            <div>
+              <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>{isFr ? "Audits récents" : "Recent audits"}</p>
+              <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
+                {isFr ? "Chaque visuel. Un verdict." : "Every visual. A verdict."}
+              </h2>
+            </div>
+            <p className="text-sm md:text-base max-w-sm" style={{ color: "#52525B" }}>
+              {isFr
+                ? "Ora regarde ce que tu publies. Score, drapeau, reco. Toujours une action concrète."
+                : "Ora looks at what you publish. Score, flag, reco. Always a concrete action."}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+            {[
+              { src: "/templates/figma-igp-01.png",            score: 62, verdict: "block",  kpi: "LEGAL",    note: isFr ? "Marque Nike reconnaissable" : "Recognizable Nike brand" },
+              { src: "/templates/figma-skincare-01.png",       score: 91, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Composition produit forte" : "Strong product shot" },
+              { src: "/templates/figma-fashion-post-01.png",   score: 78, verdict: "revise", kpi: "BRAND",    note: isFr ? "Palette hors charte" : "Palette off-brand" },
+              { src: "/templates/figma-flyer-food.png",        score: 84, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Lisible, claim net" : "Readable, clear claim" },
+              { src: "/templates/figma-flyer-fitness.png",     score: 71, verdict: "revise", kpi: "BRAND",    note: isFr ? "Contraste logo faible" : "Weak logo contrast" },
+              { src: "/templates/figma-igp-02.png",            score: 88, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Impact visuel élevé" : "High visual impact" },
+            ].map((item, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.4, delay: i * 0.05 }}
+                className="group relative rounded-2xl overflow-hidden"
+                style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
+              >
+                <div className="aspect-square overflow-hidden" style={{ background: "#F4F4F5" }}>
+                  <img src={item.src} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                </div>
+                {/* Score pill over image */}
+                <div
+                  className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold shadow-lg"
+                  style={{
+                    background: "rgba(255,255,255,0.96)",
+                    color: item.verdict === "block" ? "#B91C1C" : item.verdict === "revise" ? "#B45309" : "#15803D",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: item.verdict === "block" ? "#B91C1C" : item.verdict === "revise" ? "#B45309" : "#15803D" }}
+                  />
+                  {item.score}/100
+                </div>
+                {/* Reco bar */}
+                <div className="px-4 py-3 flex items-start gap-2 text-xs md:text-[13px] leading-snug">
+                  <span
+                    className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
+                    style={{
+                      background:
+                        item.kpi === "LEGAL" ? "#FEF2F2" : item.kpi === "BRAND" ? "#EFF6FF" : "#F0FDF4",
+                      color:
+                        item.kpi === "LEGAL" ? "#B91C1C" : item.kpi === "BRAND" ? BLUE : "#15803D",
+                    }}
+                  >
+                    {item.kpi}
+                  </span>
+                  <span style={{ color: "#27272A" }}>{item.note}</span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -395,8 +428,20 @@ function ScanMockup({ isFr }: { isFr: boolean }) {
 
       {/* App content */}
       <div className="p-5 md:p-6 grid grid-cols-[1.2fr_1fr] gap-5">
-        {/* Fake AI visual */}
-        <FakeVisual seed={0} className="rounded-xl" />
+        {/* Real audited visual with overlay flags */}
+        <div className="relative rounded-xl overflow-hidden" style={{ background: "#0A0A0A" }}>
+          <img src={heroNissan} alt="" className="w-full h-full object-cover" />
+          {/* Flag 1: trademark (top-left of car) */}
+          <div className="absolute top-4 left-4 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold shadow-lg"
+               style={{ background: "rgba(255,255,255,0.96)", color: "#B91C1C", backdropFilter: "blur(8px)" }}>
+            <AlertTriangle size={11} /> {isFr ? "Marque visible" : "Trademark"}
+          </div>
+          {/* Flag 2: brand-match hint (bottom-right) */}
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-bold shadow-lg"
+               style={{ background: "rgba(29,78,216,0.96)", color: "#FFFFFF", backdropFilter: "blur(8px)" }}>
+            <Palette size={11} /> {isFr ? "Ton OK" : "Tone OK"}
+          </div>
+        </div>
 
         {/* Right panel: score + KPIs + verdict */}
         <div className="flex flex-col gap-3">
@@ -406,23 +451,23 @@ function ScanMockup({ isFr }: { isFr: boolean }) {
               {isFr ? "Score global" : "Overall"}
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-5xl md:text-6xl font-black leading-none" style={{ color: BLACK, letterSpacing: "-0.03em" }}>86</span>
+              <span className="text-5xl md:text-6xl font-black leading-none" style={{ color: BLACK, letterSpacing: "-0.03em" }}>74</span>
               <span className="text-sm" style={{ color: "#71717A" }}>/100</span>
             </div>
           </div>
 
           {/* Verdict badge */}
           <div className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 rounded-full text-xs font-bold"
-               style={{ background: "#DCFCE7", color: "#15803D" }}>
-            <Check size={13} />
-            {isFr ? "Publier" : "Publish"}
+               style={{ background: "#FEF3C7", color: "#B45309" }}>
+            <AlertTriangle size={13} />
+            {isFr ? "À retoucher" : "Revise"}
           </div>
 
           {/* 3 KPIs */}
           <div className="space-y-2 mt-1">
-            <ScoreRow label="Legal" score={88} color="#15803D" compact />
+            <ScoreRow label="Legal" score={58} color="#B91C1C" compact />
             <ScoreRow label="Brand" score={82} color={BLUE} compact />
-            <ScoreRow label="Creative" score={89} color="#15803D" compact />
+            <ScoreRow label="Creative" score={84} color="#15803D" compact />
           </div>
         </div>
       </div>
@@ -433,8 +478,8 @@ function ScanMockup({ isFr }: { isFr: boolean }) {
           <Sparkles size={12} /> {isFr ? "Recommandations" : "Recommendations"}
         </div>
         <div className="text-xs md:text-sm flex items-start gap-2">
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "#EFF6FF", color: BLUE }}>BRAND</span>
-          <span>{isFr ? "Accentuer le bleu cobalt sur l'arrière-plan" : "Push the cobalt blue in the background"}</span>
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "#FEF2F2", color: "#B91C1C" }}>LEGAL</span>
+          <span>{isFr ? "Logo Nissan reconnaissable à retirer ou flouter" : "Recognizable Nissan logo — remove or blur"}</span>
         </div>
         <div className="text-xs md:text-sm flex items-start gap-2">
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "#F0FDF4", color: "#15803D" }}>CREATIVE</span>
