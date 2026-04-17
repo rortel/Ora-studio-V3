@@ -7712,158 +7712,98 @@ app.post("/analyze/score", async (c) => {
       promptBlock = `\n\nORIGINAL GENERATION PROMPT (analyze quality and suggest improvements):\n"${String(prompt).slice(0, 1000)}"`;
     }
 
-    const systemPrompt = `You are a senior creative director and AI content quality auditor with 20 years of advertising experience at top agencies (Publicis, BBDO, Droga5). You specialize in evaluating AI-generated visuals for commercial use.
+    const systemPrompt = `You are a senior creative director and brand QA auditor with 20 years at top advertising agencies (Publicis, BBDO, Droga5). You specialize in evaluating AI-generated visuals for commercial publication.
 
-Your mission: score the provided AI-generated image across 7 KPIs and return a structured JSON audit.
+Your mission: score the provided AI-generated image across 3 KPIs — each answers a concrete decision the user must make — and return a structured JSON audit.
 
-═══ 7 KPIs ═══
+═══ 3 KPIs ═══
 
-1. ÉTHIQUE (weight: 10%)
-Evaluate ethical risks for commercial deployment.
+1. LEGAL (weight: 30%)
+Answers: "Can I publish this safely?"
+Evaluates ALL risks that could block publication or create legal/brand reputation exposure.
 Criteria:
-- Bias & representation: stereotypical depictions, lack of diversity when context demands it
-- Stereotype risks: reinforcement of harmful clichés, problematic visual tropes
-- Ethical red flags: deepfake-adjacent content, misleading imagery, IP concerns
-- Responsible AI usage: no deceptive or manipulative visual techniques
+- Copyright/IP: resemblance to copyrighted works, trademarked logos/elements visible in the image
+- Celebrity/likeness: deepfake-adjacent, recognizable public figures without consent
+- Regulatory: false health/financial/eco claims, regulated content without disclaimers
+- Ethical: harmful stereotypes, biased representation, misleading imagery
+- AI disclosure: obvious AI tells that could create trust issues (plastic skin, watermark remnants)
 
-High score (90-100): No ethical concerns, inclusive and responsible visual.
-Medium score (60-79): Minor concerns a reviewer might flag.
-Low score (0-39): Contains problematic representations or ethical issues.
+High (90-100): No blocking risks, safe for commercial publication.
+Medium (60-79): Minor risks — needs disclaimer or caption but OK to publish.
+Low (0-39): DO NOT PUBLISH — significant legal or reputation exposure.
 
-2. LÉGAL (weight: 10%)
-Evaluate legal risks for commercial use.
+2. BRAND FIT (weight: 35%)
+Answers: "Does this match my brand and serve my goal?"
+Evaluates whether the visual is on-brand AND on-brief/objective.
 Criteria:
-- AI detectability: obvious AI tells (plastic skin, over-symmetry, watermark remnants, "AI glow")
-- Copyright/IP risks: resemblance to copyrighted works, celebrity likenesses, trademarked elements
-- Regulatory compliance: no false claims, misleading info, or regulated content without disclaimers
-- Commercial deployment safety: could this be published without legal review?
+- Brand alignment: colors, mood, tone, photo style match brand vault
+- Message coherence: supports (not contradicts) brand key messages
+- Audience fit: resonates with the declared target audience
+- Brief/objective alignment: the visual delivers what was asked and serves the campaign goal
+${!brandVault ? "- No Brand Vault provided — score neutrally around 70 and flag this in issues." : ""}
+${!briefContext && !objective ? "- No brief or objective provided — score on brand fit only." : ""}
 
-High score (90-100): No legal risks, safe for commercial use.
-Medium score (60-79): Minor risks manageable with disclaimers.
-Low score (0-39): Significant legal risks, needs review before use.
+High (90-100): Perfect brand alignment — could go into an existing campaign untouched.
+Medium (60-79): Acceptable but needs color grade, crop, or copy adjustment.
+Low (0-39): Off-brand or off-brief — wrong palette, wrong mood, wrong audience.
 
-3. BRIEF (weight: 15%)
-${briefContext ? "A brief context has been provided — score alignment with the brief." : "No brief context was provided — default this score to 70 (neutral)."}
-Criteria (when brief is available):
-- Does the visual match what was described in the brief?
-- Are the key elements from the brief present in the image?
-- Does the visual fulfill the creative direction specified?
-
-High score (90-100): Perfect match with the brief, all elements present.
-Medium score (60-79): Partially aligned, some elements missing or off.
-Low score (0-39): Completely off-brief, wrong subject/mood/elements.
-
-4. OBJECTIF (weight: 15%)
-${objective ? "A campaign objective has been provided — score how well the visual serves it." : "No campaign objective was provided — default this score to 70 (neutral)."}
-Criteria (when objective is available):
-- Does the visual drive the desired action (awareness, conversion, engagement)?
-- Is the visual appropriate for the stated goal?
-- Would a viewer understand the intended message?
-
-High score (90-100): Visual perfectly serves the campaign objective.
-Medium score (60-79): Somewhat aligned but could be more effective.
-Low score (0-39): Contradicts or ignores the stated objective.
-
-5. COHÉRENCE MESSAGE (weight: 15%)
-${brandVault ? "A Brand Vault has been provided — score message coherence with brand." : "No Brand Vault was provided — default this score to 70 (neutral)."}
+3. CREATIVE (weight: 35%)
+Answers: "Is this actually good creative work?"
+Evaluates artistic merit, technical quality, and commercial impact.
 Criteria:
-- Does the visual reinforce the brand's key messages?
-- Is the tone consistent with the brand's voice?
-- Color palette, mood, and atmosphere alignment with brand identity
-- Would this fit naturally in the brand's existing campaigns?
+- Composition: rule of thirds, balance, focal point, leading lines, negative space
+- Visual impact: contrast, hierarchy, attention flow, memorability
+- Technical quality: artefacts (hands, faces, text), resolution, anatomy, light coherence
+- Originality: feels intentional vs generic "default AI aesthetic"
+- Campaign-ready: would this stand out in a real ad next to competitors?
 
-High score (90-100): Perfect brand alignment, could go straight into a campaign.
-Medium score (60-79): Acceptable but needs adjustment.
-Low score (0-39): Contradicts brand identity.
-
-6. CIBLE (weight: 15%)
-${brandVault?.target_audiences ? "Target audiences are defined in the Brand Vault." : "No target audience specified — default this score to 70 (neutral)."}
-Criteria:
-- Is the visual appropriate for the target audience?
-- Does it resonate with the audience's values, aesthetics, and expectations?
-- Would the target demographic engage with this visual?
-
-High score (90-100): Perfectly tailored to the target audience.
-Medium score (60-79): Generally appropriate but could be more targeted.
-Low score (0-39): Wrong audience, would not resonate or could alienate.
-
-7. CRÉATIF (weight: 20%)
-Evaluate artistic merit, technical quality, and commercial viability.
-Criteria:
-- Composition: rule of thirds, visual balance, focal point, leading lines
-- Visual impact: contrast, readability, visual hierarchy, attention flow
-- Originality: fresh and intentional, or generic "default AI aesthetic"
-- Technical quality: artefacts, resolution, anatomy, lighting coherence
-- Commercial viability: would this stand out in a real campaign?
-
-High score (90-100): Striking composition, flawless execution, campaign-ready.
-Medium score (60-79): Competent but forgettable, minor technical issues.
-Low score (0-39): Flat, generic, obvious AI artefacts.
+High (90-100): Striking composition, flawless execution, would stop a viewer scrolling.
+Medium (60-79): Competent but forgettable, minor technical tells.
+Low (0-39): Flat composition, obvious AI artefacts, generic stock-photo feel.
 ${brandBlock}${briefBlock}${objectiveBlock}${promptBlock}
 
 ═══ OUTPUT FORMAT ═══
 
 Return ONLY valid JSON (no markdown, no backticks, no prose outside the JSON). Use this exact structure:
 {
-  "overall": <0-100 weighted score>,
-  "ethique": {
-    "score": <0-100>,
-    "issues": ["specific ethical problems found — empty array if none"],
-    "positives": ["specific ethical strengths"]
-  },
+  "overall": <0-100 weighted score: legal*0.30 + brandFit*0.35 + creative*0.35>,
   "legal": {
     "score": <0-100>,
-    "issues": ["specific legal risks"],
+    "issues": ["specific legal/ethical risks — reference exact visual elements"],
     "positives": ["specific legal strengths"]
   },
-  "brief": {
-    "score": <0-100${briefContext ? "" : ", default 70 since no brief provided"}>,
-    "issues": ["brief alignment issues"],
-    "positives": ["brief alignment strengths"]
-  },
-  "objectif": {
-    "score": <0-100${objective ? "" : ", default 70 since no objective provided"}>,
-    "issues": ["objective alignment issues"],
-    "positives": ["objective alignment strengths"]
-  },
-  "coherence": {
-    "score": <0-100${brandVault ? "" : ", default 70 since no brand vault provided"}>,
-    "issues": ["message coherence issues"],
-    "positives": ["message coherence strengths"]
-  },
-  "cible": {
-    "score": <0-100${brandVault?.target_audiences ? "" : ", default 70 since no target audience provided"}>,
-    "issues": ["target audience alignment issues"],
-    "positives": ["target audience alignment strengths"]
-  },
-  "creatif": {
+  "brandFit": {
     "score": <0-100>,
-    "issues": ["creative/technical weaknesses"],
-    "positives": ["creative/technical strengths"]
+    "issues": ["specific brand/brief/objective misalignments"],
+    "positives": ["specific brand alignment strengths"]
   },
-  "recommendations": ["3 to 5 actionable improvement tips prioritized by impact"],
-  "optimizedPrompt": "a rewritten, improved version of the original prompt that would score higher across all 7 KPIs (if no prompt was provided, suggest an ideal prompt for this type of visual)",
-  "predictedScores": {
-    "ethique": <predicted score if optimizedPrompt were used>,
-    "legal": <predicted>,
-    "brief": <predicted>,
-    "objectif": <predicted>,
-    "coherence": <predicted>,
-    "cible": <predicted>,
-    "creatif": <predicted>,
-    "overall": <predicted weighted>
+  "creative": {
+    "score": <0-100>,
+    "issues": ["specific creative/technical weaknesses"],
+    "positives": ["specific creative strengths"]
   },
+  "recommendations": [
+    {
+      "kpi": "legal" | "brand" | "creative",
+      "text": "concrete actionable fix (e.g. 'Replace the guitar brand logo with a generic shape — current Fender logo creates trademark risk')",
+      "impact": "high" | "medium" | "low"
+    }
+  ],
+  "optimizedPrompt": "a rewritten, improved version of the original prompt that would address the issues above — concrete and usable, not vague advice",
+  "publishVerdict": "one of: 'safe' (publish as-is) | 'revise' (small fixes needed) | 'block' (do not publish)",
   "summary": "one-sentence verdict${prompt ? " in the same language as the user's prompt" : " in French"}"
 }
 
 IMPORTANT RULES:
-- Be precise and specific in issues/positives — reference exact visual elements, not vague generalities
-- recommendations must be ACTIONABLE (e.g. "Add rim lighting on the left side to separate subject from background" not "improve lighting")
-- optimizedPrompt must be a concrete, usable prompt — not vague advice
-- predictedScores should be realistic estimates of what the optimized prompt would achieve
+- Be SPECIFIC — reference exact visual elements, not vague generalities
+- Each recommendation MUST have a "kpi" tag (legal | brand | creative) so the user knows which axis it improves
+- "impact": high = fixes a blocking issue, medium = meaningful improvement, low = polish
+- Provide 3 to 6 recommendations, sorted by impact (high first)
+- optimizedPrompt must address the issues you identified — a concrete, ready-to-paste prompt
+- publishVerdict: "block" if legal <50, "revise" if any KPI <70, else "safe"
 - summary must be in the SAME LANGUAGE as the user's prompt. If no prompt was provided, default to French.
-- overall = ethique*0.10 + legal*0.10 + brief*0.15 + objectif*0.15 + coherence*0.15 + cible*0.15 + creatif*0.20
-- Each issues/positives array should have 1-5 items`;
+- Always ensure "overall" equals the weighted sum (rounded)
+- Each issues/positives array should have 1-4 items`;
 
     const userContent: any[] = [
       { type: "text", text: "Analyze and score this AI-generated visual:" },
@@ -7917,55 +7857,69 @@ IMPORTANT RULES:
     const clamp = (v: any, fallback = 50) => Math.max(0, Math.min(100, Number(v) || fallback));
     const normalizeAxis = (axis: any, fallbackScore = 50) => ({
       score: clamp(axis?.score, fallbackScore),
-      issues: Array.isArray(axis?.issues) ? axis.issues.map(String).slice(0, 5) : [],
-      positives: Array.isArray(axis?.positives) ? axis.positives.map(String).slice(0, 5) : [],
+      issues: Array.isArray(axis?.issues) ? axis.issues.map(String).slice(0, 4) : [],
+      positives: Array.isArray(axis?.positives) ? axis.positives.map(String).slice(0, 4) : [],
     });
 
-    const ethique = normalizeAxis(parsed.ethique, 50);
     const legal = normalizeAxis(parsed.legal, 50);
-    const brief = normalizeAxis(parsed.brief, briefContext ? 50 : 70);
-    const objectifKpi = normalizeAxis(parsed.objectif, objective ? 50 : 70);
-    const coherence = normalizeAxis(parsed.coherence, brandVault ? 50 : 70);
-    const cible = normalizeAxis(parsed.cible, brandVault?.target_audiences ? 50 : 70);
-    const creatif = normalizeAxis(parsed.creatif, 50);
+    const brandFit = normalizeAxis(parsed.brandFit, brandVault || briefContext || objective ? 50 : 70);
+    const creative = normalizeAxis(parsed.creative, 50);
 
     const overall = Math.round(
-      ethique.score * 0.10 +
-      legal.score * 0.10 +
-      brief.score * 0.15 +
-      objectifKpi.score * 0.15 +
-      coherence.score * 0.15 +
-      cible.score * 0.15 +
-      creatif.score * 0.20
+      legal.score * 0.30 +
+      brandFit.score * 0.35 +
+      creative.score * 0.35
     );
+
+    // Normalize tagged recommendations
+    const validKpi = (k: any): "legal" | "brand" | "creative" => {
+      const s = String(k || "").toLowerCase();
+      if (s === "legal") return "legal";
+      if (s === "creative" || s === "creatif") return "creative";
+      return "brand";
+    };
+    const validImpact = (i: any): "high" | "medium" | "low" => {
+      const s = String(i || "").toLowerCase();
+      if (s === "high") return "high";
+      if (s === "low") return "low";
+      return "medium";
+    };
+    const recommendations = Array.isArray(parsed.recommendations)
+      ? parsed.recommendations.slice(0, 6).map((r: any) => {
+          if (typeof r === "string") return { kpi: "creative" as const, text: r, impact: "medium" as const };
+          return {
+            kpi: validKpi(r?.kpi),
+            text: String(r?.text || "").slice(0, 400),
+            impact: validImpact(r?.impact),
+          };
+        }).filter((r: any) => r.text.length > 0)
+      : [];
+
+    // Publish verdict — trust model, fallback to rules
+    let publishVerdict: "safe" | "revise" | "block" = "revise";
+    const verdictRaw = String(parsed.publishVerdict || "").toLowerCase();
+    if (verdictRaw === "safe" || verdictRaw === "block" || verdictRaw === "revise") {
+      publishVerdict = verdictRaw as any;
+    } else {
+      if (legal.score < 50) publishVerdict = "block";
+      else if (legal.score >= 80 && brandFit.score >= 70 && creative.score >= 70) publishVerdict = "safe";
+      else publishVerdict = "revise";
+    }
 
     const result = {
       success: true as const,
       overall,
-      ethique,
       legal,
-      brief,
-      objectif: objectifKpi,
-      coherence,
-      cible,
-      creatif,
-      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(String).slice(0, 5) : [],
+      brandFit,
+      creative,
+      recommendations,
       optimizedPrompt: String(parsed.optimizedPrompt || "").slice(0, 2000),
-      predictedScores: parsed.predictedScores && typeof parsed.predictedScores === "object" ? {
-        ethique: clamp(parsed.predictedScores.ethique, 70),
-        legal: clamp(parsed.predictedScores.legal, 70),
-        brief: clamp(parsed.predictedScores.brief, 70),
-        objectif: clamp(parsed.predictedScores.objectif, 70),
-        coherence: clamp(parsed.predictedScores.coherence, 70),
-        cible: clamp(parsed.predictedScores.cible, 70),
-        creatif: clamp(parsed.predictedScores.creatif, 70),
-        overall: clamp(parsed.predictedScores.overall, 70),
-      } : null,
+      publishVerdict,
       summary: String(parsed.summary || "").slice(0, 500),
       tookMs: Date.now() - t0,
     };
 
-    console.log(`[analyze/score] overall=${overall} ethique=${ethique.score} legal=${legal.score} brief=${brief.score} objectif=${objectifKpi.score} coherence=${coherence.score} cible=${cible.score} creatif=${creatif.score} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
+    console.log(`[analyze/score] overall=${overall} legal=${legal.score} brand=${brandFit.score} creative=${creative.score} verdict=${publishVerdict} user=${user?.id?.slice(0, 8) || "anon"} in ${result.tookMs}ms`);
 
     // --- Persist to KV ---
     if (user) {
@@ -8046,6 +8000,36 @@ app.post("/analyze/delete", async (c) => {
     if (!id) return c.json({ success: false, error: "id is required" }, 400);
     await kv.del(`analysis:${user.id}:${id}`);
     return c.json({ success: true });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── POST /analyze/regenerate — Generate a new image from optimized prompt, return the URL ──
+// The client then calls /analyze/score again to score the new image.
+app.post("/analyze/regenerate", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { prompt, model } = body;
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
+      return c.json({ success: false, error: "prompt is required" }, 400);
+    }
+    const chosen = model || "ora-vision";
+    const result = await Promise.race([
+      generateImage({ prompt: prompt.trim(), model: chosen }),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("regenerate timeout 95s")), 95_000)),
+    ]);
+    const url = (result as any)?.url || (result as any)?.imageUrl || (result as any)?.image_url || null;
+    if (!url) {
+      return c.json({ success: false, error: "No image URL returned from generator" }, 502);
+    }
+    return c.json({
+      success: true,
+      imageUrl: url,
+      model: (result as any)?.model || chosen,
+      provider: (result as any)?.provider || null,
+    });
   } catch (err: any) {
     return c.json({ success: false, error: String(err?.message || err) }, 500);
   }
