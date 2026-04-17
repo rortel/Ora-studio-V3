@@ -1,479 +1,510 @@
+import { useState } from "react";
 import { motion } from "motion/react";
-import { Check, Minus, ArrowRight, Zap } from "lucide-react";
 import { Link } from "react-router";
-import { FAQ } from "../components/FAQ";
+import { Check, ArrowRight, ChevronDown, Menu, X } from "lucide-react";
+import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
 
-function FeatureCell({ value }: { value: boolean | string }) {
-  if (typeof value === "boolean") {
-    return value ? (
-      <Check size={14} className="text-ora-signal mx-auto" />
-    ) : (
-      <Minus size={14} className="text-muted-foreground/30 mx-auto" />
-    );
-  }
+/* ═══════════════════════════════════════════════════════════
+   PRICING — 4 tiers: Scan (free) / Creator €19 / Pro €49 / Agency €199
+   ═══════════════════════════════════════════════════════════ */
+
+const BLUE = "#1D4ED8";
+const BLACK = "#0A0A0A";
+
+type Billing = "monthly" | "yearly";
+
+export function PricingPage() {
+  const { locale, setLocale } = useI18n();
+  const { user } = useAuth();
+  const isFr = locale === "fr";
+  const [billing, setBilling] = useState<Billing>("monthly");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const plans = buildPlans(isFr, billing);
+
   return (
-    <span className="text-foreground/70" style={{ fontSize: "13px" }}>
-      {value}
-    </span>
+    <div style={{ background: "#FFFFFF", color: BLACK, minHeight: "100vh" }}>
+      {/* NAV */}
+      <nav
+        className="sticky top-0 z-50"
+        style={{
+          background: "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "1px solid #E4E4E7",
+        }}
+      >
+        <div className="max-w-6xl mx-auto px-5 md:px-8 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center">
+            <OraLogo size={32} variant="full" animate={false} color={BLACK} />
+          </Link>
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            <Link to="/pricing" className="font-semibold" style={{ color: BLUE }}>
+              {isFr ? "Tarifs" : "Pricing"}
+            </Link>
+            <Link to="/about" className="hover:opacity-60">{isFr ? "À propos" : "About"}</Link>
+            <button onClick={() => setLocale(isFr ? "en" : "fr")} className="hover:opacity-60">
+              {isFr ? "EN" : "FR"}
+            </button>
+            {user ? (
+              <Link
+                to="/hub/analyze"
+                className="px-4 py-2 rounded-full text-sm font-semibold"
+                style={{ background: BLACK, color: "#FFFFFF" }}
+              >
+                {isFr ? "Ouvrir l'app" : "Open app"}
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="px-4 py-2 rounded-full text-sm font-semibold"
+                style={{ background: BLUE, color: "#FFFFFF" }}
+              >
+                {isFr ? "Commencer" : "Get started"}
+              </Link>
+            )}
+          </div>
+          <button className="md:hidden p-2" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+            {menuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
+        {menuOpen && (
+          <div className="md:hidden px-5 pb-5 space-y-3 border-t" style={{ borderColor: "#E4E4E7" }}>
+            <Link to="/about" className="block py-2" onClick={() => setMenuOpen(false)}>
+              {isFr ? "À propos" : "About"}
+            </Link>
+            <button onClick={() => { setLocale(isFr ? "en" : "fr"); setMenuOpen(false); }} className="block py-2">
+              {isFr ? "English" : "Français"}
+            </button>
+            <Link
+              to={user ? "/hub/analyze" : "/login"}
+              className="block py-3 text-center rounded-full font-semibold"
+              style={{ background: BLUE, color: "#FFFFFF" }}
+              onClick={() => setMenuOpen(false)}
+            >
+              {user ? (isFr ? "Ouvrir l'app" : "Open app") : (isFr ? "Commencer" : "Get started")}
+            </Link>
+          </div>
+        )}
+      </nav>
+
+      {/* HEADER */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-10 text-center">
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            fontSize: "clamp(2.25rem, 4.5vw, 3.75rem)",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.05,
+          }}
+          className="mb-5"
+        >
+          {isFr ? "Des prix simples.\nDes engagements simples." : "Simple pricing.\nSimple terms."}
+        </motion.h1>
+        <p
+          className="max-w-xl mx-auto mb-8"
+          style={{ fontSize: "1.1rem", color: "#52525B", lineHeight: 1.5 }}
+        >
+          {isFr
+            ? "Commence gratuit. Passe à un plan payant quand tu veux. Annule à tout moment."
+            : "Start free. Upgrade when you're ready. Cancel anytime."}
+        </p>
+
+        {/* Billing toggle */}
+        <div
+          className="inline-flex items-center p-1 rounded-full"
+          style={{ background: "#F4F4F5" }}
+        >
+          {[
+            { k: "monthly" as Billing, label: isFr ? "Mensuel" : "Monthly" },
+            { k: "yearly" as Billing, label: isFr ? "Annuel" : "Yearly", badge: "−20%" },
+          ].map((opt) => (
+            <button
+              key={opt.k}
+              onClick={() => setBilling(opt.k)}
+              className="px-5 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2"
+              style={{
+                background: billing === opt.k ? "#FFFFFF" : "transparent",
+                color: billing === opt.k ? BLACK : "#71717A",
+                boxShadow: billing === opt.k ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              {opt.label}
+              {opt.badge && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ background: billing === opt.k ? "#DCFCE7" : "#E4E4E7", color: "#15803D" }}
+                >
+                  {opt.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* PLANS */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pb-16">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {plans.map((p, i) => (
+            <motion.div
+              key={p.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05, duration: 0.3 }}
+              className="relative p-7 rounded-3xl flex flex-col"
+              style={{
+                background: p.highlight ? BLACK : "#FFFFFF",
+                color: p.highlight ? "#FFFFFF" : BLACK,
+                border: p.highlight ? "none" : "1px solid #E4E4E7",
+                boxShadow: p.highlight ? "0 20px 40px rgba(0,0,0,0.12)" : "none",
+              }}
+            >
+              {p.badge && (
+                <div
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold"
+                  style={{ background: BLUE, color: "#FFFFFF" }}
+                >
+                  {p.badge}
+                </div>
+              )}
+
+              <div className="mb-6">
+                <h3 className="text-xl font-bold mb-1">{p.name}</h3>
+                <p className="text-sm" style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}>
+                  {p.sub}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-4xl font-black tracking-tight">{p.price}</span>
+                  {p.suffix && (
+                    <span
+                      className="text-sm"
+                      style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}
+                    >
+                      {p.suffix}
+                    </span>
+                  )}
+                </div>
+                {p.priceNote && (
+                  <p className="text-xs mt-1" style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}>
+                    {p.priceNote}
+                  </p>
+                )}
+              </div>
+
+              <Link
+                to={p.ctaHref}
+                className="block text-center py-3 rounded-full text-sm font-semibold mb-6 transition-opacity hover:opacity-90"
+                style={{
+                  background: p.highlight ? "#FFFFFF" : p.id === "scan" ? "#F4F4F5" : BLUE,
+                  color: p.highlight ? BLACK : p.id === "scan" ? BLACK : "#FFFFFF",
+                }}
+              >
+                {p.cta}
+              </Link>
+
+              <ul className="space-y-2.5 text-sm flex-1">
+                {p.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5">
+                    <Check
+                      size={15}
+                      style={{ color: p.highlight ? "#FFFFFF" : BLUE }}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Tiny disclaimer */}
+        <p className="text-center text-xs mt-10" style={{ color: "#71717A" }}>
+          {isFr
+            ? "Prix HT. TVA appliquée selon pays. Paiement par carte, annulation à tout moment."
+            : "Excl. VAT. Card payment. Cancel anytime."}
+        </p>
+      </section>
+
+      {/* COMPARE TABLE */}
+      <section className="max-w-5xl mx-auto px-5 md:px-8 py-16">
+        <h2
+          className="text-center mb-10"
+          style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}
+        >
+          {isFr ? "Comparer les fonctionnalités" : "Compare features"}
+        </h2>
+
+        <div className="overflow-x-auto -mx-5 md:mx-0">
+          <table className="w-full min-w-[640px]">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide" style={{ color: "#71717A" }}>
+                <th className="py-3 pl-5 md:pl-0 font-semibold"></th>
+                {plans.map((p) => (
+                  <th key={p.id} className="py-3 px-4 text-center font-bold" style={{ color: BLACK }}>
+                    {p.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {buildCompareRows(isFr).map((row, i) => (
+                <tr key={i} className="border-t" style={{ borderColor: "#E4E4E7" }}>
+                  <td className="py-3.5 pl-5 md:pl-0 font-medium">{row.label}</td>
+                  {row.values.map((v, j) => (
+                    <td key={j} className="py-3.5 px-4 text-center" style={{ color: v === "—" ? "#A1A1AA" : BLACK }}>
+                      {v === true ? <Check size={16} style={{ color: BLUE, margin: "0 auto" }} /> : v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-16">
+        <h2
+          className="text-center mb-10"
+          style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}
+        >
+          {isFr ? "Questions sur les offres" : "Pricing FAQ"}
+        </h2>
+        <div className="space-y-2">
+          {(isFr
+            ? [
+                { q: "Que se passe-t-il après mes 5 scans gratuits ?", a: "Tu peux attendre le mois suivant (compteur mensuel) ou passer au plan Creator pour scanner en illimité." },
+                { q: "Puis-je changer de plan à tout moment ?", a: "Oui. Upgrade/downgrade immédiat, prorata automatique." },
+                { q: "Le plan annuel, c'est vraiment −20 % ?", a: "Oui, 10 mois facturés au lieu de 12. Remboursable au prorata si tu arrêtes." },
+                { q: "Vous faites des tarifs entreprise ?", a: "Pour les équipes de +5 personnes ou les besoins custom (SSO, audit log signé, SLA), contacte-nous via la page À propos." },
+                { q: "Les scans sont-ils vraiment illimités sur Creator ?", a: "Oui — pas de quota caché. Fair use : on coupe si on détecte un bot ou usage abusif (>1000/jour)." },
+              ]
+            : [
+                { q: "What happens after my 5 free scans?", a: "Wait until next month (monthly counter) or upgrade to Creator for unlimited scans." },
+                { q: "Can I change plans anytime?", a: "Yes. Immediate upgrade/downgrade, automatic proration." },
+                { q: "Is the yearly plan really −20%?", a: "Yes — 10 months billed instead of 12. Prorated refund if you cancel." },
+                { q: "Do you offer enterprise pricing?", a: "For teams >5 or custom needs (SSO, signed audit log, SLA), contact us via the About page." },
+                { q: "Are scans really unlimited on Creator?", a: "Yes — no hidden quota. Fair use: we throttle bots and abusive usage (>1000/day)." },
+              ]
+          ).map((f, i) => (
+            <FaqItem key={i} q={f.q} a={f.a} />
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 py-16">
+        <div
+          className="rounded-3xl p-10 md:p-14 text-center"
+          style={{ background: "#F4F4F5" }}
+        >
+          <h2
+            style={{ fontSize: "clamp(1.5rem, 3vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
+            className="mb-3"
+          >
+            {isFr ? "Pas sûr du bon plan ?" : "Not sure which plan?"}
+          </h2>
+          <p className="mb-6 text-base" style={{ color: "#52525B" }}>
+            {isFr ? "Commence en gratuit, tu ajustes plus tard." : "Start free, adjust later."}
+          </p>
+          <Link
+            to={user ? "/hub/analyze" : "/login"}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all hover:opacity-90"
+            style={{ background: BLACK, color: "#FFFFFF" }}
+          >
+            {isFr ? "Scanner gratuitement" : "Scan for free"} <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
+
+      {/* FOOTER */}
+      <footer className="border-t" style={{ borderColor: "#E4E4E7" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-10 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-3">
+            <OraLogo size={24} variant="mark" animate={false} color={BLACK} />
+            <span className="text-sm font-medium">© {new Date().getFullYear()} Ora</span>
+          </div>
+          <div className="flex items-center gap-6 text-sm" style={{ color: "#71717A" }}>
+            <Link to="/about" className="hover:opacity-70">{isFr ? "À propos" : "About"}</Link>
+            <Link to="/pricing" className="hover:opacity-70">{isFr ? "Tarifs" : "Pricing"}</Link>
+            <Link to="/privacy" className="hover:opacity-70">{isFr ? "Confidentialité" : "Privacy"}</Link>
+            <Link to="/terms" className="hover:opacity-70">{isFr ? "CGU" : "Terms"}</Link>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }
 
-export function PricingPage() {
-  const { t } = useI18n();
-  const { user } = useAuth();
-  const ctaHref = user ? "/subscribe" : "/login?mode=signup";
+/* ─── Plans config ─── */
+interface Plan {
+  id: "scan" | "creator" | "pro" | "agency";
+  name: string;
+  sub: string;
+  price: string;
+  suffix?: string;
+  priceNote?: string;
+  badge?: string;
+  highlight?: boolean;
+  cta: string;
+  ctaHref: string;
+  features: string[];
+}
 
-  const plans = [
+function buildPlans(isFr: boolean, billing: Billing): Plan[] {
+  const priceYearly = (monthly: number) => Math.round(monthly * 0.8); // −20%
+  const m = (n: number) => (billing === "yearly" ? priceYearly(n) : n);
+  const suffix = isFr ? (billing === "yearly" ? "/mois, facturé annuellement" : "/mois") : billing === "yearly" ? "/mo, billed yearly" : "/mo";
+
+  return [
     {
-      name: t("pricingPage.starterName"),
-      price: t("pricingPage.starterPrice"),
-      period: t("pricingPage.starterPeriod"),
-      audience: t("pricingPage.starterAudience"),
-      credits: t("pricingPage.starterCredits"),
-      features: [
-        t("pricingPage.starterF1"),
-        t("pricingPage.starterF2"),
-        t("pricingPage.starterF3"),
-        t("pricingPage.starterF4"),
-        t("pricingPage.starterF5"),
-      ],
-      cta: t("pricingPage.starterCta"),
-      ctaHref,
-      highlighted: false,
+      id: "scan",
+      name: "Scan",
+      sub: isFr ? "Pour tester" : "To test it out",
+      price: "€0",
+      cta: isFr ? "Commencer" : "Start",
+      ctaHref: "/login",
+      features: isFr
+        ? [
+            "5 scans / mois",
+            "Verdict (publier / retoucher / bloquer)",
+            "Conseil principal",
+            "Pas de compte requis",
+          ]
+        : [
+            "5 scans / month",
+            "Verdict (publish / revise / block)",
+            "Top recommendation",
+            "No account required",
+          ],
     },
     {
-      name: t("pricingPage.proName"),
-      price: t("pricingPage.proPrice"),
-      period: t("pricingPage.proPeriod"),
-      audience: t("pricingPage.proAudience"),
-      credits: t("pricingPage.proCredits"),
-      features: [
-        t("pricingPage.proF1"),
-        t("pricingPage.proF2"),
-        t("pricingPage.proF3"),
-        t("pricingPage.proF4"),
-        t("pricingPage.proF5"),
-        t("pricingPage.proF6"),
-      ],
-      cta: t("pricingPage.proCta"),
-      ctaHref,
-      highlighted: true,
+      id: "creator",
+      name: "Creator",
+      sub: isFr ? "Freelances & créateurs" : "Freelancers & creators",
+      price: `€${m(19)}`,
+      suffix,
+      badge: isFr ? "Populaire" : "Popular",
+      highlight: true,
+      cta: isFr ? "Choisir Creator" : "Choose Creator",
+      ctaHref: "/subscribe?plan=creator",
+      features: isFr
+        ? [
+            "Scans illimités",
+            "Régénération 1-clic",
+            "Toutes les recommandations",
+            "Historique 30 jours",
+            "Export PDF basique",
+          ]
+        : [
+            "Unlimited scans",
+            "One-click regeneration",
+            "All recommendations",
+            "30-day history",
+            "Basic PDF export",
+          ],
     },
     {
-      name: t("pricingPage.businessName"),
-      price: t("pricingPage.businessPrice"),
-      period: t("pricingPage.businessPeriod"),
-      audience: t("pricingPage.businessAudience"),
-      credits: t("pricingPage.businessCredits"),
-      features: [
-        t("pricingPage.businessF1"),
-        t("pricingPage.businessF2"),
-        t("pricingPage.businessF3"),
-        t("pricingPage.businessF4"),
-        t("pricingPage.businessF5"),
-        t("pricingPage.businessF6"),
-      ],
-      cta: t("pricingPage.businessCta"),
-      ctaHref,
-      highlighted: false,
+      id: "pro",
+      name: "Pro",
+      sub: isFr ? "Créateurs de contenu pro" : "Pro content teams",
+      price: `€${m(49)}`,
+      suffix,
+      cta: isFr ? "Choisir Pro" : "Choose Pro",
+      ctaHref: "/subscribe?plan=pro",
+      features: isFr
+        ? [
+            "Tout Creator, plus :",
+            "Brand Vault complet (logo, palette, ton)",
+            "Briefs & objectifs par scan",
+            "Rapports PDF brandés",
+            "Historique illimité",
+            "Priorité sur les régénérations",
+          ]
+        : [
+            "Everything in Creator, plus:",
+            "Full Brand Vault (logo, palette, tone)",
+            "Briefs & objectives per scan",
+            "Branded PDF reports",
+            "Unlimited history",
+            "Priority regeneration queue",
+          ],
+    },
+    {
+      id: "agency",
+      name: "Agency",
+      sub: isFr ? "Agences & équipes" : "Agencies & teams",
+      price: `€${m(199)}`,
+      suffix,
+      cta: isFr ? "Choisir Agency" : "Choose Agency",
+      ctaHref: "/subscribe?plan=agency",
+      features: isFr
+        ? [
+            "Tout Pro, plus :",
+            "Multi-clients & multi-vaults",
+            "5 sièges équipe inclus",
+            "Audit log horodaté",
+            "Export batch & API",
+            "Support prioritaire",
+          ]
+        : [
+            "Everything in Pro, plus:",
+            "Multi-client & multi-vault",
+            "5 team seats included",
+            "Timestamped audit log",
+            "Batch export & API",
+            "Priority support",
+          ],
     },
   ];
+}
 
-  const creditPacks = [
-    { name: t("pricingPage.packSName"), price: "\u20AC15", credits: t("pricingPage.packSCredits"), rate: t("pricingPage.packSRate") },
-    { name: t("pricingPage.packMName"), price: "\u20AC39", credits: t("pricingPage.packMCredits"), rate: t("pricingPage.packMRate") },
-    { name: t("pricingPage.packLName"), price: "\u20AC99", credits: t("pricingPage.packLCredits"), rate: t("pricingPage.packLRate") },
+function buildCompareRows(isFr: boolean): { label: string; values: (string | boolean)[] }[] {
+  return [
+    { label: isFr ? "Scans / mois" : "Scans / month", values: ["5", isFr ? "Illimité" : "Unlimited", isFr ? "Illimité" : "Unlimited", isFr ? "Illimité" : "Unlimited"] },
+    { label: isFr ? "Verdict 3 KPIs" : "3-KPI verdict", values: [true, true, true, true] },
+    { label: isFr ? "Régénération 1-clic" : "One-click regeneration", values: ["—", true, true, true] },
+    { label: isFr ? "Historique" : "History", values: ["—", "30j", "∞", "∞"] },
+    { label: "Brand Vault", values: ["—", "—", true, true] },
+    { label: isFr ? "Briefs & objectifs" : "Briefs & objectives", values: ["—", "—", true, true] },
+    { label: isFr ? "Rapports PDF" : "PDF reports", values: ["—", isFr ? "Basique" : "Basic", isFr ? "Brandés" : "Branded", isFr ? "Brandés" : "Branded"] },
+    { label: isFr ? "Multi-clients" : "Multi-client", values: ["—", "—", "—", true] },
+    { label: isFr ? "Sièges équipe" : "Team seats", values: ["1", "1", "1", "5"] },
+    { label: isFr ? "Audit log" : "Audit log", values: ["—", "—", "—", true] },
+    { label: "API", values: ["—", "—", "—", true] },
   ];
+}
 
-  const comparisonFeatures: { name: string; starter: boolean | string; pro: boolean | string; business: boolean | string }[] = [
-    { name: t("pricingPage.compGenerations"), starter: t("pricingPage.comp200gen"), pro: t("pricingPage.comp1000gen"), business: t("pricingPage.comp5000gen") },
-    { name: t("pricingPage.compModels"), starter: t("pricingPage.comp15models"), pro: t("pricingPage.comp50models"), business: t("pricingPage.compAllModels") },
-    { name: t("pricingPage.compSideBySide"), starter: t("pricingPage.comp3side"), pro: t("pricingPage.comp6side"), business: t("pricingPage.compUnlimited") },
-    { name: t("pricingPage.compKpiScoring"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compProVideo"), starter: false, pro: false, business: true },
-    { name: t("pricingPage.compHistory"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compTeam"), starter: t("pricingPage.comp1member"), pro: t("pricingPage.comp3members"), business: t("pricingPage.comp10members") },
-    { name: t("pricingPage.compTopup"), starter: true, pro: true, business: true },
-    { name: t("pricingPage.compSupport"), starter: t("pricingPage.compCommunity"), pro: t("pricingPage.compEmail"), business: t("pricingPage.compPriority") },
-  ];
-
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <>
-      {/* Hero */}
-      <section className="pt-16 pb-8 md:pt-24 md:pb-12">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <span
-              className="inline-block px-3 py-1 rounded-full"
-              style={{
-                fontSize: "10px",
-                fontWeight: 500,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--text-tertiary)",
-                background: "rgba(26,23,20,0.03)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              {t("pricingPage.badge")}
-            </span>
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.06 }}
-            style={{
-              fontSize: "clamp(2rem, 4.5vw, 3.5rem)",
-              fontWeight: 300,
-              letterSpacing: "-0.04em",
-              lineHeight: 1.08,
-              color: "var(--foreground)",
-            }}
-            className="mb-5"
-          >
-            {t("pricingPage.heroTitle1")}{" "}
-            <span className="text-muted-foreground">{t("pricingPage.heroTitle2")}</span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
-            className="max-w-[520px] mx-auto mb-4"
-            style={{ fontSize: "16px", lineHeight: 1.55, color: "var(--text-tertiary)" }}
-          >
-            {t("pricingPage.heroSubtitle")}
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.18 }}
-            className="text-muted-foreground/60"
-            style={{ fontSize: "13px", color: "var(--text-secondary)" }}
-          >
-            {t("pricingPage.heroNote")}
-          </motion.p>
+    <div
+      className="rounded-xl"
+      style={{ background: open ? "#FAFAFA" : "#FFFFFF", border: "1px solid #E4E4E7" }}
+    >
+      <button
+        className="w-full flex items-center justify-between gap-4 p-5 text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="font-semibold text-sm md:text-base">{q}</span>
+        <ChevronDown
+          size={18}
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}
+        />
+      </button>
+      {open && (
+        <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>
+          {a}
         </div>
-      </section>
-
-      {/* Pricing cards */}
-      <section className="pb-6 md:pb-10">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid md:grid-cols-3 gap-6">
-            {plans.map((plan, i) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.1 }}
-                className={`relative flex flex-col bg-card rounded-xl border ${
-                  plan.highlighted ? "border-border-accent" : "border-border"
-                }`}
-                style={{
-                  boxShadow: plan.highlighted
-                    ? "0 1px 3px rgba(0,0,0,0.1), 0 16px 48px rgba(0,0,0,0.03)"
-                    : "0 1px 3px rgba(0,0,0,0.06)",
-                }}
-              >
-                {plan.highlighted && (
-                  <div className="absolute -top-3 left-6">
-                    <span
-                      className="text-white px-3 py-1 rounded-full"
-                      style={{
-                        background: "var(--border-strong)",
-                        color: "var(--foreground)",
-                        fontSize: "10px",
-                        fontWeight: 500,
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      {t("pricingPage.mostPopular")}
-                    </span>
-                  </div>
-                )}
-
-                <div className="p-7 pb-0">
-                  <h3
-                    className="text-foreground mb-1"
-                    style={{ fontSize: "18px", fontWeight: 500 }}
-                  >
-                    {plan.name}
-                  </h3>
-                  <p
-                    className="text-muted-foreground mb-5"
-                    style={{ fontSize: "13px" }}
-                  >
-                    {plan.audience}
-                  </p>
-                  <div className="flex items-baseline gap-1 mb-2">
-                    <span
-                      className="text-foreground"
-                      style={{
-                        fontSize: "40px",
-                        fontWeight: 300,
-                        letterSpacing: "-0.04em",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {plan.price}
-                    </span>
-                    {plan.period && (
-                      <span
-                        className="text-muted-foreground"
-                        style={{ fontSize: "15px" }}
-                      >
-                        {plan.period}
-                      </span>
-                    )}
-                  </div>
-                  <p
-                    className="mb-6 pb-6 border-b"
-                    style={{
-                      borderColor: "var(--border)",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      color: "var(--ora-signal)",
-                    }}
-                  >
-                    {plan.credits}
-                  </p>
-                </div>
-
-                <ul className="px-7 space-y-2.5 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5">
-                      <div
-                        className="w-4 h-4 rounded-full flex items-center justify-center mt-0.5 flex-shrink-0"
-                        style={{
-                          background: plan.highlighted
-                            ? "var(--ora-signal-light)"
-                            : "var(--secondary)",
-                        }}
-                      >
-                        <Check
-                          size={9}
-                          style={{
-                            color: plan.highlighted
-                              ? "var(--ora-signal)"
-                              : "var(--muted-foreground)",
-                          }}
-                          strokeWidth={2.5}
-                        />
-                      </div>
-                      <span
-                        className="text-foreground/75"
-                        style={{ fontSize: "13px", lineHeight: 1.5 }}
-                      >
-                        {f}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="p-7 pt-8">
-                  <Link
-                    to={plan.ctaHref}
-                    className={`group flex items-center justify-center gap-2 w-full py-3 rounded-full transition-all ${
-                      plan.highlighted
-                        ? "hover:opacity-90"
-                        : "bg-secondary text-foreground hover:bg-muted border border-border"
-                    }`}
-                    style={{
-                      background: plan.highlighted
-                        ? "var(--foreground)"
-                        : undefined,
-                      color: plan.highlighted ? "var(--background)" : undefined,
-                      fontSize: "14px",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {plan.cta}
-                    {plan.highlighted && (
-                      <ArrowRight
-                        size={14}
-                        className="group-hover:translate-x-0.5 transition-transform"
-                      />
-                    )}
-                  </Link>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Credit packs */}
-      <section className="pb-16 md:pb-24">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mb-6"
-          >
-            <div className="flex items-center gap-2.5 mb-2">
-              <Zap size={14} style={{ color: "var(--ora-signal)" }} />
-              <h3
-                className="text-foreground"
-                style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em" }}
-              >
-                {t("pricingPage.creditPacksTitle")}
-              </h3>
-            </div>
-            <p
-              className="text-muted-foreground"
-              style={{ fontSize: "14px", lineHeight: 1.55 }}
-            >
-              {t("pricingPage.creditPacksSubtitle")}
-            </p>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-3 gap-4">
-            {creditPacks.map((pack, i) => (
-              <motion.div
-                key={pack.name}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                className="bg-card border border-border rounded-xl px-6 py-5 flex items-center justify-between hover:border-border-strong transition-colors"
-                style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}
-              >
-                <div>
-                  <span style={{ fontSize: "15px", fontWeight: 500, color: "var(--foreground)" }}>
-                    {pack.name}
-                  </span>
-                  <span
-                    className="block mt-0.5"
-                    style={{ fontSize: "12px", color: "var(--muted-foreground)" }}
-                  >
-                    {pack.credits}
-                  </span>
-                  <span
-                    className="block mt-0.5"
-                    style={{ fontSize: "11px", color: "var(--ora-signal)", fontWeight: 500 }}
-                  >
-                    {pack.rate}
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "24px",
-                    fontWeight: 500,
-                    color: "var(--foreground)",
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {pack.price}
-                </span>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Enterprise callout */}
-      <section className="pb-16 md:pb-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="bg-card border border-border rounded-xl px-8 py-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6"
-            style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}
-          >
-            <div>
-              <h3 style={{ fontSize: "18px", fontWeight: 500, color: "var(--foreground)", letterSpacing: "-0.02em" }}>
-                {t("pricingPage.enterpriseTitle")}
-              </h3>
-              <p className="mt-1" style={{ fontSize: "14px", color: "var(--muted-foreground)", lineHeight: 1.55 }}>
-                {t("pricingPage.enterpriseDesc")}
-              </p>
-            </div>
-            <Link
-              to="#"
-              className="inline-flex items-center gap-2 border px-6 py-3 rounded-xl hover:bg-secondary transition-colors flex-shrink-0"
-              style={{
-                borderColor: "var(--border-strong)",
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "var(--foreground)",
-              }}
-            >
-              {t("pricingPage.enterpriseCta")}
-              <ArrowRight size={14} />
-            </Link>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Feature comparison table */}
-      <section className="py-20 md:py-28" style={{ background: "rgba(18,18,30,0.5)" }}>
-        <div className="max-w-[960px] mx-auto px-6">
-          <motion.h2
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-foreground mb-10"
-            style={{
-              fontSize: "clamp(1.5rem, 3vw, 2rem)",
-              fontWeight: 500,
-              letterSpacing: "-0.03em",
-            }}
-          >
-            {t("pricingPage.compareTitle")}
-          </motion.h2>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th
-                    className="text-left py-3 pr-4"
-                    style={{ fontSize: "12px", fontWeight: 500, color: "var(--muted-foreground)" }}
-                  >
-                    {t("pricingPage.featureLabel")}
-                  </th>
-                  {[t("pricingPage.starterName"), t("pricingPage.proName"), t("pricingPage.businessName")].map((h) => (
-                    <th
-                      key={h}
-                      className="text-center py-3 px-3"
-                      style={{ fontSize: "13px", fontWeight: 600, minWidth: "100px" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonFeatures.map((row) => (
-                  <tr key={row.name} className="border-b border-border/50">
-                    <td className="py-3 pr-4 text-foreground" style={{ fontSize: "14px" }}>
-                      {row.name}
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <FeatureCell value={row.starter} />
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <FeatureCell value={row.pro} />
-                    </td>
-                    <td className="py-3 px-3 text-center">
-                      <FeatureCell value={row.business} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <FAQ />
-    </>
+      )}
+    </div>
   );
 }

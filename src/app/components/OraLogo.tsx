@@ -31,6 +31,21 @@ export function OraLogo({
       aria-hidden="true"
     >
       <g transform={`rotate(${headTilt} 50 50)`}>
+        {/* Blue bandana tied around neck — visible layer behind head */}
+        <path
+          d="M 18 72 Q 50 88, 82 72 L 86 82 Q 50 96, 14 82 Z"
+          fill={blue}
+        />
+        {/* Bandana knot detail */}
+        <path
+          d="M 62 78 L 74 76 L 72 86 L 60 84 Z"
+          fill={blue}
+        />
+        <path
+          d="M 72 76 L 80 74 L 78 80 L 70 82 Z"
+          fill="#1E40AF"
+        />
+
         {/* Head — rounded shape */}
         <ellipse cx={50} cy={52} rx={32} ry={30} fill={fillColor} />
 
@@ -45,7 +60,7 @@ export function OraLogo({
           d="M 22 38 L 28 12 L 40 34 Z"
           fill={fillColor}
         />
-        {/* Left ear inner */}
+        {/* Left ear inner (blue) */}
         <path
           d="M 26 34 L 30 18 L 37 33 Z"
           fill={blue}
@@ -55,6 +70,11 @@ export function OraLogo({
         <path
           d="M 78 38 Q 76 22, 68 18 Q 62 20, 60 34 Z"
           fill={fillColor}
+        />
+        {/* Right ear inner (blue, visible through the fold) */}
+        <path
+          d="M 68 32 Q 66 22, 69 20 Q 64 22, 62 32 Z"
+          fill={blue}
         />
 
         {/* Muzzle — white round area */}
@@ -82,17 +102,9 @@ export function OraLogo({
           fill="none"
         />
 
-        {/* Blue collar accent */}
-        <path
-          d="M 28 74 Q 50 82, 72 74"
-          stroke={blue}
-          strokeWidth={3.5}
-          strokeLinecap="round"
-          fill="none"
-        />
-
-        {/* Collar tag */}
-        <circle cx={50} cy={80} r={3} fill={blue} />
+        {/* Small blue medallion on bandana */}
+        <circle cx={50} cy={80} r={2.5} fill="#FFFFFF" />
+        <circle cx={50} cy={80} r={1.2} fill={blue} />
       </g>
     </svg>
   );
@@ -121,23 +133,32 @@ export function OraLogo({
       aria-hidden="true"
     >
       <g transform={`rotate(${headTilt} 50 48)`}>
-        {/* Compact head for small sizes */}
+        {/* Blue bandana peek at bottom (compact) */}
+        <path d="M 16 76 Q 50 90, 84 76 L 86 84 Q 50 98, 14 84 Z" fill={blue} />
+        {/* Head */}
         <ellipse cx={50} cy={50} rx={34} ry={32} fill={fillColor} />
+        {/* Blaze */}
         <path
           d="M 43 28 Q 46 40, 44 50 Q 42 60, 46 70 L 54 70 Q 58 60, 56 50 Q 54 40, 57 28 Z"
           fill="#FFFFFF"
         />
+        {/* Left ear + blue inner */}
         <path d="M 20 38 L 27 10 L 41 34 Z" fill={fillColor} />
         <path d="M 25 34 L 29 16 L 38 32 Z" fill={blue} />
+        {/* Right ear + blue inner peek */}
         <path d="M 80 38 Q 78 20, 69 16 Q 63 18, 60 34 Z" fill={fillColor} />
+        <path d="M 68 32 Q 66 22, 69 20 Q 64 22, 62 32 Z" fill={blue} />
+        {/* Muzzle */}
         <ellipse cx={50} cy={62} rx={14} ry={10} fill="#FFFFFF" />
         <ellipse cx={50} cy={58} rx={4.5} ry={3.5} fill={fillColor} />
+        {/* Eyes */}
         <ellipse cx={37} cy={46} rx={5.5} ry={5.8} fill="#FFFFFF" />
         <ellipse cx={38} cy={46} rx={3.2} ry={3.4} fill={fillColor} />
         <circle cx={39.5} cy={44.5} r={1.2} fill="#FFFFFF" />
         <ellipse cx={63} cy={46} rx={5} ry={5.3} fill="#FFFFFF" />
         <ellipse cx={64} cy={46} rx={2.8} ry={3} fill={fillColor} />
         <circle cx={65.2} cy={44.5} r={1} fill="#FFFFFF" />
+        {/* Smile */}
         <path d="M 46 64 Q 50 67, 54 64" stroke={fillColor} strokeWidth={1.5} strokeLinecap="round" fill="none" />
       </g>
     </svg>
