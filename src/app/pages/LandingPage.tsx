@@ -21,8 +21,8 @@ const GALLERY: { img: string; verdict: "safe" | "revise" | "block"; score: numbe
   { img: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=700&h=900&fit=crop&q=85", verdict: "safe",   score: 89, tag: "Interior" },
   { img: "https://images.unsplash.com/photo-1533973427779-4b8c6f9e1d1f?w=700&h=900&fit=crop&q=85", verdict: "block",  score: 42, tag: "Logo visible" },
 ];
-const BEFORE_IMG = "https://images.unsplash.com/photo-1508921912186-1d1a45ebb3c1?w=700&h=900&fit=crop&q=85";
-const AFTER_IMG  = "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=700&h=900&fit=crop&q=85";
+// Same visual for before/after — filter applied to BEFORE to simulate AI artefacts/off-brand
+const BEFORE_AFTER_IMG = "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=800&h=1000&fit=crop&q=85";
 
 function verdictColor(v: "safe" | "revise" | "block") {
   if (v === "safe") return { bg: "#DCFCE7", fg: "#15803D", label: { fr: "Publier", en: "Publish" } };
@@ -219,8 +219,8 @@ export function LandingPage() {
 
         <div className="grid md:grid-cols-2 gap-5 md:gap-8 items-stretch">
           {[
-            { img: BEFORE_IMG, label: isFr ? "Avant" : "Before", score: 58, verdict: "revise" as const, issues: isFr ? ["Main déformée", "Ton trop chaud vs palette"] : ["Distorted hand", "Warm tone vs palette"] },
-            { img: AFTER_IMG,  label: isFr ? "Après" : "After",  score: 91, verdict: "safe"   as const, issues: isFr ? ["Anatomie propre", "Palette respectée"] : ["Clean anatomy", "Palette matched"] },
+            { label: isFr ? "Avant" : "Before", score: 58, verdict: "revise" as const, issues: isFr ? ["Palette désaturée", "Grain/artefacts IA visibles", "Contraste plat"] : ["Desaturated palette", "Visible AI grain", "Flat contrast"], isBefore: true },
+            { label: isFr ? "Après" : "After",  score: 91, verdict: "safe"   as const, issues: isFr ? ["Palette respectée", "Netteté propre", "Impact visuel fort"] : ["On-palette", "Clean sharpness", "Strong visual impact"], isBefore: false },
           ].map((side, i) => {
             const v = verdictColor(side.verdict);
             return (
@@ -233,7 +233,23 @@ export function LandingPage() {
                 className="relative rounded-3xl overflow-hidden"
                 style={{ aspectRatio: "4 / 5" }}
               >
-                <img src={side.img} alt="" className="w-full h-full object-cover" loading="lazy" />
+                <img
+                  src={BEFORE_AFTER_IMG}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  style={side.isBefore ? { filter: "grayscale(0.35) saturate(0.6) contrast(0.82) brightness(0.92)" } : undefined}
+                />
+                {side.isBefore && (
+                  /* Subtle noise overlay to simulate AI artefacts */
+                  <div
+                    className="absolute inset-0 pointer-events-none mix-blend-overlay"
+                    style={{
+                      backgroundImage:
+                        "radial-gradient(circle at 30% 40%, rgba(255,255,255,0.08), transparent 35%), radial-gradient(circle at 70% 60%, rgba(0,0,0,0.12), transparent 40%)",
+                    }}
+                  />
+                )}
                 <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%)" }} />
                 <div className="absolute top-5 left-5 flex items-center gap-2">
                   <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide" style={{ background: "rgba(255,255,255,0.95)", color: BLACK }}>{side.label}</span>
