@@ -3,64 +3,61 @@ import { Link } from "react-router";
 import { motion } from "motion/react";
 import {
   Shield, Palette, Sparkles, ArrowRight, Check, Upload,
-  Eye, RefreshCw, ChevronDown,
+  Eye, RefreshCw, ChevronDown, AlertTriangle, CheckCircle2,
 } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
 
+/* ═══════════════════════════════════════════════════════════
+   LANDING — product-focused, no stock photos
+   Tells a clear story: problem → how → what we check → pricing
+   ═══════════════════════════════════════════════════════════ */
+
 const BLUE = "#1D4ED8";
 const BLACK = "#0A0A0A";
 
-/**
- * Coherent visual theme: high-end fashion/beauty portraits.
- * All images from Unsplash (known-stable IDs). Each <img> has a gradient
- * fallback via onError so a broken URL never shows a broken icon.
- */
-const HERO_IMG = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=1000&h=1250&fit=crop&q=90";
-
-const GALLERY: { img: string; verdict: "safe" | "revise" | "block"; score: number; tag: string }[] = [
-  { img: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=1200&h=900&fit=crop&q=90",  verdict: "safe",   score: 91, tag: "Campagne beauté" },
-  { img: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900&h=1100&fit=crop&q=90",  verdict: "revise", score: 68, tag: "Portrait studio" },
-  { img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=900&h=1100&fit=crop&q=90",  verdict: "safe",   score: 86, tag: "Éditorial mode" },
-  { img: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=800&h=1100&fit=crop&q=90",  verdict: "safe",   score: 88, tag: "Lookbook" },
-  { img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&h=1100&fit=crop&q=90",  verdict: "revise", score: 72, tag: "Portrait brand" },
-  { img: "https://images.unsplash.com/photo-1552058544-f2b08422138a?w=800&h=1100&fit=crop&q=90",  verdict: "block",  score: 42, tag: "Logo visible" },
-];
-
-// Same image for before/after — filter applied to BEFORE simulates AI artefacts.
-const BEFORE_AFTER_IMG = "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=900&h=1100&fit=crop&q=90";
-
-/** Inline SVG gradient fallback — used by onError to guarantee no broken images. */
-function fallbackDataUri(seed: number): string {
-  const hues = [220, 210, 200, 230, 240, 250];
-  const h = hues[seed % hues.length];
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1000'>
-    <defs>
-      <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
-        <stop offset='0%' stop-color='hsl(${h}, 40%, 88%)'/>
-        <stop offset='100%' stop-color='hsl(${h}, 35%, 65%)'/>
-      </linearGradient>
-    </defs>
-    <rect width='800' height='1000' fill='url(#g)'/>
-    <circle cx='400' cy='400' r='180' fill='hsl(${h}, 30%, 50%)' opacity='0.35'/>
-    <rect x='250' y='580' width='300' height='320' rx='150' fill='hsl(${h}, 30%, 45%)' opacity='0.45'/>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-function handleImgError(seed: number) {
-  return (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (img.dataset.fallback === "1") return;
-    img.dataset.fallback = "1";
-    img.src = fallbackDataUri(seed);
-  };
-}
-
-function verdictColor(v: "safe" | "revise" | "block") {
-  if (v === "safe") return { bg: "#DCFCE7", fg: "#15803D", label: { fr: "Publier", en: "Publish" } };
-  if (v === "block") return { bg: "#FEE2E2", fg: "#B91C1C", label: { fr: "Bloquer", en: "Block" } };
-  return { bg: "#FEF3C7", fg: "#C2410C", label: { fr: "Retoucher", en: "Revise" } };
+/** Fake "AI visual" using gradient + noise — always renders, coherent, no external deps. */
+function FakeVisual({ seed = 0, className = "", children }: { seed?: number; className?: string; children?: React.ReactNode }) {
+  const palettes = [
+    ["#F5D0A9", "#D4A574", "#8B6F47"], // warm
+    ["#C8B5E8", "#9B7EBD", "#5D4A8A"], // purple
+    ["#A8D5BA", "#6FA890", "#3E6B5A"], // green
+    ["#F5B5B5", "#D97979", "#8B3A3A"], // red
+    ["#B5CEEB", "#7AA3D4", "#3E6B9A"], // blue
+    ["#E8D5C4", "#C4A584", "#7A5A3D"], // neutral
+  ];
+  const p = palettes[seed % palettes.length];
+  return (
+    <div
+      className={`relative overflow-hidden ${className}`}
+      style={{
+        background: `
+          radial-gradient(circle at 30% 25%, ${p[0]} 0%, transparent 45%),
+          radial-gradient(circle at 75% 60%, ${p[1]} 0%, transparent 55%),
+          radial-gradient(circle at 45% 85%, ${p[2]} 0%, transparent 50%),
+          linear-gradient(135deg, ${p[0]} 0%, ${p[2]} 100%)
+        `,
+      }}
+    >
+      {/* Fake "subject silhouette" — abstract portrait suggestion */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="w-2/5 h-3/5 rounded-full opacity-30"
+          style={{ background: `radial-gradient(circle, ${p[2]} 0%, transparent 70%)`, filter: "blur(20px)" }}
+        />
+      </div>
+      {/* Subtle noise/grain to read as "photo" */}
+      <div
+        className="absolute inset-0 opacity-[0.12] mix-blend-overlay"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><filter id='n'><feTurbulence baseFrequency='0.9' seed='5'/></filter><rect width='100' height='100' filter='url(%23n)' opacity='0.4'/></svg>\")",
+        }}
+      />
+      {children}
+    </div>
+  );
 }
 
 export function LandingPage() {
@@ -70,380 +67,419 @@ export function LandingPage() {
 
   return (
     <div style={{ background: "#FFFFFF", color: BLACK }}>
-      {/* ─── HERO ─── */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 pt-14 md:pt-20 pb-16 md:pb-24">
-        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-center">
+      {/* ═══ HERO ═══ */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pt-12 md:pt-20 pb-20 md:pb-32">
+        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-14 items-center">
+          {/* Left: copy */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium mb-6" style={{ background: "#EFF6FF", color: BLUE }}>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-7"
+                 style={{ background: "#EFF6FF", color: BLUE }}>
               <OraLogo size={16} variant="mark" animate={false} color={BLUE} />
-              {isFr ? "Audit · Marque · Risques" : "Audit · Brand · Risks"}
+              {isFr ? "Le copilote qualité pour tes visuels IA" : "The quality copilot for AI visuals"}
             </div>
-            <h1 className="mb-6 whitespace-pre-line" style={{ fontSize: "clamp(2.5rem, 6vw, 5rem)", fontWeight: 800, lineHeight: 1.02, letterSpacing: "-0.035em" }}>
+            <h1
+              className="mb-6 whitespace-pre-line"
+              style={{
+                fontSize: "clamp(2.5rem, 6vw, 5.25rem)",
+                fontWeight: 800,
+                lineHeight: 1,
+                letterSpacing: "-0.04em",
+              }}
+            >
               {isFr ? "Tes visuels IA,\npublie-les\nsans stress." : "Your AI visuals,\npublished\nwith confidence."}
             </h1>
-            <p className="mb-8 max-w-lg" style={{ fontSize: "clamp(1.05rem, 1.5vw, 1.25rem)", lineHeight: 1.5, color: "#52525B" }}>
+            <p
+              className="mb-9 max-w-lg"
+              style={{ fontSize: "1.15rem", lineHeight: 1.5, color: "#52525B" }}
+            >
               {isFr
-                ? "Dépose un visuel IA. Ora l'audite, repère les risques légaux, note la cohérence avec ta marque, juge le créatif. Verdict clair, prompt optimisé, régénération en un clic."
-                : "Drop an AI visual. Ora audits it, flags legal risks, scores brand fit, judges the creative. Clear verdict, optimized prompt, one-click regeneration."}
+                ? "Tu génères avec MidJourney, Flux, DALL-E. Ora audite, repère les risques légaux, juge la cohérence avec ta marque, note le créatif — et régénère en mieux."
+                : "You generate with MidJourney, Flux, DALL-E. Ora audits, flags legal risks, judges brand fit, grades the creative — and regenerates better."}
             </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link to={user ? "/hub/analyze" : "/login"} className="inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full text-sm font-semibold hover:opacity-90 transition-all" style={{ background: BLUE, color: "#FFFFFF" }}>
+            <div className="flex flex-col sm:flex-row gap-3 mb-7">
+              <Link to={user ? "/hub/analyze" : "/login"}
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all"
+                    style={{ background: BLUE, color: "#FFFFFF" }}>
                 {isFr ? "Scanner un visuel" : "Scan a visual"} <ArrowRight size={16} />
               </Link>
-              <Link to="/pricing" className="inline-flex items-center justify-center gap-2 px-6 py-4 rounded-full text-sm font-semibold" style={{ background: "#F4F4F5", color: BLACK }}>
+              <Link to="/pricing"
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-semibold"
+                    style={{ background: "#F4F4F5", color: BLACK }}>
                 {isFr ? "Voir les offres" : "See pricing"}
               </Link>
             </div>
-            <div className="mt-6 flex flex-wrap items-center gap-5 text-xs" style={{ color: "#71717A" }}>
-              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} /> {isFr ? "5 scans gratuits" : "5 free scans"}</span>
-              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} /> {isFr ? "Sans carte" : "No card"}</span>
-              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} /> {isFr ? "En 30 secondes" : "30 seconds"}</span>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs" style={{ color: "#71717A" }}>
+              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "5 scans gratuits / mois" : "5 free scans / month"}</span>
+              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "Sans carte" : "No card"}</span>
+              <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "30 secondes" : "30 seconds"}</span>
             </div>
           </motion.div>
 
-          {/* Big visual showcase in hero */}
-          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.15 }} className="relative">
-            <div className="relative rounded-3xl overflow-hidden" style={{ aspectRatio: "4 / 5", boxShadow: "0 30px 60px -20px rgba(0,0,0,0.25)" }}>
-              <img src={HERO_IMG} alt="" className="w-full h-full object-cover" onError={handleImgError(0)} />
-              {/* Score overlay top */}
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="absolute top-5 left-5 right-5 flex items-center justify-between">
-                <div className="px-3 py-2 rounded-full flex items-center gap-2" style={{ background: "rgba(255,255,255,0.95)", backdropFilter: "blur(10px)" }}>
-                  <OraLogo size={20} variant="mark" animate={false} color={BLACK} />
-                  <span className="text-xs font-bold">Ora</span>
-                </div>
-                <div className="px-3 py-2 rounded-full flex items-center gap-2" style={{ background: "#DCFCE7", color: "#15803D" }}>
-                  <Check size={14} />
-                  <span className="text-xs font-bold">{isFr ? "Publier" : "Publish"}</span>
-                </div>
-              </motion.div>
-              {/* KPI overlay bottom */}
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="absolute left-5 right-5 bottom-5 p-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.96)", backdropFilter: "blur(14px)" }}>
-                <div className="flex items-baseline justify-between mb-3">
-                  <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "#71717A" }}>{isFr ? "Score global" : "Overall"}</span>
-                  <span className="text-3xl font-black" style={{ color: "#15803D" }}>89<span className="text-sm" style={{ color: "#71717A" }}>/100</span></span>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: isFr ? "Risques" : "Legal", score: 95, color: "#15803D" },
-                    { label: isFr ? "Marque" : "Brand", score: 84, color: "#1D4ED8" },
-                    { label: isFr ? "Créatif" : "Creative", score: 88, color: "#15803D" },
-                  ].map((k) => (
-                    <div key={k.label}>
-                      <div className="text-[10px] font-medium mb-1" style={{ color: "#71717A" }}>{k.label}</div>
-                      <div className="text-lg font-bold" style={{ color: k.color }}>{k.score}</div>
-                      <div className="h-1 rounded-full mt-1" style={{ background: "#F4F4F5" }}>
-                        <div className="h-full rounded-full" style={{ width: `${k.score}%`, background: k.color }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            </div>
-            {/* Floating mascot peek */}
-            <motion.div initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 1.2 }} className="absolute -bottom-8 -left-8 hidden md:block">
-              <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "#FFFFFF", boxShadow: "0 10px 30px rgba(0,0,0,0.12)" }}>
-                <OraLogo size={80} variant="mascot" animate={true} color={BLACK} />
-              </div>
-            </motion.div>
+          {/* Right: Ora UI mockup */}
+          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.15 }}>
+            <ScanMockup isFr={isFr} />
           </motion.div>
         </div>
       </section>
 
-      {/* ─── GALLERY — editorial full-bleed ─── */}
-      <section style={{ background: "#0A0A0A", color: "#FFFFFF" }}>
-        {/* Intro */}
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
-          <div className="grid md:grid-cols-[1fr_auto] gap-5 items-end mb-10 md:mb-16">
-            <div>
-              <p className="text-sm font-semibold mb-3" style={{ color: "#60A5FA" }}>{isFr ? "Exemples d'audits" : "Real audits"}</p>
-              <h2 style={{ fontSize: "clamp(2rem, 5vw, 4rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1 }}>
-                {isFr ? "Des visuels." : "Visuals."}<br />
-                <span style={{ color: "#71717A" }}>{isFr ? "Des verdicts." : "Verdicts."}</span>
-              </h2>
-            </div>
-            <p className="max-w-xs text-base md:text-right" style={{ color: "#A1A1AA" }}>
-              {isFr
-                ? "Pour chaque visuel IA : trois scores, un verdict, des conseils actionnables."
-                : "For each AI visual: three scores, a verdict, actionable advice."}
-            </p>
+      {/* ═══ PROBLEM ═══ */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="max-w-5xl mx-auto px-5 md:px-8 py-20 md:py-28 text-center">
+          <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>{isFr ? "Le problème" : "The problem"}</p>
+          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }} className="mb-5 md:mb-6">
+            {isFr ? "Tu générés. Mais c'est publiable ?" : "You generate. But is it publishable?"}
+          </h2>
+          <p className="text-base md:text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: "#52525B" }}>
+            {isFr
+              ? "Un logo Nike qui traîne. Une main à six doigts. Un ton qui ne ressemble pas à ta marque. Tu ne le vois pas toujours — Ora oui."
+              : "A stray Nike logo. A six-fingered hand. A tone that doesn't match your brand. You don't always catch it — Ora does."}
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-12 text-left">
+            {[
+              { icon: AlertTriangle, title: isFr ? "Risques cachés" : "Hidden risks", body: isFr ? "Logos déposés, ressemblances, claims régulés — des procès à venir." : "Trademarks, likenesses, regulated claims — lawsuits waiting." },
+              { icon: Palette, title: isFr ? "Hors-marque" : "Off-brand", body: isFr ? "Palette flottante, ton incohérent, mood à côté." : "Floating palette, incoherent tone, mood drift." },
+              { icon: Eye, title: isFr ? "Moyen, pas bon" : "Mediocre, not good", body: isFr ? "Stock photo générique. Personne ne scroll pour ça." : "Generic stock feel. Nobody scrolls for that." },
+            ].map(({ icon: Icon, title, body }, i) => (
+              <div key={i} className="p-6 rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+                <Icon size={22} style={{ color: "#C2410C" }} className="mb-4" />
+                <h3 className="font-bold text-base mb-2">{title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+              </div>
+            ))}
           </div>
         </div>
-
-        {/* Full-bleed editorial grid: 1 big + 2 medium + 3 tall, full width */}
-        <div className="grid grid-cols-6 gap-1 md:gap-2">
-          {GALLERY.map((g, i) => {
-            const v = verdictColor(g.verdict);
-            // Layout: big first, then 2 square-ish, then 3 tall. Responsive.
-            const spans = [
-              "col-span-6 md:col-span-4 md:row-span-2",   // hero image
-              "col-span-3 md:col-span-2",
-              "col-span-3 md:col-span-2",
-              "col-span-2",
-              "col-span-2",
-              "col-span-2",
-            ];
-            const aspects = [
-              "aspect-[16/10] md:aspect-[16/11]",
-              "aspect-square md:aspect-[5/4]",
-              "aspect-square md:aspect-[5/4]",
-              "aspect-[3/4]",
-              "aspect-[3/4]",
-              "aspect-[3/4]",
-            ];
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{ delay: i * 0.05, duration: 0.5 }}
-                className={`relative overflow-hidden group ${spans[i]} ${aspects[i]}`}
-                style={{ background: "#1A1A1A" }}
-              >
-                <img
-                  src={g.img}
-                  alt=""
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  loading="lazy"
-                  onError={handleImgError(i + 1)}
-                />
-                <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.1) 40%, transparent 60%)" }} />
-                <div className="absolute top-4 left-4 px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5" style={{ background: v.bg, color: v.fg }}>
-                  {g.verdict === "safe" && <Check size={11} />}
-                  {isFr ? v.label.fr : v.label.en}
-                </div>
-                <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between text-white">
-                  <span className="text-xs md:text-sm font-medium opacity-90">{g.tag}</span>
-                  <span className="text-3xl md:text-5xl font-black leading-none tracking-tight">{g.score}</span>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-16 text-center">
-          <Link to={user ? "/hub/analyze" : "/login"} className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold" style={{ background: "#FFFFFF", color: BLACK }}>
-            {isFr ? "Scanner mon premier visuel" : "Scan my first visual"} <ArrowRight size={15} />
-          </Link>
-        </div>
       </section>
 
-      {/* ─── BEFORE / AFTER REGEN ─── */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
-        <div className="text-center mb-12">
-          <p className="text-sm font-semibold mb-2" style={{ color: BLUE }}>{isFr ? "Régénération 1-clic" : "One-click regeneration"}</p>
-          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }} className="mb-4">
-            {isFr ? "Un mauvais visuel devient bon." : "A weak visual becomes strong."}
+      {/* ═══ HOW IT WORKS ═══ */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+        <div className="text-center mb-14">
+          <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>{isFr ? "Comment ça marche" : "How it works"}</p>
+          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
+            {isFr ? "3 étapes. 30 secondes." : "3 steps. 30 seconds."}
           </h2>
-          <p className="text-base md:text-lg max-w-xl mx-auto" style={{ color: "#52525B" }}>
-            {isFr
-              ? "Ora propose un prompt optimisé avec ton contexte, ta marque, ta cible. Un clic, un nouveau visuel scoré."
-              : "Ora builds an optimized prompt with your context, brand, and audience. One click, one newly scored visual."}
-          </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5 md:gap-8 items-stretch">
-          {[
-            { label: isFr ? "Avant" : "Before", score: 58, verdict: "revise" as const, issues: isFr ? ["Palette désaturée", "Grain/artefacts IA visibles", "Contraste plat"] : ["Desaturated palette", "Visible AI grain", "Flat contrast"], isBefore: true },
-            { label: isFr ? "Après" : "After",  score: 91, verdict: "safe"   as const, issues: isFr ? ["Palette respectée", "Netteté propre", "Impact visuel fort"] : ["On-palette", "Clean sharpness", "Strong visual impact"], isBefore: false },
-          ].map((side, i) => {
-            const v = verdictColor(side.verdict);
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: i === 0 ? -20 : 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="relative rounded-3xl overflow-hidden"
-                style={{ aspectRatio: "4 / 5" }}
-              >
-                <img
-                  src={BEFORE_AFTER_IMG}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  onError={handleImgError(side.isBefore ? 10 : 11)}
-                  style={side.isBefore ? { filter: "grayscale(0.35) saturate(0.6) contrast(0.82) brightness(0.92)" } : undefined}
-                />
-                {side.isBefore && (
-                  /* Subtle noise overlay to simulate AI artefacts */
-                  <div
-                    className="absolute inset-0 pointer-events-none mix-blend-overlay"
-                    style={{
-                      backgroundImage:
-                        "radial-gradient(circle at 30% 40%, rgba(255,255,255,0.08), transparent 35%), radial-gradient(circle at 70% 60%, rgba(0,0,0,0.12), transparent 40%)",
-                    }}
-                  />
-                )}
-                <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 50%)" }} />
-                <div className="absolute top-5 left-5 flex items-center gap-2">
-                  <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide" style={{ background: "rgba(255,255,255,0.95)", color: BLACK }}>{side.label}</span>
-                  <span className="px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: v.bg, color: v.fg }}>
-                    {isFr ? v.label.fr : v.label.en}
-                  </span>
-                </div>
-                <div className="absolute bottom-5 left-5 right-5 text-white">
-                  <div className="flex items-baseline gap-2 mb-3">
-                    <span className="text-5xl font-black leading-none">{side.score}</span>
-                    <span className="text-sm opacity-75">/100</span>
-                  </div>
-                  <ul className="space-y-1 text-sm">
-                    {side.issues.map((iss) => (
-                      <li key={iss} className="flex items-center gap-2">
-                        <span className="w-1 h-1 rounded-full bg-white" />
-                        <span className="opacity-90">{iss}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="grid md:grid-cols-3 gap-5 md:gap-6">
+          {/* Step 1: Drop */}
+          <StepCard
+            n="01"
+            title={isFr ? "Dépose ton visuel" : "Drop your visual"}
+            body={isFr ? "Glisse une image IA. Image ou vidéo, jusqu'à 20 Mo." : "Drag an AI image. Image or video, up to 20 MB."}
+          >
+            <div
+              className="aspect-[4/3] rounded-2xl flex items-center justify-center border-2 border-dashed"
+              style={{ background: "#FAFAFA", borderColor: "#D4D4D8" }}
+            >
+              <div className="text-center">
+                <Upload size={28} style={{ color: "#71717A", margin: "0 auto 8px" }} />
+                <span className="text-xs font-medium" style={{ color: "#71717A" }}>
+                  {isFr ? "Déposer ici" : "Drop here"}
+                </span>
+              </div>
+            </div>
+          </StepCard>
+
+          {/* Step 2: Score */}
+          <StepCard
+            n="02"
+            title={isFr ? "Ora audite" : "Ora audits"}
+            body={isFr ? "3 KPIs. Verdict clair : publier, retoucher, bloquer." : "3 KPIs. Clear verdict: publish, revise, block."}
+          >
+            <div className="aspect-[4/3] rounded-2xl p-4 flex flex-col justify-center gap-2"
+                 style={{ background: "#FAFAFA", border: "1px solid #E4E4E7" }}>
+              <ScoreRow label="Legal" score={88} color="#15803D" />
+              <ScoreRow label="Brand" score={76} color={BLUE} />
+              <ScoreRow label="Creative" score={82} color="#15803D" />
+            </div>
+          </StepCard>
+
+          {/* Step 3: Regen */}
+          <StepCard
+            n="03"
+            title={isFr ? "Régénère mieux" : "Regenerate better"}
+            body={isFr ? "Un clic. Nouveau visuel, contexte préservé." : "One click. New visual, context preserved."}
+          >
+            <div className="aspect-[4/3] rounded-2xl flex items-center justify-center gap-3"
+                 style={{ background: "#FAFAFA", border: "1px solid #E4E4E7" }}>
+              <FakeVisual seed={2} className="w-20 h-24 rounded-lg" />
+              <RefreshCw size={22} style={{ color: BLUE }} />
+              <FakeVisual seed={4} className="w-20 h-24 rounded-lg" />
+            </div>
+          </StepCard>
         </div>
       </section>
 
-      {/* ─── HOW IT WORKS ─── */}
-      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold mb-2" style={{ color: BLUE }}>{isFr ? "Comment ça marche" : "How it works"}</p>
-            <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-              {isFr ? "3 étapes. 30 secondes." : "3 steps. 30 seconds."}
+      {/* ═══ 3 KPIs EXPLAINED ═══ */}
+      <section className="border-t" style={{ borderColor: "#E4E4E7", background: BLACK, color: "#FFFFFF" }}>
+        <div className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
+          <div className="max-w-2xl mb-12 md:mb-16">
+            <p className="text-sm font-semibold mb-3" style={{ color: "#60A5FA" }}>{isFr ? "Ce qu'Ora vérifie" : "What Ora checks"}</p>
+            <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
+              {isFr ? "3 questions. Une réponse nette." : "3 questions. One clear answer."}
             </h2>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5">
+          <div className="space-y-4">
             {[
-              { icon: Upload, step: "01", title: isFr ? "Dépose" : "Drop", body: isFr ? "Glisse ton visuel — image ou vidéo, 20 Mo max." : "Drop your visual — image or video, 20 MB max." },
-              { icon: Eye,    step: "02", title: isFr ? "Audite" : "Audit", body: isFr ? "3 KPIs, recommandations taguées, verdict clair." : "3 KPIs, tagged recommendations, clear verdict." },
-              { icon: RefreshCw, step: "03", title: isFr ? "Régénère" : "Regenerate", body: isFr ? "Un clic pour une meilleure version scorée." : "One click for a better, freshly scored version." },
-            ].map(({ icon: Icon, step, title, body }, i) => (
-              <motion.div key={step} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08, duration: 0.4 }} className="p-7 rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
-                <div className="flex items-center justify-between mb-5">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#EFF6FF", color: BLUE }}>
-                    <Icon size={22} />
-                  </div>
-                  <span className="text-3xl font-black" style={{ color: "#E4E4E7" }}>{step}</span>
+              {
+                icon: Shield,
+                title: "Legal",
+                q: isFr ? "Puis-je publier sans risque ?" : "Can I publish safely?",
+                body: isFr
+                  ? "Logos déposés, ressemblances célébrités, allégations régulées, biais. Détection heuristique — pas un avis juridique."
+                  : "Trademarks, celebrity likenesses, regulated claims, bias. Heuristic detection — not legal advice.",
+                weight: "30%",
+              },
+              {
+                icon: Palette,
+                title: "Brand fit",
+                q: isFr ? "Est-ce que ça ressemble à ma marque ?" : "Does this match my brand?",
+                body: isFr
+                  ? "Palette, ton, style photo, messages clés, audience cible. Scoré contre ton Brand Vault."
+                  : "Palette, tone, photo style, key messages, target audience. Scored against your Brand Vault.",
+                weight: "35%",
+              },
+              {
+                icon: Sparkles,
+                title: "Creative",
+                q: isFr ? "Est-ce que ça tape vraiment ?" : "Is it actually good?",
+                body: isFr
+                  ? "Composition, impact visuel, artefacts IA, originalité, potentiel campagne."
+                  : "Composition, visual impact, AI artefacts, originality, campaign potential.",
+                weight: "35%",
+              },
+            ].map(({ icon: Icon, title, q, body, weight }, i) => (
+              <motion.div
+                key={title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ delay: i * 0.1, duration: 0.4 }}
+                className="grid md:grid-cols-[auto_1fr_auto] gap-5 md:gap-8 items-start md:items-center py-8 border-t"
+                style={{ borderColor: "#27272A" }}
+              >
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ background: "#171717", border: "1px solid #27272A" }}
+                >
+                  <Icon size={22} style={{ color: "#60A5FA" }} />
                 </div>
-                <h3 className="text-xl font-bold mb-2">{title}</h3>
-                <p className="text-base leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+                <div>
+                  <div className="flex items-baseline gap-3 mb-2">
+                    <h3 className="text-2xl md:text-3xl font-bold" style={{ letterSpacing: "-0.01em" }}>{title}</h3>
+                    <span className="text-sm" style={{ color: "#71717A" }}>— {q}</span>
+                  </div>
+                  <p className="text-base leading-relaxed" style={{ color: "#A1A1AA", maxWidth: "50ch" }}>{body}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs uppercase tracking-wide" style={{ color: "#71717A" }}>{isFr ? "Poids" : "Weight"}</span>
+                  <div className="text-2xl font-black" style={{ color: "#FFFFFF" }}>{weight}</div>
+                </div>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── 3 KPIs ─── */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
+      {/* ═══ FOR WHO ═══ */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
         <div className="text-center mb-14">
-          <p className="text-sm font-semibold mb-2" style={{ color: BLUE }}>{isFr ? "Ce qu'Ora vérifie" : "What Ora checks"}</p>
-          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-            {isFr ? "3 questions. Une réponse nette." : "3 questions. One clear answer."}
+          <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>{isFr ? "Pour qui" : "For whom"}</p>
+          <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
+            {isFr ? "Du freelance à l'agence." : "From freelance to agency."}
           </h2>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-5">
+        <div className="grid md:grid-cols-2 gap-5">
           {[
-            { icon: Shield, color: "#B91C1C", bg: "#FEF2F2", title: isFr ? "Risques" : "Legal flags", q: isFr ? "Puis-je publier sans risque ?" : "Can I publish safely?", body: isFr ? "Logos déposés, célébrités, allégations régulées, biais — détection heuristique." : "Trademarks, celebrity likenesses, regulated claims, bias — heuristic detection." },
-            { icon: Palette, color: BLUE, bg: "#EFF6FF", title: isFr ? "Cohérence marque" : "Brand fit", q: isFr ? "Ça ressemble à ma marque ?" : "Does this match my brand?", body: isFr ? "Palette, ton, style photo, messages, audience — contre ton Brand Vault." : "Palette, tone, style, messages, audience — against your Brand Vault." },
-            { icon: Sparkles, color: "#15803D", bg: "#F0FDF4", title: isFr ? "Créatif" : "Creative", q: isFr ? "Est-ce que ça tape ?" : "Is it actually good?", body: isFr ? "Composition, impact, artefacts IA, originalité, potentiel campagne." : "Composition, impact, AI artefacts, originality, campaign potential." },
-          ].map(({ icon: Icon, color, bg, title, q, body }) => (
-            <div key={title} className="p-6 rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ background: bg, color }}>
-                <Icon size={22} />
+            {
+              title: isFr ? "Créateurs & freelances" : "Creators & freelancers",
+              sub: isFr ? "Scan rapide, verdict clair" : "Fast scan, clear verdict",
+              points: isFr
+                ? ["Check en 30 s avant de livrer", "Régénération 1-clic", "Historique 30 jours"]
+                : ["30-second check before delivery", "One-click regeneration", "30-day history"],
+              price: isFr ? "À partir de €0" : "From €0",
+            },
+            {
+              title: isFr ? "Agences & brands" : "Agencies & brands",
+              sub: isFr ? "Brand Vault, rapports, équipe" : "Brand Vault, reports, team",
+              points: isFr
+                ? ["Brand Vault complet (logo, palette, ton)", "Rapports PDF brandés", "Audit log horodaté, multi-comptes"]
+                : ["Full Brand Vault (logo, palette, tone)", "Branded PDF reports", "Timestamped audit log, team seats"],
+              price: "€199/mo",
+            },
+          ].map((p) => (
+            <div key={p.title} className="p-8 rounded-3xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+              <h3 className="text-xl font-bold mb-1">{p.title}</h3>
+              <p className="text-sm mb-6" style={{ color: "#71717A" }}>{p.sub}</p>
+              <ul className="space-y-2.5 mb-6">
+                {p.points.map((pt) => (
+                  <li key={pt} className="flex items-start gap-2.5 text-sm">
+                    <CheckCircle2 size={16} style={{ color: BLUE }} className="mt-0.5 shrink-0" />
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-center justify-between pt-5 border-t" style={{ borderColor: "#E4E4E7" }}>
+                <span className="font-semibold text-sm">{p.price}</span>
+                <Link to="/pricing" className="inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: BLUE }}>
+                  {isFr ? "Voir les offres" : "See pricing"} <ArrowRight size={14} />
+                </Link>
               </div>
-              <h3 className="font-bold text-lg mb-1">{title}</h3>
-              <p className="text-xs font-medium mb-3" style={{ color: "#A1A1AA" }}>{q}</p>
-              <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ─── FOR WHO ─── */}
-      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
-        <div className="max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-28">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold mb-2" style={{ color: BLUE }}>{isFr ? "Pour qui" : "For whom"}</p>
-            <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-              {isFr ? "Du freelance à l'agence." : "From freelance to agency."}
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-5">
-            {[
-              { title: isFr ? "Créateurs & freelances" : "Creators & freelancers", sub: isFr ? "Scan rapide, verdict clair" : "Fast scan, clear verdict", points: isFr ? ["Check en 30 s avant de livrer", "Régénération 1-clic", "Historique 30 jours"] : ["30 s check before delivery", "1-click regeneration", "30-day history"], cta: isFr ? "Essayer gratuit" : "Try free", price: isFr ? "Dès €0" : "From €0" },
-              { title: isFr ? "Agences & brands" : "Agencies & brands", sub: isFr ? "Brand Vault, rapports, équipe" : "Brand Vault, reports, team", points: isFr ? ["Brand Vault complet (logo, palette, ton)", "Rapports PDF par client", "Multi-comptes équipe & audit log"] : ["Full Brand Vault (logo, palette, tone)", "PDF reports per client", "Team seats & audit log"], cta: isFr ? "Voir Agency" : "See Agency", price: "€199/mo" },
-            ].map((p) => (
-              <div key={p.title} className="p-8 rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
-                <h3 className="text-xl font-bold mb-1">{p.title}</h3>
-                <p className="text-sm mb-6" style={{ color: "#71717A" }}>{p.sub}</p>
-                <ul className="space-y-2.5 mb-6">
-                  {p.points.map((pt) => (
-                    <li key={pt} className="flex items-start gap-2.5 text-sm">
-                      <Check size={16} style={{ color: BLUE }} className="mt-0.5 shrink-0" />
-                      <span>{pt}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="flex items-center justify-between pt-5 border-t" style={{ borderColor: "#E4E4E7" }}>
-                  <span className="font-semibold text-sm">{p.price}</span>
-                  <Link to="/pricing" className="inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: BLUE }}>
-                    {p.cta} <ArrowRight size={14} />
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── FAQ ─── */}
-      <section className="max-w-3xl mx-auto px-5 md:px-8 py-20 md:py-28">
-        <div className="text-center mb-10">
-          <h2 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-            {isFr ? "Questions fréquentes" : "Frequently asked"}
-          </h2>
-        </div>
+      {/* ═══ FAQ ═══ */}
+      <section className="max-w-3xl mx-auto px-5 md:px-8 py-16 md:py-20">
+        <h2 className="text-center mb-10" style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}>
+          {isFr ? "Questions fréquentes" : "Frequently asked"}
+        </h2>
         <div className="space-y-2">
-          {(isFr ? [
-            { q: "Ora est-il un conseil juridique ?", a: "Non. Le score \"Risques\" est une détection heuristique, pas un avis juridique. Pour les campagnes à fort enjeu, consulte un conseil." },
-            { q: "Ora génère-t-il les visuels ?", a: "Non, Ora audite. On ne remplace pas MidJourney ou Flux. On te dit si ce que tu as généré est bon, on-brand, publiable, et on propose un prompt amélioré + une régénération avec ton contexte." },
-            { q: "Mes images sont-elles stockées ?", a: "Les scans gratuits sont éphémères. Les plans payants persistent tes analyses pour l'historique. Tu peux supprimer à tout moment." },
-            { q: "Ça marche sur mobile ?", a: "Oui, l'app est mobile-first." },
-            { q: "Puis-je annuler ?", a: "Oui, à tout moment, sans engagement." },
-          ] : [
-            { q: "Is Ora legal advice?", a: "No. The \"Risks\" score is heuristic detection, not legal advice. For high-stakes campaigns, consult counsel." },
-            { q: "Does Ora generate visuals?", a: "No — Ora audits. We don't replace MidJourney or Flux. We tell you if what you generated is good, on-brand, publishable, propose an improved prompt, and regenerate with your context." },
-            { q: "Are my images stored?", a: "Free scans are ephemeral. Paid plans persist analyses for history. You can delete anytime." },
-            { q: "Does it work on mobile?", a: "Yes, the app is mobile-first." },
-            { q: "Can I cancel?", a: "Yes, anytime, no commitment." },
-          ]).map((f, i) => <FaqItem key={i} q={f.q} a={f.a} />)}
+          {(isFr
+            ? [
+                { q: "Ora est-il un conseil juridique ?", a: "Non. Le score Legal est une détection heuristique. Pour les campagnes à fort enjeu, consulte un conseil." },
+                { q: "Ora génère-t-il les visuels ?", a: "Non, Ora audite. On ne remplace pas MidJourney ou Flux. On peut régénérer une version améliorée avec ton contexte." },
+                { q: "Mes images sont-elles stockées ?", a: "Les scans gratuits sont éphémères. Les plans payants persistent tes analyses pour l'historique. Tu peux supprimer à tout moment." },
+                { q: "Ça marche sur mobile ?", a: "Oui. L'app est mobile-first." },
+              ]
+            : [
+                { q: "Is Ora legal advice?", a: "No. The Legal score is heuristic detection. For high-stakes campaigns, consult counsel." },
+                { q: "Does Ora generate visuals?", a: "No — Ora audits. We don't replace MidJourney or Flux. We can regenerate an improved version with your context." },
+                { q: "Are my images stored?", a: "Free scans are ephemeral. Paid plans persist analyses for history. Delete anytime." },
+                { q: "Does it work on mobile?", a: "Yes. The app is mobile-first." },
+              ]
+          ).map((f, i) => <FaqItem key={i} q={f.q} a={f.a} />)}
         </div>
       </section>
 
-      {/* ─── FINAL CTA ─── */}
-      <section className="max-w-7xl mx-auto px-5 md:px-8 pb-20">
-        <div className="rounded-3xl p-10 md:p-16 text-center relative overflow-hidden" style={{ background: BLACK, color: "#FFFFFF" }}>
-          <div className="relative z-10">
-            <div className="flex justify-center mb-6">
-              <OraLogo size={72} variant="mascot" animate={true} color="#FFFFFF" />
+      {/* ═══ FINAL CTA ═══ */}
+      <section className="max-w-6xl mx-auto px-5 md:px-8 pb-20">
+        <div className="rounded-3xl p-10 md:p-16 text-center" style={{ background: BLACK, color: "#FFFFFF" }}>
+          <div className="flex justify-center mb-6">
+            <OraLogo size={56} variant="mascot" animate={true} color="#FFFFFF" />
+          </div>
+          <h2 className="mb-4" style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+            {isFr ? "Publie mieux. Publie sereinement." : "Publish better. Publish with peace of mind."}
+          </h2>
+          <p className="text-base md:text-lg mb-8 max-w-xl mx-auto" style={{ color: "#A1A1AA" }}>
+            {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card required."}
+          </p>
+          <Link to={user ? "/hub/analyze" : "/login"}
+                className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all"
+                style={{ background: BLUE, color: "#FFFFFF" }}>
+            {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} />
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ─── Components ─── */
+
+function ScanMockup({ isFr }: { isFr: boolean }) {
+  return (
+    <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+      {/* Browser chrome */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: "#FAFAFA", borderColor: "#E4E4E7" }}>
+        <div className="flex gap-1.5">
+          <div className="w-3 h-3 rounded-full" style={{ background: "#EF4444" }} />
+          <div className="w-3 h-3 rounded-full" style={{ background: "#F59E0B" }} />
+          <div className="w-3 h-3 rounded-full" style={{ background: "#22C55E" }} />
+        </div>
+        <div className="flex-1 text-center text-xs font-medium" style={{ color: "#71717A" }}>ora.studio/analyze</div>
+      </div>
+
+      {/* App content */}
+      <div className="p-5 md:p-6 grid grid-cols-[1.2fr_1fr] gap-5">
+        {/* Fake AI visual */}
+        <FakeVisual seed={0} className="rounded-xl" />
+
+        {/* Right panel: score + KPIs + verdict */}
+        <div className="flex flex-col gap-3">
+          {/* Big score */}
+          <div>
+            <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "#71717A" }}>
+              {isFr ? "Score global" : "Overall"}
             </div>
-            <h2 className="mb-4" style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.05 }}>
-              {isFr ? "Publie mieux. Publie sereinement." : "Publish better. Publish with peace of mind."}
-            </h2>
-            <p className="text-lg mb-8 max-w-xl mx-auto" style={{ color: "#A1A1AA" }}>
-              {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card."}
-            </p>
-            <Link to={user ? "/hub/analyze" : "/login"} className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all" style={{ background: BLUE, color: "#FFFFFF" }}>
-              {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} />
-            </Link>
+            <div className="flex items-baseline gap-1">
+              <span className="text-5xl md:text-6xl font-black leading-none" style={{ color: BLACK, letterSpacing: "-0.03em" }}>86</span>
+              <span className="text-sm" style={{ color: "#71717A" }}>/100</span>
+            </div>
+          </div>
+
+          {/* Verdict badge */}
+          <div className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 rounded-full text-xs font-bold"
+               style={{ background: "#DCFCE7", color: "#15803D" }}>
+            <Check size={13} />
+            {isFr ? "Publier" : "Publish"}
+          </div>
+
+          {/* 3 KPIs */}
+          <div className="space-y-2 mt-1">
+            <ScoreRow label="Legal" score={88} color="#15803D" compact />
+            <ScoreRow label="Brand" score={82} color={BLUE} compact />
+            <ScoreRow label="Creative" score={89} color="#15803D" compact />
           </div>
         </div>
-      </section>
+      </div>
 
+      {/* Bottom: recommendations */}
+      <div className="border-t px-5 md:px-6 py-4 space-y-2" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider" style={{ color: "#71717A" }}>
+          <Sparkles size={12} /> {isFr ? "Recommandations" : "Recommendations"}
+        </div>
+        <div className="text-xs md:text-sm flex items-start gap-2">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "#EFF6FF", color: BLUE }}>BRAND</span>
+          <span>{isFr ? "Accentuer le bleu cobalt sur l'arrière-plan" : "Push the cobalt blue in the background"}</span>
+        </div>
+        <div className="text-xs md:text-sm flex items-start gap-2">
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: "#F0FDF4", color: "#15803D" }}>CREATIVE</span>
+          <span>{isFr ? "Resserrer le cadrage sur le sujet principal" : "Tighten the framing on the main subject"}</span>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ScoreRow({ label, score, color, compact = false }: { label: string; score: number; color: string; compact?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`${compact ? "text-xs w-14" : "text-sm w-20"} font-semibold`} style={{ color: "#52525B" }}>{label}</span>
+      <div className={`flex-1 ${compact ? "h-1.5" : "h-2"} rounded-full overflow-hidden`} style={{ background: "#E4E4E7" }}>
+        <motion.div
+          initial={{ width: 0 }}
+          whileInView={{ width: `${score}%` }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          style={{ height: "100%", background: color }}
+        />
+      </div>
+      <span className={`${compact ? "text-xs w-7" : "text-sm w-8"} font-bold text-right`} style={{ color }}>{score}</span>
+    </div>
+  );
+}
+
+function StepCard({ n, title, body, children }: { n: string; title: string; body: string; children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.4 }}
+      className="p-6 rounded-3xl"
+      style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
+    >
+      {children}
+      <div className="mt-5 flex items-baseline gap-3 mb-2">
+        <span className="text-xs font-black" style={{ color: "#A1A1AA" }}>{n}</span>
+        <h3 className="text-lg font-bold">{title}</h3>
+      </div>
+      <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
+    </motion.div>
   );
 }
 
@@ -455,7 +491,9 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         <span className="font-semibold text-sm md:text-base">{q}</span>
         <ChevronDown size={18} style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }} />
       </button>
-      {open && <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>{a}</div>}
+      {open && (
+        <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>{a}</div>
+      )}
     </div>
   );
 }
