@@ -57,8 +57,8 @@ export function LandingPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-3 mb-7">
               <Link to={user ? "/hub/analyze" : "/login"}
-                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all"
-                    style={{ background: BLUE, color: "#FFFFFF" }}>
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ background: BLUE, color: "#FFFFFF", outlineColor: BLUE }}>
                 {isFr ? "Scanner un visuel" : "Scan a visual"} <ArrowRight size={16} />
               </Link>
               <Link to="/pricing"
@@ -205,7 +205,7 @@ export function LandingPage() {
                 style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
               >
                 <div className="aspect-square overflow-hidden" style={{ background: "#F4F4F5" }}>
-                  <img src={item.src} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                  <img src={item.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
                 </div>
                 {/* Score pill over image */}
                 <div
@@ -220,7 +220,7 @@ export function LandingPage() {
                     className="w-1.5 h-1.5 rounded-full"
                     style={{ background: item.verdict === "block" ? "#B91C1C" : item.verdict === "revise" ? "#B45309" : "#15803D" }}
                   />
-                  {item.score}/100
+                  <span className="tabular-nums">{item.score}/100</span>
                 </div>
                 {/* Reco bar */}
                 <div className="px-4 py-3 flex items-start gap-2 text-xs md:text-[13px] leading-snug">
@@ -401,8 +401,8 @@ export function LandingPage() {
             {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card required."}
           </p>
           <Link to={user ? "/hub/analyze" : "/login"}
-                className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all"
-                style={{ background: BLUE, color: "#FFFFFF" }}>
+                className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{ background: BLUE, color: "#FFFFFF", outlineColor: BLUE }}>
             {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} />
           </Link>
         </div>
@@ -451,7 +451,7 @@ function ScanMockup({ isFr }: { isFr: boolean }) {
               {isFr ? "Score global" : "Overall"}
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-5xl md:text-6xl font-black leading-none" style={{ color: BLACK, letterSpacing: "-0.03em" }}>74</span>
+              <span className="text-5xl md:text-6xl font-black leading-none tabular-nums" style={{ color: BLACK, letterSpacing: "-0.03em" }}>74</span>
               <span className="text-sm" style={{ color: "#71717A" }}>/100</span>
             </div>
           </div>
@@ -503,7 +503,7 @@ function ScoreRow({ label, score, color, compact = false }: { label: string; sco
           style={{ height: "100%", background: color }}
         />
       </div>
-      <span className={`${compact ? "text-xs w-7" : "text-sm w-8"} font-bold text-right`} style={{ color }}>{score}</span>
+      <span className={`${compact ? "text-xs w-7" : "text-sm w-8"} font-bold text-right tabular-nums`} style={{ color }}>{score}</span>
     </div>
   );
 }

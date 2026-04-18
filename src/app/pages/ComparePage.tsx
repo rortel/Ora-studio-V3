@@ -278,7 +278,11 @@ export function ComparePage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg" style={{ color: getGradeLabel(a.overall).color }}>{a.overall}</span>
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ background: a.publishVerdict === "safe" ? "#15803D" : a.publishVerdict === "revise" ? "#B45309" : "#B91C1C" }}
+                        />
+                        <span className="font-bold text-lg tabular-nums" style={{ color: getGradeLabel(a.overall).color }}>{a.overall}</span>
                         <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>/100</span>
                       </div>
                       <ArrowRight size={16} style={{ color: "var(--muted-foreground)" }} />
@@ -386,20 +390,25 @@ export function ComparePage() {
                       </div>
                     )}
 
-                    <div className="flex justify-center">
-                      <ScoreGauge score={analysis.overall} size={110} label={isFr ? "Score actuel" : "Current score"} />
+                    <div className="flex items-center gap-5">
+                      <ScoreGauge score={analysis.overall} size={110} />
+                      <div>
+                        <VerdictBadge verdict={analysis.publishVerdict} isFr={isFr} />
+                        <div className="text-xs mt-2" style={{ color: "var(--muted-foreground)" }}>
+                          {isFr ? "Score global" : "Overall score"}
+                        </div>
+                      </div>
                     </div>
 
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "Scores actuels — 3 KPIs" : "Current scores — 3 KPIs"}
+                        {isFr ? "Détail des 3 KPIs" : "3 KPIs breakdown"}
                       </div>
                       <div className="space-y-1.5">
                         <KpiRow label="Legal (30%)" icon={kpiIcons.legal} current={analysis.legal.score} />
                         <KpiRow label="Brand Fit (35%)" icon={kpiIcons.brandFit} current={analysis.brandFit.score} />
                         <KpiRow label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={kpiIcons.creative} current={analysis.creative.score} />
                       </div>
-                      <VerdictBadge verdict={analysis.publishVerdict} isFr={isFr} />
                     </div>
 
                     {analysis.prompt && (
@@ -423,24 +432,25 @@ export function ComparePage() {
                     </div>
 
                     {analysis.recommendations.length > 0 && (
-                      <div className="p-4 rounded-xl" style={{ background: "#fff8eb", border: "1px solid #fbbf24" }}>
-                        <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "#92400e" }}>
+                      <div className="p-4 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                        <h3 className="text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
+                          <Sparkles size={12} style={{ color: "#F59E0B" }} />
                           {isFr ? "Recommandations prioritaires" : "Priority recommendations"}
                         </h3>
                         <div className="space-y-2">
                           {analysis.recommendations.map((r, i) => (
-                            <div key={i} className="flex items-start gap-2 text-sm">
+                            <div key={i} className="flex items-start gap-2 text-sm px-3 py-2 rounded-lg" style={{ background: "var(--muted)", borderLeft: `3px solid ${r.kpi === "legal" ? "#B91C1C" : r.kpi === "brand" ? "#1D4ED8" : "#15803D"}` }}>
                               <span
                                 className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 uppercase"
                                 style={{
                                   background: r.kpi === "legal" ? "#fef2f2" : r.kpi === "brand" ? "#eff6ff" : "#f0fdf4",
-                                  color: r.kpi === "legal" ? "#b91c1c" : r.kpi === "brand" ? "#1d4ed8" : "#15803d",
+                                  color: r.kpi === "legal" ? "#B91C1C" : r.kpi === "brand" ? "#1D4ED8" : "#15803D",
                                 }}
                               >
                                 {r.kpi}
                               </span>
-                              <span style={{ color: "#333" }}>{r.text}</span>
-                              {r.impact === "high" && <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#b91c1c" }}>!</span>}
+                              <span className="flex-1" style={{ color: "var(--foreground)" }}>{r.text}</span>
+                              {r.impact === "high" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#B91C1C" }}>!</span>}
                             </div>
                           ))}
                         </div>

@@ -60,7 +60,7 @@ function ScoreGauge({ score, size = 120 }: { score: number; size?: number }) {
   const { color, labelFr } = getGradeLabel(score);
   return (
     <div className="flex flex-col items-center gap-2">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ fontVariantNumeric: "tabular-nums" }}>
         <circle cx={size / 2} cy={size / 2} r={radius} fill={`${color}12`} stroke="var(--border)" strokeWidth={2} />
         <circle
           cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={4.5}
@@ -69,11 +69,11 @@ function ScoreGauge({ score, size = 120 }: { score: number; size?: number }) {
           style={{ transition: "stroke-dashoffset 1s ease" }}
         />
         <text x={size / 2} y={size / 2 - 4} textAnchor="middle" dominantBaseline="central"
-          fill={color} fontSize={size >= 100 ? 32 : 22} fontWeight={800}>{score}</text>
-        <text x={size / 2} y={size / 2 + 18} textAnchor="middle" dominantBaseline="central"
+          fill={color} fontSize={size >= 100 ? 34 : 22} fontWeight={800} letterSpacing="-0.02em">{score}</text>
+        <text x={size / 2} y={size / 2 + 20} textAnchor="middle" dominantBaseline="central"
           fill="var(--muted-foreground)" fontSize={11}>/100</text>
       </svg>
-      <span style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: "0.02em" }}>{labelFr}</span>
+      <span className="uppercase tracking-wide" style={{ fontSize: 11, fontWeight: 700, color }}>{labelFr}</span>
     </div>
   );
 }
@@ -104,7 +104,7 @@ function AxisBar({ label, icon, score, items, defaultOpen = false }: {
               style={{ height: "100%", background: color, borderRadius: 3 }}
             />
           </div>
-          <span style={{ fontSize: 14, fontWeight: 800, color, minWidth: 28, textAlign: "right" }}>{score}</span>
+          <span className="tabular-nums" style={{ fontSize: 14, fontWeight: 800, color, minWidth: 28, textAlign: "right" }}>{score}</span>
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
       </button>
@@ -454,19 +454,16 @@ export function AnalyzePage() {
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-4">
-                    <div className="flex items-start gap-5">
-                      <ScoreGauge score={result.overall} size={130} />
-                      <div className="flex-1 pt-2">
-                        <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>
-                          {isFr ? "Résultat de l'analyse" : "Analysis Result"}
-                        </h2>
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center gap-5">
+                      <ScoreGauge score={result.overall} size={140} />
+                      <div className="flex-1">
                         <VerdictBadge verdict={result.publishVerdict} isFr={isFr} />
-                        <p className="text-sm leading-relaxed mt-2" style={{ color: "var(--muted-foreground)" }}>
+                        <p className="text-sm leading-relaxed mt-3" style={{ color: "var(--foreground)" }}>
                           {result.summary}
                         </p>
-                        <div className="flex items-center gap-2 mt-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
-                          <Zap size={11} /> {(result.tookMs / 1000).toFixed(1)}s
+                        <div className="flex items-center gap-1.5 mt-2 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+                          <Zap size={10} /> {(result.tookMs / 1000).toFixed(1)}s
                         </div>
                       </div>
                     </div>
@@ -484,24 +481,24 @@ export function AnalyzePage() {
 
                 {result.recommendations.length > 0 && (
                   <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} className="p-4">
-                    <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: "var(--foreground)" }}>
-                      <Lightbulb size={15} style={{ color: "#f59e0b" }} />
+                    <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
+                      <Lightbulb size={15} style={{ color: "#F59E0B" }} />
                       {isFr ? "Recommandations" : "Recommendations"}
                     </h3>
                     <div className="space-y-2">
                       {result.recommendations.map((rec, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
+                        <div key={i} className="flex items-start gap-2 text-sm px-3 py-2 rounded-lg" style={{ background: "var(--muted)", borderLeft: `3px solid ${rec.kpi === "legal" ? "#B91C1C" : rec.kpi === "brand" ? "#1D4ED8" : "#15803D"}` }}>
                           <span
                             className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 uppercase"
                             style={{
                               background: rec.kpi === "legal" ? "#fef2f2" : rec.kpi === "brand" ? "#eff6ff" : "#f0fdf4",
-                              color: rec.kpi === "legal" ? "#b91c1c" : rec.kpi === "brand" ? "#1d4ed8" : "#15803d",
+                              color: rec.kpi === "legal" ? "#B91C1C" : rec.kpi === "brand" ? "#1D4ED8" : "#15803D",
                             }}
                           >
                             {rec.kpi}
                           </span>
-                          <span style={{ color: "var(--foreground)" }}>{rec.text}</span>
-                          {rec.impact === "high" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#b91c1c" }}>!</span>}
+                          <span className="flex-1" style={{ color: "var(--foreground)" }}>{rec.text}</span>
+                          {rec.impact === "high" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#B91C1C" }}>!</span>}
                         </div>
                       ))}
                     </div>
@@ -512,24 +509,24 @@ export function AnalyzePage() {
                   <button
                     onClick={handleOptimize}
                     disabled={!result.id}
-                    className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-80 disabled:opacity-40"
-                    style={{ background: "var(--foreground)", color: "var(--background)" }}
+                    className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ background: "#1D4ED8", color: "#fff", outlineColor: "#1D4ED8" }}
                   >
                     <Sparkles size={15} /> {isFr ? "Optimiser" : "Optimize"}
                   </button>
                   <button
                     onClick={handleDownload}
-                    className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-80"
-                    style={{ background: "var(--muted)", color: "var(--foreground)" }}
+                    className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors hover:bg-[var(--muted)]/60"
+                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
                   >
-                    <Download size={15} /> {isFr ? "Télécharger" : "Download"}
+                    <Download size={15} /> {isFr ? "Rapport" : "Report"}
                   </button>
                   <button
                     onClick={reset}
-                    className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-80"
-                    style={{ background: "var(--muted)", color: "var(--foreground)" }}
+                    className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors hover:bg-[var(--muted)]/60"
+                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
                   >
-                    <RotateCcw size={15} /> {isFr ? "Analyser un autre" : "Analyze another"}
+                    <RotateCcw size={15} /> {isFr ? "Autre visuel" : "New visual"}
                   </button>
                 </div>
 

@@ -43,7 +43,7 @@ function MiniGauge({ value, size = 44 }: { value: number; size?: number }) {
   const offset = circ * (1 - Math.max(0, Math.min(100, value)) / 100);
   const { color } = getGradeLabel(value);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ fontVariantNumeric: "tabular-nums" }}>
       <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--muted)" strokeWidth={3} />
       <circle
         cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={3}
@@ -66,7 +66,7 @@ function ScoreCard({ label, icon, score, trend }: {
       <span style={{ color }}>{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{label}</div>
-        <div className="text-lg font-bold" style={{ color }}>{score}<span className="text-xs font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span></div>
+        <div className="text-lg font-bold tabular-nums" style={{ color }}>{score}<span className="text-xs font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span></div>
       </div>
       {trend === "up" && <TrendingUp size={16} style={{ color: "#22c55e" }} />}
       {trend === "down" && <TrendingDown size={16} style={{ color: "#ef4444" }} />}
@@ -231,17 +231,30 @@ export function DashboardPage() {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
 
                 {/* Overall health */}
-                <div className="flex items-center gap-6 p-5 rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <MiniGauge value={stats.avgOverall} size={72} />
+                <div className="flex items-center gap-6 p-6 rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <MiniGauge value={stats.avgOverall} size={80} />
                   <div className="flex-1">
-                    <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>
                       {isFr ? "Score moyen global" : "Average overall score"}
                     </div>
-                    <div className="text-2xl font-bold" style={{ color: getGradeLabel(stats.avgOverall).color }}>
-                      {stats.avgOverall}/100 — {getGradeLabel(stats.avgOverall).labelFr}
+                    <div className="text-3xl font-black tabular-nums" style={{ color: getGradeLabel(stats.avgOverall).color, letterSpacing: "-0.02em" }}>
+                      {stats.avgOverall}<span className="text-sm font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span>
+                      <span className="ml-2 text-sm font-bold">{getGradeLabel(stats.avgOverall).labelFr}</span>
                     </div>
-                    <div className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
-                      {isFr ? `${stats.total} visuel(s) analysé(s)` : `${stats.total} visual(s) analyzed`}
+                    <div className="flex items-center gap-3 text-xs mt-2" style={{ color: "var(--muted-foreground)" }}>
+                      <span>{isFr ? `${stats.total} visuel(s) analysé(s)` : `${stats.total} visual(s) analyzed`}</span>
+                      {(() => {
+                        const safe = analyses.filter(a => a.publishVerdict === "safe").length;
+                        const revise = analyses.filter(a => a.publishVerdict === "revise").length;
+                        const block = analyses.filter(a => a.publishVerdict === "block").length;
+                        return (
+                          <span className="flex items-center gap-2">
+                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "#15803D" }} />{safe}</span>
+                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "#B45309" }} />{revise}</span>
+                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "#B91C1C" }} />{block}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   {stats.trendOverall === "up" && <TrendingUp size={20} style={{ color: "#22c55e" }} />}
@@ -249,7 +262,7 @@ export function DashboardPage() {
                   {stats.trendOverall === "flat" && <Minus size={20} style={{ color: "var(--muted-foreground)" }} />}
                 </div>
 
-                {/* 7 KPIs */}
+                {/* 3 KPIs */}
                 <div>
                   <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Moyennes par KPI" : "Averages per KPI"}
@@ -301,6 +314,10 @@ export function DashboardPage() {
                             <BarChart3 size={18} style={{ color: "var(--muted-foreground)" }} />
                           </div>
                         )}
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ background: a.publishVerdict === "safe" ? "#15803D" : a.publishVerdict === "revise" ? "#B45309" : a.publishVerdict === "block" ? "#B91C1C" : "var(--muted-foreground)" }}
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
                             {a.summary || "—"}
