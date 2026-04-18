@@ -58,7 +58,7 @@ function ScoreGauge({ score, size = 100, label }: { score: number; size?: number
   const { color } = getGradeLabel(score);
   return (
     <div className="flex flex-col items-center gap-1">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ fontVariantNumeric: "tabular-nums" }}>
         <circle cx={size / 2} cy={size / 2} r={radius} fill={`${color}12`} stroke="var(--border)" strokeWidth={2} />
         <circle
           cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={4}
@@ -67,46 +67,30 @@ function ScoreGauge({ score, size = 100, label }: { score: number; size?: number
           style={{ transition: "stroke-dashoffset 0.8s ease" }}
         />
         <text x={size / 2} y={size / 2 - 2} textAnchor="middle" dominantBaseline="central"
-          fill={color} fontSize={size >= 90 ? 24 : 18} fontWeight={800}>{score}</text>
-        <text x={size / 2} y={size / 2 + 14} textAnchor="middle" dominantBaseline="central"
+          fill={color} fontSize={size >= 90 ? 26 : 18} fontWeight={800} letterSpacing="-0.02em">{score}</text>
+        <text x={size / 2} y={size / 2 + 16} textAnchor="middle" dominantBaseline="central"
           fill="var(--muted-foreground)" fontSize={10}>/100</text>
       </svg>
-      {label && <span className="text-xs font-semibold" style={{ color }}>{label}</span>}
+      {label && <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted-foreground)" }}>{label}</span>}
     </div>
   );
 }
 
-function KpiRow({ label, icon, current, predicted }: {
+function KpiRow({ label, icon, current }: {
   label: string;
   icon: React.ReactNode;
   current: number;
-  predicted?: number;
 }) {
   const curColor = getGradeLabel(current).color;
-  const predColor = predicted !== undefined ? getGradeLabel(predicted).color : undefined;
-  const delta = predicted !== undefined ? predicted - current : 0;
-
+  const pct = Math.max(0, Math.min(100, current));
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <span style={{ color: curColor }}>{icon}</span>
       <span className="flex-1 text-sm font-semibold" style={{ color: "var(--foreground)" }}>{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="font-bold text-sm" style={{ color: curColor, minWidth: 28, textAlign: "right" }}>{current}</span>
-        {predicted !== undefined && (
-          <>
-            <ArrowRight size={12} style={{ color: "var(--muted-foreground)" }} />
-            <span className="font-bold text-sm" style={{ color: predColor, minWidth: 28, textAlign: "right" }}>{predicted}</span>
-            {delta !== 0 && (
-              <span className="text-xs font-bold px-1.5 py-0.5 rounded" style={{
-                background: delta > 0 ? "#22c55e20" : "#ef444420",
-                color: delta > 0 ? "#22c55e" : "#ef4444",
-              }}>
-                {delta > 0 ? "+" : ""}{delta}
-              </span>
-            )}
-          </>
-        )}
+      <div style={{ width: 72, height: 4, background: "var(--muted)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: curColor, transition: "width 0.8s ease" }} />
       </div>
+      <span className="font-bold text-sm tabular-nums" style={{ color: curColor, minWidth: 28, textAlign: "right" }}>{current}</span>
     </div>
   );
 }
@@ -344,8 +328,8 @@ export function ComparePage() {
                   <button
                     onClick={handleRegenerate}
                     disabled={regenerating}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
-                    style={{ background: "#1d4ed8", color: "#fff" }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-xs font-bold transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{ background: "#1D4ED8", color: "#fff", outlineColor: "#1D4ED8" }}
                   >
                     {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                     {isFr ? "Régénérer" : "Regenerate"}
@@ -353,22 +337,22 @@ export function ComparePage() {
                   <button
                     onClick={handleRetest}
                     disabled={!analysis.optimizedPrompt}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
-                    style={{ background: "var(--foreground)", color: "var(--background)" }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors hover:bg-[var(--muted)]/60 disabled:opacity-40"
+                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
                   >
-                    <RotateCw size={13} /> {isFr ? "Retester avec le prompt optimisé" : "Retest with optimized prompt"}
+                    <RotateCw size={13} /> {isFr ? "Retester" : "Retest"}
                   </button>
                   <button
                     onClick={handleDownload}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80"
-                    style={{ background: "var(--muted)", color: "var(--foreground)" }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors hover:bg-[var(--muted)]/60"
+                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
                   >
-                    <Download size={13} /> {isFr ? "Télécharger le rapport" : "Download report"}
+                    <Download size={13} /> {isFr ? "Rapport" : "Report"}
                   </button>
                   <button
                     onClick={handleDelete}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 ml-auto"
-                    style={{ background: "transparent", color: "#ef4444", border: "1px solid #ef444440" }}
+                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold transition-colors hover:bg-[#fef2f2] ml-auto"
+                    style={{ background: "transparent", color: "#B91C1C", border: "1px solid #fecaca" }}
                   >
                     <Trash2 size={13} /> {isFr ? "Supprimer" : "Delete"}
                   </button>
