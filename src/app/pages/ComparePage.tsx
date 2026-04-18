@@ -7,6 +7,15 @@ import {
   Sparkles, Download, Copy, RotateCw, ArrowRight, Loader2, AlertTriangle,
   CheckCircle2, TrendingUp, BarChart3, Trash2, RefreshCw, Check, Ban,
 } from "lucide-react";
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } },
+};
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
@@ -254,12 +263,12 @@ export function ComparePage() {
                   </Link>
                 </motion.div>
               ) : (
-                <div className="space-y-2">
+                <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-2">
                   {list.map(a => (
+                    <motion.div key={a.id} variants={fadeUp}>
                     <Link
-                      key={a.id}
                       to={`/hub/compare?id=${a.id}`}
-                      className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--muted)]/30 transition-colors"
+                      className="flex items-center gap-3 p-3 rounded-xl transition-all duration-200 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5"
                       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                     >
                       {a.imageUrl ? (
@@ -287,8 +296,9 @@ export function ComparePage() {
                       </div>
                       <ArrowRight size={16} style={{ color: "var(--muted-foreground)" }} />
                     </Link>
+                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )}
 
             </div>
@@ -325,10 +335,10 @@ export function ComparePage() {
                 <AlertTriangle size={16} /> {error}
               </div>
             ) : analysis ? (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+              <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
 
                 {/* Action bar */}
-                <div className="flex items-center gap-2 flex-wrap">
+                <motion.div variants={fadeUp} className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={handleRegenerate}
                     disabled={regenerating}
@@ -360,10 +370,10 @@ export function ComparePage() {
                   >
                     <Trash2 size={13} /> {isFr ? "Supprimer" : "Delete"}
                   </button>
-                </div>
+                </motion.div>
 
                 {/* 2-column layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                   {/* LEFT — Original */}
                   <div className="space-y-4">
@@ -478,7 +488,7 @@ export function ComparePage() {
                     )}
 
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Context blocks */}
                 {(analysis.briefContext || analysis.objective) && (

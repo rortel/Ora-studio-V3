@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
+import { motion, AnimatePresence, useScroll, useTransform, useInView } from "motion/react";
 import {
   Shield, Palette, Sparkles, ArrowRight, Check, Upload,
   Eye, RefreshCw, ChevronDown, AlertTriangle, CheckCircle2,
@@ -12,12 +12,17 @@ import heroNissan from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.pn
 import serviceNissan from "../../assets/fd1a1304c95304459d525edabe5b548965b73ee0.png";
 import sunsetNissan from "../../assets/e770a4caf934a7f0a280cbbe70316b0d298cff32.png";
 
-/* ═══════════════════════════════════════════════════════════
-   LANDING — real visuals from Library, product-focused
-   ═══════════════════════════════════════════════════════════ */
-
 const BLUE = "#1D4ED8";
 const BLACK = "#0A0A0A";
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] } },
+};
 
 export function LandingPage() {
   const { locale } = useI18n();
@@ -27,55 +32,67 @@ export function LandingPage() {
   return (
     <div style={{ background: "#FFFFFF", color: BLACK }}>
       {/* ═══ HERO ═══ */}
-      <section className="max-w-6xl mx-auto px-5 md:px-8 pt-12 md:pt-20 pb-20 md:pb-32">
-        <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-14 items-center">
+      <section className="relative max-w-6xl mx-auto px-5 md:px-8 pt-12 md:pt-20 pb-20 md:pb-32 overflow-hidden">
+        {/* Subtle grid background */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #1D4ED8 1px, transparent 0)", backgroundSize: "32px 32px" }} />
+
+        <div className="relative grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-14 items-center">
           {/* Left: copy */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-7"
-                 style={{ background: "#EFF6FF", color: BLUE }}>
+          <motion.div variants={stagger} initial="hidden" animate="show">
+            <motion.div variants={fadeUp} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-7"
+                 style={{ background: "#EFF6FF", color: BLUE, border: "1px solid #DBEAFE" }}>
               <OraLogo size={16} variant="mark" animate={false} color={BLUE} />
               {isFr ? "Le copilote qualité pour tes visuels IA" : "The quality copilot for AI visuals"}
-            </div>
-            <h1
+            </motion.div>
+            <motion.h1
+              variants={fadeUp}
               className="mb-6 whitespace-pre-line"
               style={{
                 fontSize: "clamp(2.5rem, 6vw, 5.25rem)",
                 fontWeight: 800,
                 lineHeight: 1,
                 letterSpacing: "-0.04em",
+                background: "linear-gradient(135deg, #0A0A0A 0%, #1D4ED8 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
               }}
             >
               {isFr ? "Tes visuels IA,\npublie-les\nsans stress." : "Your AI visuals,\npublished\nwith confidence."}
-            </h1>
-            <p
+            </motion.h1>
+            <motion.p
+              variants={fadeUp}
               className="mb-9 max-w-lg"
-              style={{ fontSize: "1.15rem", lineHeight: 1.5, color: "#52525B" }}
+              style={{ fontSize: "1.15rem", lineHeight: 1.6, color: "#52525B" }}
             >
               {isFr
                 ? "Tu génères avec MidJourney, Flux, DALL-E. Ora audite, repère les risques légaux, juge la cohérence avec ta marque, note le créatif — et régénère en mieux."
                 : "You generate with MidJourney, Flux, DALL-E. Ora audits, flags legal risks, judges brand fit, grades the creative — and regenerates better."}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 mb-7">
+            </motion.p>
+            <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-3 mb-7">
               <Link to={user ? "/hub/analyze" : "/login"}
-                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    className="group inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-bold transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                     style={{ background: BLUE, color: "#FFFFFF", outlineColor: BLUE }}>
-                {isFr ? "Scanner un visuel" : "Scan a visual"} <ArrowRight size={16} />
+                {isFr ? "Scanner un visuel" : "Scan a visual"} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
               </Link>
               <Link to="/pricing"
-                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-semibold"
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full text-sm font-semibold transition-all duration-200 hover:bg-[#E4E4E7]"
                     style={{ background: "#F4F4F5", color: BLACK }}>
                 {isFr ? "Voir les offres" : "See pricing"}
               </Link>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs" style={{ color: "#71717A" }}>
+            </motion.div>
+            <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs" style={{ color: "#71717A" }}>
               <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "5 scans gratuits / mois" : "5 free scans / month"}</span>
               <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "Sans carte" : "No card"}</span>
               <span className="flex items-center gap-1.5"><Check size={13} style={{ color: "#15803D" }} />{isFr ? "30 secondes" : "30 seconds"}</span>
-            </div>
+            </motion.div>
           </motion.div>
 
           {/* Right: Ora UI mockup */}
-          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.6, delay: 0.15 }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.94, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+          >
             <ScanMockup isFr={isFr} />
           </motion.div>
         </div>
@@ -94,19 +111,27 @@ export function LandingPage() {
               : "A stray Nike logo. A six-fingered hand. A tone that doesn't match your brand. You don't always catch it — Ora does."}
           </p>
 
-          <div className="grid md:grid-cols-3 gap-4 mt-12 text-left">
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-60px" }}
+            className="grid md:grid-cols-3 gap-4 mt-12 text-left"
+          >
             {[
               { icon: AlertTriangle, title: isFr ? "Risques cachés" : "Hidden risks", body: isFr ? "Logos déposés, ressemblances, claims régulés — des procès à venir." : "Trademarks, likenesses, regulated claims — lawsuits waiting." },
               { icon: Palette, title: isFr ? "Hors-marque" : "Off-brand", body: isFr ? "Palette flottante, ton incohérent, mood à côté." : "Floating palette, incoherent tone, mood drift." },
               { icon: Eye, title: isFr ? "Moyen, pas bon" : "Mediocre, not good", body: isFr ? "Stock photo générique. Personne ne scroll pour ça." : "Generic stock feel. Nobody scrolls for that." },
             ].map(({ icon: Icon, title, body }, i) => (
-              <div key={i} className="p-6 rounded-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
-                <Icon size={22} style={{ color: "#C2410C" }} className="mb-4" />
+              <motion.div key={i} variants={fadeUp} className="group p-6 rounded-2xl transition-all duration-300 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-1" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-4" style={{ background: "#FFF7ED" }}>
+                  <Icon size={20} style={{ color: "#C2410C" }} />
+                </div>
                 <h3 className="font-bold text-base mb-2">{title}</h3>
                 <p className="text-sm leading-relaxed" style={{ color: "#52525B" }}>{body}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -186,7 +211,13 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5">
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-40px" }}
+            className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5"
+          >
             {[
               { src: "/templates/figma-igp-01.png",            score: 62, verdict: "block",  kpi: "LEGAL",    note: isFr ? "Marque Nike reconnaissable" : "Recognizable Nike brand" },
               { src: "/templates/figma-skincare-01.png",       score: 91, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Composition produit forte" : "Strong product shot" },
@@ -197,11 +228,8 @@ export function LandingPage() {
             ].map((item, i) => (
               <motion.div
                 key={i}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-40px" }}
-                transition={{ duration: 0.4, delay: i * 0.05 }}
-                className="group relative rounded-2xl overflow-hidden"
+                variants={fadeUp}
+                className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-black/8 hover:-translate-y-1"
                 style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}
               >
                 <div className="aspect-square overflow-hidden" style={{ background: "#F4F4F5" }}>
@@ -239,7 +267,7 @@ export function LandingPage() {
                 </div>
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -253,7 +281,13 @@ export function LandingPage() {
             </h2>
           </div>
 
-          <div className="space-y-4">
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-50px" }}
+            className="space-y-4"
+          >
             {[
               {
                 icon: Shield,
@@ -263,6 +297,7 @@ export function LandingPage() {
                   ? "Logos déposés, ressemblances célébrités, allégations régulées, biais. Détection heuristique — pas un avis juridique."
                   : "Trademarks, celebrity likenesses, regulated claims, bias. Heuristic detection — not legal advice.",
                 weight: "30%",
+                gradient: "linear-gradient(135deg, #1E3A5F 0%, #171717 100%)",
               },
               {
                 icon: Palette,
@@ -272,6 +307,7 @@ export function LandingPage() {
                   ? "Palette, ton, style photo, messages clés, audience cible. Scoré contre ton Brand Vault."
                   : "Palette, tone, photo style, key messages, target audience. Scored against your Brand Vault.",
                 weight: "35%",
+                gradient: "linear-gradient(135deg, #1D2B5E 0%, #171717 100%)",
               },
               {
                 icon: Sparkles,
@@ -281,20 +317,18 @@ export function LandingPage() {
                   ? "Composition, impact visuel, artefacts IA, originalité, potentiel campagne."
                   : "Composition, visual impact, AI artefacts, originality, campaign potential.",
                 weight: "35%",
+                gradient: "linear-gradient(135deg, #1A2E4A 0%, #171717 100%)",
               },
-            ].map(({ icon: Icon, title, q, body, weight }, i) => (
+            ].map(({ icon: Icon, title, q, body, weight, gradient }, i) => (
               <motion.div
                 key={title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-50px" }}
-                transition={{ delay: i * 0.1, duration: 0.4 }}
-                className="grid md:grid-cols-[auto_1fr_auto] gap-5 md:gap-8 items-start md:items-center py-8 border-t"
+                variants={fadeUp}
+                className="group grid md:grid-cols-[auto_1fr_auto] gap-5 md:gap-8 items-start md:items-center py-8 border-t transition-colors duration-300"
                 style={{ borderColor: "#27272A" }}
               >
                 <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{ background: "#171717", border: "1px solid #27272A" }}
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-blue-500/10"
+                  style={{ background: gradient, border: "1px solid #27272A" }}
                 >
                   <Icon size={22} style={{ color: "#60A5FA" }} />
                 </div>
@@ -307,11 +341,11 @@ export function LandingPage() {
                 </div>
                 <div className="text-right">
                   <span className="text-xs uppercase tracking-wide" style={{ color: "#71717A" }}>{isFr ? "Poids" : "Weight"}</span>
-                  <div className="text-2xl font-black" style={{ color: "#FFFFFF" }}>{weight}</div>
+                  <div className="text-3xl font-black tabular-nums" style={{ background: "linear-gradient(135deg, #FFFFFF 0%, #60A5FA 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{weight}</div>
                 </div>
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -324,7 +358,13 @@ export function LandingPage() {
           </h2>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-5">
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-60px" }}
+          className="grid md:grid-cols-2 gap-5"
+        >
           {[
             {
               title: isFr ? "Créateurs & freelances" : "Creators & freelancers",
@@ -333,6 +373,7 @@ export function LandingPage() {
                 ? ["Check en 30 s avant de livrer", "Régénération 1-clic", "Historique 30 jours"]
                 : ["30-second check before delivery", "One-click regeneration", "30-day history"],
               price: isFr ? "À partir de €0" : "From €0",
+              featured: false,
             },
             {
               title: isFr ? "Agences & brands" : "Agencies & brands",
@@ -341,9 +382,23 @@ export function LandingPage() {
                 ? ["Brand Vault complet (logo, palette, ton)", "Rapports PDF brandés", "Audit log horodaté, multi-comptes"]
                 : ["Full Brand Vault (logo, palette, tone)", "Branded PDF reports", "Timestamped audit log, team seats"],
               price: "€199/mo",
+              featured: true,
             },
           ].map((p) => (
-            <div key={p.title} className="p-8 rounded-3xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+            <motion.div
+              key={p.title}
+              variants={fadeUp}
+              className="group p-8 rounded-3xl transition-all duration-300 hover:shadow-xl hover:shadow-black/5 hover:-translate-y-1"
+              style={{
+                background: p.featured ? "linear-gradient(180deg, #FAFBFF 0%, #FFFFFF 100%)" : "#FFFFFF",
+                border: p.featured ? "1px solid #BFDBFE" : "1px solid #E4E4E7",
+              }}
+            >
+              {p.featured && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold mb-4" style={{ background: "#EFF6FF", color: BLUE }}>
+                  <Sparkles size={10} /> {isFr ? "Populaire" : "Popular"}
+                </div>
+              )}
               <h3 className="text-xl font-bold mb-1">{p.title}</h3>
               <p className="text-sm mb-6" style={{ color: "#71717A" }}>{p.sub}</p>
               <ul className="space-y-2.5 mb-6">
@@ -355,14 +410,14 @@ export function LandingPage() {
                 ))}
               </ul>
               <div className="flex items-center justify-between pt-5 border-t" style={{ borderColor: "#E4E4E7" }}>
-                <span className="font-semibold text-sm">{p.price}</span>
-                <Link to="/pricing" className="inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: BLUE }}>
-                  {isFr ? "Voir les offres" : "See pricing"} <ArrowRight size={14} />
+                <span className="font-bold text-lg tabular-nums">{p.price}</span>
+                <Link to="/pricing" className="group/link inline-flex items-center gap-1.5 text-sm font-semibold" style={{ color: BLUE }}>
+                  {isFr ? "Voir les offres" : "See pricing"} <ArrowRight size={14} className="transition-transform group-hover/link:translate-x-0.5" />
                 </Link>
               </div>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
 
       {/* ═══ FAQ ═══ */}
@@ -390,22 +445,33 @@ export function LandingPage() {
 
       {/* ═══ FINAL CTA ═══ */}
       <section className="max-w-6xl mx-auto px-5 md:px-8 pb-20">
-        <div className="rounded-3xl p-10 md:p-16 text-center" style={{ background: BLACK, color: "#FFFFFF" }}>
-          <div className="flex justify-center mb-6">
-            <OraLogo size={56} variant="mascot" animate={true} color="#FFFFFF" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.5 }}
+          className="relative rounded-3xl p-10 md:p-16 text-center overflow-hidden"
+          style={{ background: BLACK, color: "#FFFFFF" }}
+        >
+          {/* Subtle radial glow */}
+          <div className="absolute inset-0 opacity-20" style={{ background: "radial-gradient(ellipse at 50% 0%, #1D4ED8 0%, transparent 60%)" }} />
+          <div className="relative">
+            <div className="flex justify-center mb-6">
+              <OraLogo size={56} variant="mascot" animate={true} color="#FFFFFF" />
+            </div>
+            <h2 className="mb-4" style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              {isFr ? "Publie mieux. Publie sereinement." : "Publish better. Publish with peace of mind."}
+            </h2>
+            <p className="text-base md:text-lg mb-8 max-w-xl mx-auto" style={{ color: "#A1A1AA" }}>
+              {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card required."}
+            </p>
+            <Link to={user ? "/hub/analyze" : "/login"}
+                  className="group inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ background: BLUE, color: "#FFFFFF", outlineColor: BLUE }}>
+              {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </div>
-          <h2 className="mb-4" style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.75rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
-            {isFr ? "Publie mieux. Publie sereinement." : "Publish better. Publish with peace of mind."}
-          </h2>
-          <p className="text-base md:text-lg mb-8 max-w-xl mx-auto" style={{ color: "#A1A1AA" }}>
-            {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card required."}
-          </p>
-          <Link to={user ? "/hub/analyze" : "/login"}
-                className="inline-flex items-center gap-2 px-7 py-4 rounded-full text-sm font-bold hover:opacity-90 transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ background: BLUE, color: "#FFFFFF", outlineColor: BLUE }}>
-            {isFr ? "Commencer maintenant" : "Start now"} <ArrowRight size={16} />
-          </Link>
-        </div>
+        </motion.div>
       </section>
     </div>
   );
@@ -415,9 +481,9 @@ export function LandingPage() {
 
 function ScanMockup({ isFr }: { isFr: boolean }) {
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7" }}>
+    <div className="relative rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #E4E4E7", boxShadow: "0 25px 60px -12px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.03)" }}>
       {/* Browser chrome */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: "#FAFAFA", borderColor: "#E4E4E7" }}>
+      <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ background: "linear-gradient(180deg, #FAFAFA 0%, #F4F4F5 100%)", borderColor: "#E4E4E7" }}>
         <div className="flex gap-1.5">
           <div className="w-3 h-3 rounded-full" style={{ background: "#EF4444" }} />
           <div className="w-3 h-3 rounded-full" style={{ background: "#F59E0B" }} />
@@ -531,14 +597,26 @@ function StepCard({ n, title, body, children }: { n: string; title: string; body
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-xl" style={{ background: open ? "#FAFAFA" : "#FFFFFF", border: "1px solid #E4E4E7" }}>
+    <div className="rounded-xl transition-colors duration-200" style={{ background: open ? "#FAFAFA" : "#FFFFFF", border: "1px solid #E4E4E7" }}>
       <button className="w-full flex items-center justify-between gap-4 p-5 text-left" onClick={() => setOpen(!open)}>
         <span className="font-semibold text-sm md:text-base">{q}</span>
-        <ChevronDown size={18} style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }} />
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }} style={{ flexShrink: 0 }}>
+          <ChevronDown size={18} />
+        </motion.div>
       </button>
-      {open && (
-        <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>{a}</div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>{a}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

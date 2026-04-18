@@ -6,6 +6,15 @@ import {
   Download, RotateCcw, ChevronDown, ChevronRight, Lightbulb, Zap, ArrowRight,
   Check, Ban, RefreshCw,
 } from "lucide-react";
+
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } },
+};
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -323,17 +332,19 @@ export function AnalyzePage() {
 
             {!result && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <div
+                <motion.div
                   onDragOver={onDragOver}
                   onDragLeave={onDragLeave}
                   onDrop={onDrop}
                   onClick={() => !imageUrl && fileInputRef.current?.click()}
+                  animate={!imageUrl ? { borderColor: ["#A1A1AA", "#1D4ED8", "#A1A1AA"] } : {}}
+                  transition={!imageUrl ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : {}}
                   style={{
-                    border: `2px dashed ${dragOver ? "var(--accent)" : imageUrl ? "var(--border)" : "var(--muted-foreground)"}`,
+                    border: `2px dashed ${dragOver ? "#1D4ED8" : imageUrl ? "var(--border)" : "#A1A1AA"}`,
                     borderRadius: 16,
-                    background: dragOver ? "var(--accent)/8" : imageUrl ? "var(--card)" : "var(--muted)/30",
+                    background: dragOver ? "rgba(29,78,216,0.04)" : imageUrl ? "var(--card)" : "var(--muted)/30",
                     cursor: imageUrl ? "default" : "pointer",
-                    transition: "all 0.2s",
+                    transition: "background 0.2s",
                     minHeight: imageUrl ? "auto" : 240,
                   }}
                   className="flex flex-col items-center justify-center p-6 relative"
@@ -367,7 +378,7 @@ export function AnalyzePage() {
                     className="hidden"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
                   />
-                </div>
+                </motion.div>
 
                 {imageUrl && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
@@ -416,10 +427,10 @@ export function AnalyzePage() {
                     <button
                       onClick={analyze}
                       disabled={isAnalyzing}
-                      className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                      className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 disabled:hover:shadow-none disabled:hover:translate-y-0"
                       style={{
-                        background: isAnalyzing ? "var(--muted)" : "var(--foreground)",
-                        color: isAnalyzing ? "var(--muted-foreground)" : "var(--background)",
+                        background: isAnalyzing ? "var(--muted)" : "#1D4ED8",
+                        color: isAnalyzing ? "var(--muted-foreground)" : "#FFFFFF",
                         cursor: isAnalyzing ? "not-allowed" : "pointer",
                       }}
                     >
@@ -442,12 +453,12 @@ export function AnalyzePage() {
 
             {result && (
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
+                variants={stagger}
+                initial="hidden"
+                animate="show"
                 className="space-y-6"
               >
-                <div className="flex flex-col md:flex-row gap-6 items-start">
+                <motion.div variants={fadeUp} className="flex flex-col md:flex-row gap-6 items-start">
                   <div style={{ flex: "0 0 auto" }}>
                     <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
                       <img src={imageUrl!} alt="" style={{ maxHeight: 280, maxWidth: 320, objectFit: "contain", display: "block" }} />
@@ -468,19 +479,19 @@ export function AnalyzePage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
 
-                <div className="space-y-2">
+                <motion.div variants={fadeUp} className="space-y-2">
                   <h3 className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Détail des 3 KPIs" : "3 KPIs breakdown"}
                   </h3>
                   <AxisBar label={isFr ? "Legal (30%)" : "Legal (30%)"} icon={<Shield size={16} />} score={result.legal.score} items={result.legal} defaultOpen />
                   <AxisBar label={isFr ? "Brand Fit (35%)" : "Brand Fit (35%)"} icon={<Palette size={16} />} score={result.brandFit.score} items={result.brandFit} defaultOpen />
                   <AxisBar label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={<Eye size={16} />} score={result.creative.score} items={result.creative} defaultOpen />
-                </div>
+                </motion.div>
 
                 {result.recommendations.length > 0 && (
-                  <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} className="p-4">
+                  <motion.div variants={fadeUp} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} className="p-4">
                     <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
                       <Lightbulb size={15} style={{ color: "#F59E0B" }} />
                       {isFr ? "Recommandations" : "Recommendations"}
@@ -502,10 +513,10 @@ export function AnalyzePage() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <button
                     onClick={handleOptimize}
                     disabled={!result.id}
@@ -528,7 +539,7 @@ export function AnalyzePage() {
                   >
                     <RotateCcw size={15} /> {isFr ? "Autre visuel" : "New visual"}
                   </button>
-                </div>
+                </motion.div>
 
               </motion.div>
             )}

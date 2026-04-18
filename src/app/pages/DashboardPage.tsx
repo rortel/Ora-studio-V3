@@ -10,6 +10,15 @@ import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
 
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+};
+const fadeUp = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } },
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE || "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
 const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtidmtqYWZrenRic2V3dGFpanVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU2NDEzNjMsImV4cCI6MjA1MTIxNzM2M30.lGpbCMbfaFA47OdAkVMfIEJiKlhNOb9_el4MfW5hMsc";
 
@@ -62,7 +71,7 @@ function ScoreCard({ label, icon, score, trend }: {
 }) {
   const { color } = getGradeLabel(score);
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 hover:shadow-md hover:shadow-black/5 hover:-translate-y-0.5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <span style={{ color }}>{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{label}</div>
@@ -228,10 +237,10 @@ export function DashboardPage() {
                 </Link>
               </motion.div>
             ) : (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+              <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
 
                 {/* Overall health */}
-                <div className="flex items-center gap-6 p-6 rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <motion.div variants={fadeUp} className="flex items-center gap-6 p-6 rounded-2xl transition-shadow duration-300 hover:shadow-lg hover:shadow-black/5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <MiniGauge value={stats.avgOverall} size={80} />
                   <div className="flex-1">
                     <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: "var(--muted-foreground)" }}>
@@ -260,10 +269,10 @@ export function DashboardPage() {
                   {stats.trendOverall === "up" && <TrendingUp size={20} style={{ color: "#22c55e" }} />}
                   {stats.trendOverall === "down" && <TrendingDown size={20} style={{ color: "#ef4444" }} />}
                   {stats.trendOverall === "flat" && <Minus size={20} style={{ color: "var(--muted-foreground)" }} />}
-                </div>
+                </motion.div>
 
                 {/* 3 KPIs */}
-                <div>
+                <motion.div variants={fadeUp}>
                   <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Moyennes par KPI" : "Averages per KPI"}
                   </h3>
@@ -272,11 +281,11 @@ export function DashboardPage() {
                     <ScoreCard label="Brand Fit (35%)" icon={<Palette size={18} />} score={stats.avgBrandFit} trend={stats.trendBrandFit} />
                     <ScoreCard label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={<Eye size={18} />} score={stats.avgCreative} trend={stats.trendCreative} />
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Top issues */}
                 {topIssues.length > 0 && (
-                  <div className="p-4 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <motion.div variants={fadeUp} className="p-4 rounded-xl transition-shadow duration-300 hover:shadow-lg hover:shadow-black/5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: "var(--foreground)" }}>
                       <AlertTriangle size={15} style={{ color: "#f59e0b" }} />
                       {isFr ? "Problèmes récurrents" : "Recurring issues"}
@@ -291,11 +300,11 @@ export function DashboardPage() {
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
                 {/* Recent analyses — click through to compare */}
-                <div>
+                <motion.div variants={fadeUp}>
                   <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Analyses récentes" : "Recent analyses"}
                   </h3>
@@ -330,16 +339,18 @@ export function DashboardPage() {
                       </Link>
                     ))}
                   </div>
-                </div>
+                </motion.div>
 
+                <motion.div variants={fadeUp}>
                 <Link
                   to="/hub/analyze"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm transition-opacity hover:opacity-80"
-                  style={{ background: "var(--foreground)", color: "var(--background)" }}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm transition-all duration-200 hover:opacity-90 hover:shadow-lg hover:shadow-black/10 hover:-translate-y-0.5"
+                  style={{ background: "#1D4ED8", color: "#FFFFFF" }}
                 >
                   <Sparkles size={15} />
                   {isFr ? "Analyser un nouveau visuel" : "Analyze a new visual"}
                 </Link>
+                </motion.div>
               </motion.div>
             )}
 
