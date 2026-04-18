@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { Link } from "react-router";
 import {
   BarChart3, TrendingUp, TrendingDown, Minus,
-  Shield, Scale, Target, MessageCircle, Users, Palette, FileText,
+  Shield, Palette, Eye,
   Sparkles, AlertTriangle, Loader2,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
@@ -21,14 +21,11 @@ interface AnalysisEntry {
   briefContext?: string;
   objective?: string;
   overall: number;
-  ethique: { score: number; issues: string[]; positives: string[] };
   legal: { score: number; issues: string[]; positives: string[] };
-  brief: { score: number; issues: string[]; positives: string[] };
-  objectif: { score: number; issues: string[]; positives: string[] };
-  coherence: { score: number; issues: string[]; positives: string[] };
-  cible: { score: number; issues: string[]; positives: string[] };
-  creatif: { score: number; issues: string[]; positives: string[] };
-  recommendations: string[];
+  brandFit: { score: number; issues: string[]; positives: string[] };
+  creative: { score: number; issues: string[]; positives: string[] };
+  recommendations: { kpi: string; text: string; impact: string }[];
+  publishVerdict: "safe" | "revise" | "block";
   summary: string;
   date: string;
 }
@@ -163,21 +160,13 @@ export function DashboardPage() {
     return {
       total,
       avgOverall: avg("overall"),
-      avgEthique: avg("ethique"),
       avgLegal: avg("legal"),
-      avgBrief: avg("brief"),
-      avgObjectif: avg("objectif"),
-      avgCoherence: avg("coherence"),
-      avgCible: avg("cible"),
-      avgCreatif: avg("creatif"),
+      avgBrandFit: avg("brandFit"),
+      avgCreative: avg("creative"),
       trendOverall: trendKey("overall"),
-      trendEthique: trendKey("ethique"),
       trendLegal: trendKey("legal"),
-      trendBrief: trendKey("brief"),
-      trendObjectif: trendKey("objectif"),
-      trendCoherence: trendKey("coherence"),
-      trendCible: trendKey("cible"),
-      trendCreatif: trendKey("creatif"),
+      trendBrandFit: trendKey("brandFit"),
+      trendCreative: trendKey("creative"),
     };
   }, [analyses]);
 
@@ -186,13 +175,9 @@ export function DashboardPage() {
     const counts = new Map<string, number>();
     analyses.forEach(a => {
       const allIssues = [
-        ...(a.ethique?.issues || []),
         ...(a.legal?.issues || []),
-        ...(a.brief?.issues || []),
-        ...(a.objectif?.issues || []),
-        ...(a.coherence?.issues || []),
-        ...(a.cible?.issues || []),
-        ...(a.creatif?.issues || []),
+        ...(a.brandFit?.issues || []),
+        ...(a.creative?.issues || []),
       ];
       allIssues.forEach(issue => {
         if (issue) counts.set(issue, (counts.get(issue) || 0) + 1);
@@ -269,14 +254,10 @@ export function DashboardPage() {
                   <h3 className="text-sm font-bold mb-3" style={{ color: "var(--foreground)" }}>
                     {isFr ? "Moyennes par KPI" : "Averages per KPI"}
                   </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <ScoreCard label={isFr ? "Éthique" : "Ethics"} icon={<Shield size={18} />} score={stats.avgEthique} trend={stats.trendEthique} />
-                    <ScoreCard label={isFr ? "Légal" : "Legal"} icon={<Scale size={18} />} score={stats.avgLegal} trend={stats.trendLegal} />
-                    <ScoreCard label="Brief" icon={<FileText size={18} />} score={stats.avgBrief} trend={stats.trendBrief} />
-                    <ScoreCard label={isFr ? "Objectif" : "Objective"} icon={<Target size={18} />} score={stats.avgObjectif} trend={stats.trendObjectif} />
-                    <ScoreCard label={isFr ? "Cohérence" : "Coherence"} icon={<MessageCircle size={18} />} score={stats.avgCoherence} trend={stats.trendCoherence} />
-                    <ScoreCard label={isFr ? "Cible" : "Target"} icon={<Users size={18} />} score={stats.avgCible} trend={stats.trendCible} />
-                    <ScoreCard label={isFr ? "Créatif" : "Creative"} icon={<Palette size={18} />} score={stats.avgCreatif} trend={stats.trendCreatif} />
+                  <div className="grid grid-cols-3 gap-3">
+                    <ScoreCard label="Legal (30%)" icon={<Shield size={18} />} score={stats.avgLegal} trend={stats.trendLegal} />
+                    <ScoreCard label="Brand Fit (35%)" icon={<Palette size={18} />} score={stats.avgBrandFit} trend={stats.trendBrandFit} />
+                    <ScoreCard label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={<Eye size={18} />} score={stats.avgCreative} trend={stats.trendCreative} />
                   </div>
                 </div>
 

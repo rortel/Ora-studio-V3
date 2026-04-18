@@ -6,6 +6,12 @@ interface AxisScore {
   positives: string[];
 }
 
+interface TaggedReco {
+  kpi: "legal" | "brand" | "creative";
+  text: string;
+  impact: "high" | "medium" | "low";
+}
+
 export interface AnalysisReportData {
   id: string;
   imageUrl: string;
@@ -13,19 +19,12 @@ export interface AnalysisReportData {
   briefContext?: string;
   objective?: string;
   overall: number;
-  ethique: AxisScore;
   legal: AxisScore;
-  brief: AxisScore;
-  objectif: AxisScore;
-  coherence: AxisScore;
-  cible: AxisScore;
-  creatif: AxisScore;
-  recommendations: string[];
+  brandFit: AxisScore;
+  creative: AxisScore;
+  recommendations: TaggedReco[];
   optimizedPrompt?: string;
-  predictedScores?: {
-    ethique: number; legal: number; brief: number; objectif: number;
-    coherence: number; cible: number; creatif: number; overall: number;
-  } | null;
+  publishVerdict: "safe" | "revise" | "block";
   summary: string;
   date: string;
 }
@@ -155,19 +154,19 @@ export function downloadReport(data: AnalysisReportData, isFr: boolean): void {
   ${data.briefContext ? `<div class="context"><div class="context-label">${isFr ? "Brief / contexte" : "Brief / context"}</div><div class="context-body">${escapeHtml(data.briefContext)}</div></div>` : ""}
   ${data.objective ? `<div class="context"><div class="context-label">${isFr ? "Objectif" : "Objective"}</div><div class="context-body">${escapeHtml(data.objective)}</div></div>` : ""}
 
-  <h2>${isFr ? "Détail des 7 KPIs" : "7 KPIs breakdown"}</h2>
-  ${kpiBlock(isFr ? "Éthique" : "Ethics", data.ethique, "10%")}
-  ${kpiBlock(isFr ? "Légal" : "Legal", data.legal, "10%")}
-  ${kpiBlock(isFr ? "Brief" : "Brief", data.brief, "15%")}
-  ${kpiBlock(isFr ? "Objectif" : "Objective", data.objectif, "15%")}
-  ${kpiBlock(isFr ? "Cohérence message" : "Message coherence", data.coherence, "15%")}
-  ${kpiBlock(isFr ? "Cible" : "Target", data.cible, "15%")}
-  ${kpiBlock(isFr ? "Créatif" : "Creative", data.creatif, "20%")}
+  <h2>${isFr ? "Détail des 3 KPIs" : "3 KPIs breakdown"}</h2>
+  ${kpiBlock("Legal", data.legal, "30%")}
+  ${kpiBlock("Brand Fit", data.brandFit, "35%")}
+  ${kpiBlock(isFr ? "Créatif" : "Creative", data.creative, "35%")}
+
+  <div style="margin:16px 0;padding:12px 16px;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;background:${data.publishVerdict === "safe" ? "#dcfce7" : data.publishVerdict === "revise" ? "#fef3c7" : "#fef2f2"};color:${data.publishVerdict === "safe" ? "#15803d" : data.publishVerdict === "revise" ? "#b45309" : "#b91c1c"}">
+    ${isFr ? "Verdict" : "Verdict"}: ${data.publishVerdict === "safe" ? (isFr ? "Publier" : "Publish") : data.publishVerdict === "revise" ? (isFr ? "À retoucher" : "Revise") : (isFr ? "Bloquer" : "Block")}
+  </div>
 
   ${data.recommendations.length > 0 ? `
     <div class="recos">
       <div class="recos-title">${isFr ? "Recommandations prioritaires" : "Priority recommendations"}</div>
-      <ol>${data.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join("")}</ol>
+      <ol>${data.recommendations.map(r => `<li><strong>[${escapeHtml(r.kpi.toUpperCase())}]</strong> ${escapeHtml(r.text)}${r.impact === "high" ? " ⚠" : ""}</li>`).join("")}</ol>
     </div>
   ` : ""}
 
@@ -175,18 +174,6 @@ export function downloadReport(data: AnalysisReportData, isFr: boolean): void {
     <div class="opti">
       <div class="opti-title">${isFr ? "Prompt optimisé" : "Optimized prompt"}</div>
       <div class="opti-prompt">${escapeHtml(data.optimizedPrompt)}</div>
-      ${data.predictedScores ? `
-        <div class="predicted">
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Éthique" : "Ethics"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.ethique)}">${data.predictedScores.ethique}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Légal" : "Legal"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.legal)}">${data.predictedScores.legal}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">Brief</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.brief)}">${data.predictedScores.brief}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Objectif" : "Objective"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.objectif)}">${data.predictedScores.objectif}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Cohérence" : "Coherence"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.coherence)}">${data.predictedScores.coherence}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Cible" : "Target"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.cible)}">${data.predictedScores.cible}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Créatif" : "Creative"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.creatif)}">${data.predictedScores.creatif}</div></div>
-          <div class="predicted-kpi"><div class="predicted-kpi-label">${isFr ? "Global prévu" : "Predicted overall"}</div><div class="predicted-kpi-score" style="color:${gradeColor(data.predictedScores.overall)}">${data.predictedScores.overall}</div></div>
-        </div>
-      ` : ""}
     </div>
   ` : ""}
 

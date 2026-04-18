@@ -2,8 +2,9 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Upload, Loader2, AlertTriangle, CheckCircle2,
-  Sparkles, Shield, Scale, Target, MessageCircle, Users, Palette, FileText,
+  Sparkles, Shield, Palette, Eye,
   Download, RotateCcw, ChevronDown, ChevronRight, Lightbulb, Zap, ArrowRight,
+  Check, Ban, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
@@ -23,23 +24,22 @@ interface AxisScore {
   positives: string[];
 }
 
+interface TaggedReco {
+  kpi: "legal" | "brand" | "creative";
+  text: string;
+  impact: "high" | "medium" | "low";
+}
+
 interface AnalysisResult {
   success: true;
   id?: string;
   overall: number;
-  ethique: AxisScore;
   legal: AxisScore;
-  brief: AxisScore;
-  objectif: AxisScore;
-  coherence: AxisScore;
-  cible: AxisScore;
-  creatif: AxisScore;
-  recommendations: string[];
+  brandFit: AxisScore;
+  creative: AxisScore;
+  recommendations: TaggedReco[];
   optimizedPrompt: string;
-  predictedScores: {
-    ethique: number; legal: number; brief: number; objectif: number;
-    coherence: number; cible: number; creatif: number; overall: number;
-  } | null;
+  publishVerdict: "safe" | "revise" | "block";
   summary: string;
   tookMs: number;
 }
@@ -288,16 +288,12 @@ export function AnalyzePage() {
       briefContext,
       objective,
       overall: result.overall,
-      ethique: result.ethique,
       legal: result.legal,
-      brief: result.brief,
-      objectif: result.objectif,
-      coherence: result.coherence,
-      cible: result.cible,
-      creatif: result.creatif,
+      brandFit: result.brandFit,
+      creative: result.creative,
       recommendations: result.recommendations,
       optimizedPrompt: result.optimizedPrompt,
-      predictedScores: result.predictedScores,
+      publishVerdict: result.publishVerdict,
       summary: result.summary,
       date: new Date().toISOString(),
     }, isFr);
@@ -315,8 +311,8 @@ export function AnalyzePage() {
               </h1>
               <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
                 {isFr
-                  ? "Upload un visuel généré par IA. Ora le score sur 7 KPIs et te dit comment l'améliorer."
-                  : "Upload an AI-generated visual. Ora scores it on 7 KPIs and tells you how to improve it."}
+                  ? "Upload un visuel généré par IA. Ora le score sur 3 KPIs (Legal, Brand, Creative) et te dit comment l'améliorer."
+                  : "Upload an AI-generated visual. Ora scores it on 3 KPIs (Legal, Brand, Creative) and tells you how to improve it."}
               </p>
               {brandVault && (
                 <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs" style={{ background: "var(--accent-warm-light)", color: "var(--accent)" }}>
@@ -465,7 +461,8 @@ export function AnalyzePage() {
                         <h2 className="text-lg font-bold mb-2" style={{ color: "var(--foreground)" }}>
                           {isFr ? "Résultat de l'analyse" : "Analysis Result"}
                         </h2>
-                        <p className="text-sm leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
+                        <VerdictBadge verdict={result.publishVerdict} isFr={isFr} />
+                        <p className="text-sm leading-relaxed mt-2" style={{ color: "var(--muted-foreground)" }}>
                           {result.summary}
                         </p>
                         <div className="flex items-center gap-2 mt-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
@@ -478,15 +475,11 @@ export function AnalyzePage() {
 
                 <div className="space-y-2">
                   <h3 className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
-                    {isFr ? "Détail des 7 KPIs" : "7 KPIs breakdown"}
+                    {isFr ? "Détail des 3 KPIs" : "3 KPIs breakdown"}
                   </h3>
-                  <AxisBar label={isFr ? "Éthique (10%)" : "Ethics (10%)"} icon={<Shield size={16} />} score={result.ethique.score} items={result.ethique} />
-                  <AxisBar label={isFr ? "Légal (10%)" : "Legal (10%)"} icon={<Scale size={16} />} score={result.legal.score} items={result.legal} />
-                  <AxisBar label={isFr ? "Brief (15%)" : "Brief (15%)"} icon={<FileText size={16} />} score={result.brief.score} items={result.brief} defaultOpen />
-                  <AxisBar label={isFr ? "Objectif (15%)" : "Objective (15%)"} icon={<Target size={16} />} score={result.objectif.score} items={result.objectif} defaultOpen />
-                  <AxisBar label={isFr ? "Cohérence message (15%)" : "Message coherence (15%)"} icon={<MessageCircle size={16} />} score={result.coherence.score} items={result.coherence} />
-                  <AxisBar label={isFr ? "Cible (15%)" : "Target (15%)"} icon={<Users size={16} />} score={result.cible.score} items={result.cible} />
-                  <AxisBar label={isFr ? "Créatif (20%)" : "Creative (20%)"} icon={<Palette size={16} />} score={result.creatif.score} items={result.creatif} defaultOpen />
+                  <AxisBar label={isFr ? "Legal (30%)" : "Legal (30%)"} icon={<Shield size={16} />} score={result.legal.score} items={result.legal} defaultOpen />
+                  <AxisBar label={isFr ? "Brand Fit (35%)" : "Brand Fit (35%)"} icon={<Palette size={16} />} score={result.brandFit.score} items={result.brandFit} defaultOpen />
+                  <AxisBar label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={<Eye size={16} />} score={result.creative.score} items={result.creative} defaultOpen />
                 </div>
 
                 {result.recommendations.length > 0 && (
@@ -497,9 +490,18 @@ export function AnalyzePage() {
                     </h3>
                     <div className="space-y-2">
                       {result.recommendations.map((rec, i) => (
-                        <div key={i} className="flex gap-2 text-sm">
-                          <ArrowRight size={13} className="mt-0.5 shrink-0" style={{ color: "var(--accent)" }} />
-                          <span style={{ color: "var(--foreground)" }}>{rec}</span>
+                        <div key={i} className="flex items-start gap-2 text-sm">
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 uppercase"
+                            style={{
+                              background: rec.kpi === "legal" ? "#fef2f2" : rec.kpi === "brand" ? "#eff6ff" : "#f0fdf4",
+                              color: rec.kpi === "legal" ? "#b91c1c" : rec.kpi === "brand" ? "#1d4ed8" : "#15803d",
+                            }}
+                          >
+                            {rec.kpi}
+                          </span>
+                          <span style={{ color: "var(--foreground)" }}>{rec.text}</span>
+                          {rec.impact === "high" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#b91c1c" }}>!</span>}
                         </div>
                       ))}
                     </div>
@@ -538,5 +540,18 @@ export function AnalyzePage() {
         </div>
       </div>
     </RouteGuard>
+  );
+}
+
+function VerdictBadge({ verdict, isFr }: { verdict: "safe" | "revise" | "block"; isFr: boolean }) {
+  const config = {
+    safe:   { icon: <Check size={13} />,          bg: "#dcfce7", color: "#15803d", label: isFr ? "Publier"     : "Publish" },
+    revise: { icon: <RefreshCw size={13} />,      bg: "#fef3c7", color: "#b45309", label: isFr ? "À retoucher" : "Revise" },
+    block:  { icon: <Ban size={13} />,            bg: "#fef2f2", color: "#b91c1c", label: isFr ? "Bloquer"     : "Block" },
+  }[verdict];
+  return (
+    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: config.bg, color: config.color }}>
+      {config.icon} {config.label}
+    </span>
   );
 }

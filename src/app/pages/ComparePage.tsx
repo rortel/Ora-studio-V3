@@ -3,9 +3,9 @@ import { motion } from "motion/react";
 import { Link, useSearchParams, useNavigate } from "react-router";
 import { toast } from "sonner";
 import {
-  Shield, Scale, Target, MessageCircle, Users, Palette, FileText,
+  Shield, Palette, Eye,
   Sparkles, Download, Copy, RotateCw, ArrowRight, Loader2, AlertTriangle,
-  CheckCircle2, TrendingUp, BarChart3, Trash2,
+  CheckCircle2, TrendingUp, BarChart3, Trash2, RefreshCw, Check, Ban,
 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
@@ -21,6 +21,12 @@ interface AxisScore {
   positives: string[];
 }
 
+interface TaggedReco {
+  kpi: "legal" | "brand" | "creative";
+  text: string;
+  impact: "high" | "medium" | "low";
+}
+
 interface Analysis {
   id: string;
   imageUrl: string;
@@ -28,19 +34,12 @@ interface Analysis {
   briefContext?: string;
   objective?: string;
   overall: number;
-  ethique: AxisScore;
   legal: AxisScore;
-  brief: AxisScore;
-  objectif: AxisScore;
-  coherence: AxisScore;
-  cible: AxisScore;
-  creatif: AxisScore;
-  recommendations: string[];
+  brandFit: AxisScore;
+  creative: AxisScore;
+  recommendations: TaggedReco[];
   optimizedPrompt?: string;
-  predictedScores?: {
-    ethique: number; legal: number; brief: number; objectif: number;
-    coherence: number; cible: number; creatif: number; overall: number;
-  } | null;
+  publishVerdict: "safe" | "revise" | "block";
   summary: string;
   date: string;
 }
@@ -195,14 +194,37 @@ export function ComparePage() {
     }
   }, [analysis, navigate, serverPost, isFr]);
 
+  const [regenerating, setRegenerating] = useState(false);
+
+  const handleRegenerate = useCallback(async () => {
+    if (!analysis) return;
+    setRegenerating(true);
+    toast.info(isFr ? "Régénération en cours…" : "Regenerating…");
+    const res = await serverPost("/analyze/regenerate", { id: analysis.id }, 120_000);
+    if (res?.success && res.newImageUrl) {
+      toast.success(isFr ? "Nouveau visuel généré — rescoring…" : "New visual generated — rescoring…");
+      const rescore = await serverPost("/analyze/score", {
+        imageUrl: res.newImageUrl,
+        prompt: analysis.optimizedPrompt || analysis.prompt,
+        briefContext: analysis.briefContext,
+        objective: analysis.objective,
+      }, 120_000);
+      if (rescore?.success) {
+        toast.success(isFr ? `Nouveau score : ${rescore.overall}/100` : `New score: ${rescore.overall}/100`);
+        if (rescore.id) navigate(`/hub/compare?id=${rescore.id}`);
+      } else {
+        toast.error(rescore?.error || "Rescore failed");
+      }
+    } else {
+      toast.error(res?.error || "Regeneration failed");
+    }
+    setRegenerating(false);
+  }, [analysis, serverPost, navigate, isFr]);
+
   const kpiIcons = useMemo(() => ({
-    ethique: <Shield size={14} />,
-    legal: <Scale size={14} />,
-    brief: <FileText size={14} />,
-    objectif: <Target size={14} />,
-    coherence: <MessageCircle size={14} />,
-    cible: <Users size={14} />,
-    creatif: <Palette size={14} />,
+    legal: <Shield size={14} />,
+    brandFit: <Palette size={14} />,
+    creative: <Eye size={14} />,
   }), []);
 
   // ── List view (no id) ──
@@ -320,6 +342,15 @@ export function ComparePage() {
                 {/* Action bar */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
+                    onClick={handleRegenerate}
+                    disabled={regenerating}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
+                    style={{ background: "#1d4ed8", color: "#fff" }}
+                  >
+                    {regenerating ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    {isFr ? "Régénérer" : "Regenerate"}
+                  </button>
+                  <button
                     onClick={handleRetest}
                     disabled={!analysis.optimizedPrompt}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-opacity hover:opacity-80 disabled:opacity-40"
@@ -377,17 +408,14 @@ export function ComparePage() {
 
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "Scores actuels — 7 KPIs" : "Current scores — 7 KPIs"}
+                        {isFr ? "Scores actuels — 3 KPIs" : "Current scores — 3 KPIs"}
                       </div>
                       <div className="space-y-1.5">
-                        <KpiRow label={isFr ? "Éthique" : "Ethics"} icon={kpiIcons.ethique} current={analysis.ethique.score} />
-                        <KpiRow label={isFr ? "Légal" : "Legal"} icon={kpiIcons.legal} current={analysis.legal.score} />
-                        <KpiRow label="Brief" icon={kpiIcons.brief} current={analysis.brief.score} />
-                        <KpiRow label={isFr ? "Objectif" : "Objective"} icon={kpiIcons.objectif} current={analysis.objectif.score} />
-                        <KpiRow label={isFr ? "Cohérence" : "Coherence"} icon={kpiIcons.coherence} current={analysis.coherence.score} />
-                        <KpiRow label={isFr ? "Cible" : "Target"} icon={kpiIcons.cible} current={analysis.cible.score} />
-                        <KpiRow label={isFr ? "Créatif" : "Creative"} icon={kpiIcons.creatif} current={analysis.creatif.score} />
+                        <KpiRow label="Legal (30%)" icon={kpiIcons.legal} current={analysis.legal.score} />
+                        <KpiRow label="Brand Fit (35%)" icon={kpiIcons.brandFit} current={analysis.brandFit.score} />
+                        <KpiRow label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={kpiIcons.creative} current={analysis.creative.score} />
                       </div>
+                      <VerdictBadge verdict={analysis.publishVerdict} isFr={isFr} />
                     </div>
 
                     {analysis.prompt && (
@@ -415,35 +443,24 @@ export function ComparePage() {
                         <h3 className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "#92400e" }}>
                           {isFr ? "Recommandations prioritaires" : "Priority recommendations"}
                         </h3>
-                        <ol className="space-y-1.5 pl-5" style={{ listStyleType: "decimal" }}>
+                        <div className="space-y-2">
                           {analysis.recommendations.map((r, i) => (
-                            <li key={i} className="text-sm" style={{ color: "#333" }}>{r}</li>
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 uppercase"
+                                style={{
+                                  background: r.kpi === "legal" ? "#fef2f2" : r.kpi === "brand" ? "#eff6ff" : "#f0fdf4",
+                                  color: r.kpi === "legal" ? "#b91c1c" : r.kpi === "brand" ? "#1d4ed8" : "#15803d",
+                                }}
+                              >
+                                {r.kpi}
+                              </span>
+                              <span style={{ color: "#333" }}>{r.text}</span>
+                              {r.impact === "high" && <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#b91c1c" }}>!</span>}
+                            </div>
                           ))}
-                        </ol>
+                        </div>
                       </div>
-                    )}
-
-                    {analysis.predictedScores && (
-                      <>
-                        <div className="flex justify-center">
-                          <ScoreGauge score={analysis.predictedScores.overall} size={110} label={isFr ? "Score prévu" : "Predicted score"} />
-                        </div>
-
-                        <div>
-                          <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--muted-foreground)" }}>
-                            {isFr ? "Scores prévus avec optimisation" : "Predicted scores with optimization"}
-                          </div>
-                          <div className="space-y-1.5">
-                            <KpiRow label={isFr ? "Éthique" : "Ethics"} icon={kpiIcons.ethique} current={analysis.ethique.score} predicted={analysis.predictedScores.ethique} />
-                            <KpiRow label={isFr ? "Légal" : "Legal"} icon={kpiIcons.legal} current={analysis.legal.score} predicted={analysis.predictedScores.legal} />
-                            <KpiRow label="Brief" icon={kpiIcons.brief} current={analysis.brief.score} predicted={analysis.predictedScores.brief} />
-                            <KpiRow label={isFr ? "Objectif" : "Objective"} icon={kpiIcons.objectif} current={analysis.objectif.score} predicted={analysis.predictedScores.objectif} />
-                            <KpiRow label={isFr ? "Cohérence" : "Coherence"} icon={kpiIcons.coherence} current={analysis.coherence.score} predicted={analysis.predictedScores.coherence} />
-                            <KpiRow label={isFr ? "Cible" : "Target"} icon={kpiIcons.cible} current={analysis.cible.score} predicted={analysis.predictedScores.cible} />
-                            <KpiRow label={isFr ? "Créatif" : "Creative"} icon={kpiIcons.creatif} current={analysis.creatif.score} predicted={analysis.predictedScores.creatif} />
-                          </div>
-                        </div>
-                      </>
                     )}
 
                     {analysis.optimizedPrompt && (
@@ -503,5 +520,18 @@ export function ComparePage() {
         </div>
       </div>
     </RouteGuard>
+  );
+}
+
+function VerdictBadge({ verdict, isFr }: { verdict: "safe" | "revise" | "block"; isFr: boolean }) {
+  const config = {
+    safe:   { icon: <Check size={13} />,     bg: "#dcfce7", color: "#15803d", label: isFr ? "Publier"     : "Publish" },
+    revise: { icon: <RefreshCw size={13} />,  bg: "#fef3c7", color: "#b45309", label: isFr ? "À retoucher" : "Revise" },
+    block:  { icon: <Ban size={13} />,        bg: "#fef2f2", color: "#b91c1c", label: isFr ? "Bloquer"     : "Block" },
+  }[verdict];
+  return (
+    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold mt-2" style={{ background: config.bg, color: config.color }}>
+      {config.icon} {config.label}
+    </span>
   );
 }
