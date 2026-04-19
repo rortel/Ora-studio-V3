@@ -55,6 +55,7 @@ const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
 const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
 const AnalyzePage = lazyRetry(() => import("./pages/AnalyzePage"), "AnalyzePage");
 const DashboardPage = lazyRetry(() => import("./pages/DashboardPage"), "DashboardPage");
+const AssetsChatPage = lazyRetry(() => import("./pages/AssetsChatPage"), "AssetsChatPage");
 
 
 /*
@@ -111,6 +112,8 @@ export const router = createBrowserRouter([
       { path: "hub/studio", Component: StudioPage },
       { path: "hub/classic", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },
+      { path: "hub/chat", Component: AssetsChatPage },
+      { path: "hub/assets", Component: AssetsChatPage },
       { path: "hub/vault", Component: VaultPage },
       { path: "hub/vault/products", Component: ProductsPage },
       { path: "hub/analytics", Component: AnalyticsPage },

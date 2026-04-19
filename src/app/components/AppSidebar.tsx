@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Home, FolderOpen, Calendar, Palette, Sparkles, Scissors, GitCompare,
-  User, LogOut, Shield, Zap, CreditCard, BarChart3, Eye,
+  User, LogOut, Shield, Zap, CreditCard, BarChart3, Eye, MessageSquare,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
@@ -17,6 +17,7 @@ import { useState, useRef, useEffect } from "react";
  */
 
 function isNavActive(href: string, pathname: string): boolean {
+  if (href === "/hub/chat") return pathname.startsWith("/hub/chat") || pathname.startsWith("/hub/assets");
   if (href === "/hub/library") return pathname.startsWith("/hub/library");
   if (href === "/hub/vault") return pathname.startsWith("/hub/vault");
   if (href === "/hub/analyze") return pathname.startsWith("/hub/analyze");
@@ -36,6 +37,7 @@ export function AppSidebar() {
   // Phase 2 items (Studio, Calendar, Brand Vault) are hidden in Phase 1.
   // Keep the definitions so we can restore them by flipping PHASE_1_ONLY.
   const allNavItems = [
+    { icon: MessageSquare, label: "Chat",            href: "/hub/chat",      phase1: true  },
     { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
     { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
     { icon: GitCompare, label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
@@ -47,8 +49,8 @@ export function AppSidebar() {
   const navItems = allNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
 
   const allMobileNavItems = [
+    { icon: MessageSquare, label: "Chat",            href: "/hub/chat",      phase1: true  },
     { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
-    { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
     { icon: GitCompare, label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
     { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library",   phase1: true  },
     { icon: Home,       label: t("sidebar.home"),    href: "/hub",           phase1: false },
