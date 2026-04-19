@@ -8,6 +8,14 @@ import {
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
+import {
+  ContainerAnimated,
+  ContainerScroll,
+  ContainerStagger,
+  ContainerSticky,
+  GalleryCol,
+  GalleryContainer,
+} from "../components/ui/animated-gallery";
 import heroNissan from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.png";
 import serviceNissan from "../../assets/fd1a1304c95304459d525edabe5b548965b73ee0.png";
 import sunsetNissan from "../../assets/e770a4caf934a7f0a280cbbe70316b0d298cff32.png";
@@ -200,81 +208,97 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ GALLERY — real audits ═══ */}
-      <section className="border-t" style={{ borderColor: BORDER, background: CARD }}>
-        <div className="max-w-6xl mx-auto px-5 md:px-8 py-20 md:py-28">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10 md:mb-14">
-            <div>
-              <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>{isFr ? "Audits récents" : "Recent audits"}</p>
-              <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
-                {isFr ? "Chaque visuel. Un verdict." : "Every visual. A verdict."}
-              </h2>
-            </div>
-            <p className="text-sm md:text-base max-w-sm" style={{ color: MUTED }}>
-              {isFr
-                ? "Ora regarde ce que tu publies. Score, drapeau, reco. Toujours une action concrète."
-                : "Ora looks at what you publish. Score, flag, reco. Always a concrete action."}
+      {/* ═══ CINEMATIC SCROLL GALLERY — real audits ═══ */}
+      <section className="relative border-t overflow-hidden" style={{ borderColor: BORDER, background: BG }}>
+        <ContainerStagger className="relative z-20 max-w-5xl mx-auto px-5 md:px-8 pt-20 md:pt-28 pb-8 text-center">
+          <ContainerAnimated>
+            <p className="text-sm font-semibold mb-3" style={{ color: BLUE }}>
+              {isFr ? "Audits récents" : "Recent audits"}
             </p>
-          </div>
+          </ContainerAnimated>
+          <ContainerAnimated>
+            <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 3rem)", fontWeight: 800, letterSpacing: "-0.025em", lineHeight: 1.05 }}>
+              {isFr ? <>Chaque visuel.<br /><span style={{ color: BLUE }}>Un verdict.</span></> : <>Every visual.<br /><span style={{ color: BLUE }}>A verdict.</span></>}
+            </h2>
+          </ContainerAnimated>
+          <ContainerAnimated className="my-5">
+            <p className="text-base md:text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: MUTED }}>
+              {isFr
+                ? "Score, drapeau, reco. Chaque image passée au peigne fin — en 30 secondes."
+                : "Score, flag, reco. Every image combed through — in 30 seconds."}
+            </p>
+          </ContainerAnimated>
+        </ContainerStagger>
 
-          <motion.div
-            variants={stagger}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-40px" }}
-            className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-5"
-          >
-            {[
-              { src: "/templates/figma-igp-01.png",            score: 62, verdict: "block",  kpi: "LEGAL",    note: isFr ? "Marque Nike reconnaissable" : "Recognizable Nike brand" },
-              { src: "/templates/figma-skincare-01.png",       score: 91, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Composition produit forte" : "Strong product shot" },
-              { src: "/templates/figma-fashion-post-01.png",   score: 78, verdict: "revise", kpi: "BRAND",    note: isFr ? "Palette hors charte" : "Palette off-brand" },
-              { src: "/templates/figma-flyer-food.png",        score: 84, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Lisible, claim net" : "Readable, clear claim" },
-              { src: "/templates/figma-flyer-fitness.png",     score: 71, verdict: "revise", kpi: "BRAND",    note: isFr ? "Contraste logo faible" : "Weak logo contrast" },
-              { src: "/templates/figma-igp-02.png",            score: 88, verdict: "safe",   kpi: "CREATIVE", note: isFr ? "Impact visuel élevé" : "High visual impact" },
-            ].map((item, i) => (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                className="group relative rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-black/8 hover:-translate-y-1"
-                style={{ background: CARD, border: `1px solid ${BORDER}` }}
-              >
-                <div className="aspect-square overflow-hidden" style={{ background: CARD }}>
-                  <img src={item.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
-                </div>
-                {/* Score pill over image */}
-                <div
-                  className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold shadow-lg"
-                  style={{
-                    background: "rgba(0,0,0,0.75)",
-                    color: item.verdict === "block" ? "#B91C1C" : item.verdict === "revise" ? "#B45309" : "#15803D",
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ background: item.verdict === "block" ? "#B91C1C" : item.verdict === "revise" ? "#B45309" : "#15803D" }}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[70vh]"
+          style={{
+            background: "linear-gradient(to right, rgba(59,130,246,0.15), rgba(99,102,241,0.2), rgba(59,130,246,0.1))",
+            filter: "blur(84px)",
+            mixBlendMode: "screen",
+          }}
+        />
+
+        <ContainerScroll className="relative h-[280vh]">
+          <ContainerSticky className="h-svh">
+            <GalleryContainer className="max-w-6xl mx-auto px-5 md:px-8">
+              <GalleryCol yRange={["-10%", "2%"]} className="-mt-2">
+                {[
+                  "/templates/figma-skincare-01.png",
+                  "/templates/figma-fashion-post-01.png",
+                  "/templates/figma-b2b-01.png",
+                  "/templates/figma-linkedin-01.png",
+                ].map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt="Ora audit sample"
+                    loading="lazy"
+                    decoding="async"
+                    className="aspect-video block h-auto max-h-full w-full rounded-md object-cover shadow-2xl"
+                    style={{ border: `1px solid ${BORDER}` }}
                   />
-                  <span className="tabular-nums">{item.score}/100</span>
-                </div>
-                {/* Reco bar */}
-                <div className="px-4 py-3 flex items-start gap-2 text-xs md:text-[13px] leading-snug">
-                  <span
-                    className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0"
-                    style={{
-                      background:
-                        item.kpi === "LEGAL" ? "#FEF2F2" : item.kpi === "BRAND" ? "#EFF6FF" : "#F0FDF4",
-                      color:
-                        item.kpi === "LEGAL" ? "#B91C1C" : item.kpi === "BRAND" ? BLUE : "#15803D",
-                    }}
-                  >
-                    {item.kpi}
-                  </span>
-                  <span style={{ color: TEXT }}>{item.note}</span>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
+                ))}
+              </GalleryCol>
+              <GalleryCol className="mt-[-50%]" yRange={["15%", "5%"]}>
+                {[
+                  "/templates/figma-pro-01.png",
+                  "/templates/figma-flyer-food.png",
+                  "/templates/figma-igp-02.png",
+                  "/templates/figma-fashion-post-02.png",
+                ].map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt="Ora audit sample"
+                    loading="lazy"
+                    decoding="async"
+                    className="aspect-video block h-auto max-h-full w-full rounded-md object-cover shadow-2xl"
+                    style={{ border: `1px solid ${BORDER}` }}
+                  />
+                ))}
+              </GalleryCol>
+              <GalleryCol yRange={["-10%", "2%"]} className="-mt-2">
+                {[
+                  "/templates/figma-bundle-33.png",
+                  "/templates/figma-flyer-fitness.png",
+                  "/templates/figma-skincare-02.png",
+                  "/templates/figma-linkedin-03.png",
+                ].map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt="Ora audit sample"
+                    loading="lazy"
+                    decoding="async"
+                    className="aspect-video block h-auto max-h-full w-full rounded-md object-cover shadow-2xl"
+                    style={{ border: `1px solid ${BORDER}` }}
+                  />
+                ))}
+              </GalleryCol>
+            </GalleryContainer>
+          </ContainerSticky>
+        </ContainerScroll>
       </section>
 
       {/* ═══ 3 KPIs EXPLAINED ═══ */}
