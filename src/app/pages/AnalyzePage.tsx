@@ -88,6 +88,7 @@ function AnalyzeChat() {
   const [busy, setBusy] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [avoid, setAvoid] = useState<string[]>([]);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -161,6 +162,7 @@ function AnalyzeChat() {
 
       setCurrentPrompt(res.promptText);
       setSourceUrl(res.sourceUrl || null);
+      setAvoid(Array.isArray(res.avoid) ? res.avoid : []);
       replaceLast(
         (m) => m.id === loadingId,
         { id: loadingId, role: "ora", kind: "analysis", schema: res.schema, promptText: res.promptText, imageUrl: dataUrl },
@@ -192,6 +194,7 @@ function AnalyzeChat() {
       const res = useRemix
         ? await serverPost("/analyze/remix", {
             prompt: promptToUse, imageUrl: sourceUrl, model, aspectRatio: "1:1",
+            avoid: avoid.length > 0 ? avoid : undefined,
           }, 180_000)
         : await serverPost("/generate/image-via-get", {
             prompt: promptToUse, models: model, aspectRatio: "1:1",
@@ -231,7 +234,7 @@ function AnalyzeChat() {
     } finally {
       setBusy(false);
     }
-  }, [busy, currentPrompt, sourceUrl, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
+  }, [busy, currentPrompt, sourceUrl, avoid, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
 
   const handleSend = useCallback(() => {
     const t = inputText.trim();
@@ -267,6 +270,7 @@ function AnalyzeChat() {
     setMessages([{ id: uid(), role: "ora", kind: "text", text: greeting }]);
     setCurrentPrompt("");
     setSourceUrl(null);
+    setAvoid([]);
     setEditingPrompt(false);
     setInputText("");
   };
