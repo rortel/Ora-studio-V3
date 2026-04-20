@@ -8185,8 +8185,32 @@ Rules:
     };
     const promptText = String(parsed.promptText || "").trim();
 
-    console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"})`);
-    return c.json({ success: true, schema, promptText, provider, tookMs: Date.now() - t0 });
+    // ── Optional: upload source to Storage when authenticated, so it can be used as a ref later ──
+    let sourceUrl: string | null = null;
+    if (user && imageBase64) {
+      try {
+        await ensureGeneratedAssetsBucket();
+        const sb = supabaseAdmin();
+        const mt = mimeType || "image/png";
+        const ext = mt.includes("png") ? "png" : mt.includes("webp") ? "webp" : "jpg";
+        const storagePath = `${user.id}/sources/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const bin = atob(imageBase64);
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, buf, { contentType: mt, upsert: true });
+        if (!upErr) {
+          const { data: signed } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+          if (signed?.signedUrl) sourceUrl = signed.signedUrl;
+        } else {
+          console.log(`[reverse-prompt] source upload skipped: ${upErr.message}`);
+        }
+      } catch (err) {
+        console.log(`[reverse-prompt] source upload error (non-fatal): ${err}`);
+      }
+    }
+
+    console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"}, source=${!!sourceUrl})`);
+    return c.json({ success: true, schema, promptText, provider, sourceUrl, tookMs: Date.now() - t0 });
   } catch (err: any) {
     console.log(`[reverse-prompt] FATAL: ${err?.message || err}`);
     return c.json({ success: false, error: String(err?.message || err) }, 500);
