@@ -8193,6 +8193,164 @@ Rules:
   }
 });
 
+// ── POST /analyze/remix — Generate using source image as a STYLE reference ──
+// Routes per model:
+//   • photon-1 / photon-flash-1 → Luma with image_ref @ weight 0.55 (inspired, polled)
+//   • flux-pro                  → FAL FLUX.1.1-pro-ultra image-to-image
+//   • ideogram-3-leo            → Ideogram REMIX v3
+//   • dall-e                    → no native img2img → text-only fallback (tagged in response)
+// All polling done server-side; returns final { success, imageUrl, provider } synchronously.
+app.post("/analyze/remix", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { prompt, imageUrl, model, aspectRatio = "1:1" } = body || {};
+    if (!prompt || !imageUrl || !model) {
+      return c.json({ success: false, error: "prompt, imageUrl and model are required" }, 400);
+    }
+
+    const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
+    const lumaAspect = arLumaMap[aspectRatio] || "1:1";
+
+    const pollLuma = async (generationId: string, timeoutMs = 90_000): Promise<string | null> => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        try {
+          const pr = await fetch(`${LUMA_BASE}/generations/${generationId}`, { headers: lumaHeaders() });
+          if (pr.ok) {
+            const d = await pr.json();
+            if (d.state === "completed") return d.assets?.image || null;
+            if (d.state === "failed") return null;
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 2_000));
+      }
+      return null;
+    };
+
+    // ── PHOTON / FLASH (Luma, image as style ref) ──
+    if (model === "photon-1" || model === "photon-flash-1") {
+      const lumaModel = model === "photon-flash-1" ? "photon-flash-1" : "photon-1";
+      const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
+        method: "POST",
+        headers: lumaHeaders(),
+        body: JSON.stringify({
+          prompt,
+          model: lumaModel,
+          aspect_ratio: lumaAspect,
+          image_ref: [{ url: imageUrl, weight: 0.55 }],
+        }),
+      });
+      if (!startRes.ok) {
+        const err = await startRes.text();
+        return c.json({ success: false, error: `Luma ${startRes.status}: ${err.slice(0, 180)}` }, 502);
+      }
+      const g = await startRes.json();
+      if (!g.id) return c.json({ success: false, error: "Luma: no generation id" }, 502);
+      const finalUrl = await pollLuma(g.id);
+      if (!finalUrl) return c.json({ success: false, error: "Luma generation timed out or failed" }, 504);
+      console.log(`[remix] luma ${lumaModel} ok in ${Date.now() - t0}ms`);
+      return c.json({ success: true, imageUrl: finalUrl, provider: `luma/${lumaModel}` });
+    }
+
+    // ── FLUX PRO (FAL image-to-image) ──
+    if (model === "flux-pro") {
+      const falKey = Deno.env.get("FAL_API_KEY");
+      if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
+      const falBody = {
+        prompt,
+        image_url: imageUrl,
+        strength: 0.75,
+        num_images: 1,
+        safety_tolerance: "2",
+        output_format: "jpeg",
+        aspect_ratio: aspectRatio,
+      };
+      const falRes = await fetch(`https://fal.run/fal-ai/flux-pro/v1.1/redux`, {
+        method: "POST",
+        headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(falBody),
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!falRes.ok) {
+        const err = await falRes.text();
+        return c.json({ success: false, error: `FAL ${falRes.status}: ${err.slice(0, 180)}` }, 502);
+      }
+      const data = await falRes.json();
+      const url = data.images?.[0]?.url || data.image?.url;
+      if (!url) return c.json({ success: false, error: "FAL: no image url" }, 502);
+      console.log(`[remix] flux-pro ok in ${Date.now() - t0}ms`);
+      return c.json({ success: true, imageUrl: url, provider: "fal/flux-pro-redux" });
+    }
+
+    // ── IDEOGRAM (remix v3) ──
+    if (model === "ideogram-3-leo") {
+      const ideoKey = Deno.env.get("IDEOGRAM_API_KEY");
+      if (!ideoKey) return c.json({ success: false, error: "IDEOGRAM_API_KEY not configured" }, 500);
+      const fd = new FormData();
+      fd.append("prompt", prompt);
+      fd.append("image_weight", "60");
+      fd.append("rendering_speed", "DEFAULT");
+      const arIdeoMap: Record<string, string> = { "1:1": "1x1", "9:16": "9x16", "16:9": "16x9", "4:3": "4x3", "3:4": "3x4", "2:3": "2x3", "4:5": "4x5" };
+      fd.append("aspect_ratio", arIdeoMap[aspectRatio] || "1x1");
+      try {
+        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(10_000) });
+        if (!imgRes.ok) throw new Error(`fetch ref ${imgRes.status}`);
+        const blob = await imgRes.blob();
+        fd.append("image", blob, "reference.png");
+      } catch (err) {
+        return c.json({ success: false, error: `Could not fetch source image: ${err}` }, 502);
+      }
+      const remixRes = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+        method: "POST",
+        headers: { "Api-Key": ideoKey },
+        body: fd,
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!remixRes.ok) {
+        const err = await remixRes.text();
+        return c.json({ success: false, error: `Ideogram ${remixRes.status}: ${err.slice(0, 180)}` }, 502);
+      }
+      const data = await remixRes.json();
+      const url = data.data?.[0]?.url;
+      if (!url) return c.json({ success: false, error: "Ideogram: no image url" }, 502);
+      console.log(`[remix] ideogram ok in ${Date.now() - t0}ms`);
+      return c.json({ success: true, imageUrl: url, provider: "ideogram/remix" });
+    }
+
+    // ── DALL-E 3 (no native img2img → text-only) ──
+    if (model === "dall-e") {
+      const key = Deno.env.get("OPENAI_API_KEY");
+      if (!key) return c.json({ success: false, error: "OPENAI_API_KEY not configured" }, 500);
+      const arDalleMap: Record<string, string> = { "1:1": "1024x1024", "9:16": "1024x1792", "16:9": "1792x1024" };
+      const size = arDalleMap[aspectRatio] || "1024x1024";
+      const dr = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: "dall-e-3", prompt, size, quality: "hd", n: 1 }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!dr.ok) {
+        const err = await dr.text();
+        return c.json({ success: false, error: `OpenAI ${dr.status}: ${err.slice(0, 180)}` }, 502);
+      }
+      const data = await dr.json();
+      const url = data.data?.[0]?.url;
+      if (!url) return c.json({ success: false, error: "DALL-E: no image url" }, 502);
+      console.log(`[remix] dall-e text-only ok in ${Date.now() - t0}ms`);
+      return c.json({ success: true, imageUrl: url, provider: "openai/dall-e-3", note: "text-only" });
+    }
+
+    return c.json({ success: false, error: `Unsupported model: ${model}` }, 400);
+  } catch (err: any) {
+    console.log(`[remix] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
 // ═══════════════════════════════════════════════════════════════════
