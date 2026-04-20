@@ -8371,6 +8371,33 @@ async function runRemix(opts: RunRemixOpts): Promise<RunRemixResult> {
     return { ok: true, imageUrl: url, provider: "ideogram/remix" };
   }
 
+  // ── KONTEXT PRO (FAL flux-pro/kontext — best hero-preserving edit) ──
+  if (model === "kontext-pro" || model === "kontext-pro-leo" || model === "flux-kontext-pro") {
+    const falKey = Deno.env.get("FAL_API_KEY");
+    if (!falKey) return { ok: false, error: "FAL_API_KEY not configured" };
+    for (const falModel of ["fal-ai/flux-pro/kontext/max", "fal-ai/flux-pro/kontext"]) {
+      try {
+        const payload: any = {
+          prompt: finalPrompt, image_url: imageUrl,
+          num_images: 1, safety_tolerance: "2",
+          output_format: "jpeg", aspect_ratio: aspectRatio,
+        };
+        if (seed) payload.seed = seed;
+        const res = await fetch(`https://fal.run/${falModel}`, {
+          method: "POST",
+          headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (!res.ok) { console.log(`[runRemix] kontext ${falModel} ${res.status}: ${(await res.text()).slice(0, 180)}`); continue; }
+        const data = await res.json();
+        const url = data.images?.[0]?.url || data.image?.url;
+        if (url) return { ok: true, imageUrl: url, provider: `fal/${falModel.split("/").pop()}` };
+      } catch (err) { console.log(`[runRemix] kontext ${falModel} err: ${err}`); }
+    }
+    return { ok: false, error: "Kontext: all endpoints failed" };
+  }
+
   // ── DALL-E 3 (no native img2img → text-only fallback) ──
   if (model === "dall-e") {
     const key = Deno.env.get("OPENAI_API_KEY");
@@ -8636,7 +8663,9 @@ app.post("/analyze/series", async (c) => {
     const daLock = body?.daLock || {};
     const subject = String(body?.subject || "").trim();
     const imageUrl = String(body?.imageUrl || "").trim();
-    const model = String(body?.model || "photon-1").trim();
+    // Default to Kontext Pro: best hero preservation across scene changes.
+    // Caller can override (e.g. "photon-1", "flux-pro") if they want more freedom.
+    const model = String(body?.model || "kontext-pro").trim();
     const campaignName = String(body?.campaignName || "ora").trim() || "ora";
     const avoidIn: string[] = Array.isArray(body?.avoid)
       ? body.avoid.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 8)
