@@ -8053,7 +8053,7 @@ app.post("/analyze/reverse-prompt", async (c) => {
       return c.json({ success: false, error: "imageUrl or imageBase64 is required" }, 400);
     }
 
-    const systemPrompt = `You are Ora, a creative director who reverse-engineers images into reusable generation prompts. Read the image with the eye of a photographer + art director and return a STRICT JSON object with THREE grouped layers: the DA-lock fingerprint (what stays fixed across a coherent series), the scene-vary axes (what changes scene to scene), and the subject. Also return an avoid list. No prose, no markdown, JSON only.
+    const systemPrompt = `You are Ora, a creative director who reverse-engineers images into reusable generation prompts AND into a scene-understanding brief ready for conversational brainstorming. Read the image with the eye of a photographer + art director and return a STRICT JSON object. No prose, no markdown, JSON only.
 
 Schema:
 {
@@ -8073,14 +8073,19 @@ Schema:
     "lightingDirection": "<where light comes from (front/back/left/right/top, angle in degrees if relevant)>",
     "moment":            "<narrative instant captured — action/rest/approach/departure/reveal>"
   },
-  "subject": "<main subject + essential context, one concise phrase>",
-  "avoid":   ["<list of things to keep OUT of any regeneration: typical examples — no visible text, no watermark, no logo, no extra hands, no faces, no modern brands>"],
-  "promptText": "<single-paragraph natural-language prompt in English, 40-80 words, ready to paste into any image model. Weave together daLock + sceneVary + subject into a fluent description. No bullet points, no camera jargon unless it materially changes the render.>"
+  "subject":        "<main subject + essential context, one concise phrase>",
+  "heroObject":     "<the single most recognizable thing that MUST be preserved across any reimagining — be VERY specific (exact product, signage text if any, distinctive shape, distinctive colors). One sentence.>",
+  "currentScene":   "<where/when/what's happening in the source image. One sentence.>",
+  "narrativeTheme": "<the evocative vibe/story in 2-5 words (e.g. 'Americana backyard nostalgia', 'Parisian café noir', 'Scandi winter cabin').>",
+  "avoid":          ["<list of things to keep OUT of any regeneration: typical examples — no visible text except existing signage, no watermark, no extra hands, no faces, no modern brands>"],
+  "promptText":     "<single-paragraph natural-language prompt in English, 40-80 words, ready to paste into any image model. Weave together daLock + sceneVary + subject into a fluent description. No bullet points, no camera jargon unless it materially changes the render.>"
 }
 
 Rules:
 - Every string field is non-empty except "cameraProfile" which may be "" for non-photos.
 - "avoid" is an array of 3-6 short strings (e.g., "no visible text", "no watermark", "no extra fingers").
+- heroObject is the north star for conversational brainstorming — it must survive EVERY scene change. Be ultra-specific (e.g. not "a neon sign" but "a vintage American-diner-style neon arrow sign in amber and red pointing downward, with glowing neon tubes").
+- currentScene and narrativeTheme feed the creative dialogue — they are what the art director will build fresh scenes from.
 - Be specific and concrete. Avoid generic words ("beautiful", "nice", "amazing").
 - promptText reads naturally — no tag lists, no JSON fragments.
 - Return ONLY the JSON object.`;
@@ -8201,10 +8206,13 @@ Rules:
       lightingDirection: s(parsed.sceneVary?.lightingDirection ?? ""),
       moment:            s(parsed.sceneVary?.moment            ?? ""),
     };
-    const subject  = s(parsed.subject);
-    const avoid    = Array.isArray(parsed.avoid)
+    const subject        = s(parsed.subject);
+    const heroObject     = s(parsed.heroObject) || subject;
+    const currentScene   = s(parsed.currentScene);
+    const narrativeTheme = s(parsed.narrativeTheme);
+    const avoid          = Array.isArray(parsed.avoid)
       ? parsed.avoid.map(s).filter(Boolean).slice(0, 8)
-      : ["no visible text", "no watermark", "no logo"];
+      : ["no visible text except existing signage", "no watermark", "no logo"];
     const promptText = s(parsed.promptText);
 
     // Back-compat flat schema (old 8-dim consumers keep reading the same shape)
@@ -8246,8 +8254,9 @@ Rules:
     console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"}, source=${!!sourceUrl})`);
     return c.json({
       success: true,
-      schema, daLock, sceneVary, subject, avoid,
-      promptText, provider, sourceUrl,
+      schema, daLock, sceneVary,
+      subject, heroObject, currentScene, narrativeTheme,
+      avoid, promptText, provider, sourceUrl,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
