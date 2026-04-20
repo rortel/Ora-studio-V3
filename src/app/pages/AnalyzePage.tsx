@@ -1,565 +1,556 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Upload, Loader2, AlertTriangle, CheckCircle2,
-  Sparkles, Shield, Palette, Eye,
-  Download, RotateCcw, ChevronDown, ChevronRight, Lightbulb, Zap, ArrowRight,
-  Check, Ban, RefreshCw,
+  Paperclip, Send, Loader2, Download, Copy, RotateCcw,
+  Check, Plus, Sparkles, Image as ImageIcon, Pencil, X,
 } from "lucide-react";
-
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07 } },
-};
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } },
-};
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
-import { downloadReport } from "../lib/analyze-report";
+import { OraLogo } from "../components/OraLogo";
+import { persistAsset, downloadAsset } from "../lib/asset-persistence";
+import { API_BASE, publicAnonKey } from "../lib/supabase";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79";
-const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtidmtqYWZrenRic2V3dGFpanVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU2NDEzNjMsImV4cCI6MjA1MTIxNzM2M30.lGpbCMbfaFA47OdAkVMfIEJiKlhNOb9_el4MfW5hMsc";
+/* ═══ Palette claire ═══ */
+const BG = "#FAFAF7";
+const TEXT = "#0A0A0A";
+const MUTED = "#6B7280";
+const BORDER = "rgba(10,10,10,0.08)";
+const USER_BG = "#0A0A0A";
+const USER_TEXT = "#FFFFFF";
+const ORA_BG = "#F3F4F6";
 
-// ── Types ──
-
-interface AxisScore {
-  score: number;
-  issues: string[];
-  positives: string[];
+/* ═══ Types ═══ */
+interface PromptSchema {
+  subject: string;
+  composition: string;
+  lighting: string;
+  palette: string;
+  style: string;
+  mood: string;
+  camera: string;
+  finish: string;
 }
 
-interface TaggedReco {
-  kpi: "legal" | "brand" | "creative";
-  text: string;
-  impact: "high" | "medium" | "low";
+type ModelId = "photon-flash-1" | "photon-1" | "flux-pro" | "ideogram-3-leo" | "dall-e";
+
+interface ModelChip {
+  id: ModelId;
+  label: string;
+  emoji: string;
+  hint: string;
 }
 
-interface AnalysisResult {
-  success: true;
-  id?: string;
-  overall: number;
-  legal: AxisScore;
-  brandFit: AxisScore;
-  creative: AxisScore;
-  recommendations: TaggedReco[];
-  optimizedPrompt: string;
-  publishVerdict: "safe" | "revise" | "block";
-  summary: string;
-  tookMs: number;
-}
+const MODELS: ModelChip[] = [
+  { id: "photon-flash-1",  label: "Rapide",     emoji: "⚡", hint: "Photon Flash · ~10s" },
+  { id: "photon-1",        label: "Photo",      emoji: "📸", hint: "Photon · réalisme premium" },
+  { id: "flux-pro",        label: "Créatif",    emoji: "🎨", hint: "Flux Pro · stylisation" },
+  { id: "ideogram-3-leo",  label: "Typo/Brand", emoji: "🔤", hint: "Ideogram · texte net" },
+  { id: "dall-e",          label: "Polyvalent", emoji: "🧠", hint: "DALL-E 3 HD" },
+];
 
-// ── Score helpers ──
+type Msg =
+  | { id: string; role: "ora";  kind: "text";       text: string }
+  | { id: string; role: "user"; kind: "text";       text: string }
+  | { id: string; role: "user"; kind: "image";      imageUrl: string; mimeType: string; base64?: string }
+  | { id: string; role: "ora";  kind: "loading";    label: string }
+  | { id: string; role: "ora";  kind: "analysis";   schema: PromptSchema; promptText: string; imageUrl: string }
+  | { id: string; role: "ora";  kind: "models" }
+  | { id: string; role: "user"; kind: "modelPick";  model: ModelId; label: string }
+  | { id: string; role: "ora";  kind: "generating"; model: ModelId }
+  | { id: string; role: "ora";  kind: "generated";  model: ModelId; imageUrl: string; prompt: string };
 
-function getGradeLabel(score: number): { labelFr: string; color: string } {
-  if (score >= 80) return { labelFr: "Excellent", color: "#22c55e" };
-  if (score >= 60) return { labelFr: "Bon", color: "#84cc16" };
-  if (score >= 40) return { labelFr: "Médiocre", color: "#f59e0b" };
-  return { labelFr: "Insuffisant", color: "#ef4444" };
-}
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-function ScoreGauge({ score, size = 120 }: { score: number; size?: number }) {
-  const radius = (size - 10) / 2;
-  const circ = 2 * Math.PI * radius;
-  const offset = circ * (1 - Math.max(0, Math.min(100, score)) / 100);
-  const { color, labelFr } = getGradeLabel(score);
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ fontVariantNumeric: "tabular-nums" }}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill={`${color}12`} stroke="var(--border)" strokeWidth={2} />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={4.5}
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: "stroke-dashoffset 1s ease" }}
-        />
-        <text x={size / 2} y={size / 2 - 4} textAnchor="middle" dominantBaseline="central"
-          fill={color} fontSize={size >= 100 ? 34 : 22} fontWeight={800} letterSpacing="-0.02em">{score}</text>
-        <text x={size / 2} y={size / 2 + 20} textAnchor="middle" dominantBaseline="central"
-          fill="var(--muted-foreground)" fontSize={11}>/100</text>
-      </svg>
-      <span className="uppercase tracking-wide" style={{ fontSize: 11, fontWeight: 700, color }}>{labelFr}</span>
-    </div>
-  );
-}
-
-function AxisBar({ label, icon, score, items, defaultOpen = false }: {
-  label: string; icon: React.ReactNode; score: number;
-  items: { issues: string[]; positives: string[] };
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const { color } = getGradeLabel(score);
-  const pct = Math.max(0, Math.min(100, score));
-
-  return (
-    <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--muted)]/30 transition-colors"
-      >
-        <span style={{ color }}>{icon}</span>
-        <span className="flex-1 font-semibold text-sm">{label}</span>
-        <div className="flex items-center gap-3">
-          <div style={{ width: 100, height: 6, background: "var(--muted)", borderRadius: 3, overflow: "hidden" }}>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              style={{ height: "100%", background: color, borderRadius: 3 }}
-            />
-          </div>
-          <span className="tabular-nums" style={{ fontSize: 14, fontWeight: 800, color, minWidth: 28, textAlign: "right" }}>{score}</span>
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </div>
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-3 space-y-2">
-              {items.positives.length > 0 && (
-                <div className="space-y-1">
-                  {items.positives.map((p, i) => (
-                    <div key={`p-${i}`} className="flex gap-2 text-xs" style={{ color: "#22c55e" }}>
-                      <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
-                      <span style={{ color: "var(--foreground)" }}>{p}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {items.issues.length > 0 && (
-                <div className="space-y-1">
-                  {items.issues.map((issue, i) => (
-                    <div key={`i-${i}`} className="flex gap-2 text-xs" style={{ color: "#f59e0b" }}>
-                      <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                      <span style={{ color: "var(--foreground)" }}>{issue}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/* ═══ MAIN ═══ */
-
+/* ═══ Page ═══ */
 export function AnalyzePage() {
+  return (
+    <RouteGuard requireAuth>
+      <AnalyzeChat />
+    </RouteGuard>
+  );
+}
+
+function AnalyzeChat() {
   const { getAuthHeader } = useAuth();
   const { locale } = useI18n();
   const navigate = useNavigate();
   const isFr = locale === "fr";
 
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [briefContext, setBriefContext] = useState("");
-  const [objective, setObjective] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const greeting = isFr
+    ? "Hey 👋 — envoie-moi une image et je te donne le prompt pour la reproduire."
+    : "Hey 👋 — send me an image and I'll give you the prompt to recreate it.";
+
+  const [messages, setMessages] = useState<Msg[]>([{ id: uid(), role: "ora", kind: "text", text: greeting }]);
+  const [inputText, setInputText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const [editingPrompt, setEditingPrompt] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [brandVault, setBrandVault] = useState<any>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const push = useCallback((m: Msg) => setMessages((xs) => [...xs, m]), []);
+  const replaceLast = useCallback((match: (m: Msg) => boolean, next: Msg) => {
+    setMessages((xs) => {
+      const idx = [...xs].reverse().findIndex(match);
+      if (idx < 0) return xs;
+      const real = xs.length - 1 - idx;
+      const copy = [...xs];
+      copy[real] = next;
+      return copy;
+    });
+  }, []);
+  const removeWhere = useCallback((match: (m: Msg) => boolean) => {
+    setMessages((xs) => xs.filter((m) => !match(m)));
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
-    try {
-      const r = await fetch(`${API_BASE}${path}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: JSON.stringify({ ...body, _token: token }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      const text = await r.text();
-      try { return JSON.parse(text); } catch { return { success: false, error: `Server error (${r.status})` }; }
-    } catch (err: any) {
-      return { success: false, error: err?.message || "Network error" };
-    }
+    const r = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+      body: JSON.stringify({ ...body, _token: token }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    catch { return { success: false, error: `Server error (${r.status})` }; }
   }, [getAuthHeader]);
 
-  // Load brand vault on mount
-  useEffect(() => {
-    serverPost("/vault/load", {}).then(res => {
-      if (res?.success && res.vault) setBrandVault(res.vault);
-    }).catch(() => {});
-  }, [serverPost]);
-
-  const fileToDataUrl = useCallback((file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  const readFileAsBase64 = (file: File): Promise<{ base64: string; dataUrl: string; mimeType: string }> =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1] || "";
+        resolve({ base64, dataUrl, mimeType: file.type || "image/png" });
+      };
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-  }, []);
 
-  const handleFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-      toast.error(isFr ? "Format non supporté. Utilisez une image ou vidéo." : "Unsupported format.");
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error(isFr ? "Fichier trop lourd (max 20 MB)" : "File too large (max 20 MB)");
-      return;
-    }
-    setImageFile(file);
-    setResult(null);
-    setError(null);
-    const url = URL.createObjectURL(file);
-    setImageUrl(url);
-  }, [isFr]);
+  const handleImage = useCallback(async (file: File) => {
+    if (busy) { toast.info(isFr ? "Attends la fin de l'étape en cours…" : "Wait for the current step…"); return; }
+    if (!file.type.startsWith("image/")) { toast.error(isFr ? "Fichier image requis." : "Image file required."); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error(isFr ? "Image trop lourde (>10 Mo)." : "Image too large (>10MB)."); return; }
 
-  const onDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(true); }, []);
-  const onDragLeave = useCallback(() => setDragOver(false), []);
-  const onDrop = useCallback((e: React.DragEvent) => {
+    setBusy(true);
+    try {
+      const { base64, dataUrl, mimeType } = await readFileAsBase64(file);
+      push({ id: uid(), role: "user", kind: "image", imageUrl: dataUrl, mimeType, base64 });
+      const loadingId = uid();
+      push({ id: loadingId, role: "ora", kind: "loading", label: isFr ? "Je lis ton image…" : "Reading your image…" });
+
+      const res = await serverPost("/analyze/reverse-prompt", { imageBase64: base64, mimeType }, 45_000);
+
+      if (!res.success) {
+        removeWhere((m) => m.id === loadingId);
+        push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "Pépin côté vision : " : "Vision error: ") + (res.error || "?") });
+        return;
+      }
+
+      setCurrentPrompt(res.promptText);
+      replaceLast(
+        (m) => m.id === loadingId,
+        { id: loadingId, role: "ora", kind: "analysis", schema: res.schema, promptText: res.promptText, imageUrl: dataUrl },
+      );
+      push({ id: uid(), role: "ora", kind: "models" });
+    } catch (err: any) {
+      push({ id: uid(), role: "ora", kind: "text", text: String(err?.message || err) });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, isFr, push, replaceLast, removeWhere, serverPost]);
+
+  const handleGenerate = useCallback(async (model: ModelId, promptOverride?: string) => {
+    if (busy) return;
+    const promptToUse = (promptOverride ?? currentPrompt).trim();
+    if (!promptToUse) { toast.error(isFr ? "Pas de prompt à utiliser." : "No prompt available."); return; }
+    const chip = MODELS.find((m) => m.id === model);
+    const label = chip ? `${chip.emoji} ${chip.label}` : model;
+
+    setBusy(true);
+    push({ id: uid(), role: "user", kind: "modelPick", model, label });
+    const genId = uid();
+    push({ id: genId, role: "ora", kind: "generating", model });
+
+    try {
+      const res = await serverPost("/generate/image-start", {
+        prompt: promptToUse, model, aspectRatio: "1:1",
+      }, 120_000);
+
+      if (!res.success || !res.imageUrl) {
+        removeWhere((m) => m.id === genId);
+        push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "La génération a échoué : " : "Generation failed: ") + (res.error || "?") });
+        return;
+      }
+
+      replaceLast(
+        (m) => m.id === genId,
+        { id: genId, role: "ora", kind: "generated", model, imageUrl: res.imageUrl, prompt: promptToUse },
+      );
+
+      const token = getAuthHeader();
+      if (token) {
+        persistAsset(res.imageUrl, "image", genId, token).then((p) => {
+          if (p.success && p.signedUrl) {
+            replaceLast(
+              (m) => m.id === genId && m.kind === "generated",
+              { id: genId, role: "ora", kind: "generated", model, imageUrl: p.signedUrl!, prompt: promptToUse },
+            );
+          }
+        }).catch(() => {});
+      }
+    } catch (err: any) {
+      removeWhere((m) => m.id === genId);
+      push({ id: uid(), role: "ora", kind: "text", text: String(err?.message || err) });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, currentPrompt, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
+
+  const handleSend = useCallback(() => {
+    const t = inputText.trim();
+    if (!t) return;
+    setInputText("");
+    push({ id: uid(), role: "user", kind: "text", text: t });
+    if (!currentPrompt) {
+      push({ id: uid(), role: "ora", kind: "text", text: isFr ? "Envoie une image pour démarrer — je décode puis on génère." : "Drop an image to start — I decode then we generate." });
+    } else {
+      setCurrentPrompt(t);
+      push({ id: uid(), role: "ora", kind: "text", text: isFr ? "Noté. Choisis un modèle pour relancer." : "Got it. Pick a model to run again." });
+      push({ id: uid(), role: "ora", kind: "models" });
+    }
+  }, [inputText, currentPrompt, isFr, push]);
+
+  const startEditPrompt = () => { setPromptDraft(currentPrompt); setEditingPrompt(true); };
+  const saveEditPrompt = () => {
+    const v = promptDraft.trim();
+    if (v) setCurrentPrompt(v);
+    setEditingPrompt(false);
+  };
+
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true); };
+  const onDragLeave = () => setDragOver(false);
+  const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
-  }, [handleFile]);
+    if (file) handleImage(file);
+  };
 
-  const analyze = useCallback(async () => {
-    if (!imageFile && !imageUrl) return;
-    setIsAnalyzing(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      let url = imageUrl;
-      if (imageFile && imageUrl?.startsWith("blob:")) {
-        toast.info(isFr ? "Préparation de l'image..." : "Preparing image...");
-        url = await fileToDataUrl(imageFile);
-      }
-
-      toast.info(isFr ? "Analyse en cours..." : "Analyzing...");
-      const res = await serverPost("/analyze/score", {
-        imageUrl: url,
-        prompt: prompt || undefined,
-        briefContext: briefContext || undefined,
-        objective: objective || undefined,
-        brandVault: brandVault || undefined,
-      }, 120_000);
-
-      if (res?.success) {
-        setResult(res as AnalysisResult);
-        toast.success(isFr ? `Score : ${res.overall}/100` : `Score: ${res.overall}/100`);
-      } else {
-        setError(res?.error || (isFr ? "Erreur d'analyse" : "Analysis error"));
-        toast.error(res?.error || "Analysis failed");
-      }
-    } catch (err: any) {
-      setError(err?.message || "Error");
-      toast.error(err?.message || "Error");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [imageFile, imageUrl, prompt, briefContext, objective, brandVault, isFr, serverPost, fileToDataUrl]);
-
-  const reset = useCallback(() => {
-    setImageUrl(null);
-    setImageFile(null);
-    setPrompt("");
-    setBriefContext("");
-    setObjective("");
-    setResult(null);
-    setError(null);
-  }, []);
-
-  const handleOptimize = useCallback(() => {
-    if (result?.id) {
-      navigate(`/hub/compare?id=${result.id}`);
-    } else {
-      toast.error(isFr ? "Analyse non sauvegardée" : "Analysis not saved");
-    }
-  }, [result, navigate, isFr]);
-
-  const handleDownload = useCallback(() => {
-    if (!result) return;
-    downloadReport({
-      id: result.id || "",
-      imageUrl: imageUrl || "",
-      prompt,
-      briefContext,
-      objective,
-      overall: result.overall,
-      legal: result.legal,
-      brandFit: result.brandFit,
-      creative: result.creative,
-      recommendations: result.recommendations,
-      optimizedPrompt: result.optimizedPrompt,
-      publishVerdict: result.publishVerdict,
-      summary: result.summary,
-      date: new Date().toISOString(),
-    }, isFr);
-  }, [result, imageUrl, prompt, briefContext, objective, isFr]);
+  const resetChat = () => {
+    setMessages([{ id: uid(), role: "ora", kind: "text", text: greeting }]);
+    setCurrentPrompt("");
+    setEditingPrompt(false);
+    setInputText("");
+  };
 
   return (
-    <RouteGuard>
-      <div className="h-screen flex flex-col" style={{ background: "var(--background)", paddingLeft: 52 }}>
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-8">
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ background: BG, color: TEXT }}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <header
+        className="sticky top-0 z-20 flex items-center justify-between px-5 md:px-8 h-14"
+        style={{ background: `${BG}F2`, backdropFilter: "blur(14px)", borderBottom: `1px solid ${BORDER}` }}
+      >
+        <button onClick={() => navigate("/")} className="flex items-center gap-2" aria-label="Ora">
+          <OraLogo size={22} />
+          <span className="text-[15px] tracking-tight" style={{ fontWeight: 600 }}>Ora</span>
+        </button>
+        <button
+          onClick={resetChat}
+          className="flex items-center gap-1.5 px-3 h-8 rounded-full text-[13px] transition hover:bg-black/5"
+          style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+        >
+          <Plus size={14} />
+          {isFr ? "Nouveau" : "New"}
+        </button>
+      </header>
 
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)" }}>
-                {isFr ? "Analyse ton visuel IA" : "Analyze your AI visual"}
-              </h1>
-              <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-                {isFr
-                  ? "Upload un visuel généré par IA. Ora le score sur 3 KPIs (Legal, Brand, Creative) et te dit comment l'améliorer."
-                  : "Upload an AI-generated visual. Ora scores it on 3 KPIs (Legal, Brand, Creative) and tells you how to improve it."}
-              </p>
-              {brandVault && (
-                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs" style={{ background: "var(--accent-warm-light)", color: "var(--accent)" }}>
-                  <CheckCircle2 size={12} /> {isFr ? `Brand vault chargé : ${brandVault.company_name || brandVault.brandName || ""}` : `Brand vault loaded: ${brandVault.company_name || brandVault.brandName || ""}`}
-                </div>
-              )}
+      <AnimatePresence>
+        {dragOver && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none"
+            style={{ background: "rgba(10,10,10,0.4)" }}
+          >
+            <div className="px-8 py-6 rounded-3xl text-white text-lg font-medium flex items-center gap-3"
+                 style={{ background: USER_BG }}>
+              <ImageIcon size={22} /> {isFr ? "Dépose ton image" : "Drop your image"}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {!result && (
-              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                <motion.div
-                  onDragOver={onDragOver}
-                  onDragLeave={onDragLeave}
-                  onDrop={onDrop}
-                  onClick={() => !imageUrl && fileInputRef.current?.click()}
-                  animate={!imageUrl ? { borderColor: ["#A1A1AA", "#1D4ED8", "#A1A1AA"] } : {}}
-                  transition={!imageUrl ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : {}}
-                  style={{
-                    border: `2px dashed ${dragOver ? "#1D4ED8" : imageUrl ? "var(--border)" : "#A1A1AA"}`,
-                    borderRadius: 16,
-                    background: dragOver ? "rgba(29,78,216,0.04)" : imageUrl ? "var(--card)" : "var(--muted)/30",
-                    cursor: imageUrl ? "default" : "pointer",
-                    transition: "background 0.2s",
-                    minHeight: imageUrl ? "auto" : 240,
-                  }}
-                  className="flex flex-col items-center justify-center p-6 relative"
-                >
-                  {imageUrl ? (
-                    <div className="relative w-full">
-                      <img src={imageUrl} alt="" style={{ maxHeight: 400, borderRadius: 12, objectFit: "contain", margin: "0 auto", display: "block" }} />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); reset(); }}
-                        className="absolute top-2 right-2 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                        style={{ background: "rgba(0,0,0,0.7)", color: "#fff" }}
-                      >
-                        <RotateCcw size={12} /> {isFr ? "Changer" : "Change"}
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload size={40} style={{ color: "var(--muted-foreground)", marginBottom: 12 }} />
-                      <p className="font-semibold text-sm" style={{ color: "var(--foreground)" }}>
-                        {isFr ? "Glisse ton visuel ici" : "Drop your visual here"}
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "ou clique pour sélectionner — JPG, PNG, WebP (max 20 MB)" : "or click to select — JPG, PNG, WebP (max 20 MB)"}
-                      </p>
-                    </>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                  />
-                </motion.div>
-
-                {imageUrl && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium mb-1 block" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "Prompt utilisé (optionnel)" : "Prompt used (optional)"}
-                      </label>
-                      <textarea
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder={isFr ? "Colle ici le prompt que tu as utilisé..." : "Paste the prompt you used..."}
-                        rows={2}
-                        className="w-full rounded-xl px-4 py-3 text-sm resize-none"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)", outline: "none" }}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-medium mb-1 block" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "Brief / contexte (optionnel mais recommandé)" : "Brief / context (optional but recommended)"}
-                      </label>
-                      <textarea
-                        value={briefContext}
-                        onChange={(e) => setBriefContext(e.target.value)}
-                        placeholder={isFr ? "Décris le brief initial : sujet, ambiance, éléments clés à faire apparaître..." : "Describe the brief: subject, mood, key elements..."}
-                        rows={2}
-                        className="w-full rounded-xl px-4 py-3 text-sm resize-none"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)", outline: "none" }}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-medium mb-1 block" style={{ color: "var(--muted-foreground)" }}>
-                        {isFr ? "Objectif de la campagne (optionnel)" : "Campaign objective (optional)"}
-                      </label>
-                      <textarea
-                        value={objective}
-                        onChange={(e) => setObjective(e.target.value)}
-                        placeholder={isFr ? "Quel est le but ? Awareness, conversion, engagement, recrutement..." : "What's the goal? Awareness, conversion, engagement..."}
-                        rows={2}
-                        className="w-full rounded-xl px-4 py-3 text-sm resize-none"
-                        style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--foreground)", outline: "none" }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={analyze}
-                      disabled={isAnalyzing}
-                      className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/25 hover:-translate-y-0.5 disabled:hover:shadow-none disabled:hover:translate-y-0"
-                      style={{
-                        background: isAnalyzing ? "var(--muted)" : "#1D4ED8",
-                        color: isAnalyzing ? "var(--muted-foreground)" : "#FFFFFF",
-                        cursor: isAnalyzing ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {isAnalyzing ? (
-                        <><Loader2 size={16} className="animate-spin" /> {isFr ? "Analyse en cours..." : "Analyzing..."}</>
-                      ) : (
-                        <><Sparkles size={16} /> {isFr ? "Analyser" : "Analyze"}</>
-                      )}
-                    </button>
-                  </motion.div>
-                )}
-
-                {error && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm" style={{ background: "#ef444420", color: "#ef4444" }}>
-                    <AlertTriangle size={16} /> {error}
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {result && (
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-[720px] mx-auto px-5 md:px-6 py-8 flex flex-col gap-4">
+          <AnimatePresence initial={false}>
+            {messages.map((m) => (
               <motion.div
-                variants={stagger}
-                initial="hidden"
-                animate="show"
-                className="space-y-6"
+                key={m.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <motion.div variants={fadeUp} className="flex flex-col md:flex-row gap-6 items-start">
-                  <div style={{ flex: "0 0 auto" }}>
-                    <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)" }}>
-                      <img src={imageUrl!} alt="" style={{ maxHeight: 280, maxWidth: 320, objectFit: "contain", display: "block" }} />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-5">
-                      <ScoreGauge score={result.overall} size={140} />
-                      <div className="flex-1">
-                        <VerdictBadge verdict={result.publishVerdict} isFr={isFr} />
-                        <p className="text-sm leading-relaxed mt-3" style={{ color: "var(--foreground)" }}>
-                          {result.summary}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-2 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
-                          <Zap size={10} /> {(result.tookMs / 1000).toFixed(1)}s
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-
-                <motion.div variants={fadeUp} className="space-y-2">
-                  <h3 className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
-                    {isFr ? "Détail des 3 KPIs" : "3 KPIs breakdown"}
-                  </h3>
-                  <AxisBar label={isFr ? "Legal (30%)" : "Legal (30%)"} icon={<Shield size={16} />} score={result.legal.score} items={result.legal} defaultOpen />
-                  <AxisBar label={isFr ? "Brand Fit (35%)" : "Brand Fit (35%)"} icon={<Palette size={16} />} score={result.brandFit.score} items={result.brandFit} defaultOpen />
-                  <AxisBar label={isFr ? "Créatif (35%)" : "Creative (35%)"} icon={<Eye size={16} />} score={result.creative.score} items={result.creative} defaultOpen />
-                </motion.div>
-
-                {result.recommendations.length > 0 && (
-                  <motion.div variants={fadeUp} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12 }} className="p-4">
-                    <h3 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
-                      <Lightbulb size={15} style={{ color: "#F59E0B" }} />
-                      {isFr ? "Recommandations" : "Recommendations"}
-                    </h3>
-                    <div className="space-y-2">
-                      {result.recommendations.map((rec, i) => (
-                        <div key={i} className="flex items-start gap-2 text-sm px-3 py-2 rounded-lg" style={{ background: "var(--muted)", borderLeft: `3px solid ${rec.kpi === "legal" ? "#B91C1C" : rec.kpi === "brand" ? "#1D4ED8" : "#15803D"}` }}>
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 uppercase"
-                            style={{
-                              background: rec.kpi === "legal" ? "#fef2f2" : rec.kpi === "brand" ? "#eff6ff" : "#f0fdf4",
-                              color: rec.kpi === "legal" ? "#B91C1C" : rec.kpi === "brand" ? "#1D4ED8" : "#15803D",
-                            }}
-                          >
-                            {rec.kpi}
-                          </span>
-                          <span className="flex-1" style={{ color: "var(--foreground)" }}>{rec.text}</span>
-                          {rec.impact === "high" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ background: "#fef2f2", color: "#B91C1C" }}>!</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
-                <motion.div variants={fadeUp} className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <button
-                    onClick={handleOptimize}
-                    disabled={!result.id}
-                    className="py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                    style={{ background: "#1D4ED8", color: "#fff", outlineColor: "#1D4ED8" }}
-                  >
-                    <Sparkles size={15} /> {isFr ? "Optimiser" : "Optimize"}
-                  </button>
-                  <button
-                    onClick={handleDownload}
-                    className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors hover:bg-[var(--muted)]/60"
-                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                  >
-                    <Download size={15} /> {isFr ? "Rapport" : "Report"}
-                  </button>
-                  <button
-                    onClick={reset}
-                    className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors hover:bg-[var(--muted)]/60"
-                    style={{ background: "var(--card)", color: "var(--foreground)", border: "1px solid var(--border)" }}
-                  >
-                    <RotateCcw size={15} /> {isFr ? "Autre visuel" : "New visual"}
-                  </button>
-                </motion.div>
-
+                <MessageBubble
+                  msg={m}
+                  isFr={isFr}
+                  busy={busy}
+                  editingPrompt={editingPrompt && m.kind === "analysis"}
+                  promptDraft={promptDraft}
+                  setPromptDraft={setPromptDraft}
+                  onStartEdit={startEditPrompt}
+                  onSaveEdit={saveEditPrompt}
+                  onCancelEdit={() => setEditingPrompt(false)}
+                  onPickModel={handleGenerate}
+                  onCopyPrompt={(p) => { navigator.clipboard.writeText(p); toast.success(isFr ? "Prompt copié" : "Prompt copied"); }}
+                  onDownload={(url) => downloadAsset(url, `ora-${Date.now()}.png`, "image")}
+                  onRegenerate={(model, prompt) => handleGenerate(model, prompt)}
+                />
               </motion.div>
-            )}
-
-          </div>
+            ))}
+          </AnimatePresence>
+          <div ref={bottomRef} />
         </div>
-      </div>
-    </RouteGuard>
+      </main>
+
+      <footer
+        className="sticky bottom-0 z-10"
+        style={{ background: `${BG}F2`, backdropFilter: "blur(14px)", borderTop: `1px solid ${BORDER}` }}
+      >
+        <div className="max-w-[720px] mx-auto px-5 md:px-6 py-3 flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImage(f); e.target.value = ""; }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+            className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition hover:bg-black/5 disabled:opacity-40"
+            style={{ border: `1px solid ${BORDER}` }}
+            aria-label={isFr ? "Joindre une image" : "Attach image"}
+          >
+            <Paperclip size={18} />
+          </button>
+          <div className="flex-1 relative">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder={isFr ? "Écris, ou dépose une image…" : "Type, or drop an image…"}
+              rows={1}
+              className="w-full resize-none rounded-2xl px-4 py-2.5 text-[15px] leading-snug outline-none"
+              style={{ background: "#fff", border: `1px solid ${BORDER}`, minHeight: 40, maxHeight: 160 }}
+            />
+          </div>
+          <button
+            onClick={handleSend}
+            disabled={busy || !inputText.trim()}
+            className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition disabled:opacity-40"
+            style={{ background: USER_BG, color: USER_TEXT }}
+            aria-label={isFr ? "Envoyer" : "Send"}
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      </footer>
+    </div>
   );
 }
 
-function VerdictBadge({ verdict, isFr }: { verdict: "safe" | "revise" | "block"; isFr: boolean }) {
-  const config = {
-    safe:   { icon: <Check size={13} />,          bg: "#dcfce7", color: "#15803d", label: isFr ? "Publier"     : "Publish" },
-    revise: { icon: <RefreshCw size={13} />,      bg: "#fef3c7", color: "#b45309", label: isFr ? "À retoucher" : "Revise" },
-    block:  { icon: <Ban size={13} />,            bg: "#fef2f2", color: "#b91c1c", label: isFr ? "Bloquer"     : "Block" },
-  }[verdict];
-  return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: config.bg, color: config.color }}>
-      {config.icon} {config.label}
-    </span>
-  );
+function MessageBubble(props: {
+  msg: Msg;
+  isFr: boolean;
+  busy: boolean;
+  editingPrompt: boolean;
+  promptDraft: string;
+  setPromptDraft: (v: string) => void;
+  onStartEdit: () => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onPickModel: (model: ModelId) => void;
+  onCopyPrompt: (p: string) => void;
+  onDownload: (url: string) => void;
+  onRegenerate: (model: ModelId, prompt: string) => void;
+}) {
+  const { msg, isFr } = props;
+  const isUser = msg.role === "user";
+
+  const baseBubble = "max-w-[88%] px-4 py-2.5 text-[15px] leading-relaxed";
+  const userStyle: React.CSSProperties = { background: USER_BG, color: USER_TEXT, borderRadius: "22px 22px 6px 22px" };
+  const oraStyle:  React.CSSProperties = { background: ORA_BG, color: TEXT, borderRadius: "22px 22px 22px 6px" };
+
+  if (msg.kind === "text") {
+    return <div className={baseBubble} style={isUser ? userStyle : oraStyle}>{msg.text}</div>;
+  }
+
+  if (msg.kind === "image") {
+    return (
+      <div className="max-w-[85%]" style={{ borderRadius: "22px 22px 6px 22px", overflow: "hidden" }}>
+        <img src={msg.imageUrl} alt="upload" className="block w-full h-auto" style={{ maxHeight: 420, objectFit: "cover" }} />
+      </div>
+    );
+  }
+
+  if (msg.kind === "loading") {
+    return (
+      <div className={baseBubble} style={oraStyle}>
+        <span className="inline-flex items-center gap-2">
+          <Loader2 size={15} className="animate-spin" /> {msg.label}
+        </span>
+      </div>
+    );
+  }
+
+  if (msg.kind === "generating") {
+    const chip = MODELS.find((m) => m.id === msg.model);
+    return (
+      <div className="max-w-[85%]" style={{ ...oraStyle, padding: 0, overflow: "hidden" }}>
+        <div className="aspect-square w-full flex items-center justify-center" style={{ background: "#EAEAEA" }}>
+          <motion.div
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.6, repeat: Infinity }}
+            className="flex flex-col items-center gap-2 text-sm" style={{ color: MUTED }}
+          >
+            <Sparkles size={20} />
+            {chip?.emoji} {isFr ? "Génération en cours…" : "Generating…"}
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  if (msg.kind === "modelPick") {
+    return <div className={baseBubble} style={userStyle}>→ {msg.label}</div>;
+  }
+
+  if (msg.kind === "analysis") {
+    const { schema, promptText } = msg;
+    const tagEntries: [keyof PromptSchema, string][] = [
+      ["subject", isFr ? "sujet" : "subject"],
+      ["composition", "composition"],
+      ["lighting", isFr ? "lumière" : "lighting"],
+      ["palette", "palette"],
+      ["style", "style"],
+      ["mood", isFr ? "ambiance" : "mood"],
+      ["camera", isFr ? "caméra" : "camera"],
+      ["finish", isFr ? "finition" : "finish"],
+    ];
+
+    return (
+      <div className="max-w-[88%] flex flex-col gap-3" style={oraStyle}>
+        <div className="px-4 pt-2.5 pb-1 text-[15px]">
+          {isFr ? "Voilà ce que je lis :" : "Here's what I see:"}
+        </div>
+
+        <div className="mx-2 rounded-2xl p-3" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+          {props.editingPrompt ? (
+            <div className="flex flex-col gap-2">
+              <textarea
+                value={props.promptDraft}
+                onChange={(e) => props.setPromptDraft(e.target.value)}
+                rows={5}
+                className="w-full resize-none rounded-lg p-2 text-[14px] outline-none"
+                style={{ border: `1px solid ${BORDER}` }}
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={props.onCancelEdit} className="px-3 h-8 rounded-full text-[13px] hover:bg-black/5" style={{ border: `1px solid ${BORDER}` }}>
+                  <X size={13} className="inline mr-1" /> {isFr ? "Annuler" : "Cancel"}
+                </button>
+                <button onClick={props.onSaveEdit} className="px-3 h-8 rounded-full text-[13px] text-white" style={{ background: USER_BG }}>
+                  <Check size={13} className="inline mr-1" /> {isFr ? "Enregistrer" : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text-[14px] leading-relaxed" style={{ color: TEXT }}>{promptText}</div>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => props.onCopyPrompt(promptText)} className="px-3 h-8 rounded-full text-[13px] hover:bg-black/5 flex items-center gap-1.5" style={{ border: `1px solid ${BORDER}` }}>
+                  <Copy size={13} /> {isFr ? "Copier" : "Copy"}
+                </button>
+                <button onClick={props.onStartEdit} className="px-3 h-8 rounded-full text-[13px] hover:bg-black/5 flex items-center gap-1.5" style={{ border: `1px solid ${BORDER}` }}>
+                  <Pencil size={13} /> {isFr ? "Modifier" : "Edit"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+          {tagEntries.map(([k, label]) => {
+            const v = (schema[k] || "").toString();
+            if (!v) return null;
+            return (
+              <span key={k} className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-full text-[12px]"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}`, color: MUTED }} title={v}>
+                <b style={{ color: TEXT, fontWeight: 600 }}>{label}</b>
+                <span className="truncate" style={{ maxWidth: 160 }}>{v}</span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (msg.kind === "models") {
+    return (
+      <div className="max-w-[88%] flex flex-col gap-2" style={oraStyle}>
+        <div className="px-4 pt-2.5 text-[15px]">
+          {isFr ? "On teste avec quel modèle ?" : "Which model should we try?"}
+        </div>
+        <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+          {MODELS.map((m) => (
+            <button key={m.id} onClick={() => props.onPickModel(m.id)} disabled={props.busy}
+                    className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] bg-white hover:bg-black hover:text-white transition disabled:opacity-40"
+                    style={{ border: `1px solid ${BORDER}` }} title={m.hint}>
+              <span>{m.emoji}</span>
+              <span style={{ fontWeight: 600 }}>{m.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (msg.kind === "generated") {
+    const chip = MODELS.find((m) => m.id === msg.model);
+    return (
+      <div className="max-w-[88%] flex flex-col gap-2" style={{ ...oraStyle, padding: 0, overflow: "hidden" }}>
+        <img src={msg.imageUrl} alt="generated" className="block w-full h-auto" />
+        <div className="px-3 pt-1 pb-3 flex flex-wrap gap-1.5 items-center">
+          <span className="text-[12px]" style={{ color: MUTED }}>{chip?.emoji} {chip?.label}</span>
+          <span className="flex-1" />
+          <button onClick={() => props.onRegenerate(msg.model, msg.prompt)} className="px-3 h-8 rounded-full text-[13px] hover:bg-black/5 flex items-center gap-1.5 bg-white" style={{ border: `1px solid ${BORDER}` }}>
+            <RotateCcw size={13} /> {isFr ? "Rejouer" : "Regen"}
+          </button>
+          <button onClick={() => props.onDownload(msg.imageUrl)} className="px-3 h-8 rounded-full text-[13px] text-white flex items-center gap-1.5" style={{ background: USER_BG }}>
+            <Download size={13} /> {isFr ? "Télécharger" : "Download"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
