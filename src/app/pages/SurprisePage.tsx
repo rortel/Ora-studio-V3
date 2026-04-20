@@ -39,13 +39,25 @@ const PLATFORM_META: Record<string, { label: string; emoji: string }> = {
 
 interface PackItem {
   platform: string; aspectRatio: string; label: string; fileName: string;
-  twistElement?: string;
+  twistElement?: string; caption?: string;
   status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
 }
 interface Pack {
   campaignName: string; campaignSlug: string;
   creativeAngle: string; tone: string; keyMessage: string;
   creativityLevel: number; items: PackItem[];
+}
+
+/* Small label + child stack. Deliberately NOT a card — flat on the background. */
+function FormBlock({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[12px] uppercase tracking-[0.15em] mb-2.5" style={{ color: MUTED, fontWeight: 600 }}>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 export function SurprisePage() {
@@ -63,8 +75,13 @@ function SurpriseContent() {
   const isFr = false;
 
   const [creativity, setCreativity] = useState<1 | 2 | 3 | 4>(2);
-  const [brief, setBrief] = useState("");
-  const [season, setSeason] = useState("");
+  const [assetCount, setAssetCount] = useState<number>(6);
+  const [platforms, setPlatforms] = useState<string[]>(["instagram-feed", "instagram-story", "linkedin", "tiktok"]);
+  const [mediaType, setMediaType] = useState<"image" | "film" | "carousel">("image");
+  const [withCaption, setWithCaption] = useState<boolean>(true);
+  const [ctxWho, setCtxWho] = useState("");
+  const [ctxWhat, setCtxWhat] = useState("");
+  const [ctxWhy, setCtxWhy] = useState("");
   const [productPhoto, setProductPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<"idle" | "concept" | "generating" | "done">("idle");
@@ -123,11 +140,18 @@ function SurpriseContent() {
       await new Promise((r) => setTimeout(r, 600));
       setStage("generating");
       const res = await serverPost("/analyze/surprise-me", {
-        brief: brief.trim() || undefined,
-        season: season.trim() || undefined,
         productImageUrl: productPhoto || undefined,
         creativityLevel: creativity,
-        lang: isFr ? "fr" : "en",
+        assetCount,
+        platforms,
+        mediaType,
+        withCaption,
+        context: {
+          who: ctxWho.trim() || undefined,
+          what: ctxWhat.trim() || undefined,
+          why: ctxWhy.trim() || undefined,
+        },
+        lang: "en",
       }, 240_000);
       if (!res?.success || !Array.isArray(res.items)) {
         toast.error(res?.error || (isFr ? "Échec de la composition." : "Composition failed."));
@@ -150,7 +174,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, brief, season, productPhoto, creativity, isFr, serverPost]);
+  }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, withCaption, ctxWho, ctxWhat, ctxWhy, serverPost]);
 
   const downloadZip = useCallback(async () => {
     if (!pack) return;
@@ -214,14 +238,10 @@ function SurpriseContent() {
           {stage === "idle" && !pack && (
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.15 }}
-              className="rounded-[28px] p-6 md:p-8"
-              style={{ background: "#FFFFFF", border: `1px solid ${BORDER}`, boxShadow: "0 20px 60px -20px rgba(10,10,10,0.1)" }}
+              className="flex flex-col gap-8"
             >
-              {/* Creativity slider */}
-              <div>
-                <div className="text-[12px] uppercase tracking-wide mb-2.5" style={{ color: MUTED }}>
-                  {isFr ? "Niveau créatif" : "Creative level"}
-                </div>
+              {/* Creative level */}
+              <FormBlock label="Creative level">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {CREATIVITY.map((c) => {
                     const on = creativity === c.id;
@@ -238,83 +258,177 @@ function SurpriseContent() {
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-[18px]">{c.emoji}</span>
-                          <span style={{ fontWeight: 600 }}>{isFr ? c.labelFr : c.labelEn}</span>
+                          <span style={{ fontWeight: 600 }}>{c.labelEn}</span>
                         </div>
                         <div className="mt-1 text-[11.5px]" style={{ color: on ? "rgba(255,255,255,0.7)" : MUTED }}>
-                          {isFr ? c.hintFr : c.hintEn}
+                          {c.hintEn}
                         </div>
                       </button>
                     );
                   })}
                 </div>
-              </div>
+              </FormBlock>
 
-              {/* Brief + season */}
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
-                <div>
-                  <label className="text-[12px] uppercase tracking-wide block mb-1.5" style={{ color: MUTED }}>
-                    {isFr ? "Brief (optionnel)" : "Brief (optional)"}
-                  </label>
-                  <textarea
-                    value={brief}
-                    onChange={(e) => setBrief(e.target.value)}
-                    placeholder={isFr ? "Ex: lancement d'un parfum estival boisé pour la Gen Z…" : "e.g. launching a woody summer fragrance for Gen Z…"}
-                    rows={3}
-                    className="w-full resize-none rounded-xl px-3 py-2.5 text-[14px] outline-none"
-                    style={{ background: "#FAFAF7", border: `1px solid ${BORDER}` }}
-                  />
+              {/* How many assets */}
+              <FormBlock label={`How many assets · ${assetCount}`}>
+                <input
+                  type="range" min={1} max={16} value={assetCount}
+                  onChange={(e) => setAssetCount(parseInt(e.target.value, 10))}
+                  className="w-full"
+                  style={{ accentColor: INK }}
+                />
+                <div className="mt-1 flex items-center justify-between text-[11.5px] font-mono" style={{ color: MUTED }}>
+                  <span>1</span><span>8</span><span>16</span>
                 </div>
-                <div>
-                  <label className="text-[12px] uppercase tracking-wide block mb-1.5" style={{ color: MUTED }}>
-                    {isFr ? "Saison / moment" : "Season / moment"}
-                  </label>
-                  <input
-                    value={season}
-                    onChange={(e) => setSeason(e.target.value)}
-                    placeholder={isFr ? "été, lancement, Noël…" : "summer, launch, holidays…"}
-                    className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none"
-                    style={{ background: "#FAFAF7", border: `1px solid ${BORDER}` }}
-                  />
+              </FormBlock>
+
+              {/* Platforms multi-select */}
+              <FormBlock label="Where will it live">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "instagram-feed",  label: "Instagram Feed",  emoji: "📸" },
+                    { id: "instagram-story", label: "Instagram Story", emoji: "🎬" },
+                    { id: "linkedin",        label: "LinkedIn",        emoji: "💼" },
+                    { id: "facebook",        label: "Facebook",        emoji: "👥" },
+                    { id: "tiktok",          label: "TikTok",          emoji: "🎵" },
+                  ].map((p) => {
+                    const on = platforms.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setPlatforms((xs) => on ? xs.filter((x) => x !== p.id) : [...xs, p.id])}
+                        className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] transition"
+                        style={{
+                          background: on ? INK : "#fff",
+                          color: on ? INK_TEXT : TEXT,
+                          border: `1px solid ${on ? INK : BORDER}`,
+                          fontWeight: 500,
+                        }}
+                      >
+                        <span>{p.emoji}</span> {p.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              </FormBlock>
+
+              {/* Media type */}
+              <FormBlock label="Asset type">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "image" as const,    label: "Image",     emoji: "🖼️", hint: "still visuals" },
+                    { id: "film" as const,     label: "Film",      emoji: "🎞️", hint: "short motion · soon" },
+                    { id: "carousel" as const, label: "Carousel",  emoji: "🗂️", hint: "multi-slide · soon" },
+                  ].map((m) => {
+                    const on = mediaType === m.id;
+                    const disabled = m.id !== "image"; // only images are generated for now
+                    return (
+                      <button
+                        key={m.id}
+                        disabled={disabled}
+                        onClick={() => setMediaType(m.id)}
+                        className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] transition disabled:opacity-40"
+                        style={{
+                          background: on ? INK : "#fff",
+                          color: on ? INK_TEXT : TEXT,
+                          border: `1px solid ${on ? INK : BORDER}`,
+                          fontWeight: 500,
+                        }}
+                        title={m.hint}
+                      >
+                        <span>{m.emoji}</span> {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </FormBlock>
+
+              {/* Caption toggle */}
+              <FormBlock label="Caption with each asset">
+                <div className="flex items-center gap-2">
+                  {[
+                    { v: true,  label: "Yes, write one for each" },
+                    { v: false, label: "No, just the visual" },
+                  ].map((opt) => {
+                    const on = withCaption === opt.v;
+                    return (
+                      <button
+                        key={String(opt.v)}
+                        onClick={() => setWithCaption(opt.v)}
+                        className="inline-flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] transition"
+                        style={{
+                          background: on ? INK : "#fff",
+                          color: on ? INK_TEXT : TEXT,
+                          border: `1px solid ${on ? INK : BORDER}`,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </FormBlock>
 
               {/* Product photo (optional) */}
-              <div className="mt-4">
-                <label className="text-[12px] uppercase tracking-wide block mb-1.5" style={{ color: MUTED }}>
-                  {isFr ? "Photo produit (optionnelle, pour préserver le produit)" : "Product photo (optional — locks the product)"}
-                </label>
+              <FormBlock label="Your visual (optional · locks the product)">
                 {productPhoto ? (
                   <div className="flex items-center gap-3">
                     <img src={productPhoto} alt="" className="w-16 h-16 object-cover rounded-xl" style={{ border: `1px solid ${BORDER}` }} />
                     <button onClick={() => setProductPhoto(null)} className="text-[13px] hover:underline" style={{ color: MUTED }}>
-                      {isFr ? "Retirer" : "Remove"}
+                      Remove
                     </button>
                   </div>
                 ) : (
                   <label className="inline-flex items-center gap-2 h-10 px-4 rounded-full cursor-pointer text-[13px] hover:bg-black/5"
                          style={{ border: `1px solid ${BORDER}`, color: TEXT }}>
                     {uploadingProduct ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                    {isFr ? "Ajouter une photo" : "Add a photo"}
+                    Drop a photo
                     <input type="file" accept="image/*" className="hidden"
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
                   </label>
                 )}
-              </div>
+              </FormBlock>
+
+              {/* Three contextual info fields */}
+              <FormBlock label="Three things Ora should know">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input
+                    value={ctxWho}
+                    onChange={(e) => setCtxWho(e.target.value)}
+                    placeholder="Who · your audience (one line)"
+                    className="rounded-xl px-3 py-2.5 text-[14px] outline-none"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+                  />
+                  <input
+                    value={ctxWhat}
+                    onChange={(e) => setCtxWhat(e.target.value)}
+                    placeholder="What · the product or idea"
+                    className="rounded-xl px-3 py-2.5 text-[14px] outline-none"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+                  />
+                  <input
+                    value={ctxWhy}
+                    onChange={(e) => setCtxWhy(e.target.value)}
+                    placeholder="Why · the intent / moment"
+                    className="rounded-xl px-3 py-2.5 text-[14px] outline-none"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+                  />
+                </div>
+              </FormBlock>
 
               {/* CTA */}
-              <div className="mt-8 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
                 <div className="text-[12.5px]" style={{ color: MUTED }}>
-                  {isFr
-                    ? "8 visuels · Instagram, LinkedIn, Facebook, TikTok · DA marque verrouillée"
-                    : "8 visuals · Instagram, LinkedIn, Facebook, TikTok · brand DA locked"}
+                  {assetCount} {mediaType}{assetCount === 1 ? "" : "s"} · {platforms.length} platform{platforms.length === 1 ? "" : "s"} · brand DA locked
                 </div>
                 <button
                   onClick={handleSurprise}
-                  disabled={busy || uploadingProduct}
+                  disabled={busy || uploadingProduct || platforms.length === 0}
                   className="inline-flex items-center gap-2 h-12 px-6 rounded-full text-[15px] disabled:opacity-40"
                   style={{ background: INK, color: INK_TEXT, fontWeight: 500, boxShadow: "0 10px 24px -10px rgba(10,10,10,0.35)" }}
                 >
-                  <Sparkles size={16} /> {isFr ? "Surprends-moi" : "Surprise me"}
+                  <Sparkles size={16} /> Surprise me
                 </button>
               </div>
             </motion.div>
@@ -412,6 +526,19 @@ function SurpriseContent() {
                                  style={{ background: "rgba(255,255,255,0.9)", color: TEXT, backdropFilter: "blur(6px)", border: `1px solid rgba(255,255,255,0.4)` }}
                                  title={isFr ? "Twist créatif" : "Creative twist"}>
                               ✨ {it.twistElement}
+                            </div>
+                          )}
+                          {it.caption && (
+                            <div className="px-3 pt-3 pb-1 text-[12.5px] leading-snug" style={{ color: TEXT }}>
+                              {it.caption}
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(it.caption!); toast.success("Caption copied"); }}
+                                className="ml-1 text-[11px] hover:underline align-middle"
+                                style={{ color: MUTED }}
+                                aria-label="Copy caption"
+                              >
+                                copy
+                              </button>
                             </div>
                           )}
                           <div className="px-3 py-2 flex items-center gap-1">

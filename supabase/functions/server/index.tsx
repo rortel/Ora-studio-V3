@@ -8881,6 +8881,24 @@ app.post("/analyze/surprise-me", async (c) => {
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
     const lang       = body?.lang === "en" ? "en" : "fr";
 
+    // New dynamic parameters (default to prior hardcoded 8-shot pack for backward compat).
+    const requestedCount = Math.max(1, Math.min(16, parseInt(String(body?.assetCount || 0), 10) || 0));
+    const requestedPlatforms: string[] = Array.isArray(body?.platforms)
+      ? body.platforms.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : [];
+    const mediaType  = ["image", "film", "carousel"].includes(String(body?.mediaType)) ? String(body.mediaType) : "image";
+    const withCaption = body?.withCaption !== false;
+    const context    = (body?.context && typeof body.context === "object") ? body.context : {};
+    const ctxWho     = String(context?.who || "").trim();
+    const ctxWhat    = String(context?.what || "").trim();
+    const ctxWhy     = String(context?.why || "").trim();
+    const fallbackBrief = [ctxWhat && `about: ${ctxWhat}`, ctxWho && `for: ${ctxWho}`, ctxWhy && `because: ${ctxWhy}`].filter(Boolean).join(" · ");
+    const brief = [String(body?.brief || "").trim(), fallbackBrief].filter(Boolean).join(". ");
+
+    if (mediaType !== "image") {
+      return c.json({ success: false, error: `${mediaType} generation is not available yet — image only for now.` }, 400);
+    }
+
     // ── Creativity presets ──
     // At every level the product MUST stay photo-real and recognizable. Only the
     // world, framing and graphic twist around it move. The "twist" is a single
@@ -8919,15 +8937,30 @@ app.post("/analyze/surprise-me", async (c) => {
       return c.json({ success: false, error: "Need a Brand Vault or a textual brief to compose a campaign." }, 400);
     }
 
-    // ── Platform preset grid (8 shots total) ──
-    const PLATFORMS = [
-      { id: "instagram-feed",  aspectRatio: "1:1",  count: 3, label: "Instagram Feed",  copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
-      { id: "instagram-story", aspectRatio: "9:16", count: 2, label: "Instagram Story", copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
-      { id: "linkedin",        aspectRatio: "16:9", count: 1, label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition" },
-      { id: "facebook",        aspectRatio: "16:9", count: 1, label: "Facebook",        copyHint: "wide social-share composition, headline-friendly" },
-      { id: "tiktok",          aspectRatio: "9:16", count: 1, label: "TikTok",          copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
+    // ── Platform preset grid ──
+    const ALL_PLATFORMS = [
+      { id: "instagram-feed",  aspectRatio: "1:1",  label: "Instagram Feed",  copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
+      { id: "instagram-story", aspectRatio: "9:16", label: "Instagram Story", copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
+      { id: "linkedin",        aspectRatio: "16:9", label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition" },
+      { id: "facebook",        aspectRatio: "16:9", label: "Facebook",        copyHint: "wide social-share composition, headline-friendly" },
+      { id: "tiktok",          aspectRatio: "9:16", label: "TikTok",          copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
     ];
-    const totalShots = PLATFORMS.reduce((acc, p) => acc + p.count, 0);
+    // Resolve the platform subset the caller asked for (default: all 5).
+    const chosenPlatformIds = requestedPlatforms.length > 0
+      ? ALL_PLATFORMS.map((p) => p.id).filter((id) => requestedPlatforms.includes(id))
+      : ALL_PLATFORMS.map((p) => p.id);
+    if (chosenPlatformIds.length === 0) {
+      return c.json({ success: false, error: "No valid platforms selected" }, 400);
+    }
+    // Distribute the requested assetCount across chosen platforms round-robin.
+    // Default total 8 with the old distribution when no assetCount passed.
+    const totalShots = requestedCount > 0 ? requestedCount : 8;
+    const PLATFORMS = ALL_PLATFORMS
+      .filter((p) => chosenPlatformIds.includes(p.id))
+      .map((p) => ({ ...p, count: 0 }));
+    for (let i = 0; i < totalShots; i++) {
+      PLATFORMS[i % PLATFORMS.length].count += 1;
+    }
 
     // ── Concept + shot list via LLM ──
     const platformBrief = PLATFORMS.map((p) => `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`).join("\n");
@@ -8967,7 +9000,8 @@ OUTPUT JSON:
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."
+      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."${withCaption ? `,
+      "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
   ]
@@ -9015,11 +9049,11 @@ OUTPUT JSON:
     // Build per-shot jobs mapped to their platform aspectRatio
     type Job = {
       platform: string; aspectRatio: string; label: string; scene: string; subject: string;
-      twistElement: string; promptText: string; fileName: string;
+      twistElement: string; promptText: string; caption: string; fileName: string;
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
-    for (const sh of concept.shots.slice(0, 12)) {
+    for (const sh of concept.shots.slice(0, 16)) {
       const platform = String(sh?.platform || "").trim();
       const preset   = PLATFORMS.find((p) => p.id === platform);
       if (!preset) continue;
@@ -9028,10 +9062,11 @@ OUTPUT JSON:
       const subject      = String(sh?.subject || "").trim();
       const twistElement = String(sh?.twistElement || "").trim();
       const promptText   = String(sh?.promptText || "").trim();
+      const caption      = withCaption ? String(sh?.caption || "").trim() : "";
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
       const fileName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}.jpg`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, fileName });
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -9060,7 +9095,7 @@ OUTPUT JSON:
     const CONCURRENCY = 3;
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
-      twistElement?: string;
+      twistElement?: string; caption?: string;
       status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
     }> = [];
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
@@ -9072,9 +9107,9 @@ OUTPUT JSON:
               finalPrompt: job.promptText, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
             });
-            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: r.error };
+            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
-            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
           }
           // Text-to-image via Luma Photon
           const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
@@ -9082,9 +9117,9 @@ OUTPUT JSON:
             method: "POST", headers: lumaHeaders(),
             body: JSON.stringify({ prompt: job.promptText, model: "photon-1", aspect_ratio: arLumaMap[job.aspectRatio] || "1:1", seed }),
           });
-          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: `Luma ${startRes.status}` };
+          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: `Luma ${startRes.status}` };
           const g = await startRes.json();
-          if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: "Luma: no gen id" };
+          if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma: no gen id" };
           // Poll
           let finalUrl: string | null = null;
           const pollStart = Date.now();
@@ -9099,11 +9134,11 @@ OUTPUT JSON:
             } catch {}
             await new Promise((r) => setTimeout(r, 2_000));
           }
-          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: "Luma timed out" };
+          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma timed out" };
           const persisted = await persistOne(finalUrl, job.fileName, job.platform);
-          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
         } catch (err: any) {
-          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: String(err?.message || err) };
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: String(err?.message || err) };
         }
       }));
       items.push(...batchRes);
