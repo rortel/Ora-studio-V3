@@ -184,24 +184,27 @@ function AnalyzeChat() {
     push({ id: genId, role: "ora", kind: "generating", model });
 
     try {
-      const res = await serverPost("/generate/image-start", {
-        prompt: promptToUse, model, aspectRatio: "1:1",
-      }, 120_000);
+      const res = await serverPost("/generate/image-via-get", {
+        prompt: promptToUse, models: model, aspectRatio: "1:1",
+      }, 180_000);
 
-      if (!res.success || !res.imageUrl) {
+      const entry = res?.results?.[0];
+      const generatedUrl = entry?.result?.imageUrl;
+      if (!res?.success || !entry?.success || !generatedUrl) {
         removeWhere((m) => m.id === genId);
-        push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "La génération a échoué : " : "Generation failed: ") + (res.error || "?") });
+        const reason = entry?.error || res?.error || "?";
+        push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "La génération a échoué : " : "Generation failed: ") + reason });
         return;
       }
 
       replaceLast(
         (m) => m.id === genId,
-        { id: genId, role: "ora", kind: "generated", model, imageUrl: res.imageUrl, prompt: promptToUse },
+        { id: genId, role: "ora", kind: "generated", model, imageUrl: generatedUrl, prompt: promptToUse },
       );
 
       const token = getAuthHeader();
       if (token) {
-        persistAsset(res.imageUrl, "image", genId, token).then((p) => {
+        persistAsset(generatedUrl, "image", genId, token).then((p) => {
           if (p.success && p.signedUrl) {
             replaceLast(
               (m) => m.id === genId && m.kind === "generated",
