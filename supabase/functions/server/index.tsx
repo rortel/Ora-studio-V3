@@ -8035,6 +8035,164 @@ app.post("/analyze/regenerate", async (c) => {
   }
 });
 
+// ── POST /analyze/reverse-prompt — Image → structured prompt (Ora Yuka) ──
+// Decodes any image into an 8-dimension schema (subject, composition, lighting,
+// palette, style, mood, camera, finish) + a ready-to-use promptText.
+// Primary: OpenAI GPT-4o vision. Fallback: Gemini 2.0 Flash vision.
+// Open to anonymous users (hero demo on landing) — auth optional.
+app.post("/analyze/reverse-prompt", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const { imageUrl, imageBase64, mimeType } = body;
+
+    if (!imageUrl && !imageBase64) {
+      return c.json({ success: false, error: "imageUrl or imageBase64 is required" }, 400);
+    }
+
+    const systemPrompt = `You are Ora, a creative director who reverse-engineers images into reusable generation prompts. Read the image with the eye of a photographer + art director and return a STRICT JSON object describing it across 8 dimensions. No prose, no markdown, JSON only.
+
+Schema:
+{
+  "subject": "<main subject + context, one concise phrase>",
+  "composition": "<framing, angle, depth, rule of thirds, focal point>",
+  "lighting": "<nature (natural/studio/mixed), direction, quality, time of day>",
+  "palette": "<3-5 dominant colors + temperature (warm/cool/neutral)>",
+  "style": "<medium (photo/3D/illustration/painting) + aesthetic reference>",
+  "mood": "<atmosphere and emotion in 2-4 words>",
+  "camera": "<focal length, aperture, film/digital, grain — '' if not a photo>",
+  "finish": "<post-processing, texture, rendering cues>",
+  "promptText": "<single-paragraph natural-language prompt in English, ready to paste into any image model, combining all 8 dimensions into a fluent description. 40-80 words. No camera jargon unless relevant.>"
+}
+
+Rules:
+- Every field is a non-empty string except "camera" which may be "" for non-photos.
+- Be specific and concrete. Avoid generic words ("beautiful", "nice", "amazing").
+- "promptText" must read naturally, not as a list of tags.
+- Return ONLY the JSON object.`;
+
+    // ── Primary: OpenAI GPT-4o vision via APIPOD ──
+    const tryOpenAI = async (): Promise<any | null> => {
+      const key = Deno.env.get("APIPOD_API_KEY") || Deno.env.get("OPENAI_API_KEY");
+      if (!key) return null;
+      const base = Deno.env.get("APIPOD_API_KEY") ? APIPOD_BASE : "https://api.openai.com/v1";
+      const imagePayload = imageUrl
+        ? { url: imageUrl, detail: "high" as const }
+        : { url: `data:${mimeType || "image/png"};base64,${imageBase64}`, detail: "high" as const };
+      try {
+        const res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              { role: "system", content: systemPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Reverse-engineer this image into the 8-dimension schema." },
+                  { type: "image_url", image_url: imagePayload },
+                ],
+              },
+            ],
+            max_tokens: 900,
+            temperature: 0.3,
+            response_format: { type: "json_object" },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          console.log(`[reverse-prompt] OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          return null;
+        }
+        const data = await res.json();
+        const raw = (data.choices?.[0]?.message?.content || "").trim();
+        return JSON.parse(raw);
+      } catch (err) {
+        console.log(`[reverse-prompt] OpenAI error: ${err}`);
+        return null;
+      }
+    };
+
+    // ── Fallback: Gemini 2.0 Flash vision ──
+    const tryGemini = async (): Promise<any | null> => {
+      const key = Deno.env.get("GEMINI_API_KEY");
+      if (!key) return null;
+      try {
+        // Gemini needs inline base64 — fetch the URL if we only have a URL
+        let b64 = imageBase64 || "";
+        let mt = mimeType || "image/png";
+        if (!b64 && imageUrl) {
+          const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(10_000) });
+          if (!imgRes.ok) throw new Error(`fetch image ${imgRes.status}`);
+          mt = imgRes.headers.get("content-type") || mt;
+          const buf = new Uint8Array(await imgRes.arrayBuffer());
+          let bin = "";
+          for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+          b64 = btoa(bin);
+        }
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: `${systemPrompt}\n\nReturn the JSON object now.` },
+                { inline_data: { mime_type: mt, data: b64 } },
+              ],
+            }],
+            generationConfig: { maxOutputTokens: 1200, temperature: 0.3, responseMimeType: "application/json" },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) {
+          console.log(`[reverse-prompt] Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          return null;
+        }
+        const data = await res.json();
+        const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+        const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+        return JSON.parse(cleaned);
+      } catch (err) {
+        console.log(`[reverse-prompt] Gemini error: ${err}`);
+        return null;
+      }
+    };
+
+    let parsed = await tryOpenAI();
+    let provider: "openai" | "gemini" | null = parsed ? "openai" : null;
+    if (!parsed) {
+      parsed = await tryGemini();
+      if (parsed) provider = "gemini";
+    }
+
+    if (!parsed || typeof parsed !== "object") {
+      return c.json({ success: false, error: "All vision providers failed" }, 502);
+    }
+
+    const schema = {
+      subject: String(parsed.subject || "").trim(),
+      composition: String(parsed.composition || "").trim(),
+      lighting: String(parsed.lighting || "").trim(),
+      palette: String(parsed.palette || "").trim(),
+      style: String(parsed.style || "").trim(),
+      mood: String(parsed.mood || "").trim(),
+      camera: String(parsed.camera || "").trim(),
+      finish: String(parsed.finish || "").trim(),
+    };
+    const promptText = String(parsed.promptText || "").trim();
+
+    console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"})`);
+    return c.json({ success: true, schema, promptText, provider, tookMs: Date.now() - t0 });
+  } catch (err: any) {
+    console.log(`[reverse-prompt] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
 // ═══════════════════════════════════════════════════════════════════
