@@ -537,14 +537,24 @@ function AnalyzeChat() {
           <OraLogo size={22} />
           <span className="text-[15px] tracking-tight" style={{ fontWeight: 600 }}>Ora</span>
         </button>
-        <button
-          onClick={resetChat}
-          className="flex items-center gap-1.5 px-3 h-8 rounded-full text-[13px] transition hover:bg-black/5"
-          style={{ color: MUTED, border: `1px solid ${BORDER}` }}
-        >
-          <Plus size={14} />
-          {isFr ? "Nouveau" : "New"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/hub/surprise")}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[13px] transition hover:bg-black/5"
+            style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+          >
+            <Sparkles size={13} />
+            {isFr ? "Surprends-moi" : "Surprise me"}
+          </button>
+          <button
+            onClick={resetChat}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-full text-[13px] transition hover:bg-black/5"
+            style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+          >
+            <Plus size={14} />
+            {isFr ? "Nouveau" : "New"}
+          </button>
+        </div>
       </header>
 
       <AnimatePresence>

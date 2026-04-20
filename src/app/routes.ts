@@ -54,6 +54,7 @@ const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
 const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
 const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
 const AnalyzePage = lazyRetry(() => import("./pages/AnalyzePage"), "AnalyzePage");
+const SurprisePage = lazyRetry(() => import("./pages/SurprisePage"), "SurprisePage");
 const DashboardPage = lazyRetry(() => import("./pages/DashboardPage"), "DashboardPage");
 
 
@@ -118,6 +119,7 @@ export const router = createBrowserRouter([
       { path: "hub/music", Component: MusicPage },
       { path: "hub/video-editor", Component: VideoAssemblerPage },
       { path: "hub/analyze", Component: AnalyzePage },
+      { path: "hub/surprise", Component: SurprisePage },
       { path: "hub/dashboard", Component: DashboardPage },
       { path: "hub/compare", Component: ComparePage },
       { path: "hub/editor", Component: EditorPage },
