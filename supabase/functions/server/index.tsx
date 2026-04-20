@@ -8441,6 +8441,192 @@ app.post("/analyze/remix", async (c) => {
   }
 });
 
+// ── POST /analyze/series — Generate a coherent set of visuals (scenes × ratios) ──
+// All scenes share the same DA-lock (palette, style, lighting quality, mood, camera profile,
+// post grade, rendering texture) + the same seed → coherent series. Only sceneVary axes
+// (framing, angle, placement, lighting direction, moment) change per item.
+// Output assets are persisted to Storage with semantic names:
+//   {campaignSlug}_{sceneSlug}_{1x1|9x16|16x9}.jpg
+app.post("/analyze/series", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+
+    const daLock = body?.daLock || {};
+    const subject = String(body?.subject || "").trim();
+    const imageUrl = String(body?.imageUrl || "").trim();
+    const model = String(body?.model || "photon-1").trim();
+    const campaignName = String(body?.campaignName || "ora").trim() || "ora";
+    const avoidIn: string[] = Array.isArray(body?.avoid)
+      ? body.avoid.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 8)
+      : [];
+    const scenesIn: any[] = Array.isArray(body?.scenes) ? body.scenes : [];
+    const ratiosIn: string[] = Array.isArray(body?.ratios)
+      ? body.ratios.map((x: any) => String(x || "").trim()).filter(Boolean)
+      : ["1:1"];
+    const seed: number =
+      typeof body?.seed === "number" && Number.isFinite(body.seed) && body.seed > 0
+        ? Math.floor(body.seed)
+        : Math.floor(Math.random() * 1_000_000);
+
+    if (!imageUrl || !subject) {
+      return c.json({ success: false, error: "imageUrl and subject are required" }, 400);
+    }
+
+    // ── Default scene presets when none provided ──
+    const DEFAULT_SCENES = [
+      { label: "hero",     framing: "wide cinematic shot",        angle: "eye-level",  placement: "centered",        lightingDirection: "front-side three-quarter", moment: "action" },
+      { label: "closeup",  framing: "extreme close-up detail",    angle: "eye-level",  placement: "off-center left", lightingDirection: "side soft",                moment: "rest, intimate" },
+      { label: "aerial",   framing: "wide top-down perspective",  angle: "aerial high", placement: "centered",        lightingDirection: "overhead",                 moment: "approach" },
+      { label: "portrait", framing: "medium portrait framing",    angle: "low angle",  placement: "right-third",     lightingDirection: "back-rim",                 moment: "reveal" },
+    ];
+    const scenes = (scenesIn.length > 0 ? scenesIn : DEFAULT_SCENES)
+      .slice(0, 6)
+      .map((s: any, i: number) => ({
+        label: String(s?.label || `scene-${i + 1}`).trim() || `scene-${i + 1}`,
+        framing: String(s?.framing || "").trim(),
+        angle: String(s?.angle || "").trim(),
+        placement: String(s?.placement || "").trim(),
+        lightingDirection: String(s?.lightingDirection || "").trim(),
+        moment: String(s?.moment || "").trim(),
+      }));
+    const ratios = ratiosIn.slice(0, 4);
+    const totalJobs = scenes.length * ratios.length;
+    if (totalJobs === 0) return c.json({ success: false, error: "No scenes or ratios provided" }, 400);
+    if (totalJobs > 18) return c.json({ success: false, error: "Too many combinations (max 18 = 6 scenes × 3 ratios)" }, 400);
+
+    // ── Brand cues (auth required for /series, so always check) ──
+    let brandSuffix = "";
+    try {
+      const ctx = await buildBrandContext(user.id);
+      if (ctx) {
+        const parts: string[] = [];
+        const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 4);
+        if (colors.length >= 2) parts.push(`brand palette accents ${colors.join(", ")}`);
+        if (ctx.photoStyle?.mood) parts.push(`${ctx.photoStyle.mood} brand mood`);
+        if (ctx.photoStyle?.lighting) parts.push(`${ctx.photoStyle.lighting} lighting cues`);
+        if (parts.length > 0) brandSuffix = ` Brand cues: ${parts.join("; ")}.`;
+      }
+    } catch (err) { console.log(`[series] buildBrandContext skipped: ${err}`); }
+
+    // ── DA-lock sentence (the fingerprint that ALL scenes share) ──
+    const daParts: string[] = [];
+    if (daLock.visualStyle)      daParts.push(daLock.visualStyle);
+    if (daLock.palette)          daParts.push(`${daLock.palette} palette`);
+    if (daLock.lightingQuality)  daParts.push(daLock.lightingQuality);
+    if (daLock.mood)             daParts.push(`${daLock.mood} mood`);
+    if (daLock.cameraProfile)    daParts.push(daLock.cameraProfile);
+    if (daLock.postGrade)        daParts.push(daLock.postGrade);
+    if (daLock.renderingTexture) daParts.push(daLock.renderingTexture);
+    const daSentence = daParts.join(", ");
+
+    const avoidSuffix = avoidIn.length > 0 ? ` Avoid: ${avoidIn.join(", ")}.` : "";
+
+    // ── Slug helper ──
+    const slug = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "scene";
+
+    const campaignSlug = slug(campaignName);
+    const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
+
+    // ── Build the job list ──
+    type Job = {
+      sceneLabel: string;
+      ratio: string;
+      fileName: string;
+      finalPrompt: string;
+    };
+    const jobs: Job[] = [];
+    for (const scene of scenes) {
+      const sceneParts: string[] = [];
+      if (scene.framing)           sceneParts.push(scene.framing);
+      if (scene.angle)             sceneParts.push(scene.angle);
+      if (scene.placement)         sceneParts.push(`subject ${scene.placement}`);
+      if (scene.lightingDirection) sceneParts.push(`light from ${scene.lightingDirection}`);
+      if (scene.moment)            sceneParts.push(scene.moment);
+      const sceneSentence = sceneParts.join(", ");
+      const basePrompt = `${subject}. Scene: ${sceneSentence}. Visual identity: ${daSentence}.`;
+      for (const ratio of ratios) {
+        jobs.push({
+          sceneLabel: scene.label,
+          ratio,
+          fileName: `${campaignSlug}_${slug(scene.label)}_${ratioSlug(ratio)}.jpg`,
+          finalPrompt: `${basePrompt}${brandSuffix}${avoidSuffix}`,
+        });
+      }
+    }
+    console.log(`[series] user=${user.id.slice(0, 8)} campaign="${campaignSlug}" model=${model} seed=${seed} jobs=${jobs.length}`);
+
+    // ── Persist a generated URL to Storage under series/{campaignSlug}/{fileName} ──
+    await ensureGeneratedAssetsBucket();
+    const sb = supabaseAdmin();
+    const persistOne = async (sourceUrl: string, fileName: string): Promise<string | null> => {
+      try {
+        const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
+        if (!dl.ok) return null;
+        const ct = dl.headers.get("content-type") || "image/jpeg";
+        const buf = new Uint8Array(await dl.arrayBuffer());
+        const path = `${user.id}/series/${campaignSlug}/${Date.now()}-${fileName}`;
+        const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
+        if (upErr) { console.log(`[series] upload err: ${upErr.message}`); return null; }
+        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+        return data?.signedUrl || null;
+      } catch (err) {
+        console.log(`[series] persist err: ${err}`);
+        return null;
+      }
+    };
+
+    // ── Run jobs in parallel batches ──
+    const CONCURRENCY = 3;
+    const items: Array<{
+      sceneLabel: string; ratio: string; fileName: string;
+      status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
+    }> = [];
+    for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+      const batch = jobs.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
+        const r = await runRemix({
+          finalPrompt: job.finalPrompt,
+          imageUrl,
+          model,
+          aspectRatio: job.ratio,
+          seed,
+        });
+        if (!r.ok) {
+          return { sceneLabel: job.sceneLabel, ratio: job.ratio, fileName: job.fileName, status: "failed", error: r.error };
+        }
+        const persisted = await persistOne(r.imageUrl, job.fileName);
+        return {
+          sceneLabel: job.sceneLabel,
+          ratio: job.ratio,
+          fileName: job.fileName,
+          status: "ok",
+          imageUrl: persisted || r.imageUrl,
+          provider: r.provider,
+        };
+      }));
+      items.push(...batchResults);
+    }
+
+    const okCount = items.filter((x) => x.status === "ok").length;
+    console.log(`[series] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms`);
+    return c.json({
+      success: true,
+      seed,
+      campaignName,
+      campaignSlug,
+      items,
+      tookMs: Date.now() - t0,
+    });
+  } catch (err: any) {
+    console.log(`[series] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
 // ═══════════════════════════════════════════════════════════════════
