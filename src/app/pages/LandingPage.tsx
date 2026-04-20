@@ -81,7 +81,9 @@ function LandingHeader({ isFr, authed }: { isFr: boolean; authed: boolean }) {
 function Hero({ isFr, authed }: { isFr: boolean; authed: boolean }) {
   return (
     <section className="relative overflow-hidden">
-      <div className="max-w-[1280px] mx-auto px-5 md:px-10 pt-16 md:pt-28 pb-10 md:pb-20">
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: "radial-gradient(60% 50% at 70% 30%, rgba(59,130,246,0.08) 0%, transparent 70%)" }} />
+      <div className="relative max-w-[1280px] mx-auto px-5 md:px-10 pt-16 md:pt-28 pb-10 md:pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] gap-10 lg:gap-16 items-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
@@ -254,7 +256,7 @@ function HeroVisual({ isFr }: { isFr: boolean }) {
       <motion.div
         key={status}
         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-        className="absolute -bottom-6 -left-4 md:-left-8 max-w-[340px] px-4 py-3 text-[13.5px] leading-snug"
+        className="absolute -bottom-6 left-2 sm:-left-4 md:-left-8 max-w-[calc(100%-16px)] sm:max-w-[340px] px-4 py-3 text-[13.5px] leading-snug"
         style={{ background: "#fff", color: TEXT, border: `1px solid ${BORDER}`,
                  borderRadius: "20px 20px 20px 6px", boxShadow: "0 20px 60px -15px rgba(10,10,10,0.15)" }}
       >
@@ -298,7 +300,10 @@ function SectionDecode({ isFr }: { isFr: boolean }) {
   return (
     <section className="py-20 md:py-32">
       <div className="max-w-[1280px] mx-auto px-5 md:px-10 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-20 items-center">
-        <div>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }} viewport={{ once: true, margin: "-80px" }}
+        >
           <div className="text-[13px] font-semibold uppercase tracking-[0.15em] mb-4" style={{ color: ACCENT }}>
             01 · {isFr ? "Décoder" : "Decode"}
           </div>
@@ -310,8 +315,11 @@ function SectionDecode({ isFr }: { isFr: boolean }) {
               ? "Sujet, composition, lumière, palette, style, ambiance, caméra, finition. Tu vois exactement ce que l'IA a compris — et tu peux le modifier."
               : "Subject, composition, lighting, palette, style, mood, camera, finish. You see exactly what the AI understood — and you can edit it."}
           </p>
-        </div>
-        <div className="relative aspect-[4/3] rounded-[24px] overflow-hidden"
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }} viewport={{ once: true, margin: "-80px" }}
+          className="relative aspect-[4/3] rounded-[24px] overflow-hidden"
              style={{ boxShadow: "0 20px 60px -20px rgba(10,10,10,0.2)", border: `1px solid ${BORDER}` }}>
           <img src={serviceImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 flex items-end">
@@ -324,7 +332,7 @@ function SectionDecode({ isFr }: { isFr: boolean }) {
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );
@@ -335,7 +343,11 @@ function SectionGenerate({ isFr }: { isFr: boolean }) {
   return (
     <section className="py-20 md:py-32" style={{ background: "#F3F4F1" }}>
       <div className="max-w-[1280px] mx-auto px-5 md:px-10">
-        <div className="max-w-[720px] mb-10 md:mb-14">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }} viewport={{ once: true, margin: "-80px" }}
+          className="max-w-[720px] mb-10 md:mb-14"
+        >
           <div className="text-[13px] font-semibold uppercase tracking-[0.15em] mb-4" style={{ color: ACCENT }}>
             02 · {isFr ? "Générer" : "Generate"}
           </div>
@@ -347,7 +359,7 @@ function SectionGenerate({ isFr }: { isFr: boolean }) {
               ? "Photon Flash, Photon, Flux Pro, Ideogram, DALL-E 3. Un chip, un clic, une nouvelle image — sans jamais quitter le fil."
               : "Photon Flash, Photon, Flux Pro, Ideogram, DALL-E 3. One chip, one click, a new image — never leaving the thread."}
           </p>
-        </div>
+        </motion.div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
           {[
@@ -381,15 +393,22 @@ function SectionKeep({ isFr }: { isFr: boolean }) {
   return (
     <section className="py-20 md:py-32">
       <div className="max-w-[1280px] mx-auto px-5 md:px-10 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-10 lg:gap-20 items-center">
-        <div className="relative aspect-[4/3] rounded-[24px] overflow-hidden order-2 lg:order-1"
-             style={{ boxShadow: "0 20px 60px -20px rgba(10,10,10,0.2)", border: `1px solid ${BORDER}` }}>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }} viewport={{ once: true, margin: "-80px" }}
+          className="relative aspect-[4/3] rounded-[24px] overflow-hidden order-2 lg:order-1"
+          style={{ boxShadow: "0 20px 60px -20px rgba(10,10,10,0.2)", border: `1px solid ${BORDER}` }}>
           <img src={sunsetImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute bottom-4 right-4 px-3 h-9 rounded-full inline-flex items-center gap-2 text-[13px]"
                style={{ background: INK, color: INK_TEXT, fontWeight: 500 }}>
             HD · 4K
           </div>
-        </div>
-        <div className="order-1 lg:order-2">
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }} viewport={{ once: true, margin: "-80px" }}
+          className="order-1 lg:order-2"
+        >
           <div className="text-[13px] font-semibold uppercase tracking-[0.15em] mb-4" style={{ color: ACCENT }}>
             03 · {isFr ? "Conserver" : "Keep"}
           </div>
@@ -401,7 +420,7 @@ function SectionKeep({ isFr }: { isFr: boolean }) {
               ? "Chaque image générée atterrit dans ta bibliothèque, téléchargeable en haute définition — sans upload manuel, sans perte."
               : "Every generated image lands in your library, ready for HD download — no manual upload, no loss."}
           </p>
-        </div>
+        </motion.div>
       </div>
     </section>
   );
