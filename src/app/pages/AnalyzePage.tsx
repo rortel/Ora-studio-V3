@@ -2,9 +2,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Paperclip, Send, Loader2, Download, Copy, RotateCcw,
-  Check, Plus, Sparkles, Image as ImageIcon, Pencil, X,
+  Check, Plus, Sparkles, Image as ImageIcon, Pencil, X, Layers, Package,
 } from "lucide-react";
 import { toast } from "sonner";
+import JSZip from "jszip";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
@@ -51,16 +52,58 @@ const MODELS: ModelChip[] = [
   { id: "dall-e",          label: "Polyvalent", emoji: "🧠", hint: "DALL-E 3 HD" },
 ];
 
+/* ═══ Series presets ═══ */
+interface ScenePreset {
+  label: string;
+  emoji: string;
+  framing: string;
+  angle: string;
+  placement: string;
+  lightingDirection: string;
+  moment: string;
+}
+const SCENE_PRESETS: ScenePreset[] = [
+  { label: "hero",     emoji: "🌅", framing: "wide cinematic shot",       angle: "eye-level",   placement: "centered",        lightingDirection: "front-side three-quarter", moment: "action" },
+  { label: "closeup",  emoji: "🔍", framing: "extreme close-up detail",   angle: "eye-level",   placement: "off-center left", lightingDirection: "side soft",                moment: "intimate rest" },
+  { label: "aerial",   emoji: "🛸", framing: "wide top-down perspective", angle: "aerial high", placement: "centered",        lightingDirection: "overhead",                 moment: "approach" },
+  { label: "portrait", emoji: "👤", framing: "medium portrait framing",   angle: "low angle",   placement: "right-third",     lightingDirection: "back-rim",                 moment: "reveal" },
+];
+
+interface RatioPreset { id: string; label: string; emoji: string; hint: string }
+const RATIO_PRESETS: RatioPreset[] = [
+  { id: "1:1",  label: "1:1",  emoji: "⬛", hint: "Feed Insta, multipurpose" },
+  { id: "9:16", label: "9:16", emoji: "📱", hint: "Stories, Reels, TikTok" },
+  { id: "16:9", label: "16:9", emoji: "🖥️", hint: "YouTube, web hero" },
+  { id: "4:5",  label: "4:5",  emoji: "🖼️", hint: "Portrait Insta" },
+];
+
+interface DALock {
+  palette: string; visualStyle: string; lightingQuality: string; mood: string;
+  cameraProfile: string; postGrade: string; renderingTexture: string;
+}
+interface SceneVary {
+  framing: string; angle: string; placement: string;
+  lightingDirection: string; moment: string;
+}
+interface SeriesItem {
+  sceneLabel: string; ratio: string; fileName: string;
+  status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
+}
+
 type Msg =
-  | { id: string; role: "ora";  kind: "text";       text: string }
-  | { id: string; role: "user"; kind: "text";       text: string }
-  | { id: string; role: "user"; kind: "image";      imageUrl: string; mimeType: string; base64?: string }
-  | { id: string; role: "ora";  kind: "loading";    label: string }
-  | { id: string; role: "ora";  kind: "analysis";   schema: PromptSchema; promptText: string; imageUrl: string }
+  | { id: string; role: "ora";  kind: "text";          text: string }
+  | { id: string; role: "user"; kind: "text";          text: string }
+  | { id: string; role: "user"; kind: "image";         imageUrl: string; mimeType: string; base64?: string }
+  | { id: string; role: "ora";  kind: "loading";       label: string }
+  | { id: string; role: "ora";  kind: "analysis";      schema: PromptSchema; promptText: string; imageUrl: string }
   | { id: string; role: "ora";  kind: "models" }
-  | { id: string; role: "user"; kind: "modelPick";  model: ModelId; label: string }
-  | { id: string; role: "ora";  kind: "generating"; model: ModelId }
-  | { id: string; role: "ora";  kind: "generated";  model: ModelId; imageUrl: string; prompt: string };
+  | { id: string; role: "user"; kind: "modelPick";     model: ModelId; label: string }
+  | { id: string; role: "ora";  kind: "generating";    model: ModelId }
+  | { id: string; role: "ora";  kind: "generated";     model: ModelId; imageUrl: string; prompt: string }
+  | { id: string; role: "ora";  kind: "seriesPicker";  defaultCampaign: string }
+  | { id: string; role: "user"; kind: "seriesPick";    campaignName: string; sceneCount: number; ratioCount: number }
+  | { id: string; role: "ora";  kind: "seriesGenerating"; total: number }
+  | { id: string; role: "ora";  kind: "seriesResult";  campaignName: string; campaignSlug: string; items: SeriesItem[] };
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
@@ -89,6 +132,8 @@ function AnalyzeChat() {
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [avoid, setAvoid] = useState<string[]>([]);
+  const [daLock, setDALock] = useState<DALock | null>(null);
+  const [subject, setSubject] = useState<string>("");
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -163,11 +208,19 @@ function AnalyzeChat() {
       setCurrentPrompt(res.promptText);
       setSourceUrl(res.sourceUrl || null);
       setAvoid(Array.isArray(res.avoid) ? res.avoid : []);
+      setDALock(res.daLock || null);
+      setSubject(String(res.subject || "").trim());
       replaceLast(
         (m) => m.id === loadingId,
         { id: loadingId, role: "ora", kind: "analysis", schema: res.schema, promptText: res.promptText, imageUrl: dataUrl },
       );
       push({ id: uid(), role: "ora", kind: "models" });
+      // Offer the coherent-series CTA only when we have the structured schema + a usable source URL.
+      if (res.daLock && res.sourceUrl) {
+        const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "ora";
+        push({ id: uid(), role: "ora", kind: "seriesPicker", defaultCampaign: slug(res.subject || "ora") });
+      }
     } catch (err: any) {
       push({ id: uid(), role: "ora", kind: "text", text: String(err?.message || err) });
     } finally {
@@ -236,6 +289,73 @@ function AnalyzeChat() {
     }
   }, [busy, currentPrompt, sourceUrl, avoid, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
 
+  /* ── Coherent series ── */
+  const handleSeriesGenerate = useCallback(async (campaignName: string, scenes: ScenePreset[], ratios: string[]) => {
+    if (busy) return;
+    if (!sourceUrl || !daLock || !subject) {
+      toast.error(isFr ? "Lance une analyse d'image avant la série." : "Run an image analysis first.");
+      return;
+    }
+    if (scenes.length === 0 || ratios.length === 0) {
+      toast.error(isFr ? "Choisis au moins une scène et un format." : "Pick at least one scene and one format.");
+      return;
+    }
+
+    setBusy(true);
+    push({ id: uid(), role: "user", kind: "seriesPick", campaignName, sceneCount: scenes.length, ratioCount: ratios.length });
+    const genId = uid();
+    push({ id: genId, role: "ora", kind: "seriesGenerating", total: scenes.length * ratios.length });
+
+    try {
+      const res = await serverPost("/analyze/series", {
+        daLock, subject, avoid, scenes, ratios,
+        campaignName, imageUrl: sourceUrl,
+        model: "photon-1",
+      }, 240_000);
+
+      if (!res?.success || !Array.isArray(res.items)) {
+        removeWhere((m) => m.id === genId);
+        push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "La série a échoué : " : "Series failed: ") + (res?.error || "?") });
+        return;
+      }
+
+      replaceLast(
+        (m) => m.id === genId,
+        { id: genId, role: "ora", kind: "seriesResult", campaignName: res.campaignName, campaignSlug: res.campaignSlug, items: res.items },
+      );
+    } catch (err: any) {
+      removeWhere((m) => m.id === genId);
+      push({ id: uid(), role: "ora", kind: "text", text: String(err?.message || err) });
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, sourceUrl, daLock, subject, avoid, isFr, push, replaceLast, removeWhere, serverPost]);
+
+  const handleDownloadZip = useCallback(async (campaignSlug: string, items: SeriesItem[]) => {
+    const okItems = items.filter((it) => it.status === "ok" && it.imageUrl);
+    if (okItems.length === 0) { toast.error(isFr ? "Aucun visuel à télécharger." : "Nothing to download."); return; }
+    toast.info(isFr ? "Préparation du ZIP…" : "Preparing the ZIP…");
+    try {
+      const zip = new JSZip();
+      await Promise.all(okItems.map(async (it) => {
+        try {
+          const r = await fetch(it.imageUrl!);
+          if (!r.ok) return;
+          const blob = await r.blob();
+          zip.file(it.fileName, blob);
+        } catch {}
+      }));
+      const out = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(out);
+      a.download = `${campaignSlug || "series"}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err: any) {
+      toast.error(String(err?.message || err));
+    }
+  }, [isFr]);
+
   const handleSend = useCallback(() => {
     const t = inputText.trim();
     if (!t) return;
@@ -271,6 +391,8 @@ function AnalyzeChat() {
     setCurrentPrompt("");
     setSourceUrl(null);
     setAvoid([]);
+    setDALock(null);
+    setSubject("");
     setEditingPrompt(false);
     setInputText("");
   };
@@ -342,6 +464,8 @@ function AnalyzeChat() {
                   onCopyPrompt={(p) => { navigator.clipboard.writeText(p); toast.success(isFr ? "Prompt copié" : "Prompt copied"); }}
                   onDownload={(url) => downloadAsset(url, `ora-${Date.now()}.png`, "image")}
                   onRegenerate={(model, prompt) => handleGenerate(model, prompt)}
+                  onSeriesSubmit={handleSeriesGenerate}
+                  onDownloadZip={handleDownloadZip}
                 />
               </motion.div>
             ))}
@@ -411,6 +535,8 @@ function MessageBubble(props: {
   onCopyPrompt: (p: string) => void;
   onDownload: (url: string) => void;
   onRegenerate: (model: ModelId, prompt: string) => void;
+  onSeriesSubmit: (campaignName: string, scenes: ScenePreset[], ratios: string[]) => void;
+  onDownloadZip: (campaignSlug: string, items: SeriesItem[]) => void;
 }) {
   const { msg, isFr } = props;
   const isUser = msg.role === "user";
@@ -572,5 +698,202 @@ function MessageBubble(props: {
     );
   }
 
+  if (msg.kind === "seriesPicker") {
+    return <SeriesPickerBubble defaultCampaign={msg.defaultCampaign} isFr={isFr} busy={props.busy} onSubmit={props.onSeriesSubmit} oraStyle={oraStyle} />;
+  }
+
+  if (msg.kind === "seriesPick") {
+    return (
+      <div className={baseBubble} style={userStyle}>
+        → {isFr ? "Série" : "Series"} <b>{msg.campaignName}</b> · {msg.sceneCount} {isFr ? "scènes" : "scenes"} × {msg.ratioCount} {isFr ? "formats" : "formats"}
+      </div>
+    );
+  }
+
+  if (msg.kind === "seriesGenerating") {
+    return (
+      <div className={baseBubble} style={oraStyle}>
+        <span className="inline-flex items-center gap-2">
+          <Loader2 size={15} className="animate-spin" />
+          {isFr ? `Génération de ${msg.total} visuels…` : `Generating ${msg.total} visuals…`}
+        </span>
+        <div className="text-[12px] mt-1" style={{ color: MUTED }}>
+          {isFr ? "DA verrouillée + seed partagée — peut prendre 30-90 s." : "DA locked + shared seed — may take 30-90 s."}
+        </div>
+      </div>
+    );
+  }
+
+  if (msg.kind === "seriesResult") {
+    const okItems = msg.items.filter((it) => it.status === "ok");
+    const failed = msg.items.length - okItems.length;
+    return (
+      <div className="max-w-[88%] flex flex-col gap-2" style={oraStyle}>
+        <div className="px-4 pt-2.5 text-[15px]">
+          {isFr ? "Voilà ta série" : "Here is your series"} <b>{msg.campaignName}</b>
+          {failed > 0 && (
+            <span className="ml-2 text-[12px]" style={{ color: "#B91C1C" }}>· {failed} {isFr ? "échouée(s)" : "failed"}</span>
+          )}
+        </div>
+        <div className="px-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {msg.items.map((it, i) => (
+            <div key={i} className="relative rounded-xl overflow-hidden" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+              {it.status === "ok" && it.imageUrl ? (
+                <img src={it.imageUrl} alt={it.fileName} className="w-full aspect-square object-cover" />
+              ) : (
+                <div className="w-full aspect-square flex items-center justify-center text-[11px] text-center px-2" style={{ color: "#B91C1C" }}>
+                  {it.error?.slice(0, 80) || "failed"}
+                </div>
+              )}
+              <div className="px-2 py-1.5 flex items-center justify-between gap-1">
+                <span className="text-[10.5px] font-mono truncate" style={{ color: MUTED }} title={it.fileName}>
+                  {it.fileName}
+                </span>
+                {it.status === "ok" && it.imageUrl && (
+                  <button
+                    onClick={() => props.onDownload(it.imageUrl!)}
+                    className="shrink-0 w-6 h-6 rounded-full hover:bg-black/5 flex items-center justify-center"
+                    aria-label="download"
+                  >
+                    <Download size={11} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="px-3 pb-3 flex flex-wrap gap-2 items-center">
+          <span className="text-[12px]" style={{ color: MUTED }}>{okItems.length} / {msg.items.length}</span>
+          <span className="flex-1" />
+          <button
+            onClick={() => props.onDownloadZip(msg.campaignSlug, msg.items)}
+            disabled={okItems.length === 0}
+            className="px-3 h-8 rounded-full text-[13px] text-white flex items-center gap-1.5 disabled:opacity-40"
+            style={{ background: USER_BG }}
+          >
+            <Package size={13} /> {isFr ? "Télécharger ZIP" : "Download ZIP"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return null;
+}
+
+/* ═══ Series picker (campaign + scenes + ratios) ═══ */
+function SeriesPickerBubble({ defaultCampaign, isFr, busy, onSubmit, oraStyle }: {
+  defaultCampaign: string;
+  isFr: boolean;
+  busy: boolean;
+  onSubmit: (campaignName: string, scenes: ScenePreset[], ratios: string[]) => void;
+  oraStyle: React.CSSProperties;
+}) {
+  const [campaign, setCampaign] = useState(defaultCampaign || "ora");
+  const [pickedScenes, setPickedScenes] = useState<string[]>(SCENE_PRESETS.map((s) => s.label));
+  const [pickedRatios, setPickedRatios] = useState<string[]>(["1:1", "9:16"]);
+
+  const toggleScene = (label: string) =>
+    setPickedScenes((xs) => xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]);
+  const toggleRatio = (id: string) =>
+    setPickedRatios((xs) => xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]);
+
+  const total = pickedScenes.length * pickedRatios.length;
+  const tooMany = total > 18;
+
+  return (
+    <div className="max-w-[88%] flex flex-col gap-3" style={oraStyle}>
+      <div className="px-4 pt-2.5 text-[15px]">
+        <span className="inline-flex items-center gap-1.5">
+          <Layers size={14} /> {isFr ? "Décliner en série cohérente" : "Decline as a coherent series"}
+        </span>
+      </div>
+
+      <div className="mx-3 flex flex-col gap-3">
+        <div>
+          <label className="text-[12px] uppercase tracking-wide block mb-1" style={{ color: MUTED }}>
+            {isFr ? "Nom de campagne" : "Campaign name"}
+          </label>
+          <input
+            value={campaign}
+            onChange={(e) => setCampaign(e.target.value)}
+            placeholder="ora-campaign"
+            className="w-full rounded-lg px-3 py-2 text-[14px] outline-none font-mono"
+            style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+          />
+        </div>
+
+        <div>
+          <div className="text-[12px] uppercase tracking-wide mb-1.5" style={{ color: MUTED }}>
+            {isFr ? "Scènes (DA verrouillée)" : "Scenes (DA locked)"}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {SCENE_PRESETS.map((s) => {
+              const on = pickedScenes.includes(s.label);
+              return (
+                <button
+                  key={s.label}
+                  onClick={() => toggleScene(s.label)}
+                  className="px-2.5 h-8 rounded-full text-[12.5px] inline-flex items-center gap-1.5 transition"
+                  style={{
+                    background: on ? USER_BG : "#fff",
+                    color: on ? USER_TEXT : TEXT,
+                    border: `1px solid ${on ? USER_BG : BORDER}`,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>{s.emoji}</span> {s.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[12px] uppercase tracking-wide mb-1.5" style={{ color: MUTED }}>
+            {isFr ? "Formats" : "Formats"}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {RATIO_PRESETS.map((r) => {
+              const on = pickedRatios.includes(r.id);
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => toggleRatio(r.id)}
+                  title={r.hint}
+                  className="px-2.5 h-8 rounded-full text-[12.5px] inline-flex items-center gap-1.5 transition"
+                  style={{
+                    background: on ? USER_BG : "#fff",
+                    color: on ? USER_TEXT : TEXT,
+                    border: `1px solid ${on ? USER_BG : BORDER}`,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>{r.emoji}</span> {r.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-3 pb-3 flex items-center gap-2">
+        <span className="text-[12px]" style={{ color: tooMany ? "#B91C1C" : MUTED }}>
+          {total} {isFr ? "visuels" : "visuals"} {tooMany ? (isFr ? " — max 18" : " — max 18") : ""}
+        </span>
+        <span className="flex-1" />
+        <button
+          disabled={busy || total === 0 || tooMany || !campaign.trim()}
+          onClick={() => {
+            const scenes = SCENE_PRESETS.filter((s) => pickedScenes.includes(s.label));
+            onSubmit(campaign.trim(), scenes, pickedRatios);
+          }}
+          className="px-3 h-9 rounded-full text-[13px] text-white flex items-center gap-1.5 disabled:opacity-40"
+          style={{ background: USER_BG }}
+        >
+          <Sparkles size={13} /> {isFr ? "Générer la série" : "Generate the series"}
+        </button>
+      </div>
+    </div>
+  );
 }
