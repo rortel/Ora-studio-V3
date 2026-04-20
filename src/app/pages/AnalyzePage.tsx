@@ -56,6 +56,7 @@ const MODELS: ModelChip[] = [
 interface ScenePreset {
   label: string;
   emoji: string;
+  description?: string;
   framing: string;
   angle: string;
   placement: string;
@@ -399,10 +400,12 @@ function AnalyzeChat() {
     push({ id: genId, role: "ora", kind: "seriesGenerating", total: scenes.length * ratios.length });
 
     try {
+      // heroObject + per-scene description are the two pieces that make Kontext
+      // actually preserve the hero and move the environment. Pass both through.
       const res = await serverPost("/analyze/series", {
-        daLock, subject, avoid, scenes, ratios,
+        daLock, subject, heroObject, avoid, scenes, ratios,
         campaignName, imageUrl: sourceUrl,
-        model: "photon-1",
+        model: "kontext-pro",
       }, 240_000);
 
       if (!res?.success || !Array.isArray(res.items)) {
@@ -421,7 +424,7 @@ function AnalyzeChat() {
     } finally {
       setBusy(false);
     }
-  }, [busy, sourceUrl, daLock, subject, avoid, isFr, push, replaceLast, removeWhere, serverPost]);
+  }, [busy, sourceUrl, daLock, subject, heroObject, avoid, isFr, push, replaceLast, removeWhere, serverPost]);
 
   const handleDownloadZip = useCallback(async (campaignSlug: string, items: SeriesItem[]) => {
     const okItems = items.filter((it) => it.status === "ok" && it.imageUrl);
@@ -449,16 +452,19 @@ function AnalyzeChat() {
   }, [isFr]);
 
   /* ── Run the series from brainstorm-agreed scenes ── */
+  // We pass the scenes as a lightly shaped array (ScenePreset with an extra
+  // `description` field, which handleSeriesGenerate forwards to /analyze/series).
   const handleLaunchFromBrainstorm = useCallback((campaignName: string, scenes: BrainstormScene[], ratios: string[]) => {
     const asPresets: ScenePreset[] = scenes.map((sc) => ({
       label: sc.label,
       emoji: "🎬",
+      description: sc.description,
       framing: sc.framing,
       angle: sc.angle,
       placement: sc.placement,
       lightingDirection: sc.lightingDirection,
       moment: sc.moment,
-    }));
+    } as ScenePreset));
     handleSeriesGenerate(campaignName, asPresets, ratios);
   }, [handleSeriesGenerate]);
 

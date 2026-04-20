@@ -8676,6 +8676,7 @@ app.post("/analyze/series", async (c) => {
 
     const daLock = body?.daLock || {};
     const subject = String(body?.subject || "").trim();
+    const heroObject = String(body?.heroObject || "").trim() || subject;
     const imageUrl = String(body?.imageUrl || "").trim();
     // Default to Kontext Pro: best hero preservation across scene changes.
     // Caller can override (e.g. "photon-1", "flux-pro") if they want more freedom.
@@ -8708,6 +8709,7 @@ app.post("/analyze/series", async (c) => {
       .slice(0, 6)
       .map((s: any, i: number) => ({
         label: String(s?.label || `scene-${i + 1}`).trim() || `scene-${i + 1}`,
+        description: String(s?.description || "").trim(),
         framing: String(s?.framing || "").trim(),
         angle: String(s?.angle || "").trim(),
         placement: String(s?.placement || "").trim(),
@@ -8770,7 +8772,19 @@ app.post("/analyze/series", async (c) => {
       if (scene.lightingDirection) sceneParts.push(`light from ${scene.lightingDirection}`);
       if (scene.moment)            sceneParts.push(scene.moment);
       const sceneSentence = sceneParts.join(", ");
-      const basePrompt = `${subject}. Scene: ${sceneSentence}. Visual identity: ${daSentence}.`;
+
+      // KEEP / TRANSPORT / LOCK structure optimized for Kontext Pro.
+      // 1) KEEP — spell out the hero in detail so it stays identical.
+      // 2) TRANSPORT — the narrative scene description from the brainstorm is the
+      //    primary driver ("on a Malibu beach at dusk"), NOT abstract motion verbs.
+      // 3) LOCK — DA fingerprint (palette, style, mood, camera, grade, texture).
+      const keepLine      = `KEEP EXACTLY the hero object as in the source image — identical shape, colors, typography, materials, proportions: ${heroObject}.`;
+      const transportLine = scene.description
+        ? `TRANSPORT it into this new scene: ${scene.description}.`
+        : `TRANSPORT it into a new environment.`;
+      const sceneLine     = sceneSentence ? ` Scene notes: ${sceneSentence}.` : "";
+      const daLine        = daSentence ? ` Visual identity (must stay locked from the source): ${daSentence}.` : "";
+      const basePrompt = `${keepLine} ${transportLine}${sceneLine}${daLine}`;
       for (const ratio of ratios) {
         jobs.push({
           sceneLabel: scene.label,
