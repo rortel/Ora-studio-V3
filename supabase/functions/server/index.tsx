@@ -8450,6 +8450,177 @@ app.post("/analyze/remix", async (c) => {
   }
 });
 
+// ── POST /analyze/brainstorm — Creative-director turn in the chat ──
+// The conversational heart of Ora: given the extracted DA + hero + scene context
+// (and optionally the brand vault), the LLM plays a bold art director who proposes
+// unexpected scene variations, asks probing questions, and — when the user says go —
+// emits a readyToGenerate flag with the finalized scenes ready for /analyze/series.
+app.post("/analyze/brainstorm", async (c) => {
+  const t0 = Date.now();
+  try {
+    let user: AuthUser | null = null;
+    try { user = await getUser(c); } catch {}
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const daLock = body?.daLock || {};
+    const heroObject     = String(body?.heroObject || "").trim();
+    const currentScene   = String(body?.currentScene || "").trim();
+    const narrativeTheme = String(body?.narrativeTheme || "").trim();
+    const subject        = String(body?.subject || "").trim();
+    const userMessage    = String(body?.userMessage || "").trim();
+    const history: Array<{ role: "ora" | "user"; text: string }> = Array.isArray(body?.history)
+      ? body.history.filter((m: any) => m && typeof m.text === "string" && (m.role === "ora" || m.role === "user"))
+             .slice(-12)
+      : [];
+    const lang = body?.lang === "en" ? "en" : "fr";
+
+    if (!heroObject) {
+      return c.json({ success: false, error: "heroObject required — run reverse-prompt first" }, 400);
+    }
+
+    // ── Brand Vault (auth only) ──
+    let brandBrief = "";
+    if (user) {
+      try {
+        const ctx = await buildBrandContext(user.id);
+        if (ctx) {
+          const parts: string[] = [];
+          const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 5);
+          if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
+          if (ctx.photoStyle?.mood)     parts.push(`mood: ${ctx.photoStyle.mood}`);
+          if (ctx.photoStyle?.lighting) parts.push(`lighting: ${ctx.photoStyle.lighting}`);
+          const brandName = (ctx as any)?.brandName || (ctx as any)?.company_name;
+          if (brandName) parts.unshift(`brand: ${brandName}`);
+          if (parts.length > 0) brandBrief = `\nBrand vault: ${parts.join(" · ")}`;
+        }
+      } catch {}
+    }
+
+    const daSummary = Object.entries(daLock || {})
+      .filter(([, v]) => typeof v === "string" && v.trim().length > 0)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" · ");
+
+    const systemPrompt = `You are Ora — a bold creative director in real-time conversation with a user who just showed you an image. Your job: push unexpected but coherent scene concepts that keep the hero + DA intact, ask probing questions that unlock more relevant ideas, and converge toward a list of scenes the user wants to generate.
+
+LOCKED CONTEXT (never breaks):
+- Subject: ${subject || "—"}
+- Hero object (MUST be preserved visually, recognizable in every scene): ${heroObject}
+- Current scene in the source: ${currentScene || "—"}
+- Narrative theme: ${narrativeTheme || "—"}
+- DA fingerprint (palette, style, lighting quality, mood, camera, grade, texture): ${daSummary || "—"}${brandBrief}
+
+RULES:
+1. Language: reply in ${lang === "fr" ? "French" : "English"} always.
+2. Voice: concrete, sensory, visual. Talk scenes, not bullet points. 2-4 short sentences per turn, no more.
+3. First turn (when history is empty): open with ONE punchy observation about the hero + theme, then propose 3 BOLD scene ideas that move the hero into totally new contexts (beaches, rooftops, diners, hotel bathrooms, nightclubs, snowy streets, drive-ins — whatever fits the theme). Mix "familiar unexpected" with "totally unexpected". End with ONE probing question (other products? brand? where the visuals will live?).
+4. Later turns: integrate user feedback fluidly. If they add products, dream up cross-product scenes. If they pick a direction, zoom in on it and propose 2-3 variants. If they add constraints, respect them.
+5. Every scene MUST keep the hero recognizable AND the DA locked. Never propose scenes that would destroy the hero's identity.
+6. When the user says "vas-y", "go", "lance", "c'est parti", "generate", "on y va", or clearly confirms a set of scenes to generate — set readyToGenerate=true and emit finalScenes with every field populated (label in kebab-case, description evocative, plus the 5 sceneVary fields).
+7. If the user has NOT picked yet, keep sceneProposals populated with 3-5 current options so the UI can show chips. If readyToGenerate is true, finalScenes IS the list to generate.
+
+OUTPUT FORMAT (JSON ONLY, no markdown):
+{
+  "reply": "your next conversational message",
+  "sceneProposals": [
+    { "label": "kebab-case", "description": "one evocative sentence", "framing": "...", "angle": "...", "placement": "...", "lightingDirection": "...", "moment": "..." }
+  ] | null,
+  "readyToGenerate": boolean,
+  "finalScenes": [ { "label": "...", "description": "...", "framing": "...", "angle": "...", "placement": "...", "lightingDirection": "...", "moment": "..." } ] | null
+}`;
+
+    // Build chat messages from history + latest user message
+    const messages: any[] = [{ role: "system", content: systemPrompt }];
+    for (const h of history) {
+      messages.push({ role: h.role === "ora" ? "assistant" : "user", content: h.text });
+    }
+    if (userMessage) messages.push({ role: "user", content: userMessage });
+    else if (history.length === 0) {
+      // First turn bootstrap when the client didn't pass a user message.
+      messages.push({ role: "user", content: lang === "fr"
+        ? "Propose-moi tes premières pistes de scènes."
+        : "Give me your first scene ideas." });
+    }
+
+    // ── OpenAI GPT-4o via APIPOD (primary) → Gemini (fallback) ──
+    const tryOpenAI = async (): Promise<any | null> => {
+      const key = Deno.env.get("APIPOD_API_KEY") || Deno.env.get("OPENAI_API_KEY");
+      if (!key) return null;
+      const base = Deno.env.get("APIPOD_API_KEY") ? APIPOD_BASE : "https://api.openai.com/v1";
+      try {
+        const res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ model: "gpt-4o", messages, max_tokens: 900, temperature: 0.85, response_format: { type: "json_object" } }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) { console.log(`[brainstorm] OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`); return null; }
+        const data = await res.json();
+        return JSON.parse((data.choices?.[0]?.message?.content || "").trim());
+      } catch (err) { console.log(`[brainstorm] OpenAI err: ${err}`); return null; }
+    };
+
+    const tryGemini = async (): Promise<any | null> => {
+      const key = Deno.env.get("GEMINI_API_KEY");
+      if (!key) return null;
+      try {
+        const contents = messages.map((m: any) => ({
+          role: m.role === "assistant" ? "model" : "user",
+          parts: [{ text: m.role === "system" ? `${m.content}\n\nReturn the JSON object now.` : m.content }],
+        }));
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 1400, temperature: 0.85, responseMimeType: "application/json" } }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        if (!res.ok) { console.log(`[brainstorm] Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`); return null; }
+        const data = await res.json();
+        const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
+        const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+        return JSON.parse(cleaned);
+      } catch (err) { console.log(`[brainstorm] Gemini err: ${err}`); return null; }
+    };
+
+    let parsed = await tryOpenAI();
+    let provider: "openai" | "gemini" | null = parsed ? "openai" : null;
+    if (!parsed) { parsed = await tryGemini(); if (parsed) provider = "gemini"; }
+    if (!parsed || typeof parsed !== "object") {
+      return c.json({ success: false, error: "All LLMs failed on brainstorm" }, 502);
+    }
+
+    const cleanScene = (sc: any) => ({
+      label: String(sc?.label || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "scene",
+      description: String(sc?.description || "").trim(),
+      framing: String(sc?.framing || "").trim(),
+      angle: String(sc?.angle || "").trim(),
+      placement: String(sc?.placement || "").trim(),
+      lightingDirection: String(sc?.lightingDirection || "").trim(),
+      moment: String(sc?.moment || "").trim(),
+    });
+    const sceneProposals = Array.isArray(parsed.sceneProposals)
+      ? parsed.sceneProposals.slice(0, 6).map(cleanScene)
+      : null;
+    const finalScenes = Array.isArray(parsed.finalScenes)
+      ? parsed.finalScenes.slice(0, 6).map(cleanScene)
+      : null;
+
+    console.log(`[brainstorm] ok via ${provider} in ${Date.now() - t0}ms (ready=${!!parsed.readyToGenerate}, proposals=${sceneProposals?.length || 0}, final=${finalScenes?.length || 0})`);
+    return c.json({
+      success: true,
+      reply: String(parsed.reply || "").trim(),
+      sceneProposals,
+      readyToGenerate: !!parsed.readyToGenerate,
+      finalScenes,
+      provider,
+      tookMs: Date.now() - t0,
+    });
+  } catch (err: any) {
+    console.log(`[brainstorm] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── POST /analyze/series — Generate a coherent set of visuals (scenes × ratios) ──
 // All scenes share the same DA-lock (palette, style, lighting quality, mood, camera profile,
 // post grade, rendering texture) + the same seed → coherent series. Only sceneVary axes
