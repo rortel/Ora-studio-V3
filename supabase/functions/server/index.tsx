@@ -8271,9 +8271,41 @@ app.post("/analyze/remix", async (c) => {
 
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const { prompt, imageUrl, model, aspectRatio = "1:1" } = body || {};
+    const avoid: string[] = Array.isArray(body?.avoid)
+      ? body.avoid.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 8)
+      : [];
+    const seed: number | undefined =
+      typeof body?.seed === "number" && Number.isFinite(body.seed) && body.seed > 0
+        ? Math.floor(body.seed)
+        : undefined;
+
     if (!prompt || !imageUrl || !model) {
       return c.json({ success: false, error: "prompt, imageUrl and model are required" }, 400);
     }
+
+    // Merge Brand Vault into the prompt when the user is authenticated.
+    // Only inject palette + tonality/mood + photo style — never overwrite the extracted DA.
+    let brandSuffix = "";
+    if (user) {
+      try {
+        const ctx = await buildBrandContext(user.id);
+        if (ctx) {
+          const parts: string[] = [];
+          const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 4);
+          if (colors.length >= 2) parts.push(`brand palette accents ${colors.join(", ")}`);
+          if (ctx.photoStyle?.mood) parts.push(`${ctx.photoStyle.mood} brand mood`);
+          if (ctx.photoStyle?.lighting) parts.push(`${ctx.photoStyle.lighting} lighting cues`);
+          if (parts.length > 0) brandSuffix = ` Brand cues: ${parts.join("; ")}.`;
+        }
+      } catch (err) {
+        console.log(`[remix] buildBrandContext skipped: ${err}`);
+      }
+    }
+
+    // Final prompt = user prompt + brand cues + negative avoid list.
+    const avoidSuffix = avoid.length > 0 ? ` Avoid: ${avoid.join(", ")}.` : "";
+    const finalPrompt = `${prompt}${brandSuffix}${avoidSuffix}`;
+    console.log(`[remix] model=${model} ar=${aspectRatio} seed=${seed || "-"} avoid=${avoid.length} brand=${!!brandSuffix} promptLen=${finalPrompt.length}`);
 
     const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
     const lumaAspect = arLumaMap[aspectRatio] || "1:1";
@@ -8297,15 +8329,17 @@ app.post("/analyze/remix", async (c) => {
     // ── PHOTON / FLASH (Luma, image as style ref) ──
     if (model === "photon-1" || model === "photon-flash-1") {
       const lumaModel = model === "photon-flash-1" ? "photon-flash-1" : "photon-1";
+      const lumaPayload: any = {
+        prompt: finalPrompt,
+        model: lumaModel,
+        aspect_ratio: lumaAspect,
+        image_ref: [{ url: imageUrl, weight: 0.55 }],
+      };
+      if (seed) lumaPayload.seed = seed;
       const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
         method: "POST",
         headers: lumaHeaders(),
-        body: JSON.stringify({
-          prompt,
-          model: lumaModel,
-          aspect_ratio: lumaAspect,
-          image_ref: [{ url: imageUrl, weight: 0.55 }],
-        }),
+        body: JSON.stringify(lumaPayload),
       });
       if (!startRes.ok) {
         const err = await startRes.text();
@@ -8323,8 +8357,8 @@ app.post("/analyze/remix", async (c) => {
     if (model === "flux-pro") {
       const falKey = Deno.env.get("FAL_API_KEY");
       if (!falKey) return c.json({ success: false, error: "FAL_API_KEY not configured" }, 500);
-      const falBody = {
-        prompt,
+      const falBody: any = {
+        prompt: finalPrompt,
         image_url: imageUrl,
         strength: 0.75,
         num_images: 1,
@@ -8332,6 +8366,7 @@ app.post("/analyze/remix", async (c) => {
         output_format: "jpeg",
         aspect_ratio: aspectRatio,
       };
+      if (seed) falBody.seed = seed;
       const falRes = await fetch(`https://fal.run/fal-ai/flux-pro/v1.1/redux`, {
         method: "POST",
         headers: { Authorization: `Key ${falKey}`, "Content-Type": "application/json" },
@@ -8354,9 +8389,10 @@ app.post("/analyze/remix", async (c) => {
       const ideoKey = Deno.env.get("IDEOGRAM_API_KEY");
       if (!ideoKey) return c.json({ success: false, error: "IDEOGRAM_API_KEY not configured" }, 500);
       const fd = new FormData();
-      fd.append("prompt", prompt);
+      fd.append("prompt", finalPrompt);
       fd.append("image_weight", "60");
       fd.append("rendering_speed", "DEFAULT");
+      if (seed) fd.append("seed", String(seed));
       const arIdeoMap: Record<string, string> = { "1:1": "1x1", "9:16": "9x16", "16:9": "16x9", "4:3": "4x3", "3:4": "3x4", "2:3": "2x3", "4:5": "4x5" };
       fd.append("aspect_ratio", arIdeoMap[aspectRatio] || "1x1");
       try {
@@ -8393,7 +8429,7 @@ app.post("/analyze/remix", async (c) => {
       const dr = await fetch("https://api.openai.com/v1/images/generations", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: "dall-e-3", prompt, size, quality: "hd", n: 1 }),
+        body: JSON.stringify({ model: "dall-e-3", prompt: finalPrompt, size, quality: "hd", n: 1 }),
         signal: AbortSignal.timeout(90_000),
       });
       if (!dr.ok) {
