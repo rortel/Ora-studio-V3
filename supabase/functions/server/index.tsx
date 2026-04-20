@@ -8114,19 +8114,26 @@ Rules:
                 ],
               },
             ],
-            max_tokens: 900,
+            max_tokens: 1100,
             temperature: 0.3,
             response_format: { type: "json_object" },
           }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(60_000),
         });
         if (!res.ok) {
-          console.log(`[reverse-prompt] OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          console.log(`[reverse-prompt] OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
           return null;
         }
         const data = await res.json();
         const raw = (data.choices?.[0]?.message?.content || "").trim();
-        return JSON.parse(raw);
+        try {
+          return JSON.parse(raw);
+        } catch (parseErr) {
+          console.log(`[reverse-prompt] OpenAI JSON parse fail (len=${raw.length}): ${String(parseErr).slice(0, 120)} — head="${raw.slice(0, 160)}"`);
+          const m = raw.match(/\{[\s\S]*\}/);
+          if (m) { try { return JSON.parse(m[0]); } catch {} }
+          return null;
+        }
       } catch (err) {
         console.log(`[reverse-prompt] OpenAI error: ${err}`);
         return null;
@@ -8160,18 +8167,25 @@ Rules:
                 { inline_data: { mime_type: mt, data: b64 } },
               ],
             }],
-            generationConfig: { maxOutputTokens: 1200, temperature: 0.3, responseMimeType: "application/json" },
+            generationConfig: { maxOutputTokens: 1500, temperature: 0.3, responseMimeType: "application/json" },
           }),
-          signal: AbortSignal.timeout(30_000),
+          signal: AbortSignal.timeout(60_000),
         });
         if (!res.ok) {
-          console.log(`[reverse-prompt] Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          console.log(`[reverse-prompt] Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
           return null;
         }
         const data = await res.json();
         const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
         const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-        return JSON.parse(cleaned);
+        try {
+          return JSON.parse(cleaned);
+        } catch (parseErr) {
+          console.log(`[reverse-prompt] Gemini JSON parse fail (len=${cleaned.length}): ${String(parseErr).slice(0, 120)} — head="${cleaned.slice(0, 160)}"`);
+          const m = cleaned.match(/\{[\s\S]*\}/);
+          if (m) { try { return JSON.parse(m[0]); } catch {} }
+          return null;
+        }
       } catch (err) {
         console.log(`[reverse-prompt] Gemini error: ${err}`);
         return null;
