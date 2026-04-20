@@ -8875,7 +8875,6 @@ app.post("/analyze/surprise-me", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
-    const brief      = String(body?.brief || "").trim();
     const productRef = String(body?.productImageUrl || "").trim();
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
