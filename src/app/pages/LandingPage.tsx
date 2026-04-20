@@ -1,9 +1,11 @@
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { ArrowRight, Sparkles, Loader2, Paperclip, RotateCcw } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
+import { API_BASE, publicAnonKey } from "../lib/supabase";
 import heroImg from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.png";
 import serviceImg from "../../assets/fd1a1304c95304459d525edabe5b548965b73ee0.png";
 import sunsetImg from "../../assets/e770a4caf934a7f0a280cbbe70316b0d298cff32.png";
@@ -112,42 +114,180 @@ function Hero({ isFr, authed }: { isFr: boolean; authed: boolean }) {
             </div>
           </motion.div>
 
-          <HeroVisual />
+          <HeroVisual isFr={isFr} />
         </div>
       </div>
     </section>
   );
 }
 
-/* Visual to the right of hero — image + floating chat bubble with the prompt */
-function HeroVisual() {
+/* Interactive live demo — upload → call /analyze/reverse-prompt → typewrite prompt */
+function HeroVisual({ isFr }: { isFr: boolean }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "result" | "error">("idle");
+  const [imgSrc, setImgSrc] = useState<string>(heroImg);
+  const [typed, setTyped] = useState<string>("");
+  const [full, setFull] = useState<string>("");
+  const [tags, setTags] = useState<string[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const typingTimer = useRef<number | null>(null);
+
+  // Sample prompt shown in idle state
+  const samplePrompt = isFr
+    ? "Un coucher de soleil sur le désert, tons ambrés chauds, SUV familial coffre ouvert, golden hour, faible profondeur de champ, photo cinéma."
+    : "A dramatic desert sunset, warm amber tones, family SUV with open trunk, golden hour, shallow depth of field, cinematic photo.";
+
+  useEffect(() => () => { if (typingTimer.current) window.clearInterval(typingTimer.current); }, []);
+
+  const typewrite = useCallback((text: string) => {
+    if (typingTimer.current) window.clearInterval(typingTimer.current);
+    setTyped("");
+    let i = 0;
+    typingTimer.current = window.setInterval(() => {
+      i++;
+      setTyped(text.slice(0, i));
+      if (i >= text.length && typingTimer.current) {
+        window.clearInterval(typingTimer.current);
+        typingTimer.current = null;
+      }
+    }, 14);
+  }, []);
+
+  const readBase64 = (file: File): Promise<{ dataUrl: string; base64: string; mimeType: string }> =>
+    new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => {
+        const dataUrl = r.result as string;
+        resolve({ dataUrl, base64: dataUrl.split(",")[1] || "", mimeType: file.type || "image/png" });
+      };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+
+  const analyze = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      setStatus("error");
+      setFull(isFr ? "Image invalide (<10Mo)." : "Invalid image (<10MB).");
+      setTyped(isFr ? "Image invalide (<10Mo)." : "Invalid image (<10MB).");
+      return;
+    }
+    try {
+      const { dataUrl, base64, mimeType } = await readBase64(file);
+      setImgSrc(dataUrl);
+      setStatus("loading");
+      setTyped("");
+      setTags([]);
+
+      const res = await fetch(`${API_BASE}/analyze/reverse-prompt`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const data = await res.json().catch(() => ({ success: false }));
+      if (!data.success) {
+        setStatus("error");
+        const msg = isFr ? "Ora n'a pas pu lire cette image." : "Ora couldn't read this image.";
+        setFull(msg); setTyped(msg);
+        return;
+      }
+      const s = data.schema || {};
+      setTags([s.subject, s.lighting, s.palette, s.style, s.mood].filter(Boolean).slice(0, 5));
+      setFull(data.promptText || "");
+      typewrite(data.promptText || "");
+      setStatus("result");
+    } catch (err: any) {
+      setStatus("error");
+      const msg = isFr ? "Connexion interrompue." : "Network error.";
+      setFull(msg); setTyped(msg);
+    }
+  }, [isFr, typewrite]);
+
+  const reset = () => {
+    setStatus("idle");
+    setImgSrc(heroImg);
+    setTyped("");
+    setFull("");
+    setTags([]);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.7, delay: 0.1 }}
       className="relative"
     >
-      <div className="relative aspect-[4/5] rounded-[28px] overflow-hidden"
-           style={{ boxShadow: "0 30px 80px -20px rgba(10,10,10,0.2)", border: `1px solid ${BORDER}` }}>
-        <img src={heroImg} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) analyze(f); e.target.value = ""; }}
+      />
+
+      <div
+        className="relative aspect-[4/5] rounded-[28px] overflow-hidden group cursor-pointer"
+        style={{ boxShadow: "0 30px 80px -20px rgba(10,10,10,0.2)", border: `1px solid ${BORDER}` }}
+        onClick={() => status !== "loading" && fileRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) analyze(f); }}
+      >
+        <img src={imgSrc} alt="" className="absolute inset-0 w-full h-full object-cover transition group-hover:scale-[1.02]" />
+        {status === "idle" && (
+          <div className="absolute inset-x-0 bottom-0 p-4 flex justify-center" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55), transparent)" }}>
+            <div className="px-4 h-10 rounded-full inline-flex items-center gap-2 text-[13px]"
+                 style={{ background: "#fff", color: TEXT, fontWeight: 500, boxShadow: "0 8px 20px -8px rgba(0,0,0,0.3)" }}>
+              <Paperclip size={14} /> {isFr ? "Essaie avec ta photo" : "Try with your photo"}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Floating user bubble (image echo) top-right */}
+      {/* Floating user bubble */}
       <motion.div
         initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}
         className="absolute -top-4 right-4 rounded-full px-4 h-10 flex items-center gap-2 text-[13px]"
         style={{ background: INK, color: INK_TEXT, boxShadow: "0 10px 30px -10px rgba(10,10,10,0.4)" }}
       >
-        📎 hero.jpg
+        📎 {status === "idle" ? "hero.jpg" : isFr ? "ton image" : "your image"}
       </motion.div>
 
-      {/* Floating Ora bubble with prompt bottom-left */}
+      {/* Ora bubble */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.7 }}
-        className="absolute -bottom-6 -left-4 md:-left-8 max-w-[320px] px-4 py-3 text-[13.5px] leading-snug"
+        key={status}
+        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+        className="absolute -bottom-6 -left-4 md:-left-8 max-w-[340px] px-4 py-3 text-[13.5px] leading-snug"
         style={{ background: "#fff", color: TEXT, border: `1px solid ${BORDER}`,
                  borderRadius: "20px 20px 20px 6px", boxShadow: "0 20px 60px -15px rgba(10,10,10,0.15)" }}
       >
-        "A dramatic sunset over the desert, warm amber and ember tones, a family car with open trunk, golden hour, shallow depth of field, cinematic photo."
+        {status === "loading" ? (
+          <span className="inline-flex items-center gap-2" style={{ color: MUTED }}>
+            <Loader2 size={14} className="animate-spin" />
+            {isFr ? "Je lis ton image…" : "Reading your image…"}
+          </span>
+        ) : status === "idle" ? (
+          <span>"{samplePrompt}"</span>
+        ) : status === "error" ? (
+          <span style={{ color: "#B91C1C" }}>{typed || full}</span>
+        ) : (
+          <>
+            <span>"{typed}"</span>
+            {tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {tags.map((t, i) => (
+                  <span key={i} className="px-2 h-6 rounded-full text-[11px] inline-flex items-center"
+                        style={{ background: "#F3F4F6", color: MUTED, border: `1px solid ${BORDER}` }}>
+                    {t.slice(0, 40)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {full && typed.length >= full.length && (
+              <button onClick={(e) => { e.stopPropagation(); reset(); }}
+                      className="mt-2 text-[11px] inline-flex items-center gap-1 hover:underline" style={{ color: ACCENT }}>
+                <RotateCcw size={11} /> {isFr ? "Essayer une autre" : "Try another"}
+              </button>
+            )}
+          </>
+        )}
       </motion.div>
     </motion.div>
   );
