@@ -90,6 +90,12 @@ interface SeriesItem {
   status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
 }
 
+interface BrainstormScene {
+  label: string; description: string;
+  framing: string; angle: string; placement: string;
+  lightingDirection: string; moment: string;
+}
+
 type Msg =
   | { id: string; role: "ora";  kind: "text";          text: string }
   | { id: string; role: "user"; kind: "text";          text: string }
@@ -100,7 +106,8 @@ type Msg =
   | { id: string; role: "user"; kind: "modelPick";     model: ModelId; label: string }
   | { id: string; role: "ora";  kind: "generating";    model: ModelId }
   | { id: string; role: "ora";  kind: "generated";     model: ModelId; imageUrl: string; prompt: string }
-  | { id: string; role: "ora";  kind: "seriesPicker";  defaultCampaign: string }
+  | { id: string; role: "ora";  kind: "brainstormReply"; text: string; proposals: BrainstormScene[] }
+  | { id: string; role: "ora";  kind: "brainstormReady"; text: string; scenes: BrainstormScene[]; defaultCampaign: string }
   | { id: string; role: "user"; kind: "seriesPick";    campaignName: string; sceneCount: number; ratioCount: number }
   | { id: string; role: "ora";  kind: "seriesGenerating"; total: number }
   | { id: string; role: "ora";  kind: "seriesResult";  campaignName: string; campaignSlug: string; items: SeriesItem[] };
@@ -134,6 +141,11 @@ function AnalyzeChat() {
   const [avoid, setAvoid] = useState<string[]>([]);
   const [daLock, setDALock] = useState<DALock | null>(null);
   const [subject, setSubject] = useState<string>("");
+  const [heroObject, setHeroObject] = useState<string>("");
+  const [currentScene, setCurrentScene] = useState<string>("");
+  const [narrativeTheme, setNarrativeTheme] = useState<string>("");
+  const [brainstormMode, setBrainstormMode] = useState(false);
+  const [brainstormHistory, setBrainstormHistory] = useState<Array<{ role: "ora" | "user"; text: string }>>([]);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -209,17 +221,57 @@ function AnalyzeChat() {
       setSourceUrl(res.sourceUrl || null);
       setAvoid(Array.isArray(res.avoid) ? res.avoid : []);
       setDALock(res.daLock || null);
-      setSubject(String(res.subject || "").trim());
+      const extractedSubject = String(res.subject || "").trim();
+      setSubject(extractedSubject);
+      setHeroObject(String(res.heroObject || "").trim());
+      setCurrentScene(String(res.currentScene || "").trim());
+      setNarrativeTheme(String(res.narrativeTheme || "").trim());
       replaceLast(
         (m) => m.id === loadingId,
         { id: loadingId, role: "ora", kind: "analysis", schema: res.schema, promptText: res.promptText, imageUrl: dataUrl },
       );
       push({ id: uid(), role: "ora", kind: "models" });
-      // Offer the coherent-series CTA only when we have the structured schema + a usable source URL.
-      if (res.daLock && res.sourceUrl) {
-        const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "ora";
-        push({ id: uid(), role: "ora", kind: "seriesPicker", defaultCampaign: slug(res.subject || "ora") });
+
+      // Enter conversational brainstorm mode and trigger Ora's first creative turn
+      // (only when we have a usable source URL + structured DA — anonymous landing skips this).
+      if (res.daLock && res.sourceUrl && res.heroObject) {
+        setBrainstormMode(true);
+        setBrainstormHistory([]);
+        // Fire-and-forget the opening turn from Ora
+        const openingLoaderId = uid();
+        push({ id: openingLoaderId, role: "ora", kind: "loading", label: isFr ? "Je réfléchis aux pistes…" : "Thinking up directions…" });
+        serverPost("/analyze/brainstorm", {
+          daLock: res.daLock,
+          heroObject: res.heroObject,
+          currentScene: res.currentScene,
+          narrativeTheme: res.narrativeTheme,
+          subject: extractedSubject,
+          history: [],
+          userMessage: "",
+          lang: isFr ? "fr" : "en",
+        }, 45_000).then((br) => {
+          if (!br?.success) {
+            removeWhere((m) => m.id === openingLoaderId);
+            return;
+          }
+          const reply = String(br.reply || "").trim();
+          const proposals: BrainstormScene[] = Array.isArray(br.sceneProposals) ? br.sceneProposals : [];
+          const finalScenes: BrainstormScene[] = Array.isArray(br.finalScenes) ? br.finalScenes : [];
+          const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "ora";
+          setBrainstormHistory((h) => [...h, { role: "ora", text: reply }]);
+          if (br.readyToGenerate && finalScenes.length > 0) {
+            replaceLast(
+              (m) => m.id === openingLoaderId,
+              { id: openingLoaderId, role: "ora", kind: "brainstormReady", text: reply, scenes: finalScenes, defaultCampaign: slug(extractedSubject) },
+            );
+          } else {
+            replaceLast(
+              (m) => m.id === openingLoaderId,
+              { id: openingLoaderId, role: "ora", kind: "brainstormReply", text: reply, proposals },
+            );
+          }
+        }).catch(() => removeWhere((m) => m.id === openingLoaderId));
       }
     } catch (err: any) {
       push({ id: uid(), role: "ora", kind: "text", text: String(err?.message || err) });
@@ -289,6 +341,46 @@ function AnalyzeChat() {
     }
   }, [busy, currentPrompt, sourceUrl, avoid, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
 
+  /* ── Brainstorm turn (conversational creative director) ── */
+  const handleBrainstormTurn = useCallback(async (userText: string) => {
+    if (!daLock || !heroObject || !sourceUrl) return;
+    const nextHistory = [...brainstormHistory, { role: "user" as const, text: userText }];
+    setBrainstormHistory(nextHistory);
+    const loaderId = uid();
+    push({ id: loaderId, role: "ora", kind: "loading", label: isFr ? "Ora réfléchit…" : "Ora is thinking…" });
+    try {
+      const br = await serverPost("/analyze/brainstorm", {
+        daLock, heroObject, currentScene, narrativeTheme, subject,
+        history: nextHistory,
+        userMessage: userText,
+        lang: isFr ? "fr" : "en",
+      }, 45_000);
+      if (!br?.success) {
+        replaceLast((m) => m.id === loaderId, { id: loaderId, role: "ora", kind: "text", text: br?.error || "brainstorm failed" });
+        return;
+      }
+      const reply = String(br.reply || "").trim();
+      const proposals: BrainstormScene[] = Array.isArray(br.sceneProposals) ? br.sceneProposals : [];
+      const finalScenes: BrainstormScene[] = Array.isArray(br.finalScenes) ? br.finalScenes : [];
+      const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30) || "ora";
+      setBrainstormHistory((h) => [...h, { role: "ora", text: reply }]);
+      if (br.readyToGenerate && finalScenes.length > 0) {
+        replaceLast(
+          (m) => m.id === loaderId,
+          { id: loaderId, role: "ora", kind: "brainstormReady", text: reply, scenes: finalScenes, defaultCampaign: slug(subject) },
+        );
+      } else {
+        replaceLast(
+          (m) => m.id === loaderId,
+          { id: loaderId, role: "ora", kind: "brainstormReply", text: reply, proposals },
+        );
+      }
+    } catch (err: any) {
+      replaceLast((m) => m.id === loaderId, { id: loaderId, role: "ora", kind: "text", text: String(err?.message || err) });
+    }
+  }, [brainstormHistory, daLock, heroObject, currentScene, narrativeTheme, subject, sourceUrl, isFr, push, replaceLast, serverPost]);
+
   /* ── Coherent series ── */
   const handleSeriesGenerate = useCallback(async (campaignName: string, scenes: ScenePreset[], ratios: string[]) => {
     if (busy) return;
@@ -356,11 +448,32 @@ function AnalyzeChat() {
     }
   }, [isFr]);
 
+  /* ── Run the series from brainstorm-agreed scenes ── */
+  const handleLaunchFromBrainstorm = useCallback((campaignName: string, scenes: BrainstormScene[], ratios: string[]) => {
+    const asPresets: ScenePreset[] = scenes.map((sc) => ({
+      label: sc.label,
+      emoji: "🎬",
+      framing: sc.framing,
+      angle: sc.angle,
+      placement: sc.placement,
+      lightingDirection: sc.lightingDirection,
+      moment: sc.moment,
+    }));
+    handleSeriesGenerate(campaignName, asPresets, ratios);
+  }, [handleSeriesGenerate]);
+
   const handleSend = useCallback(() => {
     const t = inputText.trim();
     if (!t) return;
     setInputText("");
     push({ id: uid(), role: "user", kind: "text", text: t });
+
+    // When in brainstorm mode, route the message to Ora's creative-director turn.
+    if (brainstormMode && daLock && heroObject && sourceUrl) {
+      handleBrainstormTurn(t);
+      return;
+    }
+
     if (!currentPrompt) {
       push({ id: uid(), role: "ora", kind: "text", text: isFr ? "Envoie une image pour démarrer — je décode puis on génère." : "Drop an image to start — I decode then we generate." });
     } else {
@@ -368,7 +481,7 @@ function AnalyzeChat() {
       push({ id: uid(), role: "ora", kind: "text", text: isFr ? "Noté. Choisis un modèle pour relancer." : "Got it. Pick a model to run again." });
       push({ id: uid(), role: "ora", kind: "models" });
     }
-  }, [inputText, currentPrompt, isFr, push]);
+  }, [inputText, currentPrompt, isFr, push, brainstormMode, daLock, heroObject, sourceUrl, handleBrainstormTurn]);
 
   const startEditPrompt = () => { setPromptDraft(currentPrompt); setEditingPrompt(true); };
   const saveEditPrompt = () => {
@@ -393,6 +506,11 @@ function AnalyzeChat() {
     setAvoid([]);
     setDALock(null);
     setSubject("");
+    setHeroObject("");
+    setCurrentScene("");
+    setNarrativeTheme("");
+    setBrainstormMode(false);
+    setBrainstormHistory([]);
     setEditingPrompt(false);
     setInputText("");
   };
@@ -466,6 +584,7 @@ function AnalyzeChat() {
                   onRegenerate={(model, prompt) => handleGenerate(model, prompt)}
                   onSeriesSubmit={handleSeriesGenerate}
                   onDownloadZip={handleDownloadZip}
+                  onLaunchFromBrainstorm={handleLaunchFromBrainstorm}
                 />
               </motion.div>
             ))}
@@ -537,6 +656,7 @@ function MessageBubble(props: {
   onRegenerate: (model: ModelId, prompt: string) => void;
   onSeriesSubmit: (campaignName: string, scenes: ScenePreset[], ratios: string[]) => void;
   onDownloadZip: (campaignSlug: string, items: SeriesItem[]) => void;
+  onLaunchFromBrainstorm: (campaignName: string, scenes: BrainstormScene[], ratios: string[]) => void;
 }) {
   const { msg, isFr } = props;
   const isUser = msg.role === "user";
@@ -698,8 +818,26 @@ function MessageBubble(props: {
     );
   }
 
-  if (msg.kind === "seriesPicker") {
-    return <SeriesPickerBubble defaultCampaign={msg.defaultCampaign} isFr={isFr} busy={props.busy} onSubmit={props.onSeriesSubmit} oraStyle={oraStyle} />;
+  if (msg.kind === "brainstormReply") {
+    return (
+      <div className="max-w-[88%] flex flex-col gap-2" style={oraStyle}>
+        <div className="px-4 pt-2.5 pb-0.5 text-[15px] whitespace-pre-wrap">{msg.text}</div>
+        {msg.proposals.length > 0 && (
+          <div className="px-3 pb-3 flex flex-col gap-1.5">
+            {msg.proposals.map((p, i) => (
+              <div key={i} className="px-3 py-2 rounded-xl text-[13px]" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                <div className="font-mono text-[11.5px]" style={{ color: MUTED }}>{p.label}</div>
+                <div className="mt-0.5">{p.description}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (msg.kind === "brainstormReady") {
+    return <BrainstormReadyBubble msg={msg} isFr={isFr} busy={props.busy} onLaunch={props.onLaunchFromBrainstorm} oraStyle={oraStyle} />;
   }
 
   if (msg.kind === "seriesPick") {
@@ -781,7 +919,117 @@ function MessageBubble(props: {
   return null;
 }
 
-/* ═══ Series picker (campaign + scenes + ratios) ═══ */
+/* ═══ Brainstorm-agreed bubble: ready to launch the series ═══ */
+function BrainstormReadyBubble({ msg, isFr, busy, onLaunch, oraStyle }: {
+  msg: { text: string; scenes: BrainstormScene[]; defaultCampaign: string };
+  isFr: boolean;
+  busy: boolean;
+  onLaunch: (campaignName: string, scenes: BrainstormScene[], ratios: string[]) => void;
+  oraStyle: React.CSSProperties;
+}) {
+  const [campaign, setCampaign] = useState(msg.defaultCampaign || "ora");
+  const [pickedLabels, setPickedLabels] = useState<string[]>(msg.scenes.map((s) => s.label));
+  const [pickedRatios, setPickedRatios] = useState<string[]>(["1:1", "9:16"]);
+
+  const toggleScene = (label: string) =>
+    setPickedLabels((xs) => xs.includes(label) ? xs.filter((x) => x !== label) : [...xs, label]);
+  const toggleRatio = (id: string) =>
+    setPickedRatios((xs) => xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]);
+
+  const scenesToRun = msg.scenes.filter((s) => pickedLabels.includes(s.label));
+  const total = scenesToRun.length * pickedRatios.length;
+  const tooMany = total > 18;
+
+  return (
+    <div className="max-w-[88%] flex flex-col gap-2" style={oraStyle}>
+      <div className="px-4 pt-2.5 pb-0.5 text-[15px] whitespace-pre-wrap">{msg.text}</div>
+
+      <div className="mx-3 flex flex-col gap-2 py-1">
+        {msg.scenes.map((sc) => {
+          const on = pickedLabels.includes(sc.label);
+          return (
+            <button
+              key={sc.label}
+              onClick={() => toggleScene(sc.label)}
+              className="text-left px-3 py-2 rounded-xl text-[13px] transition"
+              style={{
+                background: on ? USER_BG : "#fff",
+                color: on ? USER_TEXT : TEXT,
+                border: `1px solid ${on ? USER_BG : BORDER}`,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center"
+                     style={{ background: on ? "#fff" : "transparent", border: `1.5px solid ${on ? "#fff" : BORDER}` }}>
+                  {on && <Check size={9} color={USER_BG} />}
+                </div>
+                <span className="font-mono text-[11.5px]" style={{ opacity: 0.7 }}>{sc.label}</span>
+              </div>
+              <div className="mt-1 leading-snug">{sc.description}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mx-3 mt-1 mb-2">
+        <label className="text-[12px] uppercase tracking-wide block mb-1" style={{ color: MUTED }}>
+          {isFr ? "Nom de campagne" : "Campaign name"}
+        </label>
+        <input
+          value={campaign}
+          onChange={(e) => setCampaign(e.target.value)}
+          placeholder="ora-campaign"
+          className="w-full rounded-lg px-3 py-2 text-[14px] outline-none font-mono"
+          style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+        />
+      </div>
+
+      <div className="mx-3 mb-2">
+        <div className="text-[12px] uppercase tracking-wide mb-1.5" style={{ color: MUTED }}>
+          {isFr ? "Formats" : "Formats"}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {RATIO_PRESETS.map((r) => {
+            const on = pickedRatios.includes(r.id);
+            return (
+              <button
+                key={r.id}
+                onClick={() => toggleRatio(r.id)}
+                title={r.hint}
+                className="px-2.5 h-8 rounded-full text-[12.5px] inline-flex items-center gap-1.5 transition"
+                style={{
+                  background: on ? USER_BG : "#fff",
+                  color: on ? USER_TEXT : TEXT,
+                  border: `1px solid ${on ? USER_BG : BORDER}`,
+                  fontWeight: 600,
+                }}
+              >
+                <span>{r.emoji}</span> {r.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="px-3 pb-3 flex items-center gap-2">
+        <span className="text-[12px]" style={{ color: tooMany ? "#B91C1C" : MUTED }}>
+          {total} {isFr ? "visuels" : "visuals"}{tooMany ? " — max 18" : ""}
+        </span>
+        <span className="flex-1" />
+        <button
+          disabled={busy || total === 0 || tooMany || !campaign.trim()}
+          onClick={() => onLaunch(campaign.trim(), scenesToRun, pickedRatios)}
+          className="px-3 h-9 rounded-full text-[13px] text-white flex items-center gap-1.5 disabled:opacity-40"
+          style={{ background: USER_BG }}
+        >
+          <Sparkles size={13} /> {isFr ? "Lancer la série" : "Launch the series"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ Series picker (campaign + scenes + ratios) — kept for manual flow fallback ═══ */
 function SeriesPickerBubble({ defaultCampaign, isFr, busy, onSubmit, oraStyle }: {
   defaultCampaign: string;
   isFr: boolean;
