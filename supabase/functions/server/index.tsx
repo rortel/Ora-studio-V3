@@ -8053,25 +8053,36 @@ app.post("/analyze/reverse-prompt", async (c) => {
       return c.json({ success: false, error: "imageUrl or imageBase64 is required" }, 400);
     }
 
-    const systemPrompt = `You are Ora, a creative director who reverse-engineers images into reusable generation prompts. Read the image with the eye of a photographer + art director and return a STRICT JSON object describing it across 8 dimensions. No prose, no markdown, JSON only.
+    const systemPrompt = `You are Ora, a creative director who reverse-engineers images into reusable generation prompts. Read the image with the eye of a photographer + art director and return a STRICT JSON object with THREE grouped layers: the DA-lock fingerprint (what stays fixed across a coherent series), the scene-vary axes (what changes scene to scene), and the subject. Also return an avoid list. No prose, no markdown, JSON only.
 
 Schema:
 {
-  "subject": "<main subject + context, one concise phrase>",
-  "composition": "<framing, angle, depth, rule of thirds, focal point>",
-  "lighting": "<nature (natural/studio/mixed), direction, quality, time of day>",
-  "palette": "<3-5 dominant colors + temperature (warm/cool/neutral)>",
-  "style": "<medium (photo/3D/illustration/painting) + aesthetic reference>",
-  "mood": "<atmosphere and emotion in 2-4 words>",
-  "camera": "<focal length, aperture, film/digital, grain — '' if not a photo>",
-  "finish": "<post-processing, texture, rendering cues>",
-  "promptText": "<single-paragraph natural-language prompt in English, ready to paste into any image model, combining all 8 dimensions into a fluent description. 40-80 words. No camera jargon unless relevant.>"
+  "daLock": {
+    "palette":          "<3-5 dominant colors with approximate hex or named tones, plus temperature (warm/cool/neutral) and saturation>",
+    "visualStyle":      "<medium (photo/3D/illustration/painting) + 1-2 concrete references (artist, film, era, studio)>",
+    "lightingQuality":  "<nature (natural/studio/mixed) + hardness (hard/soft/diffused) + time of day or bulb temperature>",
+    "mood":             "<atmosphere and emotion in 2-4 words>",
+    "cameraProfile":    "<film vs digital + grain amount + depth-of-field feel (shallow/medium/deep) — '' for non-photos>",
+    "postGrade":        "<color grading, contrast, LUT feel, highlights/shadows treatment>",
+    "renderingTexture": "<sharpness, noise, chromatic feel, micro-textures>"
+  },
+  "sceneVary": {
+    "framing":           "<wide / medium / close-up / extreme close-up>",
+    "angle":             "<low / eye-level / high / aerial>",
+    "placement":         "<centered / left-third / right-third / off-frame>",
+    "lightingDirection": "<where light comes from (front/back/left/right/top, angle in degrees if relevant)>",
+    "moment":            "<narrative instant captured — action/rest/approach/departure/reveal>"
+  },
+  "subject": "<main subject + essential context, one concise phrase>",
+  "avoid":   ["<list of things to keep OUT of any regeneration: typical examples — no visible text, no watermark, no logo, no extra hands, no faces, no modern brands>"],
+  "promptText": "<single-paragraph natural-language prompt in English, 40-80 words, ready to paste into any image model. Weave together daLock + sceneVary + subject into a fluent description. No bullet points, no camera jargon unless it materially changes the render.>"
 }
 
 Rules:
-- Every field is a non-empty string except "camera" which may be "" for non-photos.
+- Every string field is non-empty except "cameraProfile" which may be "" for non-photos.
+- "avoid" is an array of 3-6 short strings (e.g., "no visible text", "no watermark", "no extra fingers").
 - Be specific and concrete. Avoid generic words ("beautiful", "nice", "amazing").
-- "promptText" must read naturally, not as a list of tags.
+- promptText reads naturally — no tag lists, no JSON fragments.
 - Return ONLY the JSON object.`;
 
     // ── Primary: OpenAI GPT-4o vision via APIPOD ──
@@ -8173,17 +8184,40 @@ Rules:
       return c.json({ success: false, error: "All vision providers failed" }, 502);
     }
 
-    const schema = {
-      subject: String(parsed.subject || "").trim(),
-      composition: String(parsed.composition || "").trim(),
-      lighting: String(parsed.lighting || "").trim(),
-      palette: String(parsed.palette || "").trim(),
-      style: String(parsed.style || "").trim(),
-      mood: String(parsed.mood || "").trim(),
-      camera: String(parsed.camera || "").trim(),
-      finish: String(parsed.finish || "").trim(),
+    const s = (v: any) => String(v || "").trim();
+    const daLock = {
+      palette:          s(parsed.daLock?.palette          ?? parsed.palette),
+      visualStyle:      s(parsed.daLock?.visualStyle      ?? parsed.style),
+      lightingQuality:  s(parsed.daLock?.lightingQuality  ?? parsed.lighting),
+      mood:             s(parsed.daLock?.mood             ?? parsed.mood),
+      cameraProfile:    s(parsed.daLock?.cameraProfile    ?? parsed.camera),
+      postGrade:        s(parsed.daLock?.postGrade        ?? parsed.finish),
+      renderingTexture: s(parsed.daLock?.renderingTexture ?? ""),
     };
-    const promptText = String(parsed.promptText || "").trim();
+    const sceneVary = {
+      framing:           s(parsed.sceneVary?.framing           ?? parsed.composition),
+      angle:             s(parsed.sceneVary?.angle             ?? ""),
+      placement:         s(parsed.sceneVary?.placement         ?? ""),
+      lightingDirection: s(parsed.sceneVary?.lightingDirection ?? ""),
+      moment:            s(parsed.sceneVary?.moment            ?? ""),
+    };
+    const subject  = s(parsed.subject);
+    const avoid    = Array.isArray(parsed.avoid)
+      ? parsed.avoid.map(s).filter(Boolean).slice(0, 8)
+      : ["no visible text", "no watermark", "no logo"];
+    const promptText = s(parsed.promptText);
+
+    // Back-compat flat schema (old 8-dim consumers keep reading the same shape)
+    const schema = {
+      subject,
+      composition: sceneVary.framing,
+      lighting: daLock.lightingQuality,
+      palette: daLock.palette,
+      style: daLock.visualStyle,
+      mood: daLock.mood,
+      camera: daLock.cameraProfile,
+      finish: daLock.postGrade,
+    };
 
     // ── Optional: upload source to Storage when authenticated, so it can be used as a ref later ──
     let sourceUrl: string | null = null;
@@ -8210,7 +8244,12 @@ Rules:
     }
 
     console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"}, source=${!!sourceUrl})`);
-    return c.json({ success: true, schema, promptText, provider, sourceUrl, tookMs: Date.now() - t0 });
+    return c.json({
+      success: true,
+      schema, daLock, sceneVary, subject, avoid,
+      promptText, provider, sourceUrl,
+      tookMs: Date.now() - t0,
+    });
   } catch (err: any) {
     console.log(`[reverse-prompt] FATAL: ${err?.message || err}`);
     return c.json({ success: false, error: String(err?.message || err) }, 500);
