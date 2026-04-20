@@ -12,6 +12,7 @@ import { useLocation } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { AppTabs } from "../components/AppTabs";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { useI18n } from "../lib/i18n";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -2178,10 +2179,12 @@ function EditorPageContent() {
   }
 
   return (
-    <div style={{
-      display: "flex", height: "100vh", background: "#f5f5f7", color: "#1a1a1a",
-      overflow: "hidden", userSelect: "none",
-    }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f5f5f7", color: "#1a1a1a" }}>
+      <AppTabs active="edit" />
+      <div style={{
+        display: "flex", flex: 1, minHeight: 0,
+        overflow: "hidden", userSelect: "none",
+      }}>
 
       {/* ═══════ LIBRARY PANEL ═══════ */}
       <LibrarySidebar
@@ -3257,6 +3260,7 @@ function EditorPageContent() {
           if (scheduled > 0) toast.success(isFr ? `Planifié sur ${scheduled} réseau(x)` : `Scheduled on ${scheduled} network(s)`);
         }}
       />
+      </div>
     </div>
   );
 }

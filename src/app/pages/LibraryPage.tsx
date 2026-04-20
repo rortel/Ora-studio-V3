@@ -15,6 +15,7 @@ import { Link, useSearchParams, useNavigate } from "react-router";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 import { PHASE_1_ONLY } from "../lib/phase";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
@@ -687,6 +688,7 @@ function LibraryPageContent() {
 
   return (
     <div className="min-h-screen bg-background relative" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+      <AppTabs active="library" />
       {/* Drag overlay */}
       <AnimatePresence>
         {isDragOver && (

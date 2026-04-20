@@ -1,13 +1,12 @@
 import { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Loader2, Download, Package, ArrowRight, Upload, Wand2 } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
-import { useI18n } from "../lib/i18n";
 import { RouteGuard } from "../components/RouteGuard";
-import { OraLogo } from "../components/OraLogo";
+import { AppTabs } from "../components/AppTabs";
 import { downloadAsset } from "../lib/asset-persistence";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 
@@ -59,9 +58,9 @@ export function SurprisePage() {
 
 function SurpriseContent() {
   const { getAuthHeader } = useAuth();
-  const { locale } = useI18n();
   const navigate = useNavigate();
-  const isFr = locale === "fr";
+  // English-only copy.
+  const isFr = false;
 
   const [creativity, setCreativity] = useState<1 | 2 | 3 | 4>(2);
   const [brief, setBrief] = useState("");
@@ -188,23 +187,7 @@ function SurpriseContent() {
 
   return (
     <div style={{ background: BG, color: TEXT }} className="min-h-screen flex flex-col">
-      {/* Header */}
-      <header
-        className="sticky top-0 z-20 flex items-center justify-between px-5 md:px-10 h-14"
-        style={{ background: `${BG}F2`, backdropFilter: "blur(14px)", borderBottom: `1px solid ${BORDER}` }}
-      >
-        <button onClick={() => navigate("/")} className="flex items-center gap-2">
-          <OraLogo size={22} />
-          <span className="text-[15px] tracking-tight" style={{ fontWeight: 600 }}>Ora</span>
-        </button>
-        <button
-          onClick={() => navigate("/hub/analyze")}
-          className="text-[13px] hover:underline flex items-center gap-1"
-          style={{ color: MUTED }}
-        >
-          {isFr ? "Analyser une image" : "Analyze an image"} <ArrowRight size={13} />
-        </button>
-      </header>
+      <AppTabs active="surprise" />
 
       <main className="flex-1">
         <div className="max-w-[920px] mx-auto px-5 md:px-8 py-10 md:py-16">

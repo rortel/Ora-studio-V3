@@ -106,7 +106,7 @@ export const router = createBrowserRouter([
       {
         path: "hub",
         Component: PHASE_1_ONLY
-          ? () => createElement(Navigate, { to: "/hub/analyze", replace: true })
+          ? () => createElement(Navigate, { to: "/hub/surprise", replace: true })
           : StudioPage,
       },
       { path: "hub/studio", Component: StudioPage },
