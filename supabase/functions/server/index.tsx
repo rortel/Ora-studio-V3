@@ -8864,6 +8864,263 @@ app.post("/analyze/series", async (c) => {
   }
 });
 
+// ── POST /analyze/surprise-me — One-click full campaign pack ──
+// Reads the Brand Vault (or accepts a free-text brief), asks GPT-4o for a
+// creative concept + 8 platform-calibrated shots, then generates every asset
+// in parallel. All assets share the brand DA; each is framed for its channel
+// (Instagram Feed/Story, LinkedIn, Facebook, TikTok). A creativityLevel 1-4
+// controls how bold the concept/scenes are (temperature + system-prompt hints).
+app.post("/analyze/surprise-me", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const brief      = String(body?.brief || "").trim();
+    const productRef = String(body?.productImageUrl || "").trim();
+    const season     = String(body?.season || "").trim();
+    const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
+    const lang       = body?.lang === "en" ? "en" : "fr";
+
+    // ── Creativity presets ──
+    const CREATIVITY: Record<number, { temp: number; systemHint: string; refWeight: number }> = {
+      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions, reassuring. Nothing that could surprise a cautious brand manager.", refWeight: 0.85 },
+      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. Modern, relatable, with a light creative twist that makes each scene feel intentional and fresh.", refWeight: 0.70 },
+      3: { temp: 0.95, systemHint: "Be BOLD. Unexpected juxtapositions, editorial energy, original lighting moves. Think magazine cover, not stock photo. Make someone stop scrolling.", refWeight: 0.55 },
+      4: { temp: 1.10, systemHint: "Go WILD. Surreal, fashion-magazine territory. Play with scale, dream logic, experimental lighting, unreal settings. Product stays photo-real; everything around it can bend.", refWeight: 0.40 },
+    };
+    const creative = CREATIVITY[creativity];
+
+    // ── Load Brand Vault ──
+    let brandSummary = "";
+    let ctx: BrandContext | null = null;
+    try { ctx = await buildBrandContext(user.id); } catch (err) { console.log(`[surprise-me] buildBrandContext skipped: ${err}`); }
+    if (ctx) {
+      const parts: string[] = [];
+      const brandName = (ctx as any)?.brandName || (ctx as any)?.company_name;
+      if (brandName) parts.push(`brand: ${brandName}`);
+      const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 6);
+      if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
+      if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
+      if (ctx.photoStyle?.lighting) parts.push(`photo lighting: ${ctx.photoStyle.lighting}`);
+      if (ctx.photoStyle?.framing)  parts.push(`photo framing: ${ctx.photoStyle.framing}`);
+      if (Array.isArray((ctx as any).target_audiences) && (ctx as any).target_audiences.length > 0) {
+        parts.push(`audiences: ${((ctx as any).target_audiences).map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 3).join(", ")}`);
+      }
+      if (Array.isArray((ctx as any).key_messages) && (ctx as any).key_messages.length > 0) {
+        parts.push(`messages: ${((ctx as any).key_messages).slice(0, 3).join("; ")}`);
+      }
+      brandSummary = parts.join(" · ");
+    }
+    if (!brandSummary && !brief) {
+      return c.json({ success: false, error: "Need a Brand Vault or a textual brief to compose a campaign." }, 400);
+    }
+
+    // ── Platform preset grid (8 shots total) ──
+    const PLATFORMS = [
+      { id: "instagram-feed",  aspectRatio: "1:1",  count: 3, label: "Instagram Feed",  copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
+      { id: "instagram-story", aspectRatio: "9:16", count: 2, label: "Instagram Story", copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
+      { id: "linkedin",        aspectRatio: "16:9", count: 1, label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition" },
+      { id: "facebook",        aspectRatio: "16:9", count: 1, label: "Facebook",        copyHint: "wide social-share composition, headline-friendly" },
+      { id: "tiktok",          aspectRatio: "9:16", count: 1, label: "TikTok",          copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
+    ];
+    const totalShots = PLATFORMS.reduce((acc, p) => acc + p.count, 0);
+
+    // ── Concept + shot list via LLM ──
+    const platformBrief = PLATFORMS.map((p) => `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`).join("\n");
+    const conceptSystem = `You are Ora — a senior creative director composing a full social-media campaign pack. Brand, product and tone matter; respect them but push the concept.
+
+CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
+
+HARD RULES:
+- The product stays photo-real and recognizable in every shot. Never morph it.
+- Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
+- Reply language: ${lang === "fr" ? "French" : "English"} for campaign name, angle, tone, message. Shot scene/subject/prompt must be ENGLISH (generation models read English best).
+- Output JSON only. No markdown, no prose wrapper.
+
+CONTEXT:
+${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — compose from brief alone."}
+${brief ? `User brief: ${brief}` : ""}
+${season ? `Season / moment: ${season}` : ""}
+${productRef ? "A product reference photo IS provided (image_ref will be attached on relevant shots)." : "No product photo provided — generation is text-to-image only."}
+
+PLATFORM SHOT LIST (${totalShots} shots total):
+${platformBrief}
+
+For each shot, invent a distinct scene that obeys the platform framing and copyHint. Scenes should share the DA but cover different moments, angles, and narrative beats so the pack feels like a coherent campaign rather than variants.
+
+OUTPUT JSON:
+{
+  "campaignName": "short evocative name",
+  "campaignSlug": "kebab-case-slug",
+  "creativeAngle": "one punchy sentence describing the creative idea",
+  "tone": "3-5 words",
+  "keyMessage": "one sentence — the thing the campaign is saying",
+  "shots": [
+    {
+      "platform": "one of: instagram-feed, instagram-story, linkedin, facebook, tiktok",
+      "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1'",
+      "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
+      "subject": "ultra-specific subject in frame in ENGLISH",
+      "promptText": "final generation prompt in ENGLISH, 50-110 words, weaves scene + subject + brand DA + platform framing + copyHint. No JSON, no bullets."
+    }
+    // exactly ${totalShots} shots, honoring the per-platform counts above
+  ]
+}`;
+
+    const userMsg = lang === "fr"
+      ? "Compose la campagne maintenant."
+      : "Compose the campaign now.";
+
+    const callConcept = async (): Promise<any | null> => {
+      const key = Deno.env.get("APIPOD_API_KEY") || Deno.env.get("OPENAI_API_KEY");
+      if (!key) return null;
+      const base = Deno.env.get("APIPOD_API_KEY") ? APIPOD_BASE : "https://api.openai.com/v1";
+      try {
+        const res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [{ role: "system", content: conceptSystem }, { role: "user", content: userMsg }],
+            max_tokens: 3000, temperature: creative.temp,
+            response_format: { type: "json_object" },
+          }),
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!res.ok) { console.log(`[surprise-me] concept OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`); return null; }
+        const data = await res.json();
+        const raw = (data.choices?.[0]?.message?.content || "").trim();
+        try { return JSON.parse(raw); }
+        catch { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch {} } return null; }
+      } catch (err) { console.log(`[surprise-me] concept err: ${err}`); return null; }
+    };
+
+    const concept = await callConcept();
+    if (!concept || !Array.isArray(concept.shots) || concept.shots.length === 0) {
+      return c.json({ success: false, error: "Could not generate campaign concept" }, 502);
+    }
+
+    const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "campaign";
+    const campaignName = String(concept.campaignName || "ora-campaign").trim();
+    const campaignSlug = slug(concept.campaignSlug || campaignName);
+    const seed = Math.floor(Math.random() * 1_000_000);
+
+    // Build per-shot jobs mapped to their platform aspectRatio
+    type Job = {
+      platform: string; aspectRatio: string; label: string; scene: string; subject: string;
+      promptText: string; fileName: string;
+    };
+    const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
+    const jobs: Job[] = [];
+    for (const sh of concept.shots.slice(0, 12)) {
+      const platform = String(sh?.platform || "").trim();
+      const preset   = PLATFORMS.find((p) => p.id === platform);
+      if (!preset) continue;
+      const label      = slug(String(sh?.label || "shot"));
+      const scene      = String(sh?.scene || "").trim();
+      const subject    = String(sh?.subject || "").trim();
+      const promptText = String(sh?.promptText || "").trim();
+      if (!promptText) continue;
+      const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
+      const fileName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}.jpg`;
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, promptText, fileName });
+    }
+    if (jobs.length === 0) {
+      return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
+    }
+
+    // ── Persist helper ──
+    await ensureGeneratedAssetsBucket();
+    const sb = supabaseAdmin();
+    const persistOne = async (sourceUrl: string, fileName: string, platform: string): Promise<string | null> => {
+      try {
+        const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
+        if (!dl.ok) return null;
+        const ct  = dl.headers.get("content-type") || "image/jpeg";
+        const buf = new Uint8Array(await dl.arrayBuffer());
+        const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
+        const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
+        if (upErr) { console.log(`[surprise-me] upload err: ${upErr.message}`); return null; }
+        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+        return data?.signedUrl || null;
+      } catch (err) { console.log(`[surprise-me] persist err: ${err}`); return null; }
+    };
+
+    // ── Generate all jobs in parallel (concurrency 3) ──
+    // When a product reference photo is provided, we use kontext-pro with image_ref.
+    // Otherwise, text-to-image via Luma Photon.
+    const CONCURRENCY = 3;
+    const items: Array<{
+      platform: string; aspectRatio: string; label: string; fileName: string;
+      status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
+    }> = [];
+    for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+      const batch = jobs.slice(i, i + CONCURRENCY);
+      const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
+        try {
+          if (productRef) {
+            const r = await runRemix({
+              finalPrompt: job.promptText, imageUrl: productRef,
+              model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
+            });
+            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: r.error };
+            const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
+          }
+          // Text-to-image via Luma Photon
+          const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
+          const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
+            method: "POST", headers: lumaHeaders(),
+            body: JSON.stringify({ prompt: job.promptText, model: "photon-1", aspect_ratio: arLumaMap[job.aspectRatio] || "1:1", seed }),
+          });
+          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: `Luma ${startRes.status}` };
+          const g = await startRes.json();
+          if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: "Luma: no gen id" };
+          // Poll
+          let finalUrl: string | null = null;
+          const pollStart = Date.now();
+          while (Date.now() - pollStart < 90_000) {
+            try {
+              const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
+              if (pr.ok) {
+                const d = await pr.json();
+                if (d.state === "completed") { finalUrl = d.assets?.image || null; break; }
+                if (d.state === "failed") break;
+              }
+            } catch {}
+            await new Promise((r) => setTimeout(r, 2_000));
+          }
+          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: "Luma timed out" };
+          const persisted = await persistOne(finalUrl, job.fileName, job.platform);
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
+        } catch (err: any) {
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: String(err?.message || err) };
+        }
+      }));
+      items.push(...batchRes);
+    }
+
+    const okCount = items.filter((x) => x.status === "ok").length;
+    console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
+
+    return c.json({
+      success: true,
+      campaignName, campaignSlug,
+      creativeAngle: String(concept.creativeAngle || ""),
+      tone:          String(concept.tone || ""),
+      keyMessage:    String(concept.keyMessage || ""),
+      creativityLevel: creativity,
+      seed,
+      items,
+      tookMs: Date.now() - t0,
+    });
+  } catch (err: any) {
+    console.log(`[surprise-me] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // SPRINT 2 — PIXEL-PERFECT PRODUCT PIPELINE
 // ═══════════════════════════════════════════════════════════════════
