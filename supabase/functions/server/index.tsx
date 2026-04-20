@@ -8882,11 +8882,15 @@ app.post("/analyze/surprise-me", async (c) => {
     const lang       = body?.lang === "en" ? "en" : "fr";
 
     // ── Creativity presets ──
+    // At every level the product MUST stay photo-real and recognizable. Only the
+    // world, framing and graphic twist around it move. The "twist" is a single
+    // graphic or scene idea that makes each shot distinct — its boldness scales
+    // with the level.
     const CREATIVITY: Record<number, { temp: number; systemHint: string; refWeight: number }> = {
-      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions, reassuring. Nothing that could surprise a cautious brand manager.", refWeight: 0.85 },
-      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. Modern, relatable, with a light creative twist that makes each scene feel intentional and fresh.", refWeight: 0.70 },
-      3: { temp: 0.95, systemHint: "Be BOLD. Unexpected juxtapositions, editorial energy, original lighting moves. Think magazine cover, not stock photo. Make someone stop scrolling.", refWeight: 0.55 },
-      4: { temp: 1.10, systemHint: "Go WILD. Surreal, fashion-magazine territory. Play with scale, dream logic, experimental lighting, unreal settings. Product stays photo-real; everything around it can bend.", refWeight: 0.40 },
+      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky.", refWeight: 0.85 },
+      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated.", refWeight: 0.70 },
+      3: { temp: 0.95, systemHint: "Be BOLD. Each shot has a DISTINCT, memorable visual twist — oversized scale play, dramatic prop, editorial lighting, unexpected juxtaposition, daring color splash — but the product stays photo-real and identical to reality.", refWeight: 0.55 },
+      4: { temp: 1.10, systemHint: "Go WILD. Each shot carries a SURREAL twist — impossible physics, floating elements, scale distortion, dream logic, mixed-media collage, fashion-magazine experimentation. The product itself stays 100% photo-realistic and recognizable; only the universe around it bends.", refWeight: 0.40 },
     };
     const creative = CREATIVITY[creativity];
 
@@ -8932,9 +8936,10 @@ app.post("/analyze/surprise-me", async (c) => {
 CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 
 HARD RULES:
-- The product stays photo-real and recognizable in every shot. Never morph it.
+- The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
-- Reply language: ${lang === "fr" ? "French" : "English"} for campaign name, angle, tone, message. Shot scene/subject/prompt must be ENGLISH (generation models read English best).
+- EVERY shot MUST carry a concrete graphic/scene twist fitting the creativity level (a prop, a light move, an overlay, a scale play, a material swap, a composition dare). Randomize the twists so no two shots are identical moves.
+- Reply language: ${lang === "fr" ? "French" : "English"} for campaign name, angle, tone, message. Shot scene/subject/prompt/twist must be ENGLISH (generation models read English best).
 - Output JSON only. No markdown, no prose wrapper.
 
 CONTEXT:
@@ -8961,7 +8966,8 @@ OUTPUT JSON:
       "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1'",
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
-      "promptText": "final generation prompt in ENGLISH, 50-110 words, weaves scene + subject + brand DA + platform framing + copyHint. No JSON, no bullets."
+      "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
+      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
   ]
@@ -9009,7 +9015,7 @@ OUTPUT JSON:
     // Build per-shot jobs mapped to their platform aspectRatio
     type Job = {
       platform: string; aspectRatio: string; label: string; scene: string; subject: string;
-      promptText: string; fileName: string;
+      twistElement: string; promptText: string; fileName: string;
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -9017,14 +9023,15 @@ OUTPUT JSON:
       const platform = String(sh?.platform || "").trim();
       const preset   = PLATFORMS.find((p) => p.id === platform);
       if (!preset) continue;
-      const label      = slug(String(sh?.label || "shot"));
-      const scene      = String(sh?.scene || "").trim();
-      const subject    = String(sh?.subject || "").trim();
-      const promptText = String(sh?.promptText || "").trim();
+      const label        = slug(String(sh?.label || "shot"));
+      const scene        = String(sh?.scene || "").trim();
+      const subject      = String(sh?.subject || "").trim();
+      const twistElement = String(sh?.twistElement || "").trim();
+      const promptText   = String(sh?.promptText || "").trim();
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
       const fileName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}.jpg`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, promptText, fileName });
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, fileName });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -9053,6 +9060,7 @@ OUTPUT JSON:
     const CONCURRENCY = 3;
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
+      twistElement?: string;
       status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
     }> = [];
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
@@ -9064,9 +9072,9 @@ OUTPUT JSON:
               finalPrompt: job.promptText, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
             });
-            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: r.error };
+            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: r.error };
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
-            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
           }
           // Text-to-image via Luma Photon
           const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
@@ -9074,9 +9082,9 @@ OUTPUT JSON:
             method: "POST", headers: lumaHeaders(),
             body: JSON.stringify({ prompt: job.promptText, model: "photon-1", aspect_ratio: arLumaMap[job.aspectRatio] || "1:1", seed }),
           });
-          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: `Luma ${startRes.status}` };
+          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: `Luma ${startRes.status}` };
           const g = await startRes.json();
-          if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: "Luma: no gen id" };
+          if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: "Luma: no gen id" };
           // Poll
           let finalUrl: string | null = null;
           const pollStart = Date.now();
@@ -9091,11 +9099,11 @@ OUTPUT JSON:
             } catch {}
             await new Promise((r) => setTimeout(r, 2_000));
           }
-          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: "Luma timed out" };
+          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: "Luma timed out" };
           const persisted = await persistOne(finalUrl, job.fileName, job.platform);
-          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
         } catch (err: any) {
-          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, status: "failed", error: String(err?.message || err) };
+          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, status: "failed", error: String(err?.message || err) };
         }
       }));
       items.push(...batchRes);

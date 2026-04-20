@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { Sparkles, Loader2, Download, Package, ArrowRight, Upload } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, ArrowRight, Upload, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import { useNavigate } from "react-router";
@@ -40,6 +40,7 @@ const PLATFORM_META: Record<string, { label: string; emoji: string }> = {
 
 interface PackItem {
   platform: string; aspectRatio: string; label: string; fileName: string;
+  twistElement?: string;
   status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
 }
 interface Pack {
@@ -415,7 +416,7 @@ function SurpriseContent() {
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                       {items.map((it, i) => (
-                        <div key={i} className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                        <div key={i} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                           {it.status === "ok" && it.imageUrl ? (
                             <img src={it.imageUrl} alt={it.fileName} className="w-full h-auto" style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }} />
                           ) : (
@@ -423,18 +424,35 @@ function SurpriseContent() {
                               {it.error?.slice(0, 100) || "failed"}
                             </div>
                           )}
-                          <div className="px-3 py-2 flex items-center justify-between gap-1">
-                            <span className="text-[11px] font-mono truncate" title={it.fileName} style={{ color: MUTED }}>
+                          {it.twistElement && (
+                            <div className="absolute top-2 left-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono"
+                                 style={{ background: "rgba(255,255,255,0.9)", color: TEXT, backdropFilter: "blur(6px)", border: `1px solid rgba(255,255,255,0.4)` }}
+                                 title={isFr ? "Twist créatif" : "Creative twist"}>
+                              ✨ {it.twistElement}
+                            </div>
+                          )}
+                          <div className="px-3 py-2 flex items-center gap-1">
+                            <span className="text-[11px] font-mono truncate flex-1 min-w-0" title={it.fileName} style={{ color: MUTED }}>
                               {it.fileName}
                             </span>
                             {it.status === "ok" && it.imageUrl && (
-                              <button
-                                onClick={() => downloadAsset(it.imageUrl!, it.fileName, "image")}
-                                className="shrink-0 w-7 h-7 rounded-full hover:bg-black/5 flex items-center justify-center"
-                                aria-label="download"
-                              >
-                                <Download size={12} />
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => navigate("/hub/editor", { state: { assetUrl: it.imageUrl, assetType: "image", assetId: it.fileName } })}
+                                  className="shrink-0 w-7 h-7 rounded-full hover:bg-black/5 flex items-center justify-center"
+                                  aria-label={isFr ? "Éditer" : "Edit"}
+                                  title={isFr ? "Ajouter logo, texte…" : "Add logo, text…"}
+                                >
+                                  <Wand2 size={12} />
+                                </button>
+                                <button
+                                  onClick={() => downloadAsset(it.imageUrl!, it.fileName, "image")}
+                                  className="shrink-0 w-7 h-7 rounded-full hover:bg-black/5 flex items-center justify-center"
+                                  aria-label={isFr ? "Télécharger" : "Download"}
+                                >
+                                  <Download size={12} />
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
