@@ -1,5 +1,6 @@
+import { useRef } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
+import { motion, useScroll, useTransform } from "motion/react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useAuth } from "../lib/auth-context";
@@ -132,20 +133,24 @@ function Hero({ primaryHref }: { primaryHref: string }) {
   );
 }
 
-/* ═══ Full-bleed visual panel with floating tag and colored bg bleed ═══ */
+/* ═══ Full-bleed visual panel — parallax image over colored bg ═══ */
 function FullBleedVisual({ img, tag, bg, portrait = false, square = false }: {
   img: string; tag: string; bg: string; portrait?: boolean; square?: boolean;
 }) {
   const ratio = square ? "1 / 1" : portrait ? "9 / 16" : "16 / 9";
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
+  // Image drifts slower than the page → visible parallax.
+  const y     = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
+  const scale = useTransform(scrollYProgress, [0, 0.5, 1], [1.12, 1.04, 1.12]);
   return (
-    <section className="relative w-full overflow-hidden" style={{ background: bg }}>
-      <motion.div
-        initial={{ scale: 1.06, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1] }} viewport={{ once: true, margin: "-120px" }}
-        className="relative w-full"
-        style={{ aspectRatio: ratio, maxHeight: "100vh" }}
-      >
-        <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+    <section ref={ref} className="relative w-full overflow-hidden" style={{ background: bg }}>
+      <div className="relative w-full" style={{ aspectRatio: ratio, maxHeight: "100vh" }}>
+        <motion.img
+          src={img} alt=""
+          style={{ y, scale }}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
         <div className="absolute bottom-4 md:bottom-6 left-5 md:left-10 flex items-center gap-2">
           <span className="px-2.5 h-7 rounded-full text-[11px] font-mono inline-flex items-center"
                 style={{ background: "#fff", color: INK }}>
@@ -156,7 +161,7 @@ function FullBleedVisual({ img, tag, bg, portrait = false, square = false }: {
             brand da locked
           </span>
         </div>
-      </motion.div>
+      </div>
     </section>
   );
 }
@@ -200,50 +205,61 @@ function ManifestoBlock() {
   );
 }
 
-/* ═══ Pillars as solid-color posters (INK / PINK / BLUE) ═══ */
+/* ═══ Pillars — horizontal scroll sequence pinned while scrolling vertically ═══ */
 function PillarPosters() {
   const posters = [
-    { word: "LOCKED",  caption: "Brand DA never drifts.",           bg: INK,    fg: "#fff",  accent: LIME   },
-    { word: "BOLD",    caption: "Every shot, a twist.",              bg: PINK,   fg: "#fff",  accent: LIME   },
-    { word: "UNIQUE",  caption: "Seed + scenes, one of one.",        bg: BLUE,   fg: "#fff",  accent: ORANGE },
+    { word: "LOCKED",  caption: "Brand DA never drifts.",     bg: INK,    fg: "#fff",  accent: LIME   },
+    { word: "BOLD",    caption: "Every shot, a twist.",        bg: PINK,   fg: "#fff",  accent: LIME   },
+    { word: "UNIQUE",  caption: "Seed + scenes, one of one.",  bg: BLUE,   fg: "#fff",  accent: ORANGE },
   ];
+
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end end"] });
+  // Map vertical scroll progress to horizontal translation of the poster track.
+  // Track is 3× viewport wide, moves from 0 to -2/3 (2 viewports of travel).
+  const x = useTransform(scrollYProgress, [0, 1], ["0%", "-66.666%"]);
+
   return (
-    <section>
-      {posters.map((p, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} transition={{ duration: 0.6 }} viewport={{ once: true, margin: "-120px" }}
-          className="relative overflow-hidden flex flex-col justify-between px-5 md:px-10 py-16 md:py-28"
-          style={{ background: p.bg, color: p.fg, minHeight: "85vh" }}
-        >
-          <div className="flex items-start justify-between">
-            <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ opacity: 0.75 }}>
-              Pillar {"I".repeat(i + 1)}
-            </div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ color: p.accent }}>
-              {String(i + 1).padStart(2, "0")} / 03
-            </div>
-          </div>
+    // Tall outer container drives the scroll. 3× viewport height = 2 full poster transitions.
+    <section ref={ref} className="relative" style={{ height: "300vh", background: INK }}>
+      {/* Sticky pinned viewport */}
+      <div className="sticky top-0 h-screen w-full overflow-hidden">
+        <div className="absolute top-5 md:top-7 left-5 md:left-10 z-10 text-[11px] font-mono uppercase tracking-[0.25em] mix-blend-difference" style={{ color: "#fff" }}>
+          03 / Three pillars · scroll →
+        </div>
+        <motion.div style={{ x }} className="flex h-full" aria-label="horizontal pillar track">
+          {posters.map((p, i) => (
+            <div
+              key={i}
+              className="shrink-0 relative flex flex-col justify-between px-6 md:px-14 py-14 md:py-20"
+              style={{ width: "100vw", height: "100vh", background: p.bg, color: p.fg }}
+            >
+              <div className="flex items-start justify-between">
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ opacity: 0.75 }}>
+                  Pillar {"I".repeat(i + 1)}
+                </div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ color: p.accent }}>
+                  {String(i + 1).padStart(2, "0")} / 03
+                </div>
+              </div>
 
-          <motion.h3
-            initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} viewport={{ once: true, margin: "-120px" }}
-            className="leading-none"
-            style={{ fontFamily: DISPLAY, fontSize: "clamp(140px, 32vw, 520px)", letterSpacing: "-0.045em" }}
-          >
-            {p.word}
-          </motion.h3>
+              <h3 className="leading-none"
+                  style={{ fontFamily: DISPLAY, fontSize: "clamp(140px, 34vw, 560px)", letterSpacing: "-0.045em" }}>
+                {p.word}
+              </h3>
 
-          <div className="flex items-end justify-between gap-6">
-            <p className="text-[20px] md:text-[28px] leading-snug" style={{ fontWeight: 500, maxWidth: 640, letterSpacing: "-0.01em" }}>
-              {p.caption}
-            </p>
-            <div className="text-[11px] font-mono uppercase tracking-[0.25em] text-right" style={{ color: p.accent }}>
-              surprise · brand<br/>no prompt
+              <div className="flex items-end justify-between gap-6">
+                <p className="text-[20px] md:text-[32px] leading-snug" style={{ fontWeight: 500, maxWidth: 720, letterSpacing: "-0.01em" }}>
+                  {p.caption}
+                </p>
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] text-right" style={{ color: p.accent }}>
+                  surprise · brand<br/>no prompt
+                </div>
+              </div>
             </div>
-          </div>
+          ))}
         </motion.div>
-      ))}
+      </div>
     </section>
   );
 }

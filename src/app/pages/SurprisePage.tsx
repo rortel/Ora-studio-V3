@@ -10,14 +10,19 @@ import { AppTabs } from "../components/AppTabs";
 import { downloadAsset } from "../lib/asset-persistence";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 
-/* ═══ Palette ═══ */
-const BG = "#FAFAF7";
+/* ═══ Palette — matches the landing pop system ═══ */
+const BG = "#F4EFE6";   // CREAM — same cream as the landing
 const TEXT = "#0A0A0A";
 const MUTED = "#6E6E73";
 const BORDER = "rgba(10,10,10,0.08)";
 const INK = "#0A0A0A";
 const INK_TEXT = "#FFFFFF";
-const ACCENT = "#3B82F6";
+const ACCENT = "#2E5BFF"; // BLUE from the landing
+const PINK   = "#FF2D92";
+const LIME   = "#DFFF3F";
+const ORANGE = "#FF5B14";
+
+const DISPLAY = `"Bagel Fat One", "Inter", system-ui, sans-serif`;
 
 /* ═══ Constants ═══ */
 const CREATIVITY = [
@@ -210,10 +215,12 @@ function SurpriseContent() {
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
               className="mb-8 md:mb-12"
             >
-              <div className="text-[12px] uppercase tracking-[0.2em] mb-3" style={{ color: MUTED, fontWeight: 600 }}>
+              <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
                 What are you shipping?
               </div>
-              <p className="tracking-tight" style={{ fontSize: "clamp(36px, 6vw, 72px)", lineHeight: 1.05, letterSpacing: "-0.03em", fontWeight: 600 }}>
+              <p className="leading-[1.02]"
+                 style={{ fontFamily: DISPLAY, fontSize: "clamp(44px, 8vw, 104px)", letterSpacing: "-0.035em" }}>
                 I'm launching{" "}
                 <InlineField value={what} onChange={setWhat} placeholder="a summer fragrance" widthCh={14} />
                 {" "}for{" "}
@@ -272,10 +279,10 @@ function SurpriseContent() {
               <button
                 onClick={handleSurprise}
                 disabled={busy || uploadingProduct || platforms.length === 0}
-                className="group inline-flex items-center gap-3 h-16 px-10 rounded-full text-[18px] disabled:opacity-40 transition"
-                style={{ background: INK, color: INK_TEXT, fontWeight: 600, boxShadow: "0 20px 44px -14px rgba(10,10,10,0.35)" }}
+                className="group inline-flex items-center gap-3 h-16 px-10 rounded-full text-[22px] disabled:opacity-40 transition"
+                style={{ background: INK, color: LIME, fontFamily: DISPLAY, letterSpacing: "-0.01em", boxShadow: "0 20px 44px -14px rgba(10,10,10,0.35)" }}
               >
-                <Sparkles size={20} /> Surprise me
+                <Sparkles size={22} /> Surprise me
                 <span className="transition-transform group-hover:translate-x-0.5">→</span>
               </button>
             </motion.div>
@@ -417,8 +424,11 @@ function SurpriseContent() {
           <div className="max-w-[1100px] mx-auto px-5 md:px-8 py-10 md:py-14 flex flex-col gap-10">
             {/* Campaign head — no card, just type */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-              <div className="text-[12px] uppercase tracking-[0.18em] mb-2" style={{ color: ACCENT, fontWeight: 600 }}>Campaign</div>
-              <h2 className="tracking-tight" style={{ fontSize: "clamp(28px, 3.6vw, 48px)", lineHeight: 1.05, letterSpacing: "-0.02em", fontWeight: 700 }}>
+              <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-3" style={{ color: PINK }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                Campaign
+              </div>
+              <h2 className="leading-[0.95]" style={{ fontFamily: DISPLAY, fontSize: "clamp(42px, 6.5vw, 96px)", letterSpacing: "-0.035em" }}>
                 {pack.campaignName}
               </h2>
               {pack.creativeAngle && <p className="mt-3 text-[17px] leading-relaxed" style={{ color: TEXT }}>{pack.creativeAngle}</p>}
@@ -521,6 +531,7 @@ function InlineField({ value, onChange, placeholder, widthCh }: {
   value: string; onChange: (v: string) => void; placeholder: string; widthCh: number;
 }) {
   const display = value || placeholder;
+  const highlight = value ? PINK : "rgba(10,10,10,0.25)";
   return (
     <span className="relative inline-block align-baseline">
       <input
@@ -529,15 +540,15 @@ function InlineField({ value, onChange, placeholder, widthCh }: {
         placeholder={placeholder}
         className="bg-transparent outline-none transition"
         style={{
-          borderBottom: `2px dashed ${value ? ACCENT : "rgba(10,10,10,0.25)"}`,
-          color: value ? ACCENT : TEXT,
-          fontWeight: 700,
+          borderBottom: `6px solid ${highlight}`,
+          color: value ? INK : "rgba(10,10,10,0.45)",
+          fontFamily: DISPLAY,
           fontSize: "inherit",
           lineHeight: "inherit",
           letterSpacing: "inherit",
           width: `${Math.max(widthCh, display.length + 1)}ch`,
           minWidth: "6ch",
-          padding: "0 2px",
+          padding: "0 4px",
         }}
       />
     </span>

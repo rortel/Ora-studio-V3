@@ -34,7 +34,7 @@ export function AppTabs({ active }: { active?: TabId }) {
     >
       <Link to="/" className="flex items-center gap-2" aria-label="Ora">
         <OraLogo size={22} />
-        <span className="text-[15px] tracking-tight" style={{ fontWeight: 600 }}>Ora</span>
+        <span className="text-[17px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
       </Link>
 
       <nav
