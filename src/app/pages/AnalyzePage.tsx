@@ -87,6 +87,7 @@ function AnalyzeChat() {
   const [inputText, setInputText] = useState("");
   const [busy, setBusy] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [editingPrompt, setEditingPrompt] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -159,6 +160,7 @@ function AnalyzeChat() {
       }
 
       setCurrentPrompt(res.promptText);
+      setSourceUrl(res.sourceUrl || null);
       replaceLast(
         (m) => m.id === loadingId,
         { id: loadingId, role: "ora", kind: "analysis", schema: res.schema, promptText: res.promptText, imageUrl: dataUrl },
@@ -184,15 +186,25 @@ function AnalyzeChat() {
     push({ id: genId, role: "ora", kind: "generating", model });
 
     try {
-      const res = await serverPost("/generate/image-via-get", {
-        prompt: promptToUse, models: model, aspectRatio: "1:1",
-      }, 180_000);
+      // Prefer /analyze/remix when we have a source URL → image-as-reference generation.
+      // Fall back to /generate/image-via-get (text-only) when no source is available.
+      const useRemix = !!sourceUrl;
+      const res = useRemix
+        ? await serverPost("/analyze/remix", {
+            prompt: promptToUse, imageUrl: sourceUrl, model, aspectRatio: "1:1",
+          }, 180_000)
+        : await serverPost("/generate/image-via-get", {
+            prompt: promptToUse, models: model, aspectRatio: "1:1",
+          }, 180_000);
 
-      const entry = res?.results?.[0];
-      const generatedUrl = entry?.result?.imageUrl;
-      if (!res?.success || !entry?.success || !generatedUrl) {
+      const generatedUrl = useRemix
+        ? res?.imageUrl
+        : res?.results?.[0]?.result?.imageUrl;
+      const entryErr = useRemix ? res?.error : res?.results?.[0]?.error;
+
+      if (!res?.success || !generatedUrl) {
         removeWhere((m) => m.id === genId);
-        const reason = entry?.error || res?.error || "?";
+        const reason = entryErr || res?.error || "?";
         push({ id: uid(), role: "ora", kind: "text", text: (isFr ? "La génération a échoué : " : "Generation failed: ") + reason });
         return;
       }
@@ -219,7 +231,7 @@ function AnalyzeChat() {
     } finally {
       setBusy(false);
     }
-  }, [busy, currentPrompt, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
+  }, [busy, currentPrompt, sourceUrl, isFr, push, replaceLast, removeWhere, serverPost, getAuthHeader]);
 
   const handleSend = useCallback(() => {
     const t = inputText.trim();
@@ -254,6 +266,7 @@ function AnalyzeChat() {
   const resetChat = () => {
     setMessages([{ id: uid(), role: "ora", kind: "text", text: greeting }]);
     setCurrentPrompt("");
+    setSourceUrl(null);
     setEditingPrompt(false);
     setInputText("");
   };
