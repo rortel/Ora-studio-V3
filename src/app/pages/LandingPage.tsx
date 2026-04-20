@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { motion, useScroll, useTransform } from "motion/react";
+import { ArrowRight } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useAuth } from "../lib/auth-context";
 import img1 from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.png";
@@ -14,56 +15,52 @@ import img8 from "../../assets/828548c81c7a529d4277b71a4046525cf852a003.png";
 import img9 from "../../assets/a46d76935870c25dd77092bb6135d8035f3df8e8.png";
 import img10 from "../../assets/c4a860a492b53d3f5716a208e85f575e7f1e18de.png";
 
-const ALL_IMGS = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10];
+const IMGS = [img1, img2, img3, img4, img5, img6, img7, img8, img9, img10];
 
-/* ═══ Palette ═══ */
 const INK = "#0A0A0A";
-const INK_TEXT = "#FFFFFF";
-const MUTED = "#6E6E73";
-const LINE = "rgba(255,255,255,0.12)";
+const CREAM = "#F4EFE6";
 const ACCENT = "#3B82F6";
+const RED = "#FF4A1F";
 
 export function LandingPage() {
   const { user } = useAuth();
   const primaryHref = user ? "/hub/surprise" : "/login";
 
   return (
-    <div style={{ background: INK, color: INK_TEXT, fontFeatureSettings: '"ss01"' }}>
+    <div style={{ background: INK, color: "#fff", fontFeatureSettings: '"ss01"', overflowX: "hidden" }}>
       <Header authed={!!user} primaryHref={primaryHref} />
       <Hero primaryHref={primaryHref} />
-      <MotionShowreel />
-      <ManifestoOverlay />
-      <PillarBands />
+      <PackReveal />
+      <ManifestoWord />
+      <PosterPillars />
       <FinalCta primaryHref={primaryHref} />
       <Footer />
     </div>
   );
 }
 
-/* ═══ Header — transparent, sits over the hero gallery ═══ */
+/* ═══ Header ═══ */
 function Header({ authed, primaryHref }: { authed: boolean; primaryHref: string }) {
   return (
     <header
       className="fixed top-0 inset-x-0 z-40 flex items-center justify-between px-5 md:px-10 h-14"
-      style={{ background: "rgba(10,10,10,0.35)", backdropFilter: "blur(18px) saturate(180%)", borderBottom: `1px solid ${LINE}` }}
+      style={{ mixBlendMode: "difference", color: "#fff" }}
     >
       <Link to="/" className="flex items-center gap-2">
         <OraLogo size={22} color="#fff" />
-        <span className="text-[15px] tracking-tight" style={{ fontWeight: 600, color: "#fff" }}>Ora</span>
+        <span className="text-[15px] tracking-tight" style={{ fontWeight: 700 }}>Ora</span>
       </Link>
-      <nav className="hidden md:flex items-center gap-7 text-[13px]" style={{ color: "rgba(255,255,255,0.65)" }}>
-        <Link to="/pricing" className="hover:text-white transition">Pricing</Link>
-        <Link to="/models" className="hover:text-white transition">Models</Link>
-        <Link to="/about" className="hover:text-white transition">Manifesto</Link>
+      <nav className="hidden md:flex items-center gap-7 text-[13px]" style={{ color: "rgba(255,255,255,0.7)" }}>
+        <Link to="/pricing">Pricing</Link>
+        <Link to="/models">Models</Link>
+        <Link to="/about">Manifesto</Link>
       </nav>
       <div className="flex items-center gap-2">
         {!authed && (
-          <Link to="/login" className="hidden sm:inline-flex items-center h-8 px-3 rounded-full text-[13px] hover:bg-white/10" style={{ color: "#fff" }}>
-            Sign in
-          </Link>
+          <Link to="/login" className="hidden sm:inline-flex items-center h-8 px-3 text-[13px]">Sign in</Link>
         )}
         <Link to={primaryHref} className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[13px]"
-              style={{ background: "#fff", color: INK, fontWeight: 500 }}>
+              style={{ background: "#fff", color: INK, fontWeight: 600, mixBlendMode: "normal" }}>
           {authed ? "Open" : "Try Ora"} <ArrowRight size={13} />
         </Link>
       </div>
@@ -71,186 +68,253 @@ function Header({ authed, primaryHref }: { authed: boolean; primaryHref: string 
   );
 }
 
-/* ═══ Hero — dark canvas with animated asymmetric gallery behind the tagline ═══ */
+/* ═══ Hero — moodboard drops, tagline types, timer ticks ═══ */
 function Hero({ primaryHref }: { primaryHref: string }) {
+  // Pseudo-random but stable scatter: rotation + position per image
+  const scatter = [
+    { img: img1,  top: "6%",  left: "4%",  w: 260, rot: -8,  delay: 0.15, z: 2 },
+    { img: img2,  top: "18%", left: "72%", w: 230, rot: 6,   delay: 0.30, z: 3 },
+    { img: img3,  top: "58%", left: "2%",  w: 300, rot: 4,   delay: 0.50, z: 1 },
+    { img: img4,  top: "64%", left: "76%", w: 220, rot: -6,  delay: 0.65, z: 2 },
+    { img: img5,  top: "4%",  left: "40%", w: 200, rot: 2,   delay: 0.80, z: 1 },
+    { img: img6,  top: "70%", left: "38%", w: 210, rot: -3,  delay: 0.95, z: 2 },
+    { img: img7,  top: "36%", left: "85%", w: 160, rot: 10,  delay: 1.10, z: 3 },
+    { img: img8,  top: "30%", left: "-2%", w: 180, rot: -12, delay: 1.25, z: 1 },
+  ];
+
   return (
-    <section className="relative overflow-hidden" style={{ minHeight: "100vh" }}>
-      {/* Background gallery — full-bleed, irregular tiles, slow parallax */}
-      <div className="absolute inset-0 grid grid-cols-4 md:grid-cols-6 grid-rows-3 md:grid-rows-2 gap-1 p-1" aria-hidden>
-        {[
-          { img: img1,  span: "col-span-2 row-span-2 md:col-span-2 md:row-span-2" },
-          { img: img2,  span: "col-span-2 row-span-1 md:col-span-1 md:row-span-1" },
-          { img: img3,  span: "col-span-2 row-span-1 md:col-span-1 md:row-span-1" },
-          { img: img4,  span: "hidden md:block md:col-span-2 md:row-span-1" },
-          { img: img5,  span: "hidden md:block md:col-span-1 md:row-span-1" },
-          { img: img6,  span: "hidden md:block md:col-span-1 md:row-span-1" },
-        ].map((t, i) => (
+    <section className="relative" style={{ minHeight: "100vh" }}>
+      {/* Scattered moodboard */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden>
+        {scatter.map((s, i) => (
           <motion.div
             key={i}
-            className={`relative overflow-hidden ${t.span}`}
-            initial={{ opacity: 0, scale: 1.06 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 1.4, delay: i * 0.12, ease: "easeOut" }}
+            initial={{ opacity: 0, y: 60, rotate: s.rot + 20, scale: 0.85 }}
+            animate={{ opacity: 0.85, y: 0, rotate: s.rot, scale: 1 }}
+            transition={{ duration: 0.9, delay: s.delay, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute shadow-2xl"
+            style={{ top: s.top, left: s.left, width: s.w, height: s.w * 1.1, zIndex: s.z }}
           >
-            <motion.img
-              src={t.img} alt=""
-              className="absolute inset-0 w-full h-full object-cover"
-              animate={{ scale: [1, 1.08, 1] }}
-              transition={{ duration: 16 + i * 2, repeat: Infinity, ease: "easeInOut" }}
-            />
+            <img src={s.img} alt="" className="w-full h-full object-cover rounded-[2px]" style={{ filter: "grayscale(5%) contrast(1.02)" }} />
           </motion.div>
         ))}
       </div>
 
-      {/* Dark vignette overlay — keeps the typography readable without killing the imagery */}
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 60% 60% at 50% 50%, rgba(10,10,10,0.35) 0%, rgba(10,10,10,0.78) 60%, rgba(10,10,10,0.92) 100%)" }} />
+      {/* Central vignette so the type reads */}
+      <div className="absolute inset-0 pointer-events-none"
+           style={{ background: "radial-gradient(ellipse 55% 55% at 50% 48%, rgba(10,10,10,0.0) 0%, rgba(10,10,10,0.55) 40%, rgba(10,10,10,0.92) 75%)" }} />
 
-      {/* Centered tagline + CTA */}
-      <div className="relative h-screen flex flex-col items-center justify-center text-center px-5 md:px-10">
-        <motion.h1
-          initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.3 }}
-          className="tracking-tight"
-          style={{ fontSize: "clamp(56px, 12vw, 172px)", lineHeight: 0.94, fontWeight: 700, letterSpacing: "-0.045em", color: "#fff" }}
-        >
-          Stop prompting.
-        </motion.h1>
-        <motion.h2
-          initial={{ opacity: 0, y: 22 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.45 }}
-          className="tracking-tight"
-          style={{ fontSize: "clamp(56px, 12vw, 172px)", lineHeight: 0.94, fontWeight: 700, letterSpacing: "-0.045em", color: ACCENT, marginTop: 6 }}
-        >
-          Surprise your brand.
-        </motion.h2>
+      {/* Tagline — types itself */}
+      <div className="relative h-screen flex flex-col items-center justify-center px-5 md:px-10 text-center">
+        <Typed text="Stop prompting." delay={0.15} color="#fff"   className="hero-line" />
+        <Typed text="Surprise your brand." delay={0.95} color={ACCENT} className="hero-line" />
 
         <motion.div
-          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.75 }}
-          className="mt-10 md:mt-14 flex flex-col items-center gap-3"
+          initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 2.3 }}
+          className="mt-12 flex flex-col items-center gap-4"
         >
           <Link to={primaryHref}
             className="group inline-flex items-center gap-2.5 h-14 px-8 rounded-full text-[16.5px]"
-            style={{ background: "#fff", color: INK, fontWeight: 600, boxShadow: "0 20px 44px -14px rgba(59,130,246,0.45)" }}
+            style={{ background: "#fff", color: INK, fontWeight: 700 }}
           >
-            <Sparkles size={18} /> Surprise me
+            Try Ora
             <ArrowRight size={17} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
-          <span className="text-[12.5px]" style={{ color: "rgba(255,255,255,0.55)" }}>
-            one click · full pack · every platform
-          </span>
+
+          {/* Design element: the timer */}
+          <div className="flex items-center gap-2 text-[11.5px] font-mono uppercase tracking-[0.18em]"
+               style={{ color: "rgba(255,255,255,0.55)" }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: RED }} />
+            8 assets · ~42s · no prompt
+          </div>
+        </motion.div>
+
+        {/* Index number, editorial corner */}
+        <div className="absolute top-24 left-5 md:left-10 text-[11px] font-mono uppercase tracking-[0.2em]" style={{ color: "rgba(255,255,255,0.45)" }}>
+          01 / The Pitch
+        </div>
+        <div className="absolute top-24 right-5 md:right-10 text-[11px] font-mono uppercase tracking-[0.2em]" style={{ color: "rgba(255,255,255,0.45)" }}>
+          Ora — an app by no-prompting
+        </div>
+      </div>
+
+      <style>{`
+        .hero-line {
+          font-size: clamp(54px, 11vw, 168px);
+          line-height: 0.95;
+          font-weight: 800;
+          letter-spacing: -0.045em;
+          white-space: nowrap;
+        }
+      `}</style>
+    </section>
+  );
+}
+
+/* ═══ Typed — a tagline that types itself letter by letter ═══ */
+function Typed({ text, delay, color, className }: { text: string; delay: number; color: string; className: string }) {
+  const [len, setLen] = useState(0);
+  useEffect(() => {
+    const id0 = window.setTimeout(() => {
+      const id = window.setInterval(() => {
+        setLen((n) => (n < text.length ? n + 1 : n));
+      }, 35);
+      return () => window.clearInterval(id);
+    }, delay * 1000);
+    return () => window.clearTimeout(id0);
+  }, [delay, text.length]);
+  return (
+    <h1 className={className} style={{ color }}>
+      <span>{text.slice(0, len)}</span>
+      <span style={{ opacity: len < text.length ? 1 : 0, color: color, borderRight: `4px solid ${color}`, marginLeft: 4, animation: "blink 1s step-end infinite" }}>&nbsp;</span>
+      <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+    </h1>
+  );
+}
+
+/* ═══ Pack reveal — a single editorial mockup emerging, asymmetric ═══ */
+function PackReveal() {
+  const { scrollYProgress } = useScroll();
+  const y = useTransform(scrollYProgress, [0.1, 0.35], [80, 0]);
+
+  return (
+    <section className="relative py-28 md:py-44" style={{ background: INK }}>
+      <div className="max-w-[1400px] mx-auto px-5 md:px-10">
+        <div className="flex items-end justify-between mb-12 md:mb-16 gap-6">
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-3" style={{ color: "rgba(255,255,255,0.55)" }}>
+              02 / The Drop
+            </div>
+            <h2 className="tracking-tight" style={{ fontSize: "clamp(36px, 6vw, 88px)", lineHeight: 0.98, letterSpacing: "-0.035em", fontWeight: 800, maxWidth: 920 }}>
+              One button. Eight visuals. <br/>Zero prompt.
+            </h2>
+          </div>
+          <div className="hidden md:block text-[11px] font-mono uppercase tracking-[0.2em] text-right" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Brand DA locked<br/>Captions included
+          </div>
+        </div>
+
+        {/* Asymmetric pack — one giant hero, irregular siblings, floating platform tags */}
+        <motion.div style={{ y }} className="relative">
+          <div className="grid grid-cols-12 gap-3 md:gap-4">
+            <div className="col-span-12 md:col-span-8 relative" style={{ aspectRatio: "16 / 10" }}>
+              <img src={img1} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <FloatingTag label="linkedin" right ratio="16:9" />
+            </div>
+            <div className="col-span-6 md:col-span-4 relative" style={{ aspectRatio: "9 / 16" }}>
+              <img src={img3} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <FloatingTag label="ig story" ratio="9:16" />
+            </div>
+
+            <div className="col-span-6 md:col-span-3 relative" style={{ aspectRatio: "1 / 1" }}>
+              <img src={img2} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <FloatingTag label="ig feed" ratio="1:1" />
+            </div>
+            <div className="col-span-6 md:col-span-3 relative" style={{ aspectRatio: "1 / 1" }}>
+              <img src={img5} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <FloatingTag label="ig feed" ratio="1:1" />
+            </div>
+            <div className="col-span-12 md:col-span-6 relative" style={{ aspectRatio: "16 / 9" }}>
+              <img src={img4} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              <FloatingTag label="facebook" right ratio="16:9" />
+            </div>
+          </div>
         </motion.div>
       </div>
-
-      {/* Soft scroll hint */}
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4, duration: 0.8 }}
-        className="absolute bottom-6 inset-x-0 flex justify-center text-[11px] uppercase tracking-[0.25em]"
-        style={{ color: "rgba(255,255,255,0.5)" }}
-      >
-        scroll
-      </motion.div>
     </section>
   );
 }
 
-/* ═══ Motion showreel — infinite horizontal marquee of generated visuals ═══ */
-function MotionShowreel() {
-  const loop = [...ALL_IMGS, ...ALL_IMGS]; // double for seamless loop
+function FloatingTag({ label, ratio, right }: { label: string; ratio: string; right?: boolean }) {
   return (
-    <section className="relative overflow-hidden py-14" style={{ background: INK }}>
-      <div className="text-center mb-8 px-5 md:px-10">
-        <div className="text-[11.5px] uppercase tracking-[0.2em] mb-3" style={{ color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
-          Watch it work
+    <div className={`absolute top-3 ${right ? "right-3" : "left-3"} flex items-center gap-1.5`}>
+      <span className="px-2 h-6 rounded-full text-[10.5px] font-mono inline-flex items-center"
+            style={{ background: "rgba(255,255,255,0.95)", color: INK, backdropFilter: "blur(6px)" }}>
+        {label}
+      </span>
+      <span className="px-2 h-6 rounded-full text-[10.5px] font-mono inline-flex items-center"
+            style={{ background: "rgba(255,255,255,0.12)", color: "#fff", backdropFilter: "blur(6px)" }}>
+        {ratio}
+      </span>
+    </div>
+  );
+}
+
+/* ═══ Manifesto — one word, massive, on cream color-block ═══ */
+function ManifestoWord() {
+  return (
+    <section className="relative" style={{ background: CREAM, color: INK, minHeight: "90vh" }}>
+      <div className="relative h-full px-5 md:px-10 py-24 md:py-32 flex flex-col justify-between" style={{ minHeight: "90vh" }}>
+        <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ color: "rgba(10,10,10,0.55)" }}>
+          03 / The Thesis
         </div>
-        <p className="mx-auto tracking-tight" style={{ fontSize: "clamp(22px, 2.6vw, 30px)", lineHeight: 1.25, maxWidth: 680, color: "rgba(255,255,255,0.85)", fontWeight: 500 }}>
-          Drop your brand. Pick your platforms. Ora ships the pack.
-        </p>
-      </div>
 
-      {/* Marquee row 1 */}
-      <motion.div
-        className="flex gap-3 shrink-0"
-        animate={{ x: ["0%", "-50%"] }}
-        transition={{ duration: 48, repeat: Infinity, ease: "linear" }}
-      >
-        {loop.map((src, i) => (
-          <div key={i} className="shrink-0 rounded-xl overflow-hidden" style={{ width: 360, height: 220 }}>
-            <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
-          </div>
-        ))}
-      </motion.div>
-      {/* Marquee row 2 — opposite direction */}
-      <motion.div
-        className="flex gap-3 shrink-0 mt-3"
-        animate={{ x: ["-50%", "0%"] }}
-        transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-      >
-        {loop.slice().reverse().map((src, i) => (
-          <div key={i} className="shrink-0 rounded-xl overflow-hidden" style={{ width: 280, height: 360 }}>
-            <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
-          </div>
-        ))}
-      </motion.div>
-    </section>
-  );
-}
-
-/* ═══ Manifesto — ONE line, huge, full-bleed image behind ═══ */
-function ManifestoOverlay() {
-  return (
-    <section className="relative w-full overflow-hidden" style={{ minHeight: 620 }}>
-      <img src={img3} alt="" className="absolute inset-0 w-full h-full object-cover" />
-      <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.75) 100%)" }} />
-      <div className="relative h-full py-24 md:py-36 flex items-center justify-center text-center px-5 md:px-10" style={{ minHeight: 620 }}>
-        <motion.p
-          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.0 }} viewport={{ once: true, margin: "-120px" }}
-          className="tracking-tight"
-          style={{ fontSize: "clamp(40px, 7vw, 104px)", lineHeight: 1.02, letterSpacing: "-0.03em", fontWeight: 700, color: "#fff", maxWidth: 1200 }}
+        <motion.div
+          initial={{ opacity: 0, x: -40 }} whileInView={{ opacity: 1, x: 0 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }} viewport={{ once: true, margin: "-200px" }}
+          className="flex flex-col"
         >
-          Branding is everywhere.<br/><span style={{ color: ACCENT }}>Surprise is nowhere.</span>
-        </motion.p>
+          <span className="tracking-tight" style={{ fontSize: "clamp(22px, 2.4vw, 30px)", letterSpacing: "-0.01em", fontWeight: 500 }}>
+            Branding is everywhere.
+          </span>
+          <span className="tracking-tighter leading-none"
+                style={{ fontSize: "clamp(120px, 26vw, 440px)", letterSpacing: "-0.06em", fontWeight: 900, color: INK, marginTop: "-0.08em" }}>
+            Surprise
+          </span>
+          <span className="tracking-tight text-right" style={{ fontSize: "clamp(22px, 2.4vw, 30px)", letterSpacing: "-0.01em", fontWeight: 500, color: RED }}>
+            isn't.
+          </span>
+        </motion.div>
+
+        <div className="self-end text-[11px] font-mono uppercase tracking-[0.2em]" style={{ color: "rgba(10,10,10,0.55)" }}>
+          — the ora manifesto
+        </div>
       </div>
     </section>
   );
 }
 
-/* ═══ Pillar bands — 3 full-width cinematic bands, image + overlay text ═══ */
-function PillarBands() {
-  const bands = [
-    { img: img1,  headline: "Loss of brand value,",    tail: "never.",  sub: "Your DA is locked across every asset in the pack.",          align: "left"  as const },
-    { img: img2,  headline: "Memorable,",              tail: "always.", sub: "Every shot carries a graphic twist that stops the scroll.", align: "right" as const },
-    { img: img4,  headline: "Copyable,",               tail: "never.",  sub: "One concept, one seed, scenes nobody else can replay.",     align: "left"  as const },
+/* ═══ Posters — 3 typographic posters, not bands with images ═══ */
+function PosterPillars() {
+  const posters = [
+    { n: "I",   word: "LOCKED",   caption: "Brand DA never drifts.",             bg: INK,    fg: "#fff",   accent: ACCENT },
+    { n: "II",  word: "BOLD",     caption: "Every shot, a twist.",                bg: RED,    fg: "#fff",   accent: CREAM  },
+    { n: "III", word: "UNIQUE",   caption: "Seed + scenes, one of one.",          bg: CREAM,  fg: INK,      accent: RED    },
   ];
   return (
     <section>
-      {bands.map((b, i) => (
+      {posters.map((p, i) => (
         <motion.div
           key={i}
-          initial={{ opacity: 0 }} whileInView={{ opacity: 1 }}
-          transition={{ duration: 0.8 }} viewport={{ once: true, margin: "-120px" }}
-          className="relative w-full overflow-hidden"
-          style={{ aspectRatio: "21 / 9", minHeight: 360 }}
+          initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} transition={{ duration: 0.6 }} viewport={{ once: true, margin: "-100px" }}
+          className="relative overflow-hidden flex flex-col justify-between px-5 md:px-10 py-16 md:py-28"
+          style={{ background: p.bg, color: p.fg, minHeight: "80vh" }}
         >
-          <motion.img
-            src={b.img} alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            initial={{ scale: 1.06 }} whileInView={{ scale: 1 }}
-            transition={{ duration: 1.2 }} viewport={{ once: true, margin: "-120px" }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background: b.align === "left"
-                ? "linear-gradient(90deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.1) 100%)"
-                : "linear-gradient(270deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.4) 40%, rgba(0,0,0,0.1) 100%)",
-            }}
-          />
-          <div className={`relative h-full flex items-center ${b.align === "left" ? "justify-start text-left" : "justify-end text-right"} px-8 md:px-20`} style={{ minHeight: 360 }}>
-            <div style={{ maxWidth: 540 }}>
-              <h3 className="tracking-tight" style={{ fontSize: "clamp(34px, 5vw, 72px)", lineHeight: 1.02, letterSpacing: "-0.025em", fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>
-                {b.headline}<br/>
-                <span style={{ color: "#fff", fontWeight: 700 }}>{b.tail}</span>
-              </h3>
-              <p className="mt-4 text-[16px] md:text-[18px] leading-relaxed" style={{ color: "rgba(255,255,255,0.82)" }}>{b.sub}</p>
+          <div className="flex items-start justify-between">
+            <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ opacity: 0.7 }}>
+              Pillar {p.n}
+            </div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.25em]" style={{ color: p.accent }}>
+              {String(i + 1).padStart(2, "0")} / 03
+            </div>
+          </div>
+
+          <motion.h3
+            initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} viewport={{ once: true, margin: "-100px" }}
+            className="tracking-tighter leading-none"
+            style={{ fontSize: "clamp(120px, 28vw, 440px)", letterSpacing: "-0.06em", fontWeight: 900 }}
+          >
+            {p.word}
+          </motion.h3>
+
+          <div className="flex items-end justify-between gap-6">
+            <p className="text-[18px] md:text-[22px] leading-snug" style={{ fontWeight: 500, maxWidth: 520 }}>
+              {p.caption}
+            </p>
+            <div className="text-[11px] font-mono uppercase tracking-[0.25em] text-right" style={{ color: p.accent }}>
+              never / always / never
             </div>
           </div>
         </motion.div>
@@ -259,32 +323,31 @@ function PillarBands() {
   );
 }
 
-/* ═══ Final CTA — full-bleed cinematic ═══ */
+/* ═══ Final CTA — oversized type, no image ═══ */
 function FinalCta({ primaryHref }: { primaryHref: string }) {
   return (
-    <section className="relative w-full overflow-hidden" style={{ aspectRatio: "16 / 9", minHeight: 560 }}>
-      <img src={img3} alt="" className="absolute inset-0 w-full h-full object-cover" />
-      <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.75) 100%)" }} />
-      <div className="relative h-full flex flex-col items-center justify-center text-center px-5 md:px-10" style={{ color: "#fff" }}>
-        <motion.h2
-          initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7 }} viewport={{ once: true, margin: "-60px" }}
-          className="tracking-tight mx-auto"
-          style={{ fontSize: "clamp(44px, 8vw, 124px)", lineHeight: 0.96, letterSpacing: "-0.04em", fontWeight: 700, maxWidth: 1100 }}
-        >
-          Ready to surprise your brand?
-        </motion.h2>
-        <motion.div
-          initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.15 }} viewport={{ once: true, margin: "-60px" }}
-          className="mt-10"
-        >
-          <Link to={primaryHref} className="inline-flex items-center gap-2 h-14 px-8 rounded-full text-[16.5px]"
-                style={{ background: "#fff", color: INK, fontWeight: 600 }}>
-            <Sparkles size={18} /> Try Ora
-          </Link>
-        </motion.div>
+    <section className="relative flex flex-col items-center justify-center px-5 md:px-10 py-36 md:py-56 text-center"
+             style={{ background: INK, color: "#fff" }}>
+      <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-6" style={{ color: "rgba(255,255,255,0.55)" }}>
+        04 / The Move
       </div>
+      <motion.h2
+        initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} viewport={{ once: true }}
+        className="tracking-tight"
+        style={{ fontSize: "clamp(48px, 9vw, 144px)", lineHeight: 0.95, letterSpacing: "-0.045em", fontWeight: 800, maxWidth: 1200 }}
+      >
+        Surprise<br /><span style={{ color: ACCENT }}>your brand.</span>
+      </motion.h2>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}
+        viewport={{ once: true }}
+        className="mt-10"
+      >
+        <Link to={primaryHref} className="inline-flex items-center gap-2 h-14 px-8 rounded-full text-[16.5px]"
+              style={{ background: "#fff", color: INK, fontWeight: 700 }}>
+          Try Ora — it's free to start <ArrowRight size={17} />
+        </Link>
+      </motion.div>
     </section>
   );
 }
@@ -292,14 +355,14 @@ function FinalCta({ primaryHref }: { primaryHref: string }) {
 /* ═══ Footer ═══ */
 function Footer() {
   return (
-    <footer className="py-10" style={{ background: INK, borderTop: `1px solid ${LINE}` }}>
-      <div className="max-w-[1200px] mx-auto px-5 md:px-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <footer className="py-10" style={{ background: INK, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+      <div className="max-w-[1400px] mx-auto px-5 md:px-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <OraLogo size={20} color="#fff" />
-          <span className="text-[14px]" style={{ fontWeight: 600 }}>Ora</span>
-          <span className="text-[12.5px] ml-2" style={{ color: MUTED }}>© {new Date().getFullYear()}</span>
+          <span className="text-[14px]" style={{ fontWeight: 700 }}>Ora</span>
+          <span className="text-[12.5px] ml-2" style={{ color: "rgba(255,255,255,0.55)" }}>© {new Date().getFullYear()}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[12.5px]" style={{ color: MUTED }}>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[12.5px]" style={{ color: "rgba(255,255,255,0.55)" }}>
           <Link to="/pricing" className="hover:text-white transition">Pricing</Link>
           <Link to="/models" className="hover:text-white transition">Models</Link>
           <Link to="/about" className="hover:text-white transition">Manifesto</Link>
