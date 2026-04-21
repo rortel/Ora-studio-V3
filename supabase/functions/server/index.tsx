@@ -24627,6 +24627,25 @@ app.post("/library/list", async (c) => {
       }
     }
 
+    // Tag items with `featured: boolean` so the Library UI knows the state
+    // without a second round-trip. Only meaningful for the admin (whose
+    // library drives the public landing showcase). Pointers live at
+    // showcase:featured:{itemId}.
+    try {
+      const profile = await kv.get(`user:${user.id}`);
+      const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+      if (isAdmin) {
+        const featuredPointers = (await kv.getByPrefix("showcase:featured:")) || [];
+        const featuredSet = new Set<string>(featuredPointers.map((p: any) => p?.itemId).filter(Boolean));
+        for (const it of allItems as any[]) {
+          it.featured = featuredSet.has(it.id);
+          it.canFeature = true;
+        }
+      }
+    } catch (err) {
+      console.log(`[library/list] featured enrichment skipped: ${err}`);
+    }
+
     return c.json({ success: true, items: allItems });
   } catch (err) {
     console.log(`[library/list] error: ${err}`);
@@ -24988,45 +25007,45 @@ app.post("/library/items-update", async (c) => {
   }
 });
 
-// ── POST /library/feature — toggle "featured on landing" ──
-// Authed. Stores a small pointer `showcase:{userId}:{itemId}` with a timestamp;
-// the public GET /showcase/featured reads these pointers and joins them with
-// the library items to return public-ready assets.
+// ── POST /library/feature — toggle "featured on landing" (ADMIN ONLY) ──
+// Only the Ora owner (admin) can mark items to surface on the public landing.
+// Client libraries are untouched; no feature button will be shown to them.
+// Pointer key: showcase:featured:{itemId} stores { itemId, userId, featuredAt }.
 app.post("/library/feature", async (c) => {
   try {
-    const user = await requireAuth(c);
+    const user = await requireAdmin(c);
     const body = c.get?.("parsedBody") || await c.req.json();
     const itemId = String(body?.itemId || "").trim();
     const featured = body?.featured !== false;
     if (!itemId) return c.json({ success: false, error: "itemId required" }, 400);
 
-    const key = `showcase:${user.id}:${itemId}`;
+    const key = `showcase:featured:${itemId}`;
     if (featured) {
       const libItem = await kv.get(`lib:${user.id}:${itemId}`);
       if (!libItem) return c.json({ success: false, error: "Library item not found" }, 404);
       await kv.set(key, { itemId, userId: user.id, featuredAt: new Date().toISOString() });
-      console.log(`[library/feature] user=${user.id.slice(0, 8)} featured ${itemId}`);
+      console.log(`[library/feature] admin featured ${itemId}`);
       return c.json({ success: true, featured: true });
     } else {
       await kv.del(key);
-      console.log(`[library/feature] user=${user.id.slice(0, 8)} un-featured ${itemId}`);
+      console.log(`[library/feature] admin un-featured ${itemId}`);
       return c.json({ success: true, featured: false });
     }
   } catch (err: any) {
     console.log(`[library/feature] error: ${err}`);
-    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+    const forbidden = String(err?.message || "").includes("Forbidden");
+    const unauth    = err?.message === "Unauthorized";
+    return c.json({ success: false, error: String(err?.message || err) }, forbidden ? 403 : unauth ? 401 : 500);
   }
 });
 
-// ── GET /showcase/featured — PUBLIC list of assets flagged for the landing ──
-// No auth. Returns the latest featured campaigns (joined with library) as a
-// flat list of assets the marketing page can drop straight into its hero +
-// gallery grid. Caller can pass ?limit=40 (default 40).
+// ── GET /showcase/featured — PUBLIC list of admin-picked assets for landing ──
+// No auth. Only surfaces items the admin has flagged via /library/feature.
+// Caller can pass ?limit=40 (default 40, max 80).
 app.get("/showcase/featured", async (c) => {
   try {
     const limit = Math.max(1, Math.min(80, parseInt(c.req.query("limit") || "40", 10) || 40));
-    const pointers = (await kv.getByPrefix("showcase:")) || [];
-    // Most recent first
+    const pointers = (await kv.getByPrefix("showcase:featured:")) || [];
     pointers.sort((a: any, b: any) => String(b?.featuredAt || "").localeCompare(String(a?.featuredAt || "")));
 
     const assets: any[] = [];
