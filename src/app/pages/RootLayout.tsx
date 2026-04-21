@@ -30,6 +30,9 @@ export function RootLayout() {
     location.pathname === "/hub/surprise" ||
     location.pathname.startsWith("/hub/library") ||
     location.pathname.startsWith("/hub/editor");
+  // The marketing landing (`/`) owns its own header + footer, so we skip the
+  // shared Navbar/Footer for that path.
+  const isLanding = location.pathname === "/";
   const isAppView = (isHub && !isThreeTabApp) || isProfile || isAdmin || isSubscribe;
 
   // Only scroll to top on actual page navigation (pathname change), not on search param changes
@@ -54,10 +57,10 @@ export function RootLayout() {
         }}
       />
 
-      {isVideoEditor || isThreeTabApp ? (
-        /* -- Full-screen 3-tab app view (Surprise / Library / Edit) or
-              the Video Editor: no sidebar, no marketing navbar. The page
-              owns its own <AppTabs /> header. -- */
+      {isVideoEditor || isThreeTabApp || isLanding ? (
+        /* -- Self-hosted view: the landing page and the 3-tab app shell
+              render their own header + footer. Also covers the
+              full-screen video editor. -- */
         <Suspense fallback={<PageLoader />}>
           <Outlet />
         </Suspense>
