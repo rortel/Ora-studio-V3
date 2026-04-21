@@ -25054,25 +25054,41 @@ app.get("/showcase/featured", async (c) => {
       const libItem: any = await kv.get(`lib:${p.userId}:${p.itemId}`);
       if (!libItem) continue;
       const preview = libItem.preview || {};
-      const campaignName = libItem.title || preview?.copy?.headline || "Ora campaign";
-      const campaignSlug = libItem.campaignSlug || preview.campaignSlug || "ora-campaign";
-      const itemAssets: any[] = Array.isArray(preview.assets) ? preview.assets : [];
-      for (const a of itemAssets) {
-        if (!a?.imageUrl && !a?.videoUrl) continue;
+      const campaignName = libItem.title || preview?.copy?.headline || libItem.name || "Ora asset";
+      const campaignSlug = libItem.campaignSlug || preview.campaignSlug || "ora";
+      const pushAsset = (a: any) => {
+        if (!a?.imageUrl && !a?.videoUrl) return;
         assets.push({
           itemId: p.itemId,
           featuredAt: p.featuredAt,
           campaignName, campaignSlug,
-          platform: a.platform || "",
-          aspectRatio: a.aspectRatio || "1:1",
+          platform: a.platform || libItem.platform || "",
+          aspectRatio: a.aspectRatio || libItem.aspectRatio || "1:1",
           imageUrl: a.imageUrl || "",
           videoUrl: a.videoUrl || "",
-          caption: a.caption || "",
+          caption: a.caption || libItem.caption || "",
           twistElement: a.twistElement || "",
           fileName: a.fileName || "",
           videoFileName: a.videoFileName || "",
         });
-        if (assets.length >= limit) break;
+      };
+
+      const itemAssets: any[] = Array.isArray(preview.assets) ? preview.assets : [];
+      if (itemAssets.length > 0) {
+        // Campaign pack — surface each generated asset
+        for (const a of itemAssets) {
+          pushAsset(a);
+          if (assets.length >= limit) break;
+        }
+      } else {
+        // Single-asset item (individual image/film saved one-off in library)
+        pushAsset({
+          imageUrl: preview.imageUrl || "",
+          videoUrl: preview.videoUrl || "",
+          aspectRatio: libItem.aspectRatio || preview.aspectRatio,
+          platform: libItem.platform,
+          caption: preview.caption,
+        });
       }
       if (assets.length >= limit) break;
     }

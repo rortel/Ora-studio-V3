@@ -1553,6 +1553,22 @@ function LibraryPageContent() {
                       )}
                       {/* Thumbnail */}
                       <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => { if (selectMode) { toggleSelected(item.id); } else { setPreviewItem(item); } }}>
+                        {/* Feature on landing (admin only — top-right) */}
+                        {(item as any).canFeature && !selectMode && (
+                          <button
+                            onClick={(e) => handleToggleFeature(item, e)}
+                            className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                            style={{
+                              background: (item as any).featured ? "#F4C542" : "rgba(255,255,255,0.92)",
+                              color: (item as any).featured ? "#111111" : "#6C6C6C",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                              backdropFilter: "blur(6px)",
+                            }}
+                            title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
+                          >
+                            <Star size={13} fill={(item as any).featured ? "currentColor" : "none"} />
+                          </button>
+                        )}
                         {/* Deployment badge (top-left) */}
                         {(() => {
                           const badge = getDeploymentBadge(item);
