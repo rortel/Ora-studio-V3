@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -79,7 +79,7 @@ export function SurprisePage() {
 }
 
 function SurpriseContent() {
-  const { getAuthHeader } = useAuth();
+  const { getAuthHeader, can } = useAuth();
   const navigate = useNavigate();
 
   // Core inputs (minimal — the two blanks)
@@ -119,6 +119,39 @@ function SurpriseContent() {
   const [pack, setPack] = useState<Pack | null>(null);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+
+  // Brand Vault nudge: Studio+ users without a vault get a soft prompt to set
+  // one up, since Surprise Me without brand context can't deliver on the
+  // "locked DA across every shot" promise. Dismiss persists in localStorage.
+  const hasVaultFeature = can("vault");
+  const [vaultMissing, setVaultMissing] = useState(false);
+  const [vaultNudgeDismissed, setVaultNudgeDismissed] = useState(() => {
+    try { return localStorage.getItem("ora:vault-nudge-dismissed") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    if (!hasVaultFeature || vaultNudgeDismissed) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthHeader();
+        const r = await fetch(`${API_BASE}/vault/load`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ _token: token }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        const v = d?.vault || d?.data || null;
+        const looksEmpty = !v || (!v.company_name && !v.brandName && (!v.colors || v.colors.length === 0) && !v.logo_url && !v.logoUrl);
+        setVaultMissing(looksEmpty);
+      } catch { /* silent — banner just stays hidden */ }
+    })();
+    return () => { cancelled = true; };
+  }, [hasVaultFeature, vaultNudgeDismissed, getAuthHeader]);
+  const dismissVaultNudge = useCallback(() => {
+    try { localStorage.setItem("ora:vault-nudge-dismissed", "1"); } catch {}
+    setVaultNudgeDismissed(true);
+  }, []);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -240,6 +273,39 @@ function SurpriseContent() {
       {stage === "idle" && !pack && (
         <main className="flex-1 flex items-center">
           <div className="w-full max-w-[900px] mx-auto px-5 md:px-10 py-14 md:py-24">
+            {/* Brand Vault nudge — editorial, dismissible, non-blocking */}
+            <AnimatePresence>
+              {hasVaultFeature && vaultMissing && !vaultNudgeDismissed && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="mb-10 flex items-center gap-4 px-5 py-4 rounded-2xl"
+                  style={{ background: COLORS.warm, border: `1px solid ${COLORS.line}` }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] mb-0.5" style={{ ...bagel, fontSize: 18, lineHeight: 1.1 }}>
+                      Lock your brand first.
+                    </p>
+                    <p className="text-[13px] leading-snug" style={{ color: COLORS.muted }}>
+                      Drop your URL once — we pin your palette, tone and photo style on every shot. 30 seconds.
+                    </p>
+                  </div>
+                  <Button variant="ink" size="sm" onClick={() => navigate("/hub/vault")}>
+                    Set it up <ArrowRight size={13} />
+                  </Button>
+                  <button
+                    onClick={dismissVaultNudge}
+                    aria-label="Dismiss"
+                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 transition"
+                    style={{ color: COLORS.muted }}
+                  >
+                    <X size={14} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Friendly opener */}
             <motion.div
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}

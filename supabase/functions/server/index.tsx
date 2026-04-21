@@ -911,6 +911,9 @@ interface BrandContext {
   imageBankLighting: string[];
   visualDirective: string;
   topRefImages: BrandRefImage[];
+  logoUrl: string;
+  logoStyle: string;
+  graphicStyle: string;
 }
 
 async function buildBrandContext(userId: string): Promise<BrandContext | null> {
@@ -944,6 +947,9 @@ async function buildBrandContext(userId: string): Promise<BrandContext | null> {
       imageBankLighting: [],
       visualDirective: "",
       topRefImages: [],
+      logoUrl: vaultData.logo_url || vaultData.logoUrl || vaultData.logo?.url || "",
+      logoStyle: vaultData.logo?.style || vaultData.logo?.description || "",
+      graphicStyle: vaultData.visual_identity?.graphic_style || vaultData.graphic_style || "",
     };
     const analyzed = (brandImages || []).filter((img: any) => img?.analysis && !img.analysis._parseError);
     analyzed.sort((a: any, b: any) => (b.analysis?.brand_alignment?.score || 0) - (a.analysis?.brand_alignment?.score || 0));
@@ -9004,6 +9010,8 @@ app.post("/analyze/surprise-me", async (c) => {
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
       if (ctx.photoStyle?.lighting) parts.push(`photo lighting: ${ctx.photoStyle.lighting}`);
       if (ctx.photoStyle?.framing)  parts.push(`photo framing: ${ctx.photoStyle.framing}`);
+      if (ctx.logoStyle)            parts.push(`logo style: ${ctx.logoStyle}`);
+      if (ctx.graphicStyle)         parts.push(`graphic style: ${ctx.graphicStyle}`);
       if (Array.isArray((ctx as any).target_audiences) && (ctx as any).target_audiences.length > 0) {
         parts.push(`audiences: ${((ctx as any).target_audiences).map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 3).join(", ")}`);
       }
@@ -9051,6 +9059,7 @@ HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
 - EVERY shot MUST carry a concrete graphic/scene twist fitting the creativity level (a prop, a light move, an overlay, a scale play, a material swap, a composition dare). Randomize the twists so no two shots are identical moves.
+${ctx?.brandName || ctx?.logoStyle ? `- Weave a subtle brand mark into most shots: a discreet "${ctx?.brandName || "brand"}" wordmark or logo placed naturally in the scene (corner watermark, product packaging, signage, tote bag, glass, garment tag, shop window…). Keep it small, legible, on-brand. Not every shot needs it — pick the 60-70% that feel natural. Style hint: ${ctx?.logoStyle || "clean, single-color, unobtrusive"}.` : ""}
 - Reply language: ${lang === "fr" ? "French" : "English"} for campaign name, angle, tone, message. Shot scene/subject/prompt/twist must be ENGLISH (generation models read English best).
 - Output JSON only. No markdown, no prose wrapper.
 
@@ -12892,6 +12901,22 @@ app.post("/music/favorites/toggle", async (c) => {
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
 });
 
+// Helper: Brand Vault is a paid feature. Both reads and writes require a
+// Studio+ (or legacy pro/business) plan. Admin bypasses. Returns null if
+// allowed; returns a JSON Response to short-circuit if blocked.
+async function vaultPlanGate(userId: string, userEmail: string): Promise<null | { error: string; code: string; requiredPlan: string }> {
+  try {
+    const profile = await kv.get(`user:${userId}`);
+    const plan = String(profile?.plan || "free").toLowerCase();
+    const isAdmin = userEmail.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+    const vaultPlans = new Set(["studio", "pro", "agency", "business"]);
+    if (!isAdmin && !vaultPlans.has(plan)) {
+      return { error: "Brand Vault lives on Studio+.", code: "plan_required", requiredPlan: "studio" };
+    }
+  } catch { /* if profile load fails, fall open — save path still guards */ }
+  return null;
+}
+
 // GET /vault — Load vault data (token via query param for GET)
 app.get("/vault", async (c) => {
   try {
@@ -12899,6 +12924,8 @@ app.get("/vault", async (c) => {
     if (!token) return c.json({ success: false, error: "Unauthorized (no token for GET /vault)" }, 401);
     const jwt = decodeJwtPayload(token);
     if (!jwt?.sub) return c.json({ success: false, error: "Unauthorized (invalid JWT)" }, 401);
+    const gated = await vaultPlanGate(jwt.sub, String(jwt.email || ""));
+    if (gated) return c.json({ success: false, ...gated }, 402);
     const vault = await kv.get(`vault:${jwt.sub}`);
     return c.json({ success: true, vault: vault || null });
   } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
@@ -12919,6 +12946,8 @@ app.post("/vault/reset", async (c) => {
 app.post("/vault/load", async (c) => {
   try {
     const user = await requireAuth(c);
+    const gated = await vaultPlanGate(user.id, user.email);
+    if (gated) return c.json({ success: false, ...gated }, 402);
     let rawVault = await kv.get(`vault:${user.id}`);
     // Auto-fix: if vault has a nested "vault" key from old onboarding bug, flatten it
     if (rawVault && rawVault.vault && typeof rawVault.vault === "object" && !Array.isArray(rawVault.vault)) {
