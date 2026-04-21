@@ -180,8 +180,24 @@ function SurpriseContent() {
     }
   }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
 
+  // Display expansion: when a shot has BOTH an image and a film (the
+  // "Images + Films" mode), render them as TWO cards — one for the image,
+  // one for the motion version — so the user sees both in the grid. The
+  // original pack.items stays intact for the ZIP / library save.
   const groupedByPlatform: Record<string, PackItem[]> = {};
-  if (pack) for (const it of pack.items) (groupedByPlatform[it.platform] ||= []).push(it);
+  if (pack) {
+    for (const it of pack.items) {
+      const hasImage = it.status === "ok" && !!it.imageUrl;
+      const hasVideo = it.status === "ok" && !!it.videoUrl;
+      const bucket = (groupedByPlatform[it.platform] ||= []);
+      if (hasImage && hasVideo) {
+        bucket.push({ ...it, videoUrl: undefined, videoFileName: undefined });
+        bucket.push({ ...it, imageUrl: undefined });
+      } else {
+        bucket.push(it);
+      }
+    }
+  }
 
   return (
     <div style={{ background: BG, color: TEXT }} className="min-h-screen flex flex-col">
