@@ -8,7 +8,7 @@ import {
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
   Instagram, Linkedin, Facebook, Camera, Clapperboard,
   Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
-  Upload, RefreshCw, Share2, Clock, CheckCircle2,
+  Upload, RefreshCw, Share2, Clock, CheckCircle2, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useSearchParams, useNavigate } from "react-router";
@@ -583,6 +583,29 @@ function LibraryPageContent() {
     }
   }, []);
 
+  // Toggle an item as "Featured on landing" — surfaced on ora-studio.app
+  const handleToggleFeature = useCallback(async (item: LibraryItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const next = !(item as any).featured;
+    // Optimistic update
+    setItems((prev) => prev.map((x) => (x.id === item.id ? ({ ...x, featured: next } as any) : x)));
+    try {
+      const token = getAuthHeader();
+      const r = await fetch(`${API_BASE}/library/feature`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ itemId: item.id, featured: next, _token: token }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!data.success) throw new Error(data.error || "feature failed");
+      toast.success(next ? "Featured on landing" : "Removed from landing");
+    } catch (err: any) {
+      // Revert
+      setItems((prev) => prev.map((x) => (x.id === item.id ? ({ ...x, featured: !next } as any) : x)));
+      toast.error(String(err?.message || err));
+    }
+  }, [getAuthHeader]);
+
   // Duplicate a campaign
   const handleDuplicateCampaign = useCallback(async (item: LibraryItem) => {
     try {
@@ -902,6 +925,19 @@ function LibraryPageContent() {
                             {new Date(item.savedAt).toLocaleDateString()}
                           </span>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {(item as any).canFeature && (
+                              <button
+                                onClick={(e) => handleToggleFeature(item, e)}
+                                className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
+                                style={{
+                                  background: (item as any).featured ? "#F4C542" : "var(--border)",
+                                  color: (item as any).featured ? "#111111" : "var(--text-tertiary)",
+                                }}
+                                title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
+                              >
+                                <Star size={11} fill={(item as any).featured ? "currentColor" : "none"} />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
                               disabled={isDownloading}

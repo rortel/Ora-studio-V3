@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { ArrowRight, Lock, Sparkles, Zap } from "lucide-react";
@@ -7,28 +8,81 @@ import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { Surface } from "../components/ora/Surface";
 import { bagel, COLORS } from "../components/ora/tokens";
+import { API_BASE } from "../lib/supabase";
 import heroVideo from "../../assets/hero-video.mp4";
 
-/* Public templates — real examples of what Ora ships. Paths resolve at runtime. */
-const HERO_VIDEO = heroVideo;
-const HERO_TILES = [
-  { kind: "video" as const, src: heroVideo,                       label: "linkedin · hero" },
-  { kind: "img"   as const, src: "/templates/figma-fashion-post-01.png",  label: "ig feed · fashion" },
-  { kind: "img"   as const, src: "/templates/figma-skincare-01.png",       label: "ig story · skincare" },
+interface ShowcaseAsset {
+  itemId: string; featuredAt: string;
+  campaignName: string; campaignSlug: string;
+  platform: string; aspectRatio: string;
+  imageUrl: string; videoUrl: string;
+  caption: string; twistElement: string;
+  fileName: string; videoFileName: string;
+}
+
+/* Fallback content when the public showcase endpoint returns nothing yet
+ * (first deploy, admin hasn't featured anything). Once the admin marks
+ * items from Library, these get overridden with real campaign output. */
+const FALLBACK_HERO_VIDEO = heroVideo;
+const FALLBACK_HERO = [
+  { kind: "video" as const, src: heroVideo,                              label: "hero film" },
+  { kind: "img"   as const, src: "/templates/figma-fashion-post-01.png", label: "fashion" },
+  { kind: "img"   as const, src: "/templates/figma-skincare-01.png",     label: "skincare" },
+];
+const FALLBACK_GALLERY = [
+  { src: "/templates/figma-linkedin-01.png",     label: "linkedin" },
+  { src: "/templates/figma-igp-01.png",          label: "ig feed" },
+  { src: "/templates/figma-story-01.png",        label: "ig story" },
+  { src: "/templates/figma-b2b-01.png",          label: "linkedin · b2b" },
+  { src: "/templates/figma-fashion-post-02.png", label: "fashion" },
+  { src: "/templates/figma-skincare-02.png",     label: "skincare" },
 ];
 
-const GALLERY = [
-  { src: "/templates/figma-linkedin-01.png",       label: "linkedin · hero" },
-  { src: "/templates/figma-igp-01.png",            label: "ig feed · launch" },
-  { src: "/templates/figma-story-01.png",          label: "ig story" },
-  { src: "/templates/figma-b2b-01.png",            label: "linkedin · b2b" },
-  { src: "/templates/figma-fashion-post-02.png",   label: "ig feed · fashion" },
-  { src: "/templates/figma-skincare-02.png",       label: "tiktok · skincare" },
-];
+function platformLabel(p: string): string {
+  const s = (p || "").toLowerCase();
+  if (s.includes("instagram-story"))  return "ig story";
+  if (s.includes("instagram"))        return "ig feed";
+  if (s.includes("linkedin"))         return "linkedin";
+  if (s.includes("facebook"))         return "facebook";
+  if (s.includes("tiktok"))           return "tiktok";
+  return p || "asset";
+}
 
 export function LandingPage() {
   const { user } = useAuth();
   const primaryHref = user ? "/hub/surprise" : "/login";
+
+  // Pull admin-curated showcase items. Falls back silently to templates
+  // when the endpoint is empty or unreachable.
+  const [showcase, setShowcase] = useState<ShowcaseAsset[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/showcase/featured?limit=40`);
+        const d = await r.json().catch(() => ({}));
+        if (!cancelled && d?.success && Array.isArray(d.items)) setShowcase(d.items);
+      } catch { /* ignore — fallbacks cover us */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Resolve hero tiles: 1 big (video if available) + 2 mediums.
+  const showcaseVideo = showcase.find((a) => a.videoUrl);
+  const showcaseImages = showcase.filter((a) => a.imageUrl);
+  const heroBig  = showcaseVideo
+    ? { kind: "video" as const, src: showcaseVideo.videoUrl, label: platformLabel(showcaseVideo.platform), poster: showcaseVideo.imageUrl }
+    : { kind: "video" as const, src: FALLBACK_HERO_VIDEO,    label: "hero film", poster: undefined };
+  const heroTile2 = showcaseImages[0]
+    ? { kind: "img" as const, src: showcaseImages[0].imageUrl, label: platformLabel(showcaseImages[0].platform) }
+    : FALLBACK_HERO[1];
+  const heroTile3 = showcaseImages[1]
+    ? { kind: "img" as const, src: showcaseImages[1].imageUrl, label: platformLabel(showcaseImages[1].platform) }
+    : FALLBACK_HERO[2];
+
+  // Gallery: prefer 6 next featured assets, fallback to templates.
+  const galleryFeatured = showcaseImages.slice(2, 8).map((a) => ({ src: a.imageUrl, label: platformLabel(a.platform) }));
+  const gallery = galleryFeatured.length === 6 ? galleryFeatured : FALLBACK_GALLERY;
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
@@ -110,13 +164,13 @@ export function LandingPage() {
           className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-4"
         >
           <div className="md:col-span-2 md:row-span-2 rounded-[28px] overflow-hidden aspect-[4/3] md:aspect-auto bg-white relative">
-            <video src={HERO_VIDEO} autoPlay muted loop playsInline className="w-full h-full object-cover" />
-            <div className="absolute top-4 left-4"><Badge tone="ink">42s · hero film</Badge></div>
+            <video src={heroBig.src} poster={heroBig.poster || undefined} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+            <div className="absolute top-4 left-4"><Badge tone="ink">42s · {heroBig.label}</Badge></div>
           </div>
-          {HERO_TILES.slice(1).map((t, i) => (
+          {[heroTile2, heroTile3].map((t, i) => (
             <div key={i} className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
               <img src={t.src} alt="" className="w-full h-full object-cover" />
-              <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label.split(" · ")[1] || t.label}</Badge></div>
+              <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label}</Badge></div>
             </div>
           ))}
         </motion.div>
@@ -170,7 +224,7 @@ export function LandingPage() {
           </h2>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[180px] md:auto-rows-[240px]">
-          {GALLERY.slice(0, 6).map((item, i) => {
+          {gallery.slice(0, 6).map((item, i) => {
             const span =
               i === 0 ? "md:col-span-4 md:row-span-2"
             : i === 1 ? "md:col-span-2"
