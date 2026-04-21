@@ -4216,11 +4216,20 @@ const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
 const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL") || "https://ora-studio.app";
 
-// Stripe Price IDs — set these in Supabase Edge Function secrets
+// Stripe Price IDs — set these in Supabase Edge Function secrets.
+// The public plan codes are creator / studio / agency (new 3-tier), but the
+// existing Stripe prices were registered under starter / pro / business.
+// Keep both keys pointing at the same env var so the UI can send either
+// code and we never have to touch Stripe dashboard just to rename a tier.
 const STRIPE_PRICES: Record<string, string> = {
-  starter: Deno.env.get("STRIPE_PRICE_STARTER") || "",   // Starter €29/mo
-  pro: Deno.env.get("STRIPE_PRICE_PRO") || "",           // Pro €79/mo
-  business: Deno.env.get("STRIPE_PRICE_BUSINESS") || "", // Business €149/mo
+  // Legacy codes (Stripe dashboard source of truth)
+  starter:  Deno.env.get("STRIPE_PRICE_STARTER")  || "",
+  pro:      Deno.env.get("STRIPE_PRICE_PRO")      || "",
+  business: Deno.env.get("STRIPE_PRICE_BUSINESS") || "",
+  // Public-facing aliases (Creator €19 / Studio €49 / Agency €199)
+  creator:  Deno.env.get("STRIPE_PRICE_CREATOR")  || Deno.env.get("STRIPE_PRICE_STARTER")  || "",
+  studio:   Deno.env.get("STRIPE_PRICE_STUDIO")   || Deno.env.get("STRIPE_PRICE_PRO")      || "",
+  agency:   Deno.env.get("STRIPE_PRICE_AGENCY")   || Deno.env.get("STRIPE_PRICE_BUSINESS") || "",
 };
 
 // Credit pack price IDs (one-time payments)
@@ -4252,8 +4261,9 @@ app.post("/stripe/create-checkout-session", async (c) => {
     const body = c.get?.("parsedBody") || {};
     const plan = body.plan;
 
-    if (!["starter", "pro", "business"].includes(plan)) {
-      return c.json({ error: "Invalid plan. Use 'starter', 'pro', or 'business'" }, 400);
+    const validPlans = ["starter", "pro", "business", "creator", "studio", "agency"];
+    if (!validPlans.includes(plan)) {
+      return c.json({ error: `Invalid plan. Use one of: ${validPlans.join(", ")}` }, 400);
     }
 
     const priceId = STRIPE_PRICES[plan];

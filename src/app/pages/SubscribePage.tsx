@@ -27,10 +27,28 @@ export function SubscribePage() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  // Map public plan codes (creator / studio / agency) to the internal Stripe
+  // plan codes (starter / pro / business) that the server + card list use.
+  const normalizePlanCode = (raw: string | null | undefined): "starter" | "pro" | "business" | null => {
+    const s = String(raw || "").toLowerCase();
+    if (s === "studio" || s === "pro") return "pro";
+    if (s === "agency" || s === "business") return "business";
+    if (s === "creator" || s === "starter") return "starter";
+    return null;
+  };
+
+  // Pre-select the card that matches the URL ?plan= coming from /pricing.
+  useEffect(() => {
+    const fromUrl = normalizePlanCode(searchParams.get("plan"));
+    if (fromUrl && searchParams.get("success") !== "true") {
+      setSelectedPlan(fromUrl);
+    }
+  }, [searchParams]);
+
   // Handle Stripe redirect results
   useEffect(() => {
     if (searchParams.get("success") === "true") {
-      const plan = searchParams.get("plan") || "";
+      const plan = normalizePlanCode(searchParams.get("plan"));
       const pack = searchParams.get("pack") || "";
       if (pack) {
         setSuccessMessage(t("subscribe.successPack"));
