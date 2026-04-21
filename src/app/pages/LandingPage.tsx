@@ -7,17 +7,24 @@ import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { Surface } from "../components/ora/Surface";
 import { bagel, COLORS } from "../components/ora/tokens";
-import img1 from "../../assets/b545abf4495677ce6104da79f57e7f15edcba5a0.png";
-import img2 from "../../assets/fd1a1304c95304459d525edabe5b548965b73ee0.png";
-import img3 from "../../assets/e770a4caf934a7f0a280cbbe70316b0d298cff32.png";
-import img4 from "../../assets/230b57712f829935f228f72848bf5bb6e9c71731.png";
-import img5 from "../../assets/32eda534c6c83cc7126cf387befbc63dc25b3959.png";
-import img6 from "../../assets/428667e4725cd7048b2e82e2e4f672082e510ef0.png";
-import img7 from "../../assets/44db6247bc4087ebcdc2af0c2e63430b53186f90.png";
-import img8 from "../../assets/828548c81c7a529d4277b71a4046525cf852a003.png";
+import heroVideo from "../../assets/hero-video.mp4";
 
-const HERO = [img1, img3, img2];
-const GALLERY = [img1, img2, img3, img4, img5, img6, img7, img8];
+/* Public templates — real examples of what Ora ships. Paths resolve at runtime. */
+const HERO_VIDEO = heroVideo;
+const HERO_TILES = [
+  { kind: "video" as const, src: heroVideo,                       label: "linkedin · hero" },
+  { kind: "img"   as const, src: "/templates/figma-fashion-post-01.png",  label: "ig feed · fashion" },
+  { kind: "img"   as const, src: "/templates/figma-skincare-01.png",       label: "ig story · skincare" },
+];
+
+const GALLERY = [
+  { src: "/templates/figma-linkedin-01.png",       label: "linkedin · hero" },
+  { src: "/templates/figma-igp-01.png",            label: "ig feed · launch" },
+  { src: "/templates/figma-story-01.png",          label: "ig story" },
+  { src: "/templates/figma-b2b-01.png",            label: "linkedin · b2b" },
+  { src: "/templates/figma-fashion-post-02.png",   label: "ig feed · fashion" },
+  { src: "/templates/figma-skincare-02.png",       label: "tiktok · skincare" },
+];
 
 export function LandingPage() {
   const { user } = useAuth();
@@ -97,23 +104,21 @@ export function LandingPage() {
           </motion.div>
         </div>
 
-        {/* Hero showcase — 1 big + 2 medium */}
+        {/* Hero showcase — 1 big video + 2 medium */}
         <motion.div
           initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
           className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-4"
         >
           <div className="md:col-span-2 md:row-span-2 rounded-[28px] overflow-hidden aspect-[4/3] md:aspect-auto bg-white relative">
-            <img src={HERO[0]} alt="" className="w-full h-full object-cover" />
-            <div className="absolute top-4 left-4"><Badge tone="ink">42s · linkedin hero</Badge></div>
+            <video src={HERO_VIDEO} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+            <div className="absolute top-4 left-4"><Badge tone="ink">42s · hero film</Badge></div>
           </div>
-          <div className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
-            <img src={HERO[1]} alt="" className="w-full h-full object-cover" />
-            <div className="absolute top-3 left-3"><Badge tone="ink">42s · ig story</Badge></div>
-          </div>
-          <div className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
-            <img src={HERO[2]} alt="" className="w-full h-full object-cover" />
-            <div className="absolute top-3 left-3"><Badge tone="ink">42s · tiktok</Badge></div>
-          </div>
+          {HERO_TILES.slice(1).map((t, i) => (
+            <div key={i} className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
+              <img src={t.src} alt="" className="w-full h-full object-cover" />
+              <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label.split(" · ")[1] || t.label}</Badge></div>
+            </div>
+          ))}
         </motion.div>
       </section>
 
@@ -164,15 +169,14 @@ export function LandingPage() {
             Stunning assets, zero effort.
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[140px] md:auto-rows-[220px]">
-          {GALLERY.slice(0, 6).map((img, i) => {
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[180px] md:auto-rows-[240px]">
+          {GALLERY.slice(0, 6).map((item, i) => {
             const span =
               i === 0 ? "md:col-span-4 md:row-span-2"
             : i === 1 ? "md:col-span-2"
             : i === 2 ? "md:col-span-2"
             : i === 3 ? "md:col-span-3 md:row-span-2"
             : "md:col-span-3";
-            const platform = ["linkedin","ig feed","ig story","tiktok","facebook","ig feed"][i];
             return (
               <motion.div
                 key={i}
@@ -180,8 +184,8 @@ export function LandingPage() {
                 viewport={{ once: true }} transition={{ delay: i * 0.05 }}
                 className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
               >
-                <img src={img} alt="" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
-                <div className="absolute top-3 left-3"><Badge tone="ink">42s · {platform}</Badge></div>
+                <img src={item.src} alt="" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
+                <div className="absolute top-3 left-3"><Badge tone="ink">42s · {item.label}</Badge></div>
               </motion.div>
             );
           })}
