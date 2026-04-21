@@ -36,7 +36,7 @@ const PLANS: PlanDef[] = [
       "Images + 5s films",
       "AI-written captions per platform",
       "Instagram · LinkedIn · Facebook · TikTok",
-      "Publish + schedule direct via Zernio",
+      "Publish + schedule — one click to every network",
       "Library + HD downloads (ZIP)",
       "Editor to add logo, text, overlays",
     ],
@@ -56,7 +56,7 @@ const PLANS: PlanDef[] = [
       "Paste your site URL, Ora extracts your brand",
       "Logo + image bank baked into every shot",
       "Every film + image, every platform",
-      "Publish + schedule direct via Zernio",
+      "Publish + schedule — one click to every network",
       "Priority generation queue",
     ],
   },
@@ -72,7 +72,7 @@ const PLANS: PlanDef[] = [
       "1 000 assets / month",
       "Multi-brand Brand Vault (up to 5 brands)",
       "3 team seats",
-      "Publish + schedule direct via Zernio",
+      "Publish + schedule — one click to every network",
       "API access",
       "White-label ZIP delivery",
       "Priority support",
@@ -108,7 +108,7 @@ export function PricingPage() {
 
         <p className="max-w-[540px] mx-auto text-[17px] md:text-[19px]" style={{ color: COLORS.muted }}>
           One click. Full pack. Every platform. Pick the volume that matches
-          your output — every plan publishes direct via Zernio.
+          your output — every plan ships direct to every network.
         </p>
 
         {/* Billing toggle */}
@@ -167,7 +167,7 @@ export function PricingPage() {
           />
           <Comparator
             title="Team & API"
-            body="Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Everyone publishes direct via Zernio."
+            body="Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Every plan ships direct to Instagram, LinkedIn, Facebook and TikTok."
             tone="violet"
           />
         </div>

@@ -543,7 +543,7 @@ function SurpriseContent() {
                                 })}
                                 className="shrink-0 h-7 px-2 rounded-full flex items-center justify-center gap-1 text-[11px]"
                                 style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
-                                aria-label="Publish" title="Publish or schedule via Zernio">
+                                aria-label="Publish" title="Publish now or schedule on your networks">
                                 <Send size={11} /> Publish
                               </button>
                             </>
@@ -559,7 +559,7 @@ function SurpriseContent() {
         </main>
       )}
 
-      {/* Publish / schedule modal powered by Zernio — any asset with a Send button opens it */}
+      {/* Publish / schedule modal — any asset with a Send button opens it */}
       <PublishModal
         asset={publishTarget || { defaultCaption: "" }}
         open={!!publishTarget}
