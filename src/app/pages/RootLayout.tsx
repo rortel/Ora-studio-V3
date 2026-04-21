@@ -23,7 +23,14 @@ export function RootLayout() {
   const isAdmin = location.pathname.startsWith("/admin");
   const isSubscribe = location.pathname.startsWith("/subscribe");
   const isVideoEditor = location.pathname === "/hub/video-editor";
-  const isAppView = isHub || isProfile || isAdmin || isSubscribe;
+  // The new 3-tab app shell (Surprise Me / Library / Edit) renders its own
+  // sticky <AppTabs> header, so we drop the left AppSidebar on those routes
+  // to avoid a duplicate brand + double nav.
+  const isThreeTabApp =
+    location.pathname === "/hub/surprise" ||
+    location.pathname.startsWith("/hub/library") ||
+    location.pathname.startsWith("/hub/editor");
+  const isAppView = (isHub && !isThreeTabApp) || isProfile || isAdmin || isSubscribe;
 
   // Only scroll to top on actual page navigation (pathname change), not on search param changes
   // Skip scroll-to-top for /hub paths to avoid disrupting Campaign Lab and other stateful views
@@ -47,8 +54,10 @@ export function RootLayout() {
         }}
       />
 
-      {isVideoEditor ? (
-        /* -- Full-screen view: no sidebar, no navbar -- */
+      {isVideoEditor || isThreeTabApp ? (
+        /* -- Full-screen 3-tab app view (Surprise / Library / Edit) or
+              the Video Editor: no sidebar, no marketing navbar. The page
+              owns its own <AppTabs /> header. -- */
         <Suspense fallback={<PageLoader />}>
           <Outlet />
         </Suspense>
