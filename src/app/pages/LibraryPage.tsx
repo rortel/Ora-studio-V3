@@ -109,12 +109,28 @@ function getTypeLabel(type: string) {
   }
 }
 
+/** Resolve the best preview URL for a library item, no matter the shape:
+ *  — campaigns (kind="campaign") surface their first asset's image/video
+ *  — single images / films / sounds use their dedicated field
+ *  — legacy items that only carry preview.imageUrl / videoUrl at the top
+ *    level (no explicit kind) still render. */
 function getAssetUrl(item: LibraryItem): string | null {
-  if (!item.preview) return null;
-  if (item.preview.kind === "image") return item.preview.imageUrl || null;
-  if (item.preview.kind === "film") return item.preview.videoUrl || null;
-  if (item.preview.kind === "sound") return item.preview.audioUrl || null;
-  return null;
+  const p: any = item?.preview;
+  if (!p) return null;
+  const kind = p.kind || item.type;
+  if (kind === "image")  return p.imageUrl || p.videoUrl || p.audioUrl || null;
+  if (kind === "film")   return p.videoUrl || p.imageUrl || null;
+  if (kind === "sound")  return p.audioUrl || null;
+  if (kind === "campaign") {
+    const assets = Array.isArray(p.assets) ? p.assets : [];
+    const firstImg = assets.find((a: any) => a?.imageUrl);
+    if (firstImg) return firstImg.imageUrl;
+    const firstVid = assets.find((a: any) => a?.videoUrl);
+    if (firstVid) return firstVid.videoUrl;
+    return p.packshotUrl || p.lifestyleUrl || p.videoUrl || null;
+  }
+  // Unknown kind — salvage any URL the preview carries.
+  return p.imageUrl || p.videoUrl || p.audioUrl || null;
 }
 
 /* Extract campaign data from library item (handles both old and new data shapes) */
@@ -1582,36 +1598,50 @@ function LibraryPageContent() {
                             </div>
                           );
                         })()}
-                        {url && item.type === "image" ? (
-                          <img src={url} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" />
-                        ) : url && item.type === "film" ? (
-                          <div className="relative">
-                            <video src={url} className="w-full object-cover" muted playsInline
-                              onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                              onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
-                          </div>
-                        ) : item.type === "sound" && item.preview?.audioUrl ? (
-                          <div className="w-full flex flex-col items-center justify-center gap-3 p-5">
-                            <Music size={22} style={{ color: typeColor, opacity: 0.5 }} />
-                            <audio src={item.preview.audioUrl} controls className="w-full" style={{ height: 32 }} onClick={(e) => e.stopPropagation()} />
-                            <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>Sound</span>
-                          </div>
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6">
-                            <Icon size={24} style={{ color: typeColor, opacity: 0.4 }} />
-                            <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
-                            {item.preview?.kind === "text" && (
-                              <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
-                                {(item.preview as any).excerpt?.slice(0, 200)}
-                              </p>
-                            )}
-                            {item.preview?.kind === "code" && (
-                              <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "var(--text-tertiary)", lineHeight: 1.4 }}>
-                                {(item.preview as any).snippet?.slice(0, 200)}
-                              </pre>
-                            )}
-                          </div>
-                        )}
+                        {(() => {
+                          // Media kind detection — prefer the URL extension over the item.type
+                          // so campaign packs, legacy items, etc. all preview correctly.
+                          const isVideoUrl = typeof url === "string" && /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+                          const isVideo = item.type === "film" || isVideoUrl;
+                          const isImage = !isVideo && !!url && item.type !== "sound";
+                          if (isImage) {
+                            return <img src={url!} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" />;
+                          }
+                          if (isVideo && url) {
+                            return (
+                              <div className="relative">
+                                <video src={url} className="w-full object-cover" muted playsInline
+                                  onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                                  onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
+                              </div>
+                            );
+                          }
+                          if (item.type === "sound" && item.preview?.audioUrl) {
+                            return (
+                              <div className="w-full flex flex-col items-center justify-center gap-3 p-5">
+                                <Music size={22} style={{ color: typeColor, opacity: 0.5 }} />
+                                <audio src={item.preview.audioUrl} controls className="w-full" style={{ height: 32 }} onClick={(e) => e.stopPropagation()} />
+                                <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>Sound</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6">
+                              <Icon size={24} style={{ color: typeColor, opacity: 0.4 }} />
+                              <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
+                              {item.preview?.kind === "text" && (
+                                <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                                  {(item.preview as any).excerpt?.slice(0, 200)}
+                                </p>
+                              )}
+                              {item.preview?.kind === "code" && (
+                                <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "var(--text-tertiary)", lineHeight: 1.4 }}>
+                                  {(item.preview as any).snippet?.slice(0, 200)}
+                                </pre>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {/* Hover overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform scale-75 group-hover:scale-100 transition-transform">
