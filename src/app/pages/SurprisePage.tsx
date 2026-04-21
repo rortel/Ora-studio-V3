@@ -67,6 +67,7 @@ interface Pack {
   campaignName: string; campaignSlug: string;
   creativeAngle: string; tone: string; keyMessage: string;
   creativityLevel: number; items: PackItem[];
+  savedCount: number;
 }
 
 export function SurprisePage() {
@@ -189,6 +190,7 @@ function SurpriseContent() {
         setStage("idle");
         return;
       }
+      const savedCount = Number(res.savedCount || 0);
       setPack({
         campaignName: String(res.campaignName || ""),
         campaignSlug: String(res.campaignSlug || "ora-campaign"),
@@ -197,8 +199,12 @@ function SurpriseContent() {
         keyMessage: String(res.keyMessage || ""),
         creativityLevel: Number(res.creativityLevel || creativity),
         items: res.items,
+        savedCount,
       });
       setStage("done");
+      if (savedCount === 0) {
+        toast.error("Generated but nothing saved to Library — check server logs.");
+      }
     } catch (err: any) {
       toast.error(String(err?.message || err));
       setStage("idle");
@@ -475,9 +481,11 @@ function SurpriseContent() {
                 {pack.keyMessage && <Tag label="Message" value={pack.keyMessage} />}
               </div>
               <div className="mt-4">
-                <Badge tone="butter">
+                <Badge tone={pack.savedCount > 0 ? "butter" : "coral"}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
-                  Saved to your library
+                  {pack.savedCount > 0
+                    ? `${pack.savedCount} item${pack.savedCount > 1 ? "s" : ""} saved to your library`
+                    : "Not saved — open Library to retry"}
                 </Badge>
               </div>
               <div className="mt-5 flex flex-wrap gap-2">

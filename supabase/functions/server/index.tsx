@@ -9340,28 +9340,38 @@ OUTPUT JSON:
     const okCount = items.filter((x) => x.status === "ok").length;
     console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, mediaType=${mediaType}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
 
-    // ── Persist the campaign as a Library item so the user can find it and
-    //    download a structured ZIP from there. No immediate ZIP anymore.
+    // ── Persist the campaign as Library items ──
+    //    We save two layers so Library is useful:
+    //    1) a "campaign" wrapper item that groups the whole run (used for
+    //       ZIP download, per-campaign view, etc.)
+    //    2) one individual Library item per asset (image/film) so every
+    //       shot is its own card in Library, downloadable / editable /
+    //       featurable independently.
+    //    The campaign save was previously the only save path, which meant
+    //    that when preview.assets resolved empty (e.g. all jobs failed) the
+    //    Library just showed a "CAMPAIGN-FILM" placeholder and the user
+    //    thought nothing had saved.
     let libraryItemId: string | null = null;
+    let savedCount = 0;
+    const libraryAssets = items
+      .filter((it) => it.status === "ok" && (it.imageUrl || it.videoUrl))
+      .map((it) => ({
+        platform: it.platform,
+        aspectRatio: it.aspectRatio,
+        label: it.label,
+        fileName: it.fileName,
+        videoFileName: it.videoFileName,
+        imageUrl: it.imageUrl,
+        videoUrl: it.videoUrl,
+        caption: it.caption,
+        twistElement: it.twistElement,
+        motion: it.motion,
+        provider: it.provider,
+        videoProvider: it.videoProvider,
+      }));
     try {
       libraryItemId = `surprise-${campaignSlug}-${Date.now()}`;
       const uniquePlatforms = [...new Set(items.map((it) => it.platform).filter(Boolean))];
-      const libraryAssets = items
-        .filter((it) => it.status === "ok" && (it.imageUrl || it.videoUrl))
-        .map((it) => ({
-          platform: it.platform,
-          aspectRatio: it.aspectRatio,
-          label: it.label,
-          fileName: it.fileName,
-          videoFileName: it.videoFileName,
-          imageUrl: it.imageUrl,
-          videoUrl: it.videoUrl,
-          caption: it.caption,
-          twistElement: it.twistElement,
-          motion: it.motion,
-          provider: it.provider,
-          videoProvider: it.videoProvider,
-        }));
       const libItem = {
         id: libraryItemId,
         userId: user.id,
@@ -9395,10 +9405,51 @@ OUTPUT JSON:
         },
       };
       await kv.set(`lib:${user.id}:${libraryItemId}`, libItem);
-      console.log(`[surprise-me] saved to library as ${libraryItemId} (${libraryAssets.length} assets)`);
+      savedCount += 1;
+      console.log(`[surprise-me] saved campaign wrapper ${libraryItemId} (${libraryAssets.length} assets)`);
     } catch (err) {
-      console.log(`[surprise-me] library save failed (non-fatal): ${err}`);
+      console.log(`[surprise-me] campaign wrapper save FAILED: ${err}`);
     }
+
+    // Per-asset saves — each image/film becomes its own Library card so the
+    // user sees individual shots (not just a campaign wrapper they have to
+    // drill into). Runs in parallel; failures are tracked but don't break
+    // the response.
+    const perAssetResults = await Promise.allSettled(libraryAssets.map(async (a, idx) => {
+      const hasVideo = !!a.videoUrl;
+      const singleId = `surprise-${campaignSlug}-${Date.now()}-${idx}-${hasVideo ? "film" : "img"}`;
+      const singleItem = {
+        id: singleId,
+        userId: user.id,
+        type: hasVideo ? "film" : "image",
+        title: `${campaignName} — ${a.label || a.platform}`,
+        prompt: String(concept.creativeAngle || ""),
+        campaignSlug,
+        campaignItemId: libraryItemId,
+        folderId: null,
+        savedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        platform: a.platform,
+        aspectRatio: a.aspectRatio,
+        preview: {
+          kind: hasVideo ? "film" : "image",
+          imageUrl: a.imageUrl || "",
+          videoUrl: a.videoUrl || "",
+          caption: a.caption || "",
+          platform: a.platform,
+          aspectRatio: a.aspectRatio,
+        },
+        model: { id: hasVideo ? "luma-ray-flash-2" : (a.provider || "luma-photon"), name: hasVideo ? "Luma Ray" : (a.provider || "Luma Photon"), provider: "luma", speed: "standard", quality: 90 },
+      };
+      await kv.set(`lib:${user.id}:${singleId}`, singleItem);
+      return singleId;
+    }));
+    const perAssetSaved = perAssetResults.filter((r) => r.status === "fulfilled").length;
+    savedCount += perAssetSaved;
+    const perAssetFailed = perAssetResults.length - perAssetSaved;
+    if (perAssetFailed > 0) console.log(`[surprise-me] per-asset save: ${perAssetSaved} ok, ${perAssetFailed} failed`);
+    else console.log(`[surprise-me] per-asset save: ${perAssetSaved} items`);
 
     return c.json({
       success: true,
@@ -9411,6 +9462,7 @@ OUTPUT JSON:
       seed,
       items,
       libraryItemId,
+      savedCount,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
