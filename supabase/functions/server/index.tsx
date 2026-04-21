@@ -381,7 +381,20 @@ async function requireAdmin(c: any): Promise<AuthUser> {
 // Contents/month = publications (Campaign Lab / Calendar diffusion)
 const PLAN_CONTENTS: Record<string, number> = { free: 0, starter: 15, pro: 60, business: 200 };
 // AI Credits = personal generation (Hub: text, image, video, audio)
-const PLAN_CREDITS: Record<string, number> = { free: 10, starter: 100, pro: 500, business: 2000 };
+// PLAN_CREDITS — one credit ≈ one image asset. Film pipeline costs 2 credits
+// (image first-frame + video). Creator / Studio / Agency are the public tiers.
+// Legacy names ("starter", "pro", "business", "free") stay mapped so existing
+// profiles keep working during rollover. "free" is now a trial-only value
+// reserved for admin use — no public self-serve free plan.
+const PLAN_CREDITS: Record<string, number> = {
+  free:     10,     // legacy, admin-only trial slot
+  creator:  60,
+  starter:  60,     // legacy alias = creator
+  studio:   200,
+  pro:      200,    // legacy alias = studio
+  agency:   1000,
+  business: 1000,   // legacy alias = agency
+};
 // AI Models accessible per plan
 const PLAN_MODELS: Record<string, number> = { free: 3, starter: 10, pro: 25, business: 99 };
 // Products/services per plan
@@ -12830,8 +12843,27 @@ app.post("/vault", async (c) => {
       }
       return c.json({ success: true, vault: vault || null });
     }
-    // Otherwise it's a write
+    // Otherwise it's a write.
+    // Brand Vault is a paid feature — gated to Studio / Agency / admin plans.
+    // Creator and unknown plans get a 402 with a friendly error the UI turns
+    // into an upgrade prompt.
     const user = await requireAuth(c);
+    try {
+      const profile = await kv.get(`user:${user.id}`);
+      const plan = String(profile?.plan || "free").toLowerCase();
+      const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+      const vaultPlans = new Set(["studio", "pro", "agency", "business"]); // include legacy aliases
+      if (!isAdmin && !vaultPlans.has(plan)) {
+        return c.json({
+          success: false,
+          error: "Brand Vault is a Studio feature.",
+          requiredPlan: "studio",
+          code: "plan_required",
+        }, 402);
+      }
+    } catch (err) {
+      console.log(`[vault/save] plan check skipped: ${err}`);
+    }
     const existing = await kv.get(`vault:${user.id}`) || {};
     const merged = { ...existing, ...data, userId: user.id, updatedAt: new Date().toISOString() };
     // Keep brandName and company_name in sync — whichever is newer wins

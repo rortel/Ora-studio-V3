@@ -1,430 +1,298 @@
 import { useState } from "react";
-import { motion } from "motion/react";
 import { Link } from "react-router";
-import { Check, ArrowRight, ChevronDown } from "lucide-react";
-import { useI18n } from "../lib/i18n";
+import { motion } from "motion/react";
+import { ArrowRight, Check } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
-
-/* ═══════════════════════════════════════════════════════════
-   PRICING — 4 tiers: Scan (free) / Creator €19 / Pro €49 / Agency €199
-   ═══════════════════════════════════════════════════════════ */
-
-const BLUE = "#1D4ED8";
-const BLACK = "#0A0A0A";
+import { Button } from "../components/ora/Button";
+import { Badge } from "../components/ora/Badge";
+import { Surface } from "../components/ora/Surface";
+import { bagel, COLORS, type Tone } from "../components/ora/tokens";
 
 type Billing = "monthly" | "yearly";
 
+interface PlanDef {
+  code: "creator" | "studio" | "agency";
+  name: string;
+  tone: Tone;
+  priceMonthly: number;
+  priceYearly: number;        // per-month when paid yearly
+  assets: number;
+  tagline: string;
+  features: string[];
+  highlight?: boolean;
+}
+
+const PLANS: PlanDef[] = [
+  {
+    code: "creator",
+    name: "Creator",
+    tone: "warm",
+    priceMonthly: 19,
+    priceYearly: 15,
+    assets: 60,
+    tagline: "Solo creators shipping brand content weekly.",
+    features: [
+      "60 assets / month",
+      "Images + 5s films",
+      "AI-written captions per platform",
+      "Instagram · LinkedIn · Facebook · TikTok",
+      "Publish + schedule direct via Zernio",
+      "Library + HD downloads (ZIP)",
+      "Editor to add logo, text, overlays",
+    ],
+  },
+  {
+    code: "studio",
+    name: "Studio",
+    tone: "butter",
+    priceMonthly: 49,
+    priceYearly: 39,
+    assets: 200,
+    tagline: "Brand-locked creative at real production volume.",
+    highlight: true,
+    features: [
+      "200 assets / month",
+      "Brand Vault — palette, tone, photo style, audience, voice",
+      "Paste your site URL, Ora extracts your brand",
+      "Logo + image bank baked into every shot",
+      "Every film + image, every platform",
+      "Publish + schedule direct via Zernio",
+      "Priority generation queue",
+    ],
+  },
+  {
+    code: "agency",
+    name: "Agency",
+    tone: "violet",
+    priceMonthly: 199,
+    priceYearly: 159,
+    assets: 1000,
+    tagline: "Multi-brand studios and in-house creative teams.",
+    features: [
+      "1 000 assets / month",
+      "Multi-brand Brand Vault (up to 5 brands)",
+      "3 team seats",
+      "Publish + schedule direct via Zernio",
+      "API access",
+      "White-label ZIP delivery",
+      "Priority support",
+    ],
+  },
+];
+
 export function PricingPage() {
-  const { locale } = useI18n();
   const { user } = useAuth();
-  const isFr = locale === "fr";
   const [billing, setBilling] = useState<Billing>("monthly");
 
-  const plans = buildPlans(isFr, billing);
-
   return (
-    <div style={{ background: "#FFFFFF", color: BLACK }}>
-      {/* HEADER */}
-      <section className="max-w-6xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-10 text-center">
+    <div style={{ background: COLORS.cream, color: COLORS.ink }}>
+      {/* ═══ Hero ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pt-24 md:pt-32 pb-10 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="inline-flex mb-7"
+        >
+          <Badge tone="cream">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
+            one price per brand · all platforms included
+          </Badge>
+        </motion.div>
+
         <motion.h1
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            fontSize: "clamp(2.25rem, 4.5vw, 3.75rem)",
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            lineHeight: 1.05,
-          }}
-          className="mb-5"
+          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="leading-[0.95] mb-6"
+          style={{ ...bagel, fontSize: "clamp(56px, 9vw, 128px)" }}
         >
-          {isFr ? "Des prix simples.\nDes engagements simples." : "Simple pricing.\nSimple terms."}
+          Pricing, <span style={{ color: COLORS.coral }}>simple.</span>
         </motion.h1>
-        <p
-          className="max-w-xl mx-auto mb-8"
-          style={{ fontSize: "1.1rem", color: "#52525B", lineHeight: 1.5 }}
-        >
-          {isFr
-            ? "Commence gratuit. Passe à un plan payant quand tu veux. Annule à tout moment."
-            : "Start free. Upgrade when you're ready. Cancel anytime."}
+
+        <p className="max-w-[540px] mx-auto text-[17px] md:text-[19px]" style={{ color: COLORS.muted }}>
+          One click. Full pack. Every platform. Pick the volume that matches
+          your output — every plan publishes direct via Zernio.
         </p>
 
         {/* Billing toggle */}
-        <div
-          className="inline-flex items-center p-1 rounded-full"
-          style={{ background: "#F4F4F5" }}
-        >
-          {[
-            { k: "monthly" as Billing, label: isFr ? "Mensuel" : "Monthly" },
-            { k: "yearly" as Billing, label: isFr ? "Annuel" : "Yearly", badge: "−20%" },
-          ].map((opt) => (
-            <button
-              key={opt.k}
-              onClick={() => setBilling(opt.k)}
-              className="px-5 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2"
-              style={{
-                background: billing === opt.k ? "#FFFFFF" : "transparent",
-                color: billing === opt.k ? BLACK : "#71717A",
-                boxShadow: billing === opt.k ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-              }}
-            >
-              {opt.label}
-              {opt.badge && (
-                <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                  style={{ background: billing === opt.k ? "#DCFCE7" : "#E4E4E7", color: "#15803D" }}
-                >
-                  {opt.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* PLANS */}
-      <section className="max-w-6xl mx-auto px-5 md:px-8 pb-16">
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {plans.map((p, i) => (
-            <motion.div
-              key={p.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05, duration: 0.3 }}
-              className="relative p-7 rounded-3xl flex flex-col"
-              style={{
-                background: p.highlight ? BLACK : "#FFFFFF",
-                color: p.highlight ? "#FFFFFF" : BLACK,
-                border: p.highlight ? "none" : "1px solid #E4E4E7",
-                boxShadow: p.highlight ? "0 20px 40px rgba(0,0,0,0.12)" : "none",
-              }}
-            >
-              {p.badge && (
-                <div
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold"
-                  style={{ background: BLUE, color: "#FFFFFF" }}
-                >
-                  {p.badge}
-                </div>
-              )}
-
-              <div className="mb-6">
-                <h3 className="text-xl font-bold mb-1">{p.name}</h3>
-                <p className="text-sm" style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}>
-                  {p.sub}
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-4xl font-black tracking-tight">{p.price}</span>
-                  {p.suffix && (
-                    <span
-                      className="text-sm"
-                      style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}
-                    >
-                      {p.suffix}
-                    </span>
-                  )}
-                </div>
-                {p.priceNote && (
-                  <p className="text-xs mt-1" style={{ color: p.highlight ? "#A1A1AA" : "#71717A" }}>
-                    {p.priceNote}
-                  </p>
-                )}
-              </div>
-
-              <Link
-                to={p.ctaHref}
-                className="block text-center py-3 rounded-full text-sm font-semibold mb-6 transition-opacity hover:opacity-90"
+        <div className="mt-10 inline-flex items-center p-1 rounded-full" style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}` }}>
+          {(["monthly", "yearly"] as Billing[]).map((b) => {
+            const on = billing === b;
+            return (
+              <button
+                key={b}
+                onClick={() => setBilling(b)}
+                className="inline-flex items-center gap-1.5 px-4 h-9 rounded-full text-[13px] transition"
                 style={{
-                  background: p.highlight ? "#FFFFFF" : p.id === "scan" ? "#F4F4F5" : BLUE,
-                  color: p.highlight ? BLACK : p.id === "scan" ? BLACK : "#FFFFFF",
+                  background: on ? COLORS.ink : "transparent",
+                  color: on ? "#FFFFFF" : COLORS.ink,
+                  fontWeight: 600,
                 }}
               >
-                {p.cta}
-              </Link>
-
-              <ul className="space-y-2.5 text-sm flex-1">
-                {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5">
-                    <Check
-                      size={15}
-                      style={{ color: p.highlight ? "#FFFFFF" : BLUE }}
-                      className="mt-0.5 shrink-0"
-                    />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Tiny disclaimer */}
-        <p className="text-center text-xs mt-10" style={{ color: "#71717A" }}>
-          {isFr
-            ? "Prix HT. TVA appliquée selon pays. Paiement par carte, annulation à tout moment."
-            : "Excl. VAT. Card payment. Cancel anytime."}
-        </p>
-      </section>
-
-      {/* COMPARE TABLE */}
-      <section className="max-w-5xl mx-auto px-5 md:px-8 py-16">
-        <h2
-          className="text-center mb-10"
-          style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}
-        >
-          {isFr ? "Comparer les fonctionnalités" : "Compare features"}
-        </h2>
-
-        <div className="overflow-x-auto -mx-5 md:mx-0">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide" style={{ color: "#71717A" }}>
-                <th className="py-3 pl-5 md:pl-0 font-semibold"></th>
-                {plans.map((p) => (
-                  <th key={p.id} className="py-3 px-4 text-center font-bold" style={{ color: BLACK }}>
-                    {p.name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              {buildCompareRows(isFr).map((row, i) => (
-                <tr key={i} className="border-t" style={{ borderColor: "#E4E4E7" }}>
-                  <td className="py-3.5 pl-5 md:pl-0 font-medium">{row.label}</td>
-                  {row.values.map((v, j) => (
-                    <td key={j} className="py-3.5 px-4 text-center" style={{ color: v === "—" ? "#A1A1AA" : BLACK }}>
-                      {v === true ? <Check size={16} style={{ color: BLUE, margin: "0 auto" }} /> : v}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                {b === "monthly" ? "Monthly" : "Yearly"}
+                {b === "yearly" && <span className="text-[10.5px] opacity-70">−20%</span>}
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      {/* FAQ */}
-      <section className="max-w-3xl mx-auto px-5 md:px-8 py-16">
-        <h2
-          className="text-center mb-10"
-          style={{ fontSize: "clamp(1.5rem, 3vw, 2rem)", fontWeight: 800, letterSpacing: "-0.02em" }}
-        >
-          {isFr ? "Questions sur les offres" : "Pricing FAQ"}
-        </h2>
-        <div className="space-y-2">
-          {(isFr
-            ? [
-                { q: "Que se passe-t-il après mes 5 scans gratuits ?", a: "Tu peux attendre le mois suivant (compteur mensuel) ou passer au plan Creator pour scanner en illimité." },
-                { q: "Puis-je changer de plan à tout moment ?", a: "Oui. Upgrade/downgrade immédiat, prorata automatique." },
-                { q: "Le plan annuel, c'est vraiment −20 % ?", a: "Oui, 10 mois facturés au lieu de 12. Remboursable au prorata si tu arrêtes." },
-                { q: "Vous faites des tarifs entreprise ?", a: "Pour les équipes de +5 personnes ou les besoins custom (SSO, audit log signé, SLA), contacte-nous via la page À propos." },
-                { q: "Les scans sont-ils vraiment illimités sur Creator ?", a: "Oui — pas de quota caché. Fair use : on coupe si on détecte un bot ou usage abusif (>1000/jour)." },
-              ]
-            : [
-                { q: "What happens after my 5 free scans?", a: "Wait until next month (monthly counter) or upgrade to Creator for unlimited scans." },
-                { q: "Can I change plans anytime?", a: "Yes. Immediate upgrade/downgrade, automatic proration." },
-                { q: "Is the yearly plan really −20%?", a: "Yes — 10 months billed instead of 12. Prorated refund if you cancel." },
-                { q: "Do you offer enterprise pricing?", a: "For teams >5 or custom needs (SSO, signed audit log, SLA), contact us via the About page." },
-                { q: "Are scans really unlimited on Creator?", a: "Yes — no hidden quota. Fair use: we throttle bots and abusive usage (>1000/day)." },
-              ]
-          ).map((f, i) => (
-            <FaqItem key={i} q={f.q} a={f.a} />
+      {/* ═══ Plans ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-20">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {PLANS.map((p, i) => (
+            <PlanCard
+              key={p.code}
+              plan={p}
+              billing={billing}
+              authed={!!user}
+              index={i}
+            />
           ))}
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="max-w-6xl mx-auto px-5 md:px-8 py-16">
-        <div
-          className="rounded-3xl p-10 md:p-14 text-center"
-          style={{ background: "#F4F4F5" }}
-        >
-          <h2
-            style={{ fontSize: "clamp(1.5rem, 3vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
-            className="mb-3"
-          >
-            {isFr ? "Pas sûr du bon plan ?" : "Not sure which plan?"}
+      {/* ═══ Comparator — tiny, editorial, no checkmarks blob ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-24">
+        <div className="text-[13px] uppercase tracking-[0.18em] mb-6 text-center" style={{ color: COLORS.subtle, fontWeight: 600 }}>
+          What differs
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Comparator
+            title="Brand Vault"
+            body="Studio and Agency lock your palette, tone, photo style, voice and image bank into every shot. Creator works from a text brief."
+            tone="butter"
+          />
+          <Comparator
+            title="Volume"
+            body="60 / 200 / 1 000 assets a month. Each asset = one image + its paired 5s film when you pick the film pipeline."
+            tone="warm"
+          />
+          <Comparator
+            title="Team & API"
+            body="Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Everyone publishes direct via Zernio."
+            tone="violet"
+          />
+        </div>
+      </section>
+
+      {/* ═══ Final CTA ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-24">
+        <Surface tone="ink" pad="lg" radius="2xl" className="md:p-16 text-center">
+          <div className="text-[13px] mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>Ready?</div>
+          <h2 className="leading-[0.95] mb-6" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
+            Start with <span style={{ color: COLORS.butter }}>Studio.</span>
           </h2>
-          <p className="mb-6 text-base" style={{ color: "#52525B" }}>
-            {isFr ? "Commence en gratuit, tu ajustes plus tard." : "Start free, adjust later."}
+          <p className="text-[16px] md:text-[18px] max-w-xl mx-auto mb-8" style={{ color: "rgba(255,255,255,0.72)" }}>
+            If you're serious about your brand, Studio is the tier most teams
+            land on. Swap plans anytime.
           </p>
-          <Link
-            to={user ? "/hub/analyze" : "/login"}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all hover:opacity-90"
-            style={{ background: BLACK, color: "#FFFFFF" }}
-          >
-            {isFr ? "Scanner gratuitement" : "Scan for free"} <ArrowRight size={16} />
+          <Link to={user ? "/subscribe?plan=studio" : "/login?next=/subscribe?plan=studio"}>
+            <Button variant="accent" size="lg">
+              Get Studio — €49/mo <ArrowRight size={16} />
+            </Button>
           </Link>
-        </div>
+          <div className="text-[13px] mt-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+            Cancel anytime · No setup fees
+          </div>
+        </Surface>
       </section>
-
     </div>
   );
 }
 
-/* ─── Plans config ─── */
-interface Plan {
-  id: "scan" | "creator" | "pro" | "agency";
-  name: string;
-  sub: string;
-  price: string;
-  suffix?: string;
-  priceNote?: string;
-  badge?: string;
-  highlight?: boolean;
-  cta: string;
-  ctaHref: string;
-  features: string[];
-}
+/* ═══ Plan card — Surface-based, tone per tier ═══ */
+function PlanCard({ plan, billing, authed, index }: { plan: PlanDef; billing: Billing; authed: boolean; index: number }) {
+  const price = billing === "monthly" ? plan.priceMonthly : plan.priceYearly;
+  const href = authed
+    ? `/subscribe?plan=${plan.code}&billing=${billing}`
+    : `/login?next=/subscribe?plan=${plan.code}&billing=${billing}`;
+  const isLight = plan.tone === "warm" || plan.tone === "butter";
+  const mutedOnTone = isLight ? "rgba(17,17,17,0.65)" : "rgba(255,255,255,0.72)";
+  const checkBg = isLight ? COLORS.ink : "#FFFFFF";
+  const checkFg = isLight ? "#FFFFFF" : COLORS.ink;
 
-function buildPlans(isFr: boolean, billing: Billing): Plan[] {
-  const priceYearly = (monthly: number) => Math.round(monthly * 0.8); // −20%
-  const m = (n: number) => (billing === "yearly" ? priceYearly(n) : n);
-  const suffix = isFr ? (billing === "yearly" ? "/mois, facturé annuellement" : "/mois") : billing === "yearly" ? "/mo, billed yearly" : "/mo";
-
-  return [
-    {
-      id: "scan",
-      name: "Scan",
-      sub: isFr ? "Pour tester" : "To test it out",
-      price: "€0",
-      cta: isFr ? "Commencer" : "Start",
-      ctaHref: "/login",
-      features: isFr
-        ? [
-            "5 scans / mois",
-            "Verdict (publier / retoucher / bloquer)",
-            "Conseil principal",
-            "Pas de compte requis",
-          ]
-        : [
-            "5 scans / month",
-            "Verdict (publish / revise / block)",
-            "Top recommendation",
-            "No account required",
-          ],
-    },
-    {
-      id: "creator",
-      name: "Creator",
-      sub: isFr ? "Freelances & créateurs" : "Freelancers & creators",
-      price: `€${m(19)}`,
-      suffix,
-      badge: isFr ? "Populaire" : "Popular",
-      highlight: true,
-      cta: isFr ? "Choisir Creator" : "Choose Creator",
-      ctaHref: "/subscribe?plan=creator",
-      features: isFr
-        ? [
-            "Scans illimités",
-            "Régénération 1-clic",
-            "Toutes les recommandations",
-            "Historique 30 jours",
-            "Export PDF basique",
-          ]
-        : [
-            "Unlimited scans",
-            "One-click regeneration",
-            "All recommendations",
-            "30-day history",
-            "Basic PDF export",
-          ],
-    },
-    {
-      id: "pro",
-      name: "Pro",
-      sub: isFr ? "Créateurs de contenu pro" : "Pro content teams",
-      price: `€${m(49)}`,
-      suffix,
-      cta: isFr ? "Choisir Pro" : "Choose Pro",
-      ctaHref: "/subscribe?plan=pro",
-      features: isFr
-        ? [
-            "Tout Creator, plus :",
-            "Brand Vault complet (logo, palette, ton)",
-            "Briefs & objectifs par scan",
-            "Rapports PDF brandés",
-            "Historique illimité",
-            "Priorité sur les régénérations",
-          ]
-        : [
-            "Everything in Creator, plus:",
-            "Full Brand Vault (logo, palette, tone)",
-            "Briefs & objectives per scan",
-            "Branded PDF reports",
-            "Unlimited history",
-            "Priority regeneration queue",
-          ],
-    },
-    {
-      id: "agency",
-      name: "Agency",
-      sub: isFr ? "Agences & équipes" : "Agencies & teams",
-      price: `€${m(199)}`,
-      suffix,
-      cta: isFr ? "Choisir Agency" : "Choose Agency",
-      ctaHref: "/subscribe?plan=agency",
-      features: isFr
-        ? [
-            "Tout Pro, plus :",
-            "Multi-clients & multi-vaults",
-            "5 sièges équipe inclus",
-            "Audit log horodaté",
-            "Export batch & API",
-            "Support prioritaire",
-          ]
-        : [
-            "Everything in Pro, plus:",
-            "Multi-client & multi-vault",
-            "5 team seats included",
-            "Timestamped audit log",
-            "Batch export & API",
-            "Priority support",
-          ],
-    },
-  ];
-}
-
-function buildCompareRows(isFr: boolean): { label: string; values: (string | boolean)[] }[] {
-  return [
-    { label: isFr ? "Scans / mois" : "Scans / month", values: ["5", isFr ? "Illimité" : "Unlimited", isFr ? "Illimité" : "Unlimited", isFr ? "Illimité" : "Unlimited"] },
-    { label: isFr ? "Verdict 3 KPIs" : "3-KPI verdict", values: [true, true, true, true] },
-    { label: isFr ? "Régénération 1-clic" : "One-click regeneration", values: ["—", true, true, true] },
-    { label: isFr ? "Historique" : "History", values: ["—", "30j", "∞", "∞"] },
-    { label: "Brand Vault", values: ["—", "—", true, true] },
-    { label: isFr ? "Briefs & objectifs" : "Briefs & objectives", values: ["—", "—", true, true] },
-    { label: isFr ? "Rapports PDF" : "PDF reports", values: ["—", isFr ? "Basique" : "Basic", isFr ? "Brandés" : "Branded", isFr ? "Brandés" : "Branded"] },
-    { label: isFr ? "Multi-clients" : "Multi-client", values: ["—", "—", "—", true] },
-    { label: isFr ? "Sièges équipe" : "Team seats", values: ["1", "1", "1", "5"] },
-    { label: isFr ? "Audit log" : "Audit log", values: ["—", "—", "—", true] },
-    { label: "API", values: ["—", "—", "—", true] },
-  ];
-}
-
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div
-      className="rounded-xl"
-      style={{ background: open ? "#FAFAFA" : "#FFFFFF", border: "1px solid #E4E4E7" }}
+    <motion.div
+      initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: index * 0.08 }}
+      className="relative"
     >
-      <button
-        className="w-full flex items-center justify-between gap-4 p-5 text-left"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="font-semibold text-sm md:text-base">{q}</span>
-        <ChevronDown
-          size={18}
-          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}
-        />
-      </button>
-      {open && (
-        <div className="px-5 pb-5 text-sm leading-relaxed" style={{ color: "#52525B" }}>
-          {a}
+      {plan.highlight && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+          <Badge tone="coral">Most teams pick this</Badge>
         </div>
       )}
-    </div>
+      <Surface tone={plan.tone} pad="lg" radius="2xl" className="md:p-10 h-full flex flex-col">
+        {/* Head */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-2" style={{ opacity: 0.75 }}>
+              Plan
+            </div>
+            <h3 className="leading-none" style={{ ...bagel, fontSize: "clamp(36px, 4.2vw, 56px)" }}>
+              {plan.name}
+            </h3>
+          </div>
+          <div className="text-right">
+            <div className="flex items-baseline gap-1">
+              <span style={{ ...bagel, fontSize: "clamp(36px, 4.2vw, 56px)", lineHeight: 1 }}>€{price}</span>
+              <span className="text-[13px]" style={{ opacity: 0.7 }}>/mo</span>
+            </div>
+            {billing === "yearly" && (
+              <div className="text-[11.5px] mt-1" style={{ opacity: 0.7 }}>billed yearly</div>
+            )}
+          </div>
+        </div>
+
+        <p className="text-[15px] leading-relaxed mb-5" style={{ color: mutedOnTone }}>
+          {plan.tagline}
+        </p>
+
+        <div className="flex items-baseline gap-1 mb-6">
+          <span style={{ ...bagel, fontSize: "clamp(28px, 3.2vw, 42px)", lineHeight: 1 }}>{plan.assets}</span>
+          <span className="text-[13.5px]" style={{ opacity: 0.7 }}>assets / month</span>
+        </div>
+
+        {/* Features */}
+        <ul className="flex flex-col gap-2.5 text-[14px] mb-8">
+          {plan.features.map((f, i) => (
+            <li key={i} className="flex items-start gap-2.5">
+              <span
+                className="shrink-0 w-4 h-4 rounded-full mt-[2px] flex items-center justify-center"
+                style={{ background: checkBg, color: checkFg }}
+              >
+                <Check size={10} strokeWidth={3} />
+              </span>
+              <span>{f}</span>
+            </li>
+          ))}
+        </ul>
+
+        {/* CTA */}
+        <div className="mt-auto">
+          <Link to={href}>
+            <Button
+              variant={plan.highlight ? "accent" : isLight ? "ink" : "cream"}
+              size="lg"
+              className="w-full justify-center"
+            >
+              Start {plan.name} <ArrowRight size={16} />
+            </Button>
+          </Link>
+        </div>
+      </Surface>
+    </motion.div>
+  );
+}
+
+/* ═══ Small differentiator block — NOT a card, just tinted surface with copy ═══ */
+function Comparator({ title, body, tone }: { title: string; body: string; tone: Tone }) {
+  return (
+    <Surface tone={tone} pad="lg" radius="2xl" className="md:p-8">
+      <h4 className="leading-none mb-3" style={{ ...bagel, fontSize: "clamp(26px, 3vw, 36px)" }}>
+        {title}
+      </h4>
+      <p className="text-[14.5px] leading-relaxed" style={{ opacity: 0.8 }}>
+        {body}
+      </p>
+    </Surface>
   );
 }
