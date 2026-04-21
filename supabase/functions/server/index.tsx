@@ -8887,6 +8887,10 @@ app.post("/analyze/surprise-me", async (c) => {
       : [];
     const mediaType  = ["image", "film", "carousel"].includes(String(body?.mediaType)) ? String(body.mediaType) : "image";
     const withCaption = body?.withCaption !== false;
+    const videoDuration = (() => {
+      const d = String(body?.videoDuration || "5s");
+      return ["3s", "5s", "8s"].includes(d) ? d : "5s";
+    })();
     const context    = (body?.context && typeof body.context === "object") ? body.context : {};
     const ctxWho     = String(context?.who || "").trim();
     const ctxWhat    = String(context?.what || "").trim();
@@ -8894,8 +8898,11 @@ app.post("/analyze/surprise-me", async (c) => {
     const fallbackBrief = [ctxWhat && `about: ${ctxWhat}`, ctxWho && `for: ${ctxWho}`, ctxWhy && `because: ${ctxWhy}`].filter(Boolean).join(" · ");
     const brief = [String(body?.brief || "").trim(), fallbackBrief].filter(Boolean).join(". ");
 
-    if (mediaType !== "image") {
-      return c.json({ success: false, error: `${mediaType} generation is not available yet — image only for now.` }, 400);
+    const wantsFilm = mediaType === "film";
+
+    // Carousel isn't a pipeline yet — only image and film (image+film pair) are supported.
+    if (mediaType === "carousel") {
+      return c.json({ success: false, error: "carousel generation is not available yet." }, 400);
     }
 
     // ── Creativity presets ──
@@ -8999,7 +9006,8 @@ OUTPUT JSON:
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."${withCaption ? `,
+      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."${wantsFilm ? `,
+      "motion": "short motion brief in ENGLISH describing how THIS shot moves when animated — camera move (slow push-in, orbit, rack focus, dolly-zoom), subject motion (wind through hair, steam rising, particles drifting), and atmosphere (lightleak sweep, subtle parallax, flicker). 10-30 words. The product itself must stay identical to the first frame — only the world around it moves."` : ""}${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
@@ -9048,7 +9056,8 @@ OUTPUT JSON:
     // Build per-shot jobs mapped to their platform aspectRatio
     type Job = {
       platform: string; aspectRatio: string; label: string; scene: string; subject: string;
-      twistElement: string; promptText: string; caption: string; fileName: string;
+      twistElement: string; promptText: string; caption: string; fileName: string; videoFileName: string;
+      motion: string;
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -9062,10 +9071,13 @@ OUTPUT JSON:
       const twistElement = String(sh?.twistElement || "").trim();
       const promptText   = String(sh?.promptText || "").trim();
       const caption      = withCaption ? String(sh?.caption || "").trim() : "";
+      const motion       = wantsFilm ? String(sh?.motion || "").trim() : "";
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
-      const fileName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}.jpg`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName });
+      const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}`;
+      const fileName      = `${baseName}.jpg`;
+      const videoFileName = `${baseName}.mp4`;
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -9094,8 +9106,10 @@ OUTPUT JSON:
     const CONCURRENCY = 3;
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
-      twistElement?: string; caption?: string;
-      status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
+      videoFileName?: string;
+      twistElement?: string; caption?: string; motion?: string;
+      status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
+      error?: string; provider?: string; videoProvider?: string;
     }> = [];
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const batch = jobs.slice(i, i + CONCURRENCY);
@@ -9143,8 +9157,103 @@ OUTPUT JSON:
       items.push(...batchRes);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // FILM PASS — when mediaType=film, animate each successful image via
+    // Luma Ray (image-to-video). The existing image is the FIRST FRAME,
+    // so the product never morphs — only the world around it moves.
+    // ══════════════════════════════════════════════════════════════════
+    if (wantsFilm) {
+      const filmStart = Date.now();
+      const arRayMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
+
+      const persistVideoOne = async (sourceUrl: string, fileName: string, platform: string): Promise<string | null> => {
+        try {
+          const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(90_000) });
+          if (!dl.ok) return null;
+          const ct  = dl.headers.get("content-type") || "video/mp4";
+          const buf = new Uint8Array(await dl.arrayBuffer());
+          const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
+          const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
+          if (upErr) { console.log(`[surprise-me:film] upload err: ${upErr.message}`); return null; }
+          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+          return data?.signedUrl || null;
+        } catch (err) { console.log(`[surprise-me:film] persist err: ${err}`); return null; }
+      };
+
+      const runRayVideo = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string })
+        : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
+        try {
+          const motion = opts.motion || "slow cinematic push-in, subtle parallax, gentle light breathing";
+          const prompt = `${motion}. The subject stays photo-real and identical to the first frame; only the surrounding world moves. Scene: ${opts.scene.slice(0, 240)}.`;
+          const body: any = {
+            prompt,
+            model: "ray-flash-2",
+            aspect_ratio: arRayMap[opts.aspectRatio] || "1:1",
+            duration: opts.duration,
+            loop: false,
+            keyframes: { frame0: { type: "image", url: opts.imageUrl } },
+          };
+          const startRes = await fetch(`${LUMA_BASE}/generations`, {
+            method: "POST", headers: lumaHeaders(), body: JSON.stringify(body),
+            signal: AbortSignal.timeout(45_000),
+          });
+          if (!startRes.ok) {
+            const errText = await startRes.text();
+            return { ok: false, error: `Luma Ray ${startRes.status}: ${errText.slice(0, 180)}` };
+          }
+          const g = await startRes.json();
+          if (!g.id) return { ok: false, error: "Luma Ray: no generation id" };
+          const pollStart = Date.now();
+          while (Date.now() - pollStart < 240_000) { // 4 min cap per clip
+            try {
+              const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
+              if (pr.ok) {
+                const d = await pr.json();
+                if (d.state === "completed") return { ok: true, url: d.assets?.video || "", provider: "luma/ray-flash-2" };
+                if (d.state === "failed") return { ok: false, error: d.failure_reason || "Ray failed" };
+              }
+            } catch {}
+            await new Promise((r) => setTimeout(r, 3_000));
+          }
+          return { ok: false, error: "Luma Ray timed out (>4 min)" };
+        } catch (err: any) {
+          return { ok: false, error: String(err?.message || err) };
+        }
+      };
+
+      // Parallel film generation — concurrency 2 because each clip is heavy.
+      const filmable = items
+        .map((it, idx) => ({ it, idx, job: jobs.find((j) => j.fileName === it.fileName) }))
+        .filter((x) => x.it.status === "ok" && x.it.imageUrl && x.job);
+      const FILM_CONCURRENCY = 2;
+      for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
+        const slice = filmable.slice(i, i + FILM_CONCURRENCY);
+        await Promise.all(slice.map(async ({ it, idx, job }) => {
+          const r = await runRayVideo({
+            imageUrl: it.imageUrl!,
+            motion: job!.motion,
+            aspectRatio: it.aspectRatio,
+            duration: videoDuration,
+            scene: job!.scene,
+          });
+          items[idx].motion = job!.motion;
+          items[idx].videoFileName = job!.videoFileName;
+          if (r.ok && r.url) {
+            const persisted = await persistVideoOne(r.url, job!.videoFileName, it.platform);
+            items[idx].videoUrl = persisted || r.url;
+            items[idx].videoProvider = r.provider;
+          } else {
+            // Keep the image success but record the video error alongside.
+            (items[idx] as any).videoError = (r as any).error;
+          }
+        }));
+      }
+      const filmCount = items.filter((x) => x.videoUrl).length;
+      console.log(`[surprise-me:film] ${filmCount}/${filmable.length} films done in ${Date.now() - filmStart}ms (duration=${videoDuration})`);
+    }
+
     const okCount = items.filter((x) => x.status === "ok").length;
-    console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
+    console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, mediaType=${mediaType}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
 
     return c.json({
       success: true,
@@ -9153,6 +9262,7 @@ OUTPUT JSON:
       tone:          String(concept.tone || ""),
       keyMessage:    String(concept.keyMessage || ""),
       creativityLevel: creativity,
+      mediaType, videoDuration,
       seed,
       items,
       tookMs: Date.now() - t0,
