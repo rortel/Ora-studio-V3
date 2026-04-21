@@ -3,6 +3,20 @@ import { useNavigate, Link } from "react-router";
 import { useAuth, type Feature, requiredPlan } from "../lib/auth-context";
 import { Lock, ArrowRight, Loader2 } from "lucide-react";
 import { PulseIcon } from "./PulseMotif";
+import { bagel, COLORS } from "./ora/tokens";
+import { Button } from "./ora/Button";
+import { Badge } from "./ora/Badge";
+
+/** Internal plan code → public-facing tier name shown in CTAs / upgrade
+ *  screens. The server and the code use creator/studio/agency as
+ *  aliases for starter/pro/business; we always surface the public
+ *  names to the user. */
+const PUBLIC_PLAN_NAME: Record<string, string> = {
+  free: "Free",
+  starter: "Creator",
+  pro: "Studio",
+  business: "Agency",
+};
 
 interface RouteGuardProps {
   children: React.ReactNode;
@@ -96,33 +110,36 @@ function UpgradeRequired({ feature, minPlan }: { feature: Feature; minPlan: stri
     analytics: "Analytics",
     campaignLab: "Campaign Lab",
   };
+  const publicPlan = PUBLIC_PLAN_NAME[minPlan] || minPlan;
+  const featureLabel = featureLabels[feature] || feature;
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="text-center max-w-[440px]">
-        <div className="flex justify-center mb-5">
-          <PulseIcon size={48} />
+    <div className="min-h-[70vh] flex items-center justify-center px-6" style={{ background: COLORS.cream }}>
+      <div className="text-center max-w-[540px]">
+        <div className="inline-flex mb-6">
+          <Badge tone="butter">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.ink }} />
+            {publicPlan} only
+          </Badge>
         </div>
-        <h2 style={{ fontSize: "22px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)", marginBottom: "8px" }}>
-          {featureLabels[feature] || feature} requires {minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}
+        <h2 className="leading-[0.95] mb-4" style={{ ...bagel, fontSize: "clamp(40px, 6vw, 72px)" }}>
+          {featureLabel} lives on <span style={{ color: COLORS.coral }}>{publicPlan}.</span>
         </h2>
-        <p style={{ fontSize: "15px", color: "var(--muted-foreground)", lineHeight: 1.55, marginBottom: "24px" }}>
-          Upgrade your plan to unlock {featureLabels[feature]?.toLowerCase() || feature} and all its capabilities.
+        <p className="text-[16px] leading-relaxed mb-8" style={{ color: COLORS.muted }}>
+          {feature === "vault"
+            ? "Drop your URL once. We pin your palette, tone and photo style on every shot — the DA stays locked across the pack."
+            : `Unlock ${featureLabel.toLowerCase()} and keep going without prompts.`}
         </p>
-        <div className="flex items-center justify-center gap-3">
-          <Link
-            to="/subscribe"
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-white hover:opacity-90 transition-opacity"
-            style={{ background: "var(--ora-signal)", fontSize: "14px", fontWeight: 500 }}
-          >
-            Upgrade to {minPlan.charAt(0).toUpperCase() + minPlan.slice(1)} <ArrowRight size={14} />
+        <div className="flex items-center justify-center gap-2">
+          <Link to="/pricing">
+            <Button variant="accent" size="lg">
+              See plans <ArrowRight size={16} />
+            </Button>
           </Link>
-          <Link
-            to="/hub"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border hover:bg-secondary transition-colors"
-            style={{ fontSize: "14px", fontWeight: 500 }}
-          >
-            Back to Hub
+          <Link to="/hub/surprise">
+            <Button variant="ghost" size="lg">
+              Back to Surprise Me
+            </Button>
           </Link>
         </div>
       </div>

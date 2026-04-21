@@ -10,11 +10,16 @@ import { supabase, API_BASE, publicAnonKey } from "./supabase";
 export type PlanTier = "free" | "starter" | "pro" | "business";
 export type UserRole = "user" | "admin";
 
-/** Map server plan names to frontend plan names */
+/** Map server plan names to frontend plan names.
+ *  The server emits both the public-facing names (creator/studio/agency)
+ *  and the legacy Stripe-dashboard names (starter/pro/business). The
+ *  client still works in the legacy set internally — this map funnels
+ *  both conventions into it. */
 function mapServerPlan(serverPlan: string): PlanTier {
-  if (serverPlan === "starter") return "starter";
-  if (serverPlan === "generate" || serverPlan === "pro") return "pro";
-  if (serverPlan === "studio" || serverPlan === "business") return "business";
+  const s = (serverPlan || "").toLowerCase();
+  if (s === "creator" || s === "starter") return "starter";
+  if (s === "studio"  || s === "pro" || s === "generate") return "pro";
+  if (s === "agency"  || s === "business") return "business";
   return "free";
 }
 
@@ -41,13 +46,15 @@ export interface UserProfile {
    ACCESS CONTROL HELPERS
    ═══════════════════════════════════ */
 
-/** What each plan tier can access — all paid plans get all features,
- *  differentiation is on quotas (contents, credits, models, products) */
+/** What each plan tier can access. Source of truth: PricingPage.tsx.
+ *  - Creator (=starter) €19: 60 assets, NO Brand Vault — just text brief.
+ *  - Studio  (=pro)     €49: 200 assets, Brand Vault unlocked.
+ *  - Agency  (=business) €199: 1000 assets, multi-brand Vault + API. */
 const PLAN_ACCESS = {
   free:     { hub: true, vault: false, analytics: false, campaignLab: false },
-  starter:  { hub: true, vault: true,  analytics: true,  campaignLab: true },
-  pro:      { hub: true, vault: true,  analytics: true,  campaignLab: true },
-  business: { hub: true, vault: true,  analytics: true,  campaignLab: true },
+  starter:  { hub: true, vault: false, analytics: true,  campaignLab: true  },
+  pro:      { hub: true, vault: true,  analytics: true,  campaignLab: true  },
+  business: { hub: true, vault: true,  analytics: true,  campaignLab: true  },
 } as const;
 
 export type Feature = keyof (typeof PLAN_ACCESS)["free"];
