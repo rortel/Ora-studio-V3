@@ -8312,13 +8312,24 @@ type RunRemixOpts = {
   model: string;
   aspectRatio: string;
   seed?: number;
+  /**
+   * How tightly the output hugs the reference image, 0..1. Higher = closer
+   * to the reference (Classic). Lower = more freedom (Disruptive). Mapped
+   * onto each provider's native slider: Luma image_ref.weight, FAL strength
+   * (inverted), Ideogram image_weight. Falls back to model defaults when
+   * omitted so the single-shot /analyze/remix behaves like before.
+   */
+  refWeight?: number;
 };
 type RunRemixResult =
   | { ok: true; imageUrl: string; provider: string; note?: string }
   | { ok: false; error: string };
 
 async function runRemix(opts: RunRemixOpts): Promise<RunRemixResult> {
-  const { finalPrompt, imageUrl, model, aspectRatio, seed } = opts;
+  const { finalPrompt, imageUrl, model, aspectRatio, seed, refWeight } = opts;
+  const clampedW = typeof refWeight === "number"
+    ? Math.max(0, Math.min(1, refWeight))
+    : null;
   const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4", "2:3": "2:3", "4:5": "3:4" };
   const lumaAspect = arLumaMap[aspectRatio] || "1:1";
 
@@ -8343,7 +8354,7 @@ async function runRemix(opts: RunRemixOpts): Promise<RunRemixResult> {
     const lumaModel = model === "photon-flash-1" ? "photon-flash-1" : "photon-1";
     const lumaPayload: any = {
       prompt: finalPrompt, model: lumaModel, aspect_ratio: lumaAspect,
-      image_ref: [{ url: imageUrl, weight: 0.55 }],
+      image_ref: [{ url: imageUrl, weight: clampedW ?? 0.55 }],
     };
     if (seed) lumaPayload.seed = seed;
     const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
@@ -8361,8 +8372,12 @@ async function runRemix(opts: RunRemixOpts): Promise<RunRemixResult> {
   if (model === "flux-pro") {
     const falKey = Deno.env.get("FAL_API_KEY");
     if (!falKey) return { ok: false, error: "FAL_API_KEY not configured" };
+    // FAL Redux `strength` is the inverse of refWeight: higher strength = more
+    // deviation from the first frame. Map the 0..1 refWeight into a 0.25..0.95
+    // strength band so Classic really does lock tight and Disruptive roams.
+    const falStrength = clampedW !== null ? Math.max(0.25, Math.min(0.95, 1 - clampedW * 0.75)) : 0.75;
     const falBody: any = {
-      prompt: finalPrompt, image_url: imageUrl, strength: 0.75,
+      prompt: finalPrompt, image_url: imageUrl, strength: falStrength,
       num_images: 1, safety_tolerance: "2", output_format: "jpeg", aspect_ratio: aspectRatio,
     };
     if (seed) falBody.seed = seed;
@@ -8385,7 +8400,11 @@ async function runRemix(opts: RunRemixOpts): Promise<RunRemixResult> {
     if (!ideoKey) return { ok: false, error: "IDEOGRAM_API_KEY not configured" };
     const fd = new FormData();
     fd.append("prompt", finalPrompt);
-    fd.append("image_weight", "60");
+    // Ideogram image_weight is 0..100 and directly aligned with our refWeight
+    // (higher = tighter to ref). Round the 0..1 value into a percentage,
+    // fall back to 60 when nothing was passed.
+    const ideoWeight = clampedW !== null ? Math.max(10, Math.min(90, Math.round(clampedW * 100))) : 60;
+    fd.append("image_weight", String(ideoWeight));
     fd.append("rendering_speed", "DEFAULT");
     if (seed) fd.append("seed", String(seed));
     const arIdeoMap: Record<string, string> = { "1:1": "1x1", "9:16": "9x16", "16:9": "16x9", "4:3": "4x3", "3:4": "3x4", "2:3": "2x3", "4:5": "4x5" };
@@ -9177,6 +9196,7 @@ OUTPUT JSON:
             const r = await runRemix({
               finalPrompt: job.promptText, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
+              refWeight: creative.refWeight,
             });
             if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
