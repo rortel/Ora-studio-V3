@@ -1,238 +1,156 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { motion } from "motion/react";
-import {
-  Zap,
-  Sparkles,
-  Crown,
-  Check,
-  ArrowRight,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  CreditCard,
-} from "lucide-react";
-import { PulseIcon } from "../components/PulseMotif";
+import { ArrowRight, Check, CreditCard, Loader2, Sparkles, XCircle } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { apiUrl } from "../lib/supabase";
-import { useI18n } from "../lib/i18n";
+import { Button } from "../components/ora/Button";
+import { Badge } from "../components/ora/Badge";
+import { Surface } from "../components/ora/Surface";
+import { bagel, COLORS, type Tone } from "../components/ora/tokens";
+
+type Billing = "monthly" | "yearly";
+type PublicPlan = "creator" | "studio" | "agency";
+
+interface PlanDef {
+  code: PublicPlan;
+  /** Maps to the legacy server code + Stripe dashboard. */
+  serverCode: "starter" | "pro" | "business";
+  name: string;
+  tone: Tone;
+  priceMonthly: number;
+  priceYearly: number;
+  assets: number;
+  tagline: string;
+  features: string[];
+}
+
+const PLANS: Record<PublicPlan, PlanDef> = {
+  creator: {
+    code: "creator", serverCode: "starter",
+    name: "Creator", tone: "warm",
+    priceMonthly: 19, priceYearly: 15, assets: 60,
+    tagline: "Solo creators shipping brand content weekly.",
+    features: [
+      "60 assets / month",
+      "Images + 5s films + captions",
+      "Instagram · LinkedIn · Facebook · TikTok",
+      "Publish + schedule — one click to every network",
+      "Library + HD downloads (ZIP)",
+      "Editor to add logo, text, overlays",
+    ],
+  },
+  studio: {
+    code: "studio", serverCode: "pro",
+    name: "Studio", tone: "butter",
+    priceMonthly: 49, priceYearly: 39, assets: 200,
+    tagline: "Brand-locked creative at real production volume.",
+    features: [
+      "200 assets / month",
+      "Brand Vault — palette, tone, photo style, voice",
+      "Paste your site URL, Ora extracts your brand",
+      "Logo + image bank on every shot",
+      "Images, films and captions — every platform",
+      "Publish + schedule — one click",
+      "Priority generation queue",
+    ],
+  },
+  agency: {
+    code: "agency", serverCode: "business",
+    name: "Agency", tone: "violet",
+    priceMonthly: 199, priceYearly: 159, assets: 1000,
+    tagline: "Multi-brand studios and in-house creative teams.",
+    features: [
+      "1 000 assets / month",
+      "Multi-brand Brand Vault (up to 5 brands)",
+      "3 team seats",
+      "Publish + schedule — one click",
+      "API access",
+      "White-label ZIP delivery",
+      "Priority support",
+    ],
+  },
+};
+
+/** Map any plan string (URL param, legacy profile) → canonical public code. */
+function normalizePlan(raw: string | null | undefined): PublicPlan {
+  const s = String(raw || "").toLowerCase();
+  if (s === "studio"  || s === "pro")      return "studio";
+  if (s === "agency"  || s === "business") return "agency";
+  return "creator";
+}
 
 export function SubscribePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, profile, accessToken, isLoading: authLoading, refreshProfile, plan: currentPlan, remainingCredits } = useAuth();
-  const { t } = useI18n();
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const { user, profile, accessToken, isLoading: authLoading, refreshProfile } = useAuth();
 
-  // Map public plan codes (creator / studio / agency) to the internal Stripe
-  // plan codes (starter / pro / business) that the server + card list use.
-  const normalizePlanCode = (raw: string | null | undefined): "starter" | "pro" | "business" | null => {
-    const s = String(raw || "").toLowerCase();
-    if (s === "studio" || s === "pro") return "pro";
-    if (s === "agency" || s === "business") return "business";
-    if (s === "creator" || s === "starter") return "starter";
-    return null;
-  };
+  const urlPlan    = normalizePlan(searchParams.get("plan"));
+  const urlBilling = (searchParams.get("billing") as Billing) === "yearly" ? "yearly" : "monthly";
 
-  // Pre-select the card that matches the URL ?plan= coming from /pricing.
+  const [planCode, setPlanCode]       = useState<PublicPlan>(urlPlan);
+  const [billing,  setBilling]        = useState<Billing>(urlBilling);
+  const [loading,  setLoading]        = useState(false);
+  const [error,    setError]          = useState<string>("");
+  const [successPlan, setSuccessPlan] = useState<PublicPlan | null>(null);
+
+  // Keep state in sync when URL changes.
   useEffect(() => {
-    const fromUrl = normalizePlanCode(searchParams.get("plan"));
-    if (fromUrl && searchParams.get("success") !== "true") {
-      setSelectedPlan(fromUrl);
-    }
+    const next = normalizePlan(searchParams.get("plan"));
+    if (searchParams.get("success") !== "true") setPlanCode(next);
   }, [searchParams]);
 
-  // Handle Stripe redirect results
+  // Handle Stripe redirect outcomes.
   useEffect(() => {
     if (searchParams.get("success") === "true") {
-      const plan = normalizePlanCode(searchParams.get("plan"));
-      const pack = searchParams.get("pack") || "";
-      if (pack) {
-        setSuccessMessage(t("subscribe.successPack"));
-      } else if (plan === "business") {
-        setSuccessMessage(t("subscribe.successBusiness"));
-      } else if (plan === "pro") {
-        setSuccessMessage(t("subscribe.successPro"));
-      } else {
-        setSuccessMessage(t("subscribe.successStarter"));
-      }
+      setSuccessPlan(normalizePlan(searchParams.get("plan")));
       refreshProfile();
+    } else if (searchParams.get("canceled") === "true") {
+      setError("Payment cancelled. You can try again whenever you're ready.");
     }
-    if (searchParams.get("canceled") === "true") {
-      setError(t("subscribe.paymentCanceled"));
-    }
-  }, [searchParams]);
+  }, [searchParams, refreshProfile]);
 
-  const plans = [
-    {
-      id: "starter" as const,
-      serverPlan: "starter",
-      name: t("subscribe.starterName"),
-      price: t("subscribe.starterPrice"),
-      priceLabel: t("subscribe.starterPrice"),
-      period: t("subscribe.starterPeriod"),
-      credits: t("subscribe.starterCredits"),
-      description: t("subscribe.starterDesc"),
-      features: [
-        t("subscribe.starterF1"),
-        t("subscribe.starterF2"),
-        t("subscribe.starterF3"),
-        t("subscribe.starterF4"),
-        t("subscribe.starterF5"),
-      ],
-      icon: Zap,
-      highlighted: false,
-      cta: t("subscribe.starterCta"),
-      requiresStripe: true,
-    },
-    {
-      id: "pro" as const,
-      serverPlan: "pro",
-      name: t("subscribe.proName"),
-      price: t("subscribe.proPrice"),
-      priceLabel: t("subscribe.proPrice"),
-      period: t("subscribe.proPeriod"),
-      credits: t("subscribe.proCredits"),
-      description: t("subscribe.proDesc"),
-      features: [
-        t("subscribe.proF1"),
-        t("subscribe.proF2"),
-        t("subscribe.proF3"),
-        t("subscribe.proF4"),
-        t("subscribe.proF5"),
-        t("subscribe.proF6"),
-      ],
-      icon: Sparkles,
-      highlighted: true,
-      cta: t("subscribe.proCta"),
-      requiresStripe: true,
-    },
-    {
-      id: "business" as const,
-      serverPlan: "business",
-      name: t("subscribe.businessName"),
-      price: t("subscribe.businessPrice"),
-      priceLabel: t("subscribe.businessPrice"),
-      period: t("subscribe.businessPeriod"),
-      credits: t("subscribe.businessCredits"),
-      description: t("subscribe.businessDesc"),
-      features: [
-        t("subscribe.businessF1"),
-        t("subscribe.businessF2"),
-        t("subscribe.businessF3"),
-        t("subscribe.businessF4"),
-        t("subscribe.businessF5"),
-        t("subscribe.businessF6"),
-      ],
-      icon: Crown,
-      highlighted: false,
-      cta: t("subscribe.businessCta"),
-      requiresStripe: true,
-    },
-  ];
-
-  // Redirect to login if not authenticated
+  // Gate: require auth.
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login?mode=signup");
-    }
+    if (!authLoading && !user) navigate("/login?next=" + encodeURIComponent(location.pathname + location.search));
   }, [authLoading, user, navigate]);
 
-  const handleChoosePlan = async (planId: string, requiresStripe: boolean) => {
-    setSelectedPlan(planId);
+  const plan  = PLANS[planCode];
+  const price = billing === "monthly" ? plan.priceMonthly : plan.priceYearly;
+  const currentServerPlan = normalizePlan(profile?.plan);
+  const isCurrent = currentServerPlan === planCode;
+
+  const handleCheckout = async () => {
+    if (loading) return;
     setLoading(true);
     setError("");
-
     try {
-      // CORS-safe: text/plain + no Authorization header = no preflight
-      // apikey goes in URL query string, user token in body as _token
-      const headers = { "Content-Type": "text/plain" };
-
-      if (requiresStripe) {
-        // Paid plan → Create Stripe Checkout Session
-        const res = await fetch(apiUrl("/stripe/create-checkout-session"), {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ _token: accessToken, plan: planId }),
-        });
-        const data = await res.json();
-
-        if (data.error) {
-          console.error("Stripe checkout error:", data.error);
-          setError(data.error);
-          setLoading(false);
-          return;
-        }
-
-        if (data.url) {
-          // Redirect to Stripe Checkout
-          window.location.href = data.url;
-          return; // Don't setLoading(false) — user is leaving
-        }
-      } else {
-        // Free plan → Direct activation
-        const res = await fetch(apiUrl("/auth/choose-plan"), {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ _token: accessToken, plan: planId }),
-        });
-        const data = await res.json();
-
-        if (data.error) {
-          console.error("Choose plan error:", data.error);
-          setError(data.error);
-          setLoading(false);
-          return;
-        }
-
-        console.log("Plan chosen:", planId, data.profile);
-        await refreshProfile();
-        navigate("/hub");
-      }
-    } catch (err) {
-      console.error("Choose plan exception:", err);
-      setError(t("subscribe.errorActivation"));
-      setLoading(false);
-    }
-  };
-
-  const [packLoading, setPackLoading] = useState<string | null>(null);
-
-  const handleBuyPack = async (packId: string) => {
-    setPackLoading(packId);
-    setError("");
-    try {
-      const res = await fetch(apiUrl("/stripe/buy-pack"), {
+      const res = await fetch(apiUrl("/stripe/create-checkout-session"), {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ _token: accessToken, pack: packId }),
+        body: JSON.stringify({ _token: accessToken, plan: plan.serverCode, billing }),
       });
       const data = await res.json();
-
       if (data.error) {
-        console.error("Pack checkout error:", data.error);
-        setError(data.error);
-        setPackLoading(null);
+        setError(String(data.error));
+        setLoading(false);
         return;
       }
-
       if (data.url) {
         window.location.href = data.url;
         return;
       }
-    } catch (err) {
-      console.error("Buy pack exception:", err);
-      setError(t("subscribe.errorActivation"));
-      setPackLoading(null);
+      setError("Unexpected response from checkout.");
+      setLoading(false);
+    } catch (err: any) {
+      setError(String(err?.message || err));
+      setLoading(false);
     }
   };
 
-  const handleManageSubscription = async () => {
+  const handleOpenPortal = async () => {
+    if (loading) return;
     setLoading(true);
-    setError("");
     try {
       const res = await fetch(apiUrl("/stripe/portal"), {
         method: "POST",
@@ -240,547 +158,199 @@ export function SubscribePage() {
         body: JSON.stringify({ _token: accessToken }),
       });
       const data = await res.json();
-
-      if (data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      if (data.error) setError(data.error);
-    } catch (err) {
-      setError("Could not open subscription management");
-    }
-    setLoading(false);
+      if (data.url) window.location.href = data.url;
+      else setLoading(false);
+    } catch { setLoading(false); }
   };
 
-  if (authLoading) {
+  // ────────────────────────────────────────────────────────────────
+  // Success screen
+  // ────────────────────────────────────────────────────────────────
+  if (successPlan) {
+    const p = PLANS[successPlan];
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={24} className="animate-spin text-muted-foreground" />
+      <div style={{ background: COLORS.cream, color: COLORS.ink, minHeight: "100vh" }}>
+        <SubscribeHeader />
+        <section className="max-w-[880px] mx-auto px-5 md:px-10 pt-24 md:pt-32 pb-20 text-center">
+          <Badge tone="coral">
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#fff" }} />
+            Welcome aboard
+          </Badge>
+          <motion.h1
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+            className="mt-6 leading-[0.95]"
+            style={{ ...bagel, fontSize: "clamp(48px, 8vw, 120px)" }}
+          >
+            You're <span style={{ color: COLORS.coral }}>{p.name}.</span>
+          </motion.h1>
+          <p className="mt-5 text-[17px] md:text-[19px]" style={{ color: COLORS.muted, maxWidth: 540, margin: "0 auto" }}>
+            {p.assets} assets land in your library every month. Go make your first pack.
+          </p>
+          <div className="mt-10 flex items-center justify-center gap-3">
+            <Link to="/hub/surprise"><Button variant="accent" size="lg"><Sparkles size={18} /> Open Ora <ArrowRight size={16} /></Button></Link>
+            <Button variant="ghost" size="md" onClick={handleOpenPortal}>
+              <CreditCard size={14} /> Manage billing
+            </Button>
+          </div>
+        </section>
       </div>
     );
   }
 
+  // ────────────────────────────────────────────────────────────────
+  // Checkout confirmation screen
+  // ────────────────────────────────────────────────────────────────
+  const isLight = plan.tone === "warm" || plan.tone === "butter";
+  const checkBg = isLight ? COLORS.ink : "#FFFFFF";
+  const checkFg = isLight ? "#FFFFFF" : COLORS.ink;
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-[960px] mx-auto px-6 py-16">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
-        >
-          <div className="flex items-center justify-center gap-2.5 mb-6">
-            <PulseIcon size={28} />
-            <span
-              className="text-foreground"
-              style={{ fontSize: "18px", fontWeight: 600, letterSpacing: "-0.02em" }}
-            >
-              ORA
-            </span>
-          </div>
-          <h1
-            className="text-foreground mb-3"
-            style={{
-              fontSize: "clamp(1.5rem, 3vw, 2rem)",
-              fontWeight: 500,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.2,
-            }}
-          >
-            {t("subscribe.welcomePrefix")}{profile?.name ? `, ${profile.name.split(" ")[0]}` : ""}. {t("subscribe.heading")}
-          </h1>
-          <p className="text-muted-foreground" style={{ fontSize: "15px", lineHeight: 1.5 }}>
-            {t("subscribe.subtitle")}
-          </p>
-        </motion.div>
+    <div style={{ background: COLORS.cream, color: COLORS.ink, minHeight: "100vh" }}>
+      <SubscribeHeader />
 
-        {/* Success message */}
-        {successMessage && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center gap-3"
-            style={{
-              background: "rgba(16, 185, 129, 0.06)",
-              border: "1px solid rgba(16, 185, 129, 0.15)",
-            }}
-          >
-            <CheckCircle2 size={20} style={{ color: "#10b981", flexShrink: 0 }} />
-            <div>
-              <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>
-                {successMessage}
-              </p>
-              <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: 2 }}>
-                {t("subscribe.successRedirect")}
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center gap-3"
-            style={{
-              background: "rgba(212,24,61,0.06)",
-              border: "1px solid rgba(212,24,61,0.1)",
-            }}
-          >
-            <XCircle size={20} style={{ color: "var(--destructive)", flexShrink: 0 }} />
-            <p style={{ fontSize: "13px", color: "var(--destructive)" }}>{error}</p>
-          </motion.div>
-        )}
-
-        {/* Current plan indicator */}
-        {currentPlan && currentPlan !== "free" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="max-w-[500px] mx-auto mb-8 p-4 rounded-xl flex items-center justify-between"
-            style={{
-              background: "var(--secondary)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <CreditCard size={18} style={{ color: "var(--accent)" }} />
-              <div>
-                <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
-                  {t("subscribe.currentPlan")}: {currentPlan === "starter" ? "Starter" : currentPlan === "pro" ? "Pro" : "Business"}
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
-                  {remainingCredits.toLocaleString()} {t("subscribe.creditsRemaining")}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleManageSubscription}
-              disabled={loading}
-              className="px-3 py-1.5 rounded-lg border border-border text-foreground hover:bg-secondary transition-colors cursor-pointer"
-              style={{ fontSize: "12px", fontWeight: 500 }}
-            >
-              {t("subscribe.manageSubscription")}
-            </button>
-          </motion.div>
-        )}
-
-        {/* Plan Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {plans.map((plan, i) => {
-            const Icon = plan.icon;
-            const isSelected = selectedPlan === plan.id;
-            const isLoading = isSelected && loading;
-            const isCurrentPlan = currentPlan === plan.id;
-
-            return (
-              <motion.div
-                key={plan.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.08 }}
-                className={`relative border rounded-xl bg-card p-6 flex flex-col ${
-                  plan.highlighted ? "border-ora-signal" : "border-border"
-                } ${isCurrentPlan ? "ring-2 ring-accent/20" : ""}`}
-                style={{
-                  boxShadow: plan.highlighted
-                    ? "0 1px 3px rgba(0,0,0,0.04), 0 12px 40px rgba(17,17,17,0.08)"
-                    : "0 1px 2px rgba(0,0,0,0.02)",
-                }}
-              >
-                {/* Popular badge */}
-                {plan.highlighted && (
-                  <div
-                    className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-white"
-                    style={{
-                      background: "var(--ora-signal)",
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      letterSpacing: "0.04em",
-                    }}
-                  >
-                    {t("subscribe.popular")}
-                  </div>
-                )}
-
-                {/* Current plan badge */}
-                {isCurrentPlan && (
-                  <div
-                    className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full"
-                    style={{
-                      background: "var(--accent)",
-                      color: "#fff",
-                      fontSize: "10px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {t("subscribe.currentBadge")}
-                  </div>
-                )}
-
-                {/* Plan header */}
-                <div className="mb-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center"
-                      style={{
-                        background: plan.highlighted
-                          ? "var(--ora-signal-light)"
-                          : "var(--secondary)",
-                      }}
-                    >
-                      <Icon
-                        size={15}
-                        style={{
-                          color: plan.highlighted
-                            ? "var(--ora-signal)"
-                            : "var(--muted-foreground)",
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: "16px",
-                        fontWeight: 500,
-                        color: "var(--foreground)",
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      {plan.name}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1 mb-2">
-                    <span
-                      style={{
-                        fontSize: "32px",
-                        fontWeight: 500,
-                        color: "var(--foreground)",
-                        letterSpacing: "-0.03em",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {plan.price === "0" ? plan.priceLabel : plan.price}
-                    </span>
-                    {plan.period && (
-                      <span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
-                        {plan.period}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full mb-2"
-                    style={{
-                      background: plan.highlighted
-                        ? "var(--ora-signal-light)"
-                        : "var(--secondary)",
-                      fontSize: "12px",
-                      fontWeight: 500,
-                      color: plan.highlighted
-                        ? "var(--ora-signal)"
-                        : "var(--muted-foreground)",
-                    }}
-                  >
-                    <Zap size={10} />
-                    {plan.credits}
-                  </div>
-                  <p style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: 1.45 }}>
-                    {plan.description}
-                  </p>
-                </div>
-
-                {/* Features */}
-                <div className="flex-1 space-y-2.5 mb-6">
-                  {plan.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-2">
-                      <Check
-                        size={13}
-                        className="flex-shrink-0 mt-0.5"
-                        style={{
-                          color: plan.highlighted
-                            ? "var(--ora-signal)"
-                            : "var(--muted-foreground)",
-                        }}
-                      />
-                      <span style={{ fontSize: "13px", color: "var(--foreground)", lineHeight: 1.4 }}>
-                        {feature}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <button
-                  onClick={() => handleChoosePlan(plan.id, plan.requiresStripe)}
-                  disabled={loading || isCurrentPlan}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                    plan.highlighted
-                      ? "text-white hover:opacity-90"
-                      : "border border-border-strong text-foreground hover:bg-secondary"
-                  }`}
-                  style={{
-                    background: plan.highlighted ? "var(--ora-signal)" : undefined,
-                    fontSize: "14px",
-                    fontWeight: 500,
-                  }}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 size={15} className="animate-spin" />
-                      {plan.requiresStripe ? t("subscribe.redirecting") : t("subscribe.activating")}
-                    </>
-                  ) : isCurrentPlan ? (
-                    <>
-                      <Check size={15} />
-                      {t("subscribe.currentBadge")}
-                    </>
-                  ) : (
-                    <>
-                      {plan.cta}
-                      <ArrowRight size={15} />
-                    </>
-                  )}
-                </button>
-              </motion.div>
-            );
-          })}
+      <section className="max-w-[900px] mx-auto px-5 md:px-10 pt-20 md:pt-24 pb-10">
+        <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: COLORS.subtle }}>
+          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: COLORS.coral }} />
+          Checkout
         </div>
+        <h1 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 96px)" }}>
+          Start <span style={{ color: COLORS.coral }}>{plan.name}.</span>
+        </h1>
+        <p className="mt-4 text-[17px]" style={{ color: COLORS.muted, maxWidth: 560 }}>
+          {plan.tagline} Change billing cycle or switch tiers anytime — nothing is locked in.
+        </p>
+      </section>
 
-        {/* ═══ Credit Packs Section ═══ */}
-        {currentPlan && currentPlan !== "free" && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mt-20 relative"
-          >
-            {/* Gradient banner background */}
-            <div
-              className="absolute inset-0 -mx-6 rounded-2xl"
-              style={{
-                background: "linear-gradient(135deg, #7C3AED08, #EC489908, #7C3AED04)",
-                border: "1px solid rgba(124, 58, 237, 0.08)",
-                margin: "-24px -24px",
-                padding: "24px",
-                borderRadius: "20px",
-              }}
-            />
-
-            <div className="relative">
-              {/* Header with icon */}
-              <div className="text-center mb-10">
-                <div
-                  className="inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-4"
-                  style={{
-                    background: "linear-gradient(135deg, #7C3AED, #EC4899)",
-                    boxShadow: "0 4px 16px rgba(124, 58, 237, 0.25)",
-                  }}
-                >
-                  <Zap size={20} style={{ color: "#FFFFFF" }} strokeWidth={2} />
-                </div>
-                <h2
-                  className="text-foreground mb-2"
-                  style={{
-                    fontSize: "clamp(1.3rem, 2.5vw, 1.6rem)",
-                    fontWeight: 600,
-                    letterSpacing: "-0.03em",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {t("subscribe.creditPacksTitle")}
-                </h2>
-                <p className="text-muted-foreground" style={{ fontSize: "14px", lineHeight: 1.5 }}>
-                  {t("subscribe.creditPacksSubtitle")}
-                </p>
+      <section className="max-w-[900px] mx-auto px-5 md:px-10 pb-16">
+        <Surface tone={plan.tone} pad="lg" radius="2xl" className="md:p-10">
+          {/* Head: tier + price */}
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-2" style={{ opacity: 0.75 }}>
+                Plan {isCurrent ? "· current" : ""}
               </div>
-
-              {/* Pack cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-[760px] mx-auto">
-                {[
-                  {
-                    id: "pack_s",
-                    name: t("subscribe.packSName"),
-                    credits: t("subscribe.packSCredits"),
-                    price: t("subscribe.packSPrice"),
-                    rate: t("subscribe.packSRate"),
-                    gradient: "linear-gradient(135deg, #818CF8, #7C3AED)",
-                    iconBg: "rgba(129, 140, 248, 0.1)",
-                    highlighted: false,
-                  },
-                  {
-                    id: "pack_m",
-                    name: t("subscribe.packMName"),
-                    credits: t("subscribe.packMCredits"),
-                    price: t("subscribe.packMPrice"),
-                    rate: t("subscribe.packMRate"),
-                    gradient: "linear-gradient(135deg, #7C3AED, #EC4899)",
-                    iconBg: "rgba(124, 58, 237, 0.1)",
-                    highlighted: true,
-                    badge: t("subscribe.packMBadge"),
-                  },
-                  {
-                    id: "pack_l",
-                    name: t("subscribe.packLName"),
-                    credits: t("subscribe.packLCredits"),
-                    price: t("subscribe.packLPrice"),
-                    rate: t("subscribe.packLRate"),
-                    gradient: "linear-gradient(135deg, #EC4899, #F97316)",
-                    iconBg: "rgba(236, 72, 153, 0.1)",
-                    highlighted: false,
-                  },
-                ].map((pack, i) => (
-                  <motion.div
-                    key={pack.id}
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 + i * 0.07 }}
-                    className="relative rounded-2xl bg-card flex flex-col overflow-hidden"
-                    style={{
-                      border: pack.highlighted
-                        ? "1.5px solid rgba(124, 58, 237, 0.3)"
-                        : "1px solid var(--border)",
-                      boxShadow: pack.highlighted
-                        ? "0 4px 24px rgba(124, 58, 237, 0.12), 0 1px 3px rgba(0,0,0,0.04)"
-                        : "0 1px 3px rgba(0,0,0,0.04)",
-                    }}
-                  >
-                    {/* Badge for best value */}
-                    {pack.badge && (
-                      <div
-                        className="absolute -top-px left-1/2 -translate-x-1/2 px-3 py-1 rounded-b-lg"
-                        style={{
-                          background: "linear-gradient(135deg, #7C3AED, #EC4899)",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                          color: "#FFFFFF",
-                          letterSpacing: "0.03em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {pack.badge}
-                      </div>
-                    )}
-
-                    {/* Top gradient strip */}
-                    <div
+              <h2 className="leading-none" style={{ ...bagel, fontSize: "clamp(40px, 4.8vw, 64px)" }}>
+                {plan.name}
+              </h2>
+              <p className="mt-3 text-[14.5px]" style={{ opacity: 0.75, maxWidth: 440 }}>
+                {plan.assets} assets / month · brand DA locked
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="flex items-baseline gap-1 justify-end">
+                <span style={{ ...bagel, fontSize: "clamp(40px, 4.8vw, 64px)", lineHeight: 1 }}>€{price}</span>
+                <span className="text-[13px]" style={{ opacity: 0.7 }}>/mo</span>
+              </div>
+              {billing === "yearly" && (
+                <div className="text-[11.5px] mt-1" style={{ opacity: 0.7 }}>billed yearly</div>
+              )}
+              {/* Billing toggle */}
+              <div className="mt-3 inline-flex items-center p-1 rounded-full"
+                   style={{ background: checkFg, border: `1px solid ${checkBg}20` }}>
+                {(["monthly", "yearly"] as Billing[]).map((b) => {
+                  const on = billing === b;
+                  return (
+                    <button
+                      key={b}
+                      onClick={() => setBilling(b)}
+                      className="inline-flex items-center px-3 h-7 rounded-full text-[12px]"
                       style={{
-                        height: 3,
-                        background: pack.gradient,
+                        background: on ? checkBg : "transparent",
+                        color: on ? checkFg : checkBg,
+                        fontWeight: 600,
                       }}
-                    />
-
-                    <div className={`p-6 flex flex-col items-center text-center flex-1 ${pack.badge ? "pt-8" : ""}`}>
-                      {/* Credit count — big and bold */}
-                      <span
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: "#7C3AED",
-                          letterSpacing: "0.02em",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {pack.name}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "14px",
-                          fontWeight: 500,
-                          color: "var(--muted-foreground)",
-                          marginTop: 4,
-                        }}
-                      >
-                        {pack.credits}
-                      </span>
-
-                      {/* Price */}
-                      <div className="my-4">
-                        <span
-                          style={{
-                            fontSize: "36px",
-                            fontWeight: 600,
-                            color: "var(--foreground)",
-                            letterSpacing: "-0.03em",
-                            lineHeight: 1,
-                          }}
-                        >
-                          {pack.price}
-                        </span>
-                      </div>
-
-                      {/* Rate */}
-                      <span
-                        className="px-2.5 py-1 rounded-full mb-5"
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 500,
-                          color: "var(--muted-foreground)",
-                          background: "var(--secondary)",
-                        }}
-                      >
-                        {pack.rate}
-                      </span>
-
-                      {/* CTA button */}
-                      <button
-                        onClick={() => handleBuyPack(pack.id)}
-                        disabled={!!packLoading}
-                        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed mt-auto"
-                        style={{
-                          background: pack.highlighted
-                            ? "linear-gradient(135deg, #7C3AED, #EC4899)"
-                            : "var(--foreground)",
-                          color: "#FFFFFF",
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          boxShadow: pack.highlighted
-                            ? "0 4px 12px rgba(124, 58, 237, 0.3)"
-                            : "0 2px 8px rgba(0,0,0,0.1)",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = "translateY(-1px)";
-                          e.currentTarget.style.boxShadow = pack.highlighted
-                            ? "0 6px 20px rgba(124, 58, 237, 0.35)"
-                            : "0 4px 12px rgba(0,0,0,0.15)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = "translateY(0)";
-                          e.currentTarget.style.boxShadow = pack.highlighted
-                            ? "0 4px 12px rgba(124, 58, 237, 0.3)"
-                            : "0 2px 8px rgba(0,0,0,0.1)";
-                        }}
-                      >
-                        {packLoading === pack.id ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" />
-                            {t("subscribe.redirecting")}
-                          </>
-                        ) : (
-                          <>
-                            <Zap size={13} />
-                            {t("subscribe.buyPack")}
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
+                    >
+                      {b === "monthly" ? "Monthly" : "Yearly −20%"}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          </motion.div>
-        )}
+          </div>
 
-        {/* Footer note */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-center mt-8 text-muted-foreground"
-          style={{ fontSize: "12px" }}
-        >
-          {t("subscribe.footerNote")}
-        </motion.p>
-      </div>
+          {/* Features */}
+          <ul className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-[14px]">
+            {plan.features.map((f, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <span className="shrink-0 w-4 h-4 rounded-full mt-[2px] flex items-center justify-center"
+                      style={{ background: checkBg, color: checkFg }}>
+                  <Check size={10} strokeWidth={3} />
+                </span>
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Error */}
+          {error && (
+            <div className="mt-6 inline-flex items-start gap-2 px-3 py-2 rounded-xl text-[13px]"
+                 style={{ background: "rgba(255,255,255,0.95)", color: "#B91C1C" }}>
+              <XCircle size={14} className="mt-[2px]" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="mt-8 flex items-center justify-between flex-wrap gap-3">
+            <div className="text-[12.5px]" style={{ opacity: 0.7 }}>
+              Secure checkout via Stripe · Cancel anytime
+            </div>
+            {isCurrent ? (
+              <Button variant="ink" size="lg" onClick={handleOpenPortal} disabled={loading}>
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                Manage billing
+              </Button>
+            ) : (
+              <Button variant="accent" size="lg" onClick={handleCheckout} disabled={loading}>
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                Pay €{price}/mo · Start {plan.name}
+                <ArrowRight size={16} />
+              </Button>
+            )}
+          </div>
+        </Surface>
+
+        {/* Switch plan */}
+        <div className="mt-8 flex items-center justify-between flex-wrap gap-3">
+          <div className="text-[13px]" style={{ color: COLORS.muted }}>
+            Looking for another tier?
+          </div>
+          <div className="flex items-center gap-2">
+            {(Object.keys(PLANS) as PublicPlan[]).filter((p) => p !== planCode).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPlanCode(p)}
+                className="inline-flex items-center h-9 px-4 rounded-full text-[13px] hover:bg-black/5"
+                style={{ border: `1px solid ${COLORS.line}`, background: "#fff", color: COLORS.ink, fontWeight: 500 }}
+              >
+                Switch to {PLANS[p].name} — €{billing === "monthly" ? PLANS[p].priceMonthly : PLANS[p].priceYearly}/mo
+              </button>
+            ))}
+            <Link to="/pricing"
+                  className="inline-flex items-center h-9 px-4 rounded-full text-[13px] hover:bg-black/5"
+                  style={{ color: COLORS.muted }}>
+              See all plans
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
+  );
+}
+
+/* ─── Minimal header — wordmark only, matches the landing ─── */
+function SubscribeHeader() {
+  return (
+    <header className="px-5 md:px-10 h-14 flex items-center justify-between sticky top-0 z-30"
+            style={{ background: `${COLORS.cream}CC`, backdropFilter: "blur(18px) saturate(180%)", borderBottom: `1px solid ${COLORS.line}` }}>
+      <Link to="/" className="flex items-center" aria-label="Ora">
+        <span className="text-[24px] leading-none" style={bagel}>Ora</span>
+      </Link>
+      <div className="flex items-center gap-2 text-[13px]" style={{ color: COLORS.muted }}>
+        <Link to="/pricing" className="hover:text-black">Pricing</Link>
+        <span>·</span>
+        <Link to="/hub/surprise" className="hover:text-black">Open app</Link>
+      </div>
+    </header>
   );
 }
