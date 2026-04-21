@@ -33,7 +33,7 @@ export function AppTabs({ active }: { active?: TabId }) {
       style={{ background: `${BG}CC`, backdropFilter: "blur(18px) saturate(180%)", borderBottom: `1px solid ${LINE}` }}
     >
       <Link to="/" className="flex items-center gap-2" aria-label="Ora">
-        <OraLogo size={22} />
+        <OraLogo size={22} variant="mark" animate={false} />
         <span className="text-[17px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
       </Link>
 

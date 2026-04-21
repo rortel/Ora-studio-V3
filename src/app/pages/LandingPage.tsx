@@ -90,7 +90,7 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 backdrop-blur-md" style={{ background: "rgba(244,239,230,0.82)" }}>
         <nav className="px-5 md:px-10 py-4 flex items-center justify-between max-w-[1400px] mx-auto">
           <Link to="/" className="flex items-center gap-2">
-            <OraLogo size={22} />
+            <OraLogo size={22} variant="mark" animate={false} />
             <span className="text-[28px] leading-none" style={bagel}>Ora</span>
           </Link>
           <div className="hidden md:flex items-center gap-8 text-[13.5px]" style={{ color: COLORS.muted }}>
@@ -316,7 +316,7 @@ export function LandingPage() {
       <footer className="px-5 md:px-10 py-10 max-w-[1400px] mx-auto">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <OraLogo size={22} />
+            <OraLogo size={22} variant="mark" animate={false} />
             <span className="text-[28px] leading-none" style={bagel}>Ora</span>
           </div>
           <div className="flex items-center gap-6 text-[13px]" style={{ color: COLORS.muted }}>
