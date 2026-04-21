@@ -24651,82 +24651,68 @@ app.post("/library/list", async (c) => {
     console.log(`[library/list] user ${user.id}: ${allItems.length} items`);
 
     // ── Refresh signed URLs for items that have storagePaths ──
+    // Signed URLs live 7 days; we renew lazily and only if the last refresh
+    // was >24h ago (stored as item.urlsRefreshedAt). All storage calls for a
+    // given /library/list request run in parallel instead of serially — this
+    // used to be the main reason the Library "didn't load" for users with
+    // many items.
     if (allItems.length > 0) {
       const sb = supabaseAdmin();
       const urlFields = ["imageUrl", "videoUrl", "audioUrl"] as const;
-      let refreshed = 0;
-      const kvUpdates: Array<{ key: string; value: any }> = [];
+      const REFRESH_THROTTLE_MS = 24 * 3600 * 1000; // 1 day
+      const now = Date.now();
+
+      // Collect every (target, pathKey, field) tuple that needs a new URL.
+      type Target = Record<string, any>;
+      type RefreshJob = { item: any; target: Target; pathKey: string; field: string };
+      const jobs: RefreshJob[] = [];
+      const staleItems: any[] = [];
 
       for (const item of allItems) {
-        let itemChanged = false;
+        const lastRefresh = typeof item.urlsRefreshedAt === "number" ? item.urlsRefreshedAt : 0;
+        if (lastRefresh && now - lastRefresh < REFRESH_THROTTLE_MS) continue;
+        staleItems.push(item);
+
         const preview = item.preview || {};
+        item.preview = preview;
+        const targets: Target[] = [preview];
+        if (Array.isArray(preview.assets)) targets.push(...preview.assets);
+        if (Array.isArray(item.assets))    targets.push(...item.assets);
 
-        // 1. Refresh top-level preview URLs (for single assets: image, video, audio)
-        for (const field of urlFields) {
-          const pathKey = `${field}StoragePath`;
-          if (preview[pathKey]) {
-            try {
-              const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(preview[pathKey], 7 * 24 * 3600);
-              if (data?.signedUrl && data.signedUrl !== preview[field]) {
-                preview[field] = data.signedUrl;
-                itemChanged = true;
-                refreshed++;
-              }
-            } catch {}
+        for (const target of targets) {
+          for (const field of urlFields) {
+            const pathKey = `${field}StoragePath`;
+            if (target[pathKey]) jobs.push({ item, target, pathKey, field });
           }
-        }
-
-        // 2. Refresh campaign asset URLs (preview.assets[] array)
-        if (preview.assets && Array.isArray(preview.assets)) {
-          for (const asset of preview.assets) {
-            for (const field of urlFields) {
-              const pathKey = `${field}StoragePath`;
-              if (asset[pathKey]) {
-                try {
-                  const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(asset[pathKey], 7 * 24 * 3600);
-                  if (data?.signedUrl && data.signedUrl !== asset[field]) {
-                    asset[field] = data.signedUrl;
-                    itemChanged = true;
-                    refreshed++;
-                  }
-                } catch {}
-              }
-            }
-          }
-        }
-
-        // 3. Also check root-level assets (legacy campaign format)
-        if (item.assets && Array.isArray(item.assets)) {
-          for (const asset of item.assets) {
-            for (const field of urlFields) {
-              const pathKey = `${field}StoragePath`;
-              if (asset[pathKey]) {
-                try {
-                  const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(asset[pathKey], 7 * 24 * 3600);
-                  if (data?.signedUrl && data.signedUrl !== asset[field]) {
-                    asset[field] = data.signedUrl;
-                    itemChanged = true;
-                    refreshed++;
-                  }
-                } catch {}
-              }
-            }
-          }
-        }
-
-        if (itemChanged) {
-          item.preview = preview;
-          kvUpdates.push({ key: `lib:${user.id}:${item.id}`, value: item });
         }
       }
 
-      // Batch-update KV with refreshed URLs (fire-and-forget)
-      if (kvUpdates.length > 0) {
-        console.log(`[library/list] refreshed ${refreshed} URLs across ${kvUpdates.length} items`);
-        (async () => {
-          for (const { key, value } of kvUpdates) {
-            try { await kv.set(key, value); } catch {}
+      if (jobs.length > 0) {
+        const changedItems = new Set<any>();
+        // Parallel signed-URL creation — all jobs fire at once.
+        const results = await Promise.allSettled(
+          jobs.map(j => sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(j.target[j.pathKey], 7 * 24 * 3600)),
+        );
+        results.forEach((res, i) => {
+          if (res.status !== "fulfilled") return;
+          const url = res.value?.data?.signedUrl;
+          if (!url) return;
+          const { item, target, field } = jobs[i];
+          if (target[field] !== url) {
+            target[field] = url;
+            changedItems.add(item);
           }
+        });
+
+        // Mark every stale item as refreshed so we don't reprocess on every call,
+        // even if URLs didn't actually change (e.g. cached in Supabase).
+        for (const item of staleItems) item.urlsRefreshedAt = now;
+
+        const kvUpdates = staleItems.map(item => ({ key: `lib:${user.id}:${item.id}`, value: item }));
+        console.log(`[library/list] refreshed ${changedItems.size}/${kvUpdates.length} items (${jobs.length} URLs)`);
+        // Fire-and-forget KV persist so the response returns immediately.
+        (async () => {
+          await Promise.allSettled(kvUpdates.map(({ key, value }) => kv.set(key, value)));
         })();
       }
     }

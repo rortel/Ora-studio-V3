@@ -897,15 +897,15 @@ function LibraryPageContent() {
                             {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).slice(0, 4).map((a: any, ti: number) => (
                               <div key={ti} className="overflow-hidden">
                                 {a.videoUrl ? (
-                                  <video src={a.videoUrl} className="w-full h-full object-cover" muted playsInline />
+                                  <video src={a.videoUrl} className="w-full h-full object-cover" muted playsInline preload="none" />
                                 ) : (
-                                  <img src={a.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                  <img src={a.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                                 )}
                               </div>
                             ))}
                           </div>
                         ) : coverUrl ? (
-                          <img src={coverUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                          <img src={coverUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <FolderOpen size={32} style={{ color: "#3d3c3b" }} />
@@ -1068,13 +1068,13 @@ function LibraryPageContent() {
                           {/* Preview area */}
                           <div className="relative" style={{ aspectRatio, background: "#0e0d0c", maxHeight: 280 }}>
                             {asset.imageUrl ? (
-                              <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                              <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                             ) : asset.videoUrl ? (
                               <div className="relative w-full h-full">
                                 <video
                                   src={asset.videoUrl}
                                   className="w-full h-full object-cover"
-                                  muted playsInline
+                                  muted playsInline preload="none"
                                   onMouseEnter={e => (e.target as HTMLVideoElement).play().catch(() => {})}
                                   onMouseLeave={e => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }}
                                 />
@@ -1605,12 +1605,12 @@ function LibraryPageContent() {
                           const isVideo = item.type === "film" || isVideoUrl;
                           const isImage = !isVideo && !!url && item.type !== "sound";
                           if (isImage) {
-                            return <img src={url!} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" />;
+                            return <img src={url!} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" loading="lazy" decoding="async" />;
                           }
                           if (isVideo && url) {
                             return (
                               <div className="relative">
-                                <video src={url} className="w-full object-cover" muted playsInline
+                                <video src={url} className="w-full object-cover" muted playsInline preload="none"
                                   onMouseEnter={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
                                   onMouseLeave={(e) => { const v = e.target as HTMLVideoElement; v.pause(); v.currentTime = 0; }} />
                               </div>
