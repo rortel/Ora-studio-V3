@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -11,6 +11,7 @@ import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { bagel, COLORS } from "../components/ora/tokens";
+import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 
 /* ═══ Palette — aligned with the shared ora/ tokens ═══ */
 const BG       = COLORS.cream;
@@ -90,6 +91,7 @@ function SurpriseContent() {
   const [stage, setStage] = useState<"idle" | "concept" | "generating" | "done">("idle");
   const [pack, setPack] = useState<Pack | null>(null);
   const [uploadingProduct, setUploadingProduct] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -533,6 +535,17 @@ function SurpriseContent() {
                                   <Download size={11} /> mp4
                                 </button>
                               )}
+                              <button
+                                onClick={() => setPublishTarget({
+                                  imageUrl: it.imageUrl,
+                                  videoUrl: it.videoUrl,
+                                  defaultCaption: it.caption || "",
+                                })}
+                                className="shrink-0 h-7 px-2 rounded-full flex items-center justify-center gap-1 text-[11px]"
+                                style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
+                                aria-label="Publish" title="Publish or schedule via Zernio">
+                                <Send size={11} /> Publish
+                              </button>
                             </>
                           )}
                         </div>
@@ -545,6 +558,19 @@ function SurpriseContent() {
           </div>
         </main>
       )}
+
+      {/* Publish / schedule modal powered by Zernio — any asset with a Send button opens it */}
+      <PublishModal
+        asset={publishTarget || { defaultCaption: "" }}
+        open={!!publishTarget}
+        onClose={() => setPublishTarget(null)}
+        onPublished={(outcomes) => {
+          const ok = outcomes.filter((o) => o.status === "published").length;
+          const sched = outcomes.filter((o) => o.status === "scheduled").length;
+          if (ok > 0)    toast.success(`Published to ${ok} network${ok > 1 ? "s" : ""}`);
+          if (sched > 0) toast.success(`Scheduled on ${sched} network${sched > 1 ? "s" : ""}`);
+        }}
+      />
     </div>
   );
 }
