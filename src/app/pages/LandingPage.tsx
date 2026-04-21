@@ -19,17 +19,6 @@ interface ShowcaseAsset {
   fileName: string; videoFileName: string;
 }
 
-/** Map a platform id to the aspect-ratio class the tile should render in.
- *  Forcing 9:16 Stories into a square crop loses ~40% of the composition,
- *  and 16:9 videos squeezed into 1:1 look wrong. This keeps every asset
- *  in its native frame. */
-function arClass(platform: string, aspectRatio?: string): string {
-  const p = (platform || "").toLowerCase();
-  if (aspectRatio === "9:16" || p.includes("story") || p.includes("tiktok")) return "aspect-[9/16]";
-  if (aspectRatio === "16:9" || p === "linkedin" || p === "facebook")         return "aspect-[16/9]";
-  if (aspectRatio === "4:5"  || p.includes("instagram-portrait"))             return "aspect-[4/5]";
-  return "aspect-square";
-}
 
 /* Fallback content when the public showcase endpoint returns nothing yet
  * (first deploy, admin hasn't featured anything). Once the admin marks
@@ -111,14 +100,6 @@ export function LandingPage() {
     }));
   const gallery: Tile[] = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
 
-  // Ambient backdrop: up to 14 blurred thumbnails drifting behind the hero
-  // headline. Gives the page life without stealing the title. Falls back
-  // silently when the showcase is empty.
-  const ambientTiles: Tile[] = (showcase.length > 0 ? showcase : [])
-    .filter((a) => a.imageUrl)
-    .slice(0, 14)
-    .map((a) => ({ src: a.imageUrl, label: a.platform, ar: a.aspectRatio }));
-
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
       {/* ═══ Header ═══ */}
@@ -147,40 +128,7 @@ export function LandingPage() {
 
       {/* ═══ Hero ═══ */}
       <section className="relative px-5 md:px-10 pt-10 pb-20 max-w-[1400px] mx-auto">
-        {/* Ambient backdrop — blurred featured thumbs drifting behind the
-         *  headline. Hidden on mobile (battery + perf) and when the
-         *  showcase is empty. Pointer-events none so it's decorative only. */}
-        {ambientTiles.length > 0 && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 hidden md:block overflow-hidden"
-            style={{ zIndex: 0 }}
-          >
-            <motion.div
-              initial={{ x: 0 }}
-              animate={{ x: -80 }}
-              transition={{ duration: 80, repeat: Infinity, repeatType: "reverse", ease: "linear" }}
-              className="grid grid-cols-7 gap-4 w-[140%] h-full"
-            >
-              {ambientTiles.concat(ambientTiles).slice(0, 14).map((t, i) => (
-                <div
-                  key={i}
-                  className="rounded-2xl overflow-hidden self-start"
-                  style={{
-                    filter: "blur(32px) saturate(1.1)",
-                    opacity: 0.22,
-                    transform: `translateY(${(i % 3) * 20}px)`,
-                    aspectRatio: t.ar === "9:16" ? "9/16" : t.ar === "16:9" ? "16/9" : "1/1",
-                  }}
-                >
-                  <img src={t.src} alt="" className="w-full h-full object-cover" />
-                </div>
-              ))}
-            </motion.div>
-          </div>
-        )}
-
-        <div className="relative text-center" style={{ zIndex: 1 }}>
+        <div className="relative text-center">
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             className="inline-flex mb-8"
@@ -308,24 +256,24 @@ export function LandingPage() {
             Stunning assets, zero effort.
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[200px] md:auto-rows-[260px]">
           {gallery.slice(0, 6).map((item, i) => {
-            // Bento spans — two hero tiles, four side tiles. Columns respect
-            // the native aspect ratio so 9:16 Stories render tall and 16:9
-            // LinkedIn posts stay wide. No forced square crop.
+            // Bento spans — two hero tiles, four side tiles. Tile dimensions
+            // are driven by the grid (fixed auto-rows + col/row spans); media
+            // fills via object-cover so mixed aspect ratios (9:16 stories,
+            // 16:9 LinkedIn, 1:1 feed) all sit in a clean, aligned bento.
             const span =
               i === 0 ? "md:col-span-4 md:row-span-2"
             : i === 1 ? "md:col-span-2"
             : i === 2 ? "md:col-span-2"
             : i === 3 ? "md:col-span-3 md:row-span-2"
             : "md:col-span-3";
-            const ar = arClass(item.platform || "", item.ar);
             return (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }} transition={{ delay: i * 0.05 }}
-                className={`relative rounded-[28px] overflow-hidden bg-white group ${span} ${ar}`}
+                className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
               >
                 {item.videoSrc ? (
                   <video

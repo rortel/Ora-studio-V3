@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, Send } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -120,6 +120,9 @@ function SurpriseContent() {
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
   const [outOfCredits, setOutOfCredits] = useState<{ remaining: number; required: number } | null>(null);
+  // Lightbox — full-screen viewer for the result pack. Null = closed.
+  // Navigates across the whole pack in display order (platform-grouped).
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   // Brand Vault nudge: Studio+ users without a vault get a soft prompt to set
   // one up, since Surprise Me without brand context can't deliver on the
@@ -273,6 +276,21 @@ function SurpriseContent() {
       }
     }
   }
+  // Flat order mirrors the rendered grid so ←/→ in the lightbox navigates
+  // the same sequence the user is seeing.
+  const flatItems: PackItem[] = Object.values(groupedByPlatform).flat();
+
+  // Lightbox keyboard nav — ESC close, ←/→ browse.
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxIndex(null);
+      else if (e.key === "ArrowRight") setLightboxIndex((i) => (i === null ? null : Math.min(flatItems.length - 1, i + 1)));
+      else if (e.key === "ArrowLeft")  setLightboxIndex((i) => (i === null ? null : Math.max(0, i - 1)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxIndex, flatItems.length]);
 
   return (
     <div style={{ background: BG, color: TEXT }} className="min-h-screen flex flex-col">
@@ -600,26 +618,48 @@ function SurpriseContent() {
                     <h3 className="text-[18px]" style={{ fontWeight: 600 }}>{meta.label}</h3>
                     <span className="text-[12px]" style={{ color: MUTED }}>· {items.length}</span>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {items.map((it, i) => (
-                      <div key={i} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
-                        {it.status === "ok" && it.videoUrl ? (
-                          <video
-                            src={it.videoUrl}
-                            poster={it.imageUrl}
-                            className="w-full h-auto block"
-                            style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }}
-                            autoPlay muted loop playsInline
-                            controls
-                          />
-                        ) : it.status === "ok" && it.imageUrl ? (
-                          <img src={it.imageUrl} alt={it.fileName} className="w-full h-auto" style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }} />
-                        ) : (
-                          <div className="w-full flex items-center justify-center p-6 text-[12px] text-center"
-                               style={{ aspectRatio: it.aspectRatio.replace(":", " / "), color: "#B91C1C" }}>
-                            {it.error?.slice(0, 100) || "failed"}
-                          </div>
-                        )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+                    {items.map((it, localIdx) => {
+                      const globalIdx = flatItems.indexOf(it);
+                      const ok = it.status === "ok";
+                      const clickable = ok && (it.imageUrl || it.videoUrl);
+                      return (
+                      <div key={localIdx} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                        <div
+                          role={clickable ? "button" : undefined}
+                          tabIndex={clickable ? 0 : undefined}
+                          onClick={() => clickable && setLightboxIndex(globalIdx)}
+                          onKeyDown={(e) => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setLightboxIndex(globalIdx); } }}
+                          className={clickable ? "cursor-zoom-in relative" : "relative"}
+                          aria-label={clickable ? "Open in fullscreen" : undefined}
+                        >
+                          {ok && it.videoUrl ? (
+                            <video
+                              src={it.videoUrl}
+                              poster={it.imageUrl}
+                              className="w-full h-auto block"
+                              style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }}
+                              autoPlay muted loop playsInline preload="metadata"
+                            />
+                          ) : ok && it.imageUrl ? (
+                            <img src={it.imageUrl} alt={it.fileName} loading="lazy" decoding="async"
+                                 className="w-full h-auto block" style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }} />
+                          ) : (
+                            <div className="w-full flex items-center justify-center p-6 text-[12px] text-center"
+                                 style={{ aspectRatio: it.aspectRatio.replace(":", " / "), color: "#B91C1C" }}>
+                              {it.error?.slice(0, 100) || "failed"}
+                            </div>
+                          )}
+                          {clickable && (
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                 style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 100%)" }}>
+                              <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[11.5px] font-medium"
+                                    style={{ background: "rgba(255,255,255,0.95)", color: TEXT, backdropFilter: "blur(8px)", letterSpacing: "0.02em" }}>
+                                <Wand2 size={12} /> Click to enlarge
+                              </span>
+                            </div>
+                          )}
+                        </div>
                         {it.videoUrl && (
                           <div className="absolute top-2 right-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono"
                                style={{ background: PINK, color: "#fff" }}>
@@ -687,7 +727,8 @@ function SurpriseContent() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               );
@@ -750,6 +791,132 @@ function SurpriseContent() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* ═══ Lightbox — full-screen viewer for a single asset ═══
+       *   Opens on click of any grid tile. ←/→ navigate, ESC closes
+       *   (wired via keydown listener in the component). Ink backdrop +
+       *   cream frame so the asset reads at max contrast. */}
+      <AnimatePresence>
+        {lightboxIndex !== null && flatItems[lightboxIndex] && (() => {
+          const it = flatItems[lightboxIndex];
+          const hasPrev = lightboxIndex > 0;
+          const hasNext = lightboxIndex < flatItems.length - 1;
+          return (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center"
+              style={{ background: "rgba(17,17,17,0.92)" }}
+              onClick={() => setLightboxIndex(null)}
+            >
+              {/* Close */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(null); }}
+                className="absolute top-5 right-5 w-11 h-11 rounded-full flex items-center justify-center transition"
+                style={{ background: "rgba(255,255,255,0.1)", color: "#fff", backdropFilter: "blur(8px)" }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+              {/* Prev */}
+              {hasPrev && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1); }}
+                  className="absolute left-5 md:left-10 w-12 h-12 rounded-full flex items-center justify-center transition hover:scale-105"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "#fff", backdropFilter: "blur(8px)" }}
+                  aria-label="Previous"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+              )}
+              {/* Next */}
+              {hasNext && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1); }}
+                  className="absolute right-5 md:right-10 w-12 h-12 rounded-full flex items-center justify-center transition hover:scale-105"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "#fff", backdropFilter: "blur(8px)" }}
+                  aria-label="Next"
+                >
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {/* Asset frame */}
+              <motion.div
+                key={lightboxIndex}
+                initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                className="flex flex-col items-center max-w-[90vw]"
+                style={{ maxHeight: "90vh" }}
+              >
+                <div className="rounded-2xl overflow-hidden flex items-center justify-center" style={{ maxHeight: "76vh", background: "#000" }}>
+                  {it.videoUrl ? (
+                    <video
+                      key={it.videoUrl}
+                      src={it.videoUrl}
+                      poster={it.imageUrl}
+                      autoPlay muted loop playsInline controls
+                      className="block"
+                      style={{ maxHeight: "76vh", maxWidth: "90vw", objectFit: "contain" }}
+                    />
+                  ) : it.imageUrl ? (
+                    <img
+                      src={it.imageUrl} alt={it.fileName}
+                      className="block"
+                      style={{ maxHeight: "76vh", maxWidth: "90vw", objectFit: "contain" }}
+                    />
+                  ) : null}
+                </div>
+                {/* Meta + actions */}
+                <div className="mt-4 flex items-center gap-2 text-[12px] flex-wrap justify-center" style={{ color: "rgba(255,255,255,0.7)" }}>
+                  <span className="font-mono">{it.fileName}</span>
+                  <span>·</span>
+                  <span>{PLATFORM_META[it.platform]?.label || it.platform}</span>
+                  <span>·</span>
+                  <span>{it.aspectRatio}</span>
+                  <span className="mx-2 opacity-40">|</span>
+                  {it.imageUrl && (
+                    <button
+                      onClick={() => downloadAsset(it.imageUrl!, it.fileName, "image")}
+                      className="inline-flex items-center gap-1 h-8 px-3 rounded-full transition"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 12 }}
+                    >
+                      <Download size={12} /> Image
+                    </button>
+                  )}
+                  {it.videoUrl && it.videoFileName && (
+                    <button
+                      onClick={() => downloadAsset(it.videoUrl!, it.videoFileName!, "video")}
+                      className="inline-flex items-center gap-1 h-8 px-3 rounded-full transition"
+                      style={{ background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 12 }}
+                    >
+                      <Download size={12} /> Film
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setPublishTarget({
+                        imageUrl: it.imageUrl,
+                        videoUrl: it.videoUrl,
+                        defaultCaption: it.caption || "",
+                      });
+                      setLightboxIndex(null);
+                    }}
+                    className="inline-flex items-center gap-1 h-8 px-3 rounded-full transition"
+                    style={{ background: COLORS.coral, color: "#fff", fontSize: 12, fontWeight: 600 }}
+                  >
+                    <Send size={11} /> Publish
+                  </button>
+                </div>
+                {it.caption && (
+                  <p className="mt-3 text-center text-[13px] max-w-[640px] leading-relaxed" style={{ color: "rgba(255,255,255,0.75)" }}>
+                    {it.caption}
+                  </p>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
