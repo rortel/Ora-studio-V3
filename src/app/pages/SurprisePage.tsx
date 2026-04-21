@@ -2,7 +2,6 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
-import JSZip from "jszip";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
@@ -176,48 +175,6 @@ function SurpriseContent() {
       setBusy(false);
     }
   }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
-
-  const downloadZip = useCallback(async () => {
-    if (!pack) return;
-    const ok = pack.items.filter((it) => it.status === "ok" && it.imageUrl);
-    if (ok.length === 0) { toast.error("Nothing to download."); return; }
-    toast.info("Preparing the ZIP…");
-    try {
-      const zip = new JSZip();
-      await Promise.all(ok.flatMap((it) => {
-        const jobs: Promise<void>[] = [];
-        // Image
-        jobs.push((async () => {
-          try {
-            const r = await fetch(it.imageUrl!);
-            if (!r.ok) return;
-            const blob = await r.blob();
-            zip.folder(it.platform)!.file(it.fileName, blob);
-          } catch {}
-        })());
-        // Film — paired .mp4 under the same platform folder, if present
-        if (it.videoUrl && it.videoFileName) {
-          jobs.push((async () => {
-            try {
-              const r = await fetch(it.videoUrl!);
-              if (!r.ok) return;
-              const blob = await r.blob();
-              zip.folder(it.platform)!.file(it.videoFileName!, blob);
-            } catch {}
-          })());
-        }
-        return jobs;
-      }));
-      const out = await zip.generateAsync({ type: "blob" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(out);
-      a.download = `${pack.campaignSlug}.zip`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (err: any) {
-      toast.error(String(err?.message || err));
-    }
-  }, [pack]);
 
   const groupedByPlatform: Record<string, PackItem[]> = {};
   if (pack) for (const it of pack.items) (groupedByPlatform[it.platform] ||= []).push(it);
@@ -475,11 +432,16 @@ function SurpriseContent() {
                 {pack.tone       && <Tag label="Tone"    value={pack.tone} />}
                 {pack.keyMessage && <Tag label="Message" value={pack.keyMessage} />}
               </div>
+              <div className="mt-4 inline-flex items-center gap-2 px-3 h-8 rounded-full text-[12px]"
+                   style={{ background: LIME, color: INK, fontWeight: 600 }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
+                Saved to your library
+              </div>
               <div className="mt-5 flex flex-wrap gap-2">
-                <button onClick={downloadZip}
+                <button onClick={() => navigate("/hub/library")}
                         className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-[13.5px] text-white"
-                        style={{ background: INK }}>
-                  <Package size={14} /> Download ZIP
+                        style={{ background: INK, fontFamily: DISPLAY, letterSpacing: "-0.01em" }}>
+                  <Package size={14} /> Open in Library
                 </button>
                 <button onClick={() => { setPack(null); setStage("idle"); }}
                         className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-[13.5px] hover:bg-black/5"

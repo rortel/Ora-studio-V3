@@ -513,29 +513,56 @@ function LibraryPageContent() {
       if (brief) {
         zip.file("brief.txt", brief);
       }
-      // Download and add each asset
+      // Download and add each asset.
+      // When assets carry platform + semantic filenames (Surprise Me packs),
+      // we organise the ZIP as /<platform>/<fileName>.jpg + <videoFileName>.mp4
+      // and drop caption alongside. Otherwise we fall back to the legacy
+      // flat naming.
       for (let i = 0; i < assets.length; i++) {
         const asset = assets[i];
-        const url = asset.imageUrl || asset.videoUrl || asset.audioUrl;
-        if (!url) continue;
-        try {
-          const response = await fetch(url);
-          const blob = await response.blob();
-          const ext = asset.videoUrl ? "mp4" : asset.audioUrl ? "mp3" : "png";
-          const name = `${asset.label || asset.platform || "asset"}_${i + 1}.${ext}`.replace(/[^a-zA-Z0-9_.-]/g, "_");
-          zip.file(name, blob);
-        } catch (err) {
-          console.warn(`[ZIP] Failed to fetch asset ${i}:`, err);
+        const platformFolder = typeof asset.platform === "string" && asset.platform
+          ? asset.platform.replace(/[^a-zA-Z0-9_-]/g, "-")
+          : null;
+        const targetDir = platformFolder ? zip.folder(platformFolder)! : zip;
+
+        // Image
+        if (asset.imageUrl) {
+          try {
+            const r = await fetch(asset.imageUrl);
+            const blob = await r.blob();
+            const name = asset.fileName || `${asset.label || asset.platform || "asset"}_${i + 1}.jpg`;
+            targetDir.file(name.replace(/[^a-zA-Z0-9_.-]/g, "_"), blob);
+          } catch (err) { console.warn(`[ZIP] image fail ${i}:`, err); }
         }
-        // Add copy text if available
-        if (asset.headline || asset.body) {
+        // Video (paired with the image under the same platform folder)
+        if (asset.videoUrl) {
+          try {
+            const r = await fetch(asset.videoUrl);
+            const blob = await r.blob();
+            const name = asset.videoFileName || `${asset.label || asset.platform || "asset"}_${i + 1}.mp4`;
+            targetDir.file(name.replace(/[^a-zA-Z0-9_.-]/g, "_"), blob);
+          } catch (err) { console.warn(`[ZIP] video fail ${i}:`, err); }
+        }
+        // Audio fallback (for legacy items)
+        if (!asset.imageUrl && !asset.videoUrl && asset.audioUrl) {
+          try {
+            const r = await fetch(asset.audioUrl);
+            const blob = await r.blob();
+            const name = `${asset.label || asset.platform || "asset"}_${i + 1}.mp3`;
+            targetDir.file(name.replace(/[^a-zA-Z0-9_.-]/g, "_"), blob);
+          } catch (err) { console.warn(`[ZIP] audio fail ${i}:`, err); }
+        }
+        // Caption / copy alongside
+        if (asset.caption || asset.headline || asset.body) {
+          const baseName = (asset.fileName?.replace(/\.[^.]+$/, "") || asset.label || asset.platform || `asset_${i + 1}`)
+            .replace(/[^a-zA-Z0-9_.-]/g, "_");
           const textContent = [
             asset.headline ? `# ${asset.headline}` : "",
-            asset.body || "",
+            asset.caption || asset.body || "",
             asset.hashtags ? `\n${asset.hashtags}` : "",
             asset.cta ? `\nCTA: ${asset.cta}` : "",
           ].filter(Boolean).join("\n\n");
-          zip.file(`${asset.label || asset.platform || "asset"}_${i + 1}_copy.txt`, textContent);
+          if (textContent) targetDir.file(`${baseName}_caption.txt`, textContent);
         }
       }
       const content = await zip.generateAsync({ type: "blob" });

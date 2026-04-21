@@ -9255,6 +9255,66 @@ OUTPUT JSON:
     const okCount = items.filter((x) => x.status === "ok").length;
     console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, mediaType=${mediaType}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
 
+    // ── Persist the campaign as a Library item so the user can find it and
+    //    download a structured ZIP from there. No immediate ZIP anymore.
+    let libraryItemId: string | null = null;
+    try {
+      libraryItemId = `surprise-${campaignSlug}-${Date.now()}`;
+      const uniquePlatforms = [...new Set(items.map((it) => it.platform).filter(Boolean))];
+      const libraryAssets = items
+        .filter((it) => it.status === "ok" && (it.imageUrl || it.videoUrl))
+        .map((it) => ({
+          platform: it.platform,
+          aspectRatio: it.aspectRatio,
+          label: it.label,
+          fileName: it.fileName,
+          videoFileName: it.videoFileName,
+          imageUrl: it.imageUrl,
+          videoUrl: it.videoUrl,
+          caption: it.caption,
+          twistElement: it.twistElement,
+          motion: it.motion,
+          provider: it.provider,
+          videoProvider: it.videoProvider,
+        }));
+      const libItem = {
+        id: libraryItemId,
+        userId: user.id,
+        type: mediaType === "film" ? "campaign-film" : "campaign",
+        title: campaignName,
+        brief: String(concept.creativeAngle || ""),
+        campaignSlug,
+        folderId: null,
+        savedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        preview: {
+          kind: "campaign",
+          assets: libraryAssets,
+          platforms: uniquePlatforms,
+          packshotUrl: libraryAssets[0]?.imageUrl || "",
+          lifestyleUrl: libraryAssets[1]?.imageUrl || "",
+          videoUrl: libraryAssets.find((a) => a.videoUrl)?.videoUrl || "",
+          copy: {
+            headline: campaignName,
+            angle: String(concept.creativeAngle || ""),
+            tone: String(concept.tone || ""),
+            keyMessage: String(concept.keyMessage || ""),
+          },
+          deliverableCount: libraryAssets.length,
+          campaignSlug,
+          mediaType,
+          creativityLevel: creativity,
+          videoDuration,
+          seed,
+        },
+      };
+      await kv.set(`lib:${user.id}:${libraryItemId}`, libItem);
+      console.log(`[surprise-me] saved to library as ${libraryItemId} (${libraryAssets.length} assets)`);
+    } catch (err) {
+      console.log(`[surprise-me] library save failed (non-fatal): ${err}`);
+    }
+
     return c.json({
       success: true,
       campaignName, campaignSlug,
@@ -9265,6 +9325,7 @@ OUTPUT JSON:
       mediaType, videoDuration,
       seed,
       items,
+      libraryItemId,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
