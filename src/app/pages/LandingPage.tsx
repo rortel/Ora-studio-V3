@@ -19,6 +19,18 @@ interface ShowcaseAsset {
   fileName: string; videoFileName: string;
 }
 
+/** Map a platform id to the aspect-ratio class the tile should render in.
+ *  Forcing 9:16 Stories into a square crop loses ~40% of the composition,
+ *  and 16:9 videos squeezed into 1:1 look wrong. This keeps every asset
+ *  in its native frame. */
+function arClass(platform: string, aspectRatio?: string): string {
+  const p = (platform || "").toLowerCase();
+  if (aspectRatio === "9:16" || p.includes("story") || p.includes("tiktok")) return "aspect-[9/16]";
+  if (aspectRatio === "16:9" || p === "linkedin" || p === "facebook")         return "aspect-[16/9]";
+  if (aspectRatio === "4:5"  || p.includes("instagram-portrait"))             return "aspect-[4/5]";
+  return "aspect-square";
+}
+
 /* Fallback content when the public showcase endpoint returns nothing yet
  * (first deploy, admin hasn't featured anything). Once the admin marks
  * items from Library, these get overridden with real campaign output. */
@@ -29,12 +41,12 @@ const FALLBACK_HERO = [
   { kind: "img"   as const, src: "/templates/figma-skincare-01.png",     label: "skincare" },
 ];
 const FALLBACK_GALLERY = [
-  { src: "/templates/figma-linkedin-01.png",     label: "linkedin" },
-  { src: "/templates/figma-igp-01.png",          label: "ig feed" },
-  { src: "/templates/figma-story-01.png",        label: "ig story" },
-  { src: "/templates/figma-b2b-01.png",          label: "linkedin · b2b" },
-  { src: "/templates/figma-fashion-post-02.png", label: "fashion" },
-  { src: "/templates/figma-skincare-02.png",     label: "skincare" },
+  { src: "/templates/figma-linkedin-01.png",     label: "linkedin",       platform: "linkedin",        ar: "16:9" },
+  { src: "/templates/figma-igp-01.png",          label: "ig feed",        platform: "instagram-feed",  ar: "1:1"  },
+  { src: "/templates/figma-story-01.png",        label: "ig story",       platform: "instagram-story", ar: "9:16" },
+  { src: "/templates/figma-b2b-01.png",          label: "linkedin · b2b", platform: "linkedin",        ar: "16:9" },
+  { src: "/templates/figma-fashion-post-02.png", label: "fashion",        platform: "instagram-feed",  ar: "1:1"  },
+  { src: "/templates/figma-skincare-02.png",     label: "skincare",       platform: "instagram-feed",  ar: "1:1"  },
 ];
 
 function platformLabel(p: string): string {
@@ -85,8 +97,27 @@ export function LandingPage() {
   // Gallery: prefer featured assets slot-by-slot, pad remaining slots with the
   // hardcoded templates. Starring a single item in Library should immediately
   // replace the first gallery tile — not require exactly 6 items to take effect.
-  const galleryFeatured = showcaseImages.slice(2, 8).map((a) => ({ src: a.imageUrl, label: platformLabel(a.platform) }));
-  const gallery = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
+  // Carry video + aspectRatio through so each tile can self-frame and autoplay.
+  type Tile = { src: string; videoSrc?: string; label: string; ar?: string; platform?: string };
+  const galleryFeatured: Tile[] = showcase.slice(2, 10)
+    .filter((a) => a.imageUrl || a.videoUrl)
+    .slice(0, 6)
+    .map((a) => ({
+      src: a.imageUrl || a.videoUrl,
+      videoSrc: a.videoUrl || undefined,
+      label: platformLabel(a.platform),
+      ar: a.aspectRatio,
+      platform: a.platform,
+    }));
+  const gallery: Tile[] = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
+
+  // Ambient backdrop: up to 14 blurred thumbnails drifting behind the hero
+  // headline. Gives the page life without stealing the title. Falls back
+  // silently when the showcase is empty.
+  const ambientTiles: Tile[] = (showcase.length > 0 ? showcase : [])
+    .filter((a) => a.imageUrl)
+    .slice(0, 14)
+    .map((a) => ({ src: a.imageUrl, label: a.platform, ar: a.aspectRatio }));
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
@@ -115,8 +146,41 @@ export function LandingPage() {
       </header>
 
       {/* ═══ Hero ═══ */}
-      <section className="px-5 md:px-10 pt-10 pb-20 max-w-[1400px] mx-auto">
-        <div className="text-center">
+      <section className="relative px-5 md:px-10 pt-10 pb-20 max-w-[1400px] mx-auto">
+        {/* Ambient backdrop — blurred featured thumbs drifting behind the
+         *  headline. Hidden on mobile (battery + perf) and when the
+         *  showcase is empty. Pointer-events none so it's decorative only. */}
+        {ambientTiles.length > 0 && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 hidden md:block overflow-hidden"
+            style={{ zIndex: 0 }}
+          >
+            <motion.div
+              initial={{ x: 0 }}
+              animate={{ x: -80 }}
+              transition={{ duration: 80, repeat: Infinity, repeatType: "reverse", ease: "linear" }}
+              className="grid grid-cols-7 gap-4 w-[140%] h-full"
+            >
+              {ambientTiles.concat(ambientTiles).slice(0, 14).map((t, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl overflow-hidden self-start"
+                  style={{
+                    filter: "blur(32px) saturate(1.1)",
+                    opacity: 0.22,
+                    transform: `translateY(${(i % 3) * 20}px)`,
+                    aspectRatio: t.ar === "9:16" ? "9/16" : t.ar === "16:9" ? "16/9" : "1/1",
+                  }}
+                >
+                  <img src={t.src} alt="" className="w-full h-full object-cover" />
+                </div>
+              ))}
+            </motion.div>
+          </div>
+        )}
+
+        <div className="relative text-center" style={{ zIndex: 1 }}>
           <motion.div
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             className="inline-flex mb-8"
@@ -127,15 +191,33 @@ export function LandingPage() {
             </Badge>
           </motion.div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-            className="leading-[0.88] mb-8"
-            style={{ ...bagel, fontSize: "clamp(64px, 12vw, 156px)" }}
-          >
-            Stop prompting.<br />
-            Surprise <span style={{ color: COLORS.coral }}>your brand.</span>
-          </motion.h1>
+          {/* Kinetic headline — each line reveals separately, and "your brand"
+           *  snaps from ink to coral after landing so the eye lands on the
+           *  product promise, not just reads the sentence. */}
+          <h1 className="leading-[0.88] mb-8" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 156px)" }}>
+            <motion.span
+              className="block"
+              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Stop prompting.
+            </motion.span>
+            <motion.span
+              className="block"
+              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Surprise{" "}
+              <motion.span
+                initial={{ color: COLORS.ink }}
+                animate={{ color: COLORS.coral }}
+                transition={{ duration: 0.45, delay: 0.9 }}
+                style={{ display: "inline-block" }}
+              >
+                your brand.
+              </motion.span>
+            </motion.span>
+          </h1>
 
           <motion.p
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
@@ -226,22 +308,39 @@ export function LandingPage() {
             Stunning assets, zero effort.
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[180px] md:auto-rows-[240px]">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4">
           {gallery.slice(0, 6).map((item, i) => {
+            // Bento spans — two hero tiles, four side tiles. Columns respect
+            // the native aspect ratio so 9:16 Stories render tall and 16:9
+            // LinkedIn posts stay wide. No forced square crop.
             const span =
               i === 0 ? "md:col-span-4 md:row-span-2"
             : i === 1 ? "md:col-span-2"
             : i === 2 ? "md:col-span-2"
             : i === 3 ? "md:col-span-3 md:row-span-2"
             : "md:col-span-3";
+            const ar = arClass(item.platform || "", item.ar);
             return (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }} transition={{ delay: i * 0.05 }}
-                className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
+                className={`relative rounded-[28px] overflow-hidden bg-white group ${span} ${ar}`}
               >
-                <img src={item.src} alt="" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
+                {item.videoSrc ? (
+                  <video
+                    src={item.videoSrc}
+                    poster={item.src}
+                    autoPlay muted loop playsInline preload="metadata"
+                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                  />
+                ) : (
+                  <img
+                    src={item.src} alt=""
+                    loading="lazy" decoding="async"
+                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+                  />
+                )}
                 <div className="absolute top-3 left-3"><Badge tone="ink">42s · {item.label}</Badge></div>
               </motion.div>
             );
