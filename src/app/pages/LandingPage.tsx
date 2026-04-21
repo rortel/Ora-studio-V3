@@ -82,9 +82,11 @@ export function LandingPage() {
     ? { kind: "img" as const, src: showcaseImages[1].imageUrl, label: platformLabel(showcaseImages[1].platform) }
     : FALLBACK_HERO[2];
 
-  // Gallery: prefer 6 next featured assets, fallback to templates.
+  // Gallery: prefer featured assets slot-by-slot, pad remaining slots with the
+  // hardcoded templates. Starring a single item in Library should immediately
+  // replace the first gallery tile — not require exactly 6 items to take effect.
   const galleryFeatured = showcaseImages.slice(2, 8).map((a) => ({ src: a.imageUrl, label: platformLabel(a.platform) }));
-  const gallery = galleryFeatured.length === 6 ? galleryFeatured : FALLBACK_GALLERY;
+  const gallery = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>

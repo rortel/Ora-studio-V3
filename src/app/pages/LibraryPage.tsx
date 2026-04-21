@@ -898,6 +898,24 @@ function LibraryPageContent() {
                     >
                       {/* Cover image — mosaic of up to 4 thumbnails */}
                       <div className="relative h-[160px] overflow-hidden bg-black/20">
+                        {/* Feature-on-landing star (admin only, persistent). */}
+                        {(item as any).canFeature && (
+                          <button
+                            onClick={(e) => handleToggleFeature(item, e)}
+                            className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
+                            style={{
+                              background: (item as any).featured ? COLORS.butter : "rgba(255,255,255,0.92)",
+                              color: (item as any).featured ? COLORS.ink : COLORS.muted,
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                              backdropFilter: "blur(6px)",
+                              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
+                            }}
+                            title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
+                          >
+                            <Star size={12} fill={(item as any).featured ? "currentColor" : "none"} />
+                            {(item as any).featured ? "On landing" : "Feature"}
+                          </button>
+                        )}
                         {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).length >= 4 ? (
                           <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
                             {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).slice(0, 4).map((a: any, ti: number) => (
@@ -947,19 +965,6 @@ function LibraryPageContent() {
                             {new Date(item.savedAt).toLocaleDateString()}
                           </span>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {(item as any).canFeature && (
-                              <button
-                                onClick={(e) => handleToggleFeature(item, e)}
-                                className="w-6 h-6 flex items-center justify-center rounded cursor-pointer"
-                                style={{
-                                  background: (item as any).featured ? "#F4C542" : "var(--border)",
-                                  color: (item as any).featured ? "#111111" : "var(--text-tertiary)",
-                                }}
-                                title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
-                              >
-                                <Star size={11} fill={(item as any).featured ? "currentColor" : "none"} />
-                              </button>
-                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDownloadCampaign(item); }}
                               disabled={isDownloading}
@@ -1575,20 +1580,22 @@ function LibraryPageContent() {
                       )}
                       {/* Thumbnail */}
                       <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => { if (selectMode) { toggleSelected(item.id); } else { setPreviewItem(item); } }}>
-                        {/* Feature on landing (admin only — top-right) */}
+                        {/* Feature on landing (admin only — persistent, top-right). */}
                         {(item as any).canFeature && !selectMode && (
                           <button
                             onClick={(e) => handleToggleFeature(item, e)}
-                            className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full flex items-center justify-center transition-all"
+                            className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
                             style={{
-                              background: (item as any).featured ? "#F4C542" : "rgba(255,255,255,0.92)",
-                              color: (item as any).featured ? "#111111" : "#6C6C6C",
+                              background: (item as any).featured ? COLORS.butter : "rgba(255,255,255,0.92)",
+                              color: (item as any).featured ? COLORS.ink : COLORS.muted,
                               boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
                               backdropFilter: "blur(6px)",
+                              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
                             }}
                             title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
                           >
-                            <Star size={13} fill={(item as any).featured ? "currentColor" : "none"} />
+                            <Star size={12} fill={(item as any).featured ? "currentColor" : "none"} />
+                            {(item as any).featured ? "On landing" : "Feature"}
                           </button>
                         )}
                         {/* Deployment badge (top-left) */}
