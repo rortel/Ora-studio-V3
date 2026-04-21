@@ -24988,6 +24988,83 @@ app.post("/library/items-update", async (c) => {
   }
 });
 
+// ── POST /library/feature — toggle "featured on landing" ──
+// Authed. Stores a small pointer `showcase:{userId}:{itemId}` with a timestamp;
+// the public GET /showcase/featured reads these pointers and joins them with
+// the library items to return public-ready assets.
+app.post("/library/feature", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const itemId = String(body?.itemId || "").trim();
+    const featured = body?.featured !== false;
+    if (!itemId) return c.json({ success: false, error: "itemId required" }, 400);
+
+    const key = `showcase:${user.id}:${itemId}`;
+    if (featured) {
+      const libItem = await kv.get(`lib:${user.id}:${itemId}`);
+      if (!libItem) return c.json({ success: false, error: "Library item not found" }, 404);
+      await kv.set(key, { itemId, userId: user.id, featuredAt: new Date().toISOString() });
+      console.log(`[library/feature] user=${user.id.slice(0, 8)} featured ${itemId}`);
+      return c.json({ success: true, featured: true });
+    } else {
+      await kv.del(key);
+      console.log(`[library/feature] user=${user.id.slice(0, 8)} un-featured ${itemId}`);
+      return c.json({ success: true, featured: false });
+    }
+  } catch (err: any) {
+    console.log(`[library/feature] error: ${err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// ── GET /showcase/featured — PUBLIC list of assets flagged for the landing ──
+// No auth. Returns the latest featured campaigns (joined with library) as a
+// flat list of assets the marketing page can drop straight into its hero +
+// gallery grid. Caller can pass ?limit=40 (default 40).
+app.get("/showcase/featured", async (c) => {
+  try {
+    const limit = Math.max(1, Math.min(80, parseInt(c.req.query("limit") || "40", 10) || 40));
+    const pointers = (await kv.getByPrefix("showcase:")) || [];
+    // Most recent first
+    pointers.sort((a: any, b: any) => String(b?.featuredAt || "").localeCompare(String(a?.featuredAt || "")));
+
+    const assets: any[] = [];
+    for (const p of pointers) {
+      if (!p?.itemId || !p?.userId) continue;
+      const libItem: any = await kv.get(`lib:${p.userId}:${p.itemId}`);
+      if (!libItem) continue;
+      const preview = libItem.preview || {};
+      const campaignName = libItem.title || preview?.copy?.headline || "Ora campaign";
+      const campaignSlug = libItem.campaignSlug || preview.campaignSlug || "ora-campaign";
+      const itemAssets: any[] = Array.isArray(preview.assets) ? preview.assets : [];
+      for (const a of itemAssets) {
+        if (!a?.imageUrl && !a?.videoUrl) continue;
+        assets.push({
+          itemId: p.itemId,
+          featuredAt: p.featuredAt,
+          campaignName, campaignSlug,
+          platform: a.platform || "",
+          aspectRatio: a.aspectRatio || "1:1",
+          imageUrl: a.imageUrl || "",
+          videoUrl: a.videoUrl || "",
+          caption: a.caption || "",
+          twistElement: a.twistElement || "",
+          fileName: a.fileName || "",
+          videoFileName: a.videoFileName || "",
+        });
+        if (assets.length >= limit) break;
+      }
+      if (assets.length >= limit) break;
+    }
+
+    return c.json({ success: true, items: assets });
+  } catch (err: any) {
+    console.log(`[showcase/featured] error: ${err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // POST /library/items-delete — CORS-safe delete item
 app.post("/library/items-delete", async (c) => {
   try {
