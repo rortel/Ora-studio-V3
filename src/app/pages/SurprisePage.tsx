@@ -46,8 +46,10 @@ const PLATFORM_META: Record<string, { label: string; emoji: string }> = Object.f
 
 interface PackItem {
   platform: string; aspectRatio: string; label: string; fileName: string;
+  videoFileName?: string; motion?: string;
   twistElement?: string; caption?: string;
-  status: "ok" | "failed"; imageUrl?: string; error?: string; provider?: string;
+  status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
+  error?: string; provider?: string; videoProvider?: string;
 }
 interface Pack {
   campaignName: string; campaignSlug: string;
@@ -76,6 +78,7 @@ function SurpriseContent() {
   const [assetCount, setAssetCount] = useState<number>(6);
   const [platforms, setPlatforms] = useState<string[]>(["instagram-feed", "instagram-story", "linkedin", "tiktok"]);
   const [mediaType, setMediaType] = useState<"image" | "film" | "carousel">("image");
+  const [videoDuration, setVideoDuration] = useState<"3s" | "5s" | "8s">("5s");
   const [withCaption, setWithCaption] = useState<boolean>(true);
   const [ctxWhy, setCtxWhy] = useState("");
   const [productPhoto, setProductPhoto] = useState<string | null>(null);
@@ -142,6 +145,7 @@ function SurpriseContent() {
         assetCount,
         platforms,
         mediaType,
+        videoDuration,
         withCaption,
         context: {
           who: who.trim() || undefined,
@@ -171,7 +175,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, withCaption, what, who, ctxWhy, serverPost]);
+  }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
 
   const downloadZip = useCallback(async () => {
     if (!pack) return;
@@ -180,13 +184,29 @@ function SurpriseContent() {
     toast.info("Preparing the ZIP…");
     try {
       const zip = new JSZip();
-      await Promise.all(ok.map(async (it) => {
-        try {
-          const r = await fetch(it.imageUrl!);
-          if (!r.ok) return;
-          const blob = await r.blob();
-          zip.folder(it.platform)!.file(it.fileName, blob);
-        } catch {}
+      await Promise.all(ok.flatMap((it) => {
+        const jobs: Promise<void>[] = [];
+        // Image
+        jobs.push((async () => {
+          try {
+            const r = await fetch(it.imageUrl!);
+            if (!r.ok) return;
+            const blob = await r.blob();
+            zip.folder(it.platform)!.file(it.fileName, blob);
+          } catch {}
+        })());
+        // Film — paired .mp4 under the same platform folder, if present
+        if (it.videoUrl && it.videoFileName) {
+          jobs.push((async () => {
+            try {
+              const r = await fetch(it.videoUrl!);
+              if (!r.ok) return;
+              const blob = await r.blob();
+              zip.folder(it.platform)!.file(it.videoFileName!, blob);
+            } catch {}
+          })());
+        }
+        return jobs;
       }));
       const out = await zip.generateAsync({ type: "blob" });
       const a = document.createElement("a");
@@ -338,9 +358,9 @@ function SurpriseContent() {
                     <TuneBlock label="Asset type">
                       <div className="flex flex-wrap gap-2">
                         {[
-                          { id: "image"    as const, label: "Image",    emoji: "🖼️" },
-                          { id: "film"     as const, label: "Film",     emoji: "🎞️", disabled: true, hint: "soon" },
-                          { id: "carousel" as const, label: "Carousel", emoji: "🗂️", disabled: true, hint: "soon" },
+                          { id: "image"    as const, label: "Images",        emoji: "🖼️" },
+                          { id: "film"     as const, label: "Images + Films", emoji: "🎞️", hint: "each image gets a 5s motion version" },
+                          { id: "carousel" as const, label: "Carousel",       emoji: "🗂️", disabled: true, hint: "soon" },
                         ].map((m) => {
                           const on = mediaType === m.id;
                           return (
@@ -354,6 +374,23 @@ function SurpriseContent() {
                         })}
                       </div>
                     </TuneBlock>
+
+                    {mediaType === "film" && (
+                      <TuneBlock label="Film duration">
+                        <div className="flex gap-2">
+                          {(["3s", "5s", "8s"] as const).map((d) => {
+                            const on = videoDuration === d;
+                            return (
+                              <button key={d} onClick={() => setVideoDuration(d)}
+                                      className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
+                                      style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}>
+                                {d}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </TuneBlock>
+                    )}
 
                     <TuneBlock label="Caption with each asset">
                       <div className="flex gap-2">
@@ -412,7 +449,9 @@ function SurpriseContent() {
             </div>
 
             <div className="mt-10 text-[12.5px]" style={{ color: MUTED }}>
-              30 to 90 seconds · {assetCount} assets in parallel · brand DA locked
+              {mediaType === "film"
+                ? `~${Math.ceil(30 + assetCount * 45)}s total · ${assetCount} images + ${assetCount} films in parallel · brand DA locked`
+                : `30 to 90 seconds · ${assetCount} assets in parallel · brand DA locked`}
             </div>
           </div>
         </main>
@@ -464,12 +503,27 @@ function SurpriseContent() {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {items.map((it, i) => (
                       <div key={i} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
-                        {it.status === "ok" && it.imageUrl ? (
+                        {it.status === "ok" && it.videoUrl ? (
+                          <video
+                            src={it.videoUrl}
+                            poster={it.imageUrl}
+                            className="w-full h-auto block"
+                            style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }}
+                            autoPlay muted loop playsInline
+                            controls
+                          />
+                        ) : it.status === "ok" && it.imageUrl ? (
                           <img src={it.imageUrl} alt={it.fileName} className="w-full h-auto" style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }} />
                         ) : (
                           <div className="w-full flex items-center justify-center p-6 text-[12px] text-center"
                                style={{ aspectRatio: it.aspectRatio.replace(":", " / "), color: "#B91C1C" }}>
                             {it.error?.slice(0, 100) || "failed"}
+                          </div>
+                        )}
+                        {it.videoUrl && (
+                          <div className="absolute top-2 right-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono"
+                               style={{ background: PINK, color: "#fff" }}>
+                            🎞 film
                           </div>
                         )}
                         {it.twistElement && (
@@ -507,9 +561,17 @@ function SurpriseContent() {
                               <button
                                 onClick={() => downloadAsset(it.imageUrl!, it.fileName, "image")}
                                 className="shrink-0 w-7 h-7 rounded-full hover:bg-black/5 flex items-center justify-center"
-                                aria-label="Download">
+                                aria-label="Download image" title="Download .jpg">
                                 <Download size={12} />
                               </button>
+                              {it.videoUrl && it.videoFileName && (
+                                <button
+                                  onClick={() => downloadAsset(it.videoUrl!, it.videoFileName!, "video")}
+                                  className="shrink-0 h-7 px-2 rounded-full hover:bg-black/5 flex items-center justify-center gap-1 text-[10px] font-mono"
+                                  aria-label="Download film" title="Download .mp4">
+                                  <Download size={11} /> mp4
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
