@@ -1,6 +1,5 @@
 import { Link, useLocation } from "react-router";
 import { Sparkles, FolderOpen, Wand2, Zap } from "lucide-react";
-import { OraLogo } from "./OraLogo";
 import { useAuth } from "../lib/auth-context";
 import { COLORS } from "./ora/tokens";
 
@@ -45,9 +44,8 @@ export function AppTabs({ active }: { active?: TabId }) {
       className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-14"
       style={{ background: `${BG}CC`, backdropFilter: "blur(18px) saturate(180%)", borderBottom: `1px solid ${LINE}` }}
     >
-      <Link to="/" className="flex items-center gap-2" aria-label="Ora">
-        <OraLogo size={22} variant="mark" animate={false} />
-        <span className="text-[17px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
+      <Link to="/" className="flex items-center" aria-label="Ora">
+        <span className="text-[22px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
       </Link>
 
       <nav
