@@ -50,7 +50,10 @@ function platformLabel(p: string): string {
 
 export function LandingPage() {
   const { user } = useAuth();
-  const primaryHref = user ? "/hub/surprise" : "/login";
+  // No self-serve free plan: anonymous visitors land on /pricing (pick a tier
+  // + authenticated checkout). Signed-in users go straight to the Surprise Me
+  // screen. There's no "Try free" escape hatch anymore.
+  const primaryHref = user ? "/hub/surprise" : "/pricing";
 
   // Pull admin-curated showcase items. Falls back silently to templates
   // when the endpoint is empty or unreachable.
@@ -149,11 +152,11 @@ export function LandingPage() {
           >
             <Link to={primaryHref}>
               <Button variant="accent" size="lg">
-                Generate 8 assets free <ArrowRight size={16} />
+                Pick a plan · Start shipping <ArrowRight size={16} />
               </Button>
             </Link>
             <span className="text-[13px]" style={{ color: COLORS.subtle }}>
-              No credit card · No prompt writing
+              From €19/mo · Cancel anytime
             </span>
           </motion.div>
         </div>
@@ -297,17 +300,17 @@ export function LandingPage() {
             <span style={{ color: COLORS.butter }}>Start surprising.</span>
           </h2>
           <p className="text-[16px] md:text-[18px] max-w-xl mx-auto mb-8" style={{ color: "rgba(255,255,255,0.72)" }}>
-            Join the brands who've stopped briefing Figma. Your first pack is free.
+            Join the brands who've stopped briefing Figma. Pick a plan, ship your first pack tonight.
           </p>
           <div className="flex items-center justify-center">
             <Link to={primaryHref}>
               <Button variant="accent" size="lg">
-                Generate 8 assets free <ArrowRight size={16} />
+                Pick a plan <ArrowRight size={16} />
               </Button>
             </Link>
           </div>
           <div className="text-[13px] mt-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Free forever · No credit card
+            From €19/mo · Cancel anytime
           </div>
         </Surface>
       </section>

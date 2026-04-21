@@ -1,11 +1,13 @@
 import { Link, useLocation } from "react-router";
-import { Sparkles, FolderOpen, Wand2 } from "lucide-react";
+import { Sparkles, FolderOpen, Wand2, Zap } from "lucide-react";
 import { OraLogo } from "./OraLogo";
+import { useAuth } from "../lib/auth-context";
+import { COLORS } from "./ora/tokens";
 
-const INK = "#0A0A0A";
-const MUTED = "#6E6E73";
-const LINE = "rgba(10,10,10,0.08)";
-const BG = "#FBFBFD";
+const INK   = COLORS.ink;
+const MUTED = COLORS.muted;
+const LINE  = COLORS.line;
+const BG    = COLORS.cream;
 
 type TabId = "surprise" | "library" | "edit";
 
@@ -19,13 +21,24 @@ const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNod
  * Shared top bar for the 3 core app tabs. Renders a sticky header with the
  * Ora logo on the left and the 3-tab segmented control centred. The current
  * tab is highlighted based on the URL — or can be forced via the prop.
+ * On the right: a discrete credits pill (remaining / link to pricing).
  */
 export function AppTabs({ active }: { active?: TabId }) {
   const location = useLocation();
+  const { remainingCredits, profile } = useAuth();
   const activeId: TabId = active
     ?? (location.pathname.startsWith("/hub/library") ? "library"
       : location.pathname.startsWith("/hub/editor")  ? "edit"
       : "surprise");
+  const planLabel = (() => {
+    const p = String(profile?.plan || "").toLowerCase();
+    if (p === "studio"  || p === "pro")      return "Studio";
+    if (p === "agency"  || p === "business") return "Agency";
+    if (p === "creator" || p === "starter")  return "Creator";
+    return "—";
+  })();
+  const credits = typeof remainingCredits === "number" ? remainingCredits : 0;
+  const lowOrEmpty = credits <= 5;
 
   return (
     <header
@@ -62,9 +75,24 @@ export function AppTabs({ active }: { active?: TabId }) {
         })}
       </nav>
 
-      <div className="hidden md:flex items-center gap-3">
-        <Link to="/pricing" className="text-[12.5px] hover:text-black transition" style={{ color: MUTED }}>Pricing</Link>
-        <Link to="/profile" className="text-[12.5px] hover:text-black transition" style={{ color: MUTED }}>Account</Link>
+      <div className="flex items-center gap-2">
+        {/* Credits pill */}
+        <Link
+          to="/pricing"
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12.5px] transition"
+          style={{
+            background: lowOrEmpty ? COLORS.coral : "#fff",
+            color: lowOrEmpty ? "#fff" : INK,
+            border: `1px solid ${lowOrEmpty ? COLORS.coral : LINE}`,
+            fontWeight: 600,
+          }}
+          title={lowOrEmpty ? "Running low — upgrade your plan" : `You have ${credits} assets left on ${planLabel}`}
+        >
+          <Zap size={12} />
+          <span>{credits}</span>
+          <span className="hidden md:inline" style={{ opacity: 0.7 }}>· {planLabel}</span>
+        </Link>
+        <Link to="/profile" className="hidden md:inline-flex text-[12.5px] hover:text-black transition" style={{ color: MUTED }}>Account</Link>
       </div>
     </header>
   );
