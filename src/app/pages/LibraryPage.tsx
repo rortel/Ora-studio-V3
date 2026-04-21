@@ -19,6 +19,7 @@ import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 import { PHASE_1_ONLY } from "../lib/phase";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
+import { bagel, COLORS } from "../components/ora/tokens";
 
 /* ═══════════════════════════════════
    TYPES
@@ -117,18 +118,23 @@ function getTypeLabel(type: string) {
 function getAssetUrl(item: LibraryItem): string | null {
   const p: any = item?.preview;
   if (!p) return null;
-  const kind = p.kind || item.type;
-  if (kind === "image")  return p.imageUrl || p.videoUrl || p.audioUrl || null;
-  if (kind === "film")   return p.videoUrl || p.imageUrl || null;
-  if (kind === "sound")  return p.audioUrl || null;
-  if (kind === "campaign") {
-    const assets = Array.isArray(p.assets) ? p.assets : [];
+  const kind: string = p.kind || item.type || "";
+  const isCampaign =
+    kind === "campaign" ||
+    kind.startsWith?.("campaign") || // campaign-film, campaign-image, campaign-pack…
+    Array.isArray(p.assets);
+
+  if (isCampaign) {
+    const assets = Array.isArray(p.assets) ? p.assets : Array.isArray((item as any).assets) ? (item as any).assets : [];
     const firstImg = assets.find((a: any) => a?.imageUrl);
     if (firstImg) return firstImg.imageUrl;
     const firstVid = assets.find((a: any) => a?.videoUrl);
     if (firstVid) return firstVid.videoUrl;
-    return p.packshotUrl || p.lifestyleUrl || p.videoUrl || null;
+    return p.packshotUrl || p.lifestyleUrl || p.imageUrl || p.videoUrl || (item as any).thumbnail || null;
   }
+  if (kind === "image") return p.imageUrl || p.videoUrl || p.audioUrl || null;
+  if (kind === "film")  return p.videoUrl || p.imageUrl || null;
+  if (kind === "sound") return p.audioUrl || null;
   // Unknown kind — salvage any URL the preview carries.
   return p.imageUrl || p.videoUrl || p.audioUrl || null;
 }
@@ -753,7 +759,7 @@ function LibraryPageContent() {
   const typeBg: Record<string, string> = { image: "var(--accent)", film: "#444444", text: "#888888", code: "#666666", sound: "#999999" };
 
   return (
-    <div className="min-h-screen bg-background relative" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+    <div className="min-h-screen relative" style={{ background: COLORS.cream, color: COLORS.ink }} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       <AppTabs active="library" />
       {/* Drag overlay */}
       <AnimatePresence>
@@ -778,12 +784,12 @@ function LibraryPageContent() {
 
       <div className="max-w-[1400px] mx-auto px-6 py-8 md:py-14">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-end justify-between gap-6 mb-8 flex-wrap">
           <div>
-            <h1 style={{ fontSize: "clamp(2rem, 5vw, 3.5rem)", fontWeight: 500, letterSpacing: "-0.05em", lineHeight: 0.95, color: "var(--foreground)" }}>
+            <h1 className="leading-none mb-2" style={{ ...bagel, fontSize: "clamp(48px, 7vw, 96px)", color: COLORS.ink }}>
               {t("library.title")}
             </h1>
-            <p className="mt-2" style={{ fontSize: "15px", color: "var(--text-tertiary)", fontWeight: 400 }}>
+            <p style={{ fontSize: "14px", color: COLORS.muted, fontWeight: 500 }}>
               {contentItems.length} {contentItems.length !== 1 ? t("library.assets") : t("library.asset")}{!PHASE_1_ONLY && <>, {campaignItems.length} {campaignItems.length !== 1 ? t("library.campaigns") : t("library.campaign")}</>}
             </p>
           </div>
@@ -791,8 +797,8 @@ function LibraryPageContent() {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="flex items-center gap-2 px-5 py-3 rounded-full transition-all hover:opacity-80 cursor-pointer"
-              style={{ background: "var(--secondary)", color: "var(--foreground)", fontSize: "14px", fontWeight: 500, border: "1px solid var(--border)" }}
+              className="inline-flex items-center gap-2 px-5 h-11 rounded-full transition-all hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "#FFFFFF", color: COLORS.ink, fontSize: "13px", fontWeight: 600, border: `1px solid ${COLORS.line}` }}
             >
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {uploading ? `${uploadProgress}%` : "Importer"}
@@ -806,9 +812,9 @@ function LibraryPageContent() {
               onChange={(e) => { if (e.target.files?.length) handleUploadFiles(e.target.files); e.target.value = ""; }}
             />
             <Link
-              to="/hub"
-              className="flex items-center gap-2 px-5 py-3 rounded-full transition-all hover:opacity-90"
-              style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
+              to="/hub/surprise"
+              className="inline-flex items-center gap-2 px-5 h-11 rounded-full transition-all hover:opacity-90"
+              style={{ background: COLORS.coral, color: "#FFFFFF", fontSize: "13px", fontWeight: 700 }}
             >
               <Plus size={14} />
               {t("library.generateNew")}
@@ -854,8 +860,8 @@ function LibraryPageContent() {
             {campaignItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "rgba(124, 58, 237, 0.06)" }}>
-                  <Sparkles size={28} style={{ color: "#7C3AED" }} />
+                  style={{ background: "rgba(124, 92, 224, 0.06)" }}>
+                  <Sparkles size={28} style={{ color: "#7C5CE0" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {t("library.noCampaigns")}
@@ -864,9 +870,9 @@ function LibraryPageContent() {
                   {t("library.noCampaignsDesc")}
                 </p>
                 <Link
-                  to="/hub"
+                  to="/hub/surprise"
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                  style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
+                  style={{ background: COLORS.coral, color: "#FFFFFF", fontSize: "13px", fontWeight: 700 }}
                 >
                   <Rocket size={14} />
                   {t("library.openAiHub")}
@@ -886,8 +892,8 @@ function LibraryPageContent() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.05, 0.3) }}
-                      className="rounded-xl overflow-hidden cursor-pointer group"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+                      className="rounded-2xl overflow-hidden cursor-pointer group"
+                      style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, boxShadow: "0 1px 2px rgba(17,17,17,0.03)" }}
                       onClick={() => setOpenCampaignId(item.id)}
                     >
                       {/* Cover image — mosaic of up to 4 thumbnails */}
@@ -1324,9 +1330,9 @@ function LibraryPageContent() {
                         className="px-2.5 py-1 rounded-full cursor-pointer transition-all"
                         style={{
                           fontSize: "10px", fontWeight: categoryFilter === "all" ? 700 : 500,
-                          background: categoryFilter === "all" ? "rgba(124, 58, 237, 0.12)" : "var(--secondary)",
-                          color: categoryFilter === "all" ? "#7C3AED" : "var(--text-secondary)",
-                          border: categoryFilter === "all" ? "1px solid rgba(124, 58, 237, 0.2)" : "1px solid var(--border)",
+                          background: categoryFilter === "all" ? "rgba(124, 92, 224, 0.12)" : "var(--secondary)",
+                          color: categoryFilter === "all" ? "#7C5CE0" : "var(--text-secondary)",
+                          border: categoryFilter === "all" ? "1px solid rgba(124, 92, 224, 0.2)" : "1px solid var(--border)",
                         }}
                       >
                         AI: All
@@ -1338,9 +1344,9 @@ function LibraryPageContent() {
                           className="px-2.5 py-1 rounded-full cursor-pointer transition-all capitalize"
                           style={{
                             fontSize: "10px", fontWeight: categoryFilter === cat ? 700 : 500,
-                            background: categoryFilter === cat ? "rgba(124, 58, 237, 0.12)" : "var(--secondary)",
-                            color: categoryFilter === cat ? "#7C3AED" : "var(--text-secondary)",
-                            border: categoryFilter === cat ? "1px solid rgba(124, 58, 237, 0.2)" : "1px solid var(--border)",
+                            background: categoryFilter === cat ? "rgba(124, 92, 224, 0.12)" : "var(--secondary)",
+                            color: categoryFilter === cat ? "#7C5CE0" : "var(--text-secondary)",
+                            border: categoryFilter === cat ? "1px solid rgba(124, 92, 224, 0.2)" : "1px solid var(--border)",
                           }}
                         >
                           {cat}
@@ -1406,9 +1412,9 @@ function LibraryPageContent() {
                 style={{
                   fontSize: "11px",
                   fontWeight: 500,
-                  background: selectMode ? "rgba(124, 58, 237, 0.12)" : "transparent",
-                  color: selectMode ? "#7C3AED" : "var(--muted-foreground)",
-                  border: selectMode ? "1px solid rgba(124, 58, 237, 0.3)" : "1px solid transparent",
+                  background: selectMode ? "rgba(124, 92, 224, 0.12)" : "transparent",
+                  color: selectMode ? "#7C5CE0" : "var(--muted-foreground)",
+                  border: selectMode ? "1px solid rgba(124, 92, 224, 0.3)" : "1px solid transparent",
                 }}
               >
                 {selectMode ? <X size={12} /> : <Check size={12} />}
@@ -1425,11 +1431,11 @@ function LibraryPageContent() {
                   exit={{ opacity: 0, y: -8, height: 0 }}
                   className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-xl"
                   style={{
-                    background: "rgba(124, 58, 237, 0.06)",
-                    border: "1px solid rgba(124, 58, 237, 0.18)",
+                    background: "rgba(124, 92, 224, 0.06)",
+                    border: "1px solid rgba(124, 92, 224, 0.18)",
                   }}
                 >
-                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#7C3AED" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#7C5CE0" }}>
                     {selectedIds.size} {isFr ? "sélectionné" + (selectedIds.size > 1 ? "s" : "") : "selected"}
                   </span>
                   <div className="flex-1" />
@@ -1499,8 +1505,8 @@ function LibraryPageContent() {
             {filteredItems.length === 0 ? (
               <div className="text-center py-20">
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6"
-                  style={{ background: "rgba(124, 58, 237, 0.06)" }}>
-                  <BookOpen size={28} style={{ color: "#7C3AED" }} />
+                  style={{ background: "rgba(124, 92, 224, 0.06)" }}>
+                  <BookOpen size={28} style={{ color: "#7C5CE0" }} />
                 </div>
                 <h2 style={{ fontSize: "24px", fontWeight: 500, letterSpacing: "-0.03em", color: "var(--foreground)", marginBottom: "8px" }}>
                   {items.length === 0 ? t("library.noContent") : t("library.noResults")}
@@ -1521,9 +1527,9 @@ function LibraryPageContent() {
                       Importer vos fichiers
                     </button>
                     <Link
-                      to="/hub"
+                      to="/hub/surprise"
                       className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-all hover:scale-105"
-                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", color: "#FFFFFF", fontSize: "14px", fontWeight: 500 }}
+                      style={{ background: COLORS.coral, color: "#FFFFFF", fontSize: "13px", fontWeight: 700 }}
                     >
                       <Rocket size={14} />
                       {t("library.openAiHub")}
@@ -1545,12 +1551,12 @@ function LibraryPageContent() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                      whileHover={{ y: -4, boxShadow: "0 12px 40px rgba(0,0,0,0.12)" }}
+                      whileHover={{ y: -3, boxShadow: "0 14px 40px rgba(17,17,17,0.08)" }}
                       className="break-inside-avoid rounded-2xl overflow-hidden group cursor-pointer relative"
                       style={{
-                        border: selectMode && selectedIds.has(item.id) ? "2px solid #7C3AED" : "1px solid var(--border)",
-                        background: "var(--card)",
-                        boxShadow: selectMode && selectedIds.has(item.id) ? "0 0 0 3px rgba(124,58,237,0.15), 0 2px 8px rgba(0,0,0,0.03)" : "0 2px 8px rgba(0,0,0,0.03)",
+                        border: selectMode && selectedIds.has(item.id) ? `2px solid ${COLORS.coral}` : `1px solid ${COLORS.line}`,
+                        background: "#FFFFFF",
+                        boxShadow: selectMode && selectedIds.has(item.id) ? `0 0 0 3px rgba(255,92,57,0.15), 0 2px 8px rgba(17,17,17,0.03)` : "0 1px 2px rgba(17,17,17,0.03)",
                       }}
                     >
                       {/* Selection checkbox (visible in select mode) */}
@@ -1559,8 +1565,8 @@ function LibraryPageContent() {
                           onClick={(e) => { e.stopPropagation(); toggleSelected(item.id); }}
                           className="absolute top-2 right-2 z-20 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all"
                           style={{
-                            background: selectedIds.has(item.id) ? "#7C3AED" : "rgba(255,255,255,0.9)",
-                            border: selectedIds.has(item.id) ? "2px solid #7C3AED" : "2px solid rgba(0,0,0,0.25)",
+                            background: selectedIds.has(item.id) ? "#7C5CE0" : "rgba(255,255,255,0.9)",
+                            border: selectedIds.has(item.id) ? "2px solid #7C5CE0" : "2px solid rgba(0,0,0,0.25)",
                             boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
                           }}
                         >
@@ -1625,17 +1631,21 @@ function LibraryPageContent() {
                               </div>
                             );
                           }
+                          const isText = item.preview?.kind === "text";
+                          const isCode = item.preview?.kind === "code";
+                          // Cream fallback tile for items without resolvable media —
+                          // feels like part of the Library rather than a broken card.
                           return (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-6">
-                              <Icon size={24} style={{ color: typeColor, opacity: 0.4 }} />
-                              <span style={{ fontSize: "10px", fontWeight: 500, color: typeColor, textTransform: "uppercase", letterSpacing: "0.06em" }}>{getTypeLabel(item.type)}</span>
-                              {item.preview?.kind === "text" && (
-                                <p className="text-center line-clamp-4 mt-1" style={{ fontSize: "11px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>
+                            <div className="w-full aspect-[4/3] flex flex-col items-center justify-center gap-3 p-6" style={{ background: COLORS.warm }}>
+                              <Icon size={28} style={{ color: COLORS.ink, opacity: 0.55 }} />
+                              <span style={{ fontSize: "10px", fontWeight: 700, color: COLORS.ink, textTransform: "uppercase", letterSpacing: "0.12em" }}>{getTypeLabel(item.type)}</span>
+                              {isText && (
+                                <p className="text-center line-clamp-4" style={{ fontSize: "11px", color: COLORS.muted, lineHeight: 1.5 }}>
                                   {(item.preview as any).excerpt?.slice(0, 200)}
                                 </p>
                               )}
-                              {item.preview?.kind === "code" && (
-                                <pre className="text-left w-full line-clamp-4 mt-1 font-mono" style={{ fontSize: "10px", color: "var(--text-tertiary)", lineHeight: 1.4 }}>
+                              {isCode && (
+                                <pre className="text-left w-full line-clamp-4 font-mono" style={{ fontSize: "10px", color: COLORS.muted, lineHeight: 1.4 }}>
                                   {(item.preview as any).snippet?.slice(0, 200)}
                                 </pre>
                               )}
@@ -1663,11 +1673,11 @@ function LibraryPageContent() {
                         </p>
                         {item.classification && (
                           <div className="flex flex-wrap gap-1 mb-1.5">
-                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 58, 237, 0.12)", color: "#7C3AED", textTransform: "capitalize" }}>
+                            <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 92, 224, 0.12)", color: "#7C5CE0", textTransform: "capitalize" }}>
                               {item.classification.category}
                             </span>
                             {item.classification.tags.slice(0, 4).map((tag) => (
-                              <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 58, 237, 0.06)", color: "#7C3AED" }}>
+                              <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 92, 224, 0.06)", color: "#7C5CE0" }}>
                                 {tag}
                               </span>
                             ))}
@@ -1695,7 +1705,7 @@ function LibraryPageContent() {
                                 className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer"
                                 title={isFr ? "Publier sur les réseaux" : "Publish to networks"}
                               >
-                                <Share2 size={12} style={{ color: "#7C3AED" }} />
+                                <Share2 size={12} style={{ color: "#7C5CE0" }} />
                               </button>
                             )}
                             {item.preview?.kind === "image" && item.preview?.imageUrl && (
@@ -1707,7 +1717,7 @@ function LibraryPageContent() {
                                 className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer"
                                 title={isFr ? "Modifier dans l'éditeur" : "Edit in editor"}
                               >
-                                <Pencil size={12} style={{ color: "#7C3AED" }} />
+                                <Pencil size={12} style={{ color: "#7C5CE0" }} />
                               </button>
                             )}
                             <button onClick={(e) => { e.stopPropagation(); handleDownload(item); }} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--secondary)] cursor-pointer" title="Download HD">
@@ -1766,8 +1776,8 @@ function LibraryPageContent() {
                           onClick={(e) => { e.stopPropagation(); toggleSelected(item.id); }}
                           className="w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-all flex-shrink-0"
                           style={{
-                            background: selectedIds.has(item.id) ? "#7C3AED" : "transparent",
-                            border: selectedIds.has(item.id) ? "2px solid #7C3AED" : "2px solid var(--border)",
+                            background: selectedIds.has(item.id) ? "#7C5CE0" : "transparent",
+                            border: selectedIds.has(item.id) ? "2px solid #7C5CE0" : "2px solid var(--border)",
                           }}
                         >
                           {selectedIds.has(item.id) && <Check size={11} style={{ color: "#fff", strokeWidth: 3 }} />}
@@ -1788,11 +1798,11 @@ function LibraryPageContent() {
                           )}
                           {item.classification && (
                             <div className="flex flex-wrap gap-1 mt-0.5">
-                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 58, 237, 0.12)", color: "#7C3AED", textTransform: "capitalize" }}>
+                              <span className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 600, background: "rgba(124, 92, 224, 0.12)", color: "#7C5CE0", textTransform: "capitalize" }}>
                                 {item.classification.category}
                               </span>
                               {item.classification.tags.slice(0, 3).map((tag) => (
-                                <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 58, 237, 0.06)", color: "#7C3AED" }}>
+                                <span key={tag} className="px-2 py-0.5 rounded-full" style={{ fontSize: "10px", fontWeight: 400, background: "rgba(124, 92, 224, 0.06)", color: "#7C5CE0" }}>
                                   {tag}
                                 </span>
                               ))}
@@ -1816,7 +1826,7 @@ function LibraryPageContent() {
                               });
                             }}
                             className="w-7 h-7 flex items-center justify-center rounded cursor-pointer"
-                            style={{ color: "#7C3AED" }}
+                            style={{ color: "#7C5CE0" }}
                             title={isFr ? "Publier" : "Publish"}
                           >
                             <Share2 size={13} />
@@ -1829,7 +1839,7 @@ function LibraryPageContent() {
                               navigate("/hub/editor", { state: { assetUrl: item.preview.imageUrl, assetId: item.id } });
                             }}
                             className="w-7 h-7 flex items-center justify-center rounded cursor-pointer"
-                            style={{ color: "#7C3AED" }}
+                            style={{ color: "#7C5CE0" }}
                             title={isFr ? "Modifier" : "Edit"}
                           >
                             <Pencil size={13} />

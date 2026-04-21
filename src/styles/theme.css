@@ -32,11 +32,13 @@
   --ora-brick: #DC2626;
   --ora-ocre: #111111;
 
-  /* ── Legacy compatibility ── */
-  --ora-signal: #7C3AED;
-  --ora-signal-light: rgba(124, 58, 237, 0.04);
-  --ora-signal-medium: rgba(124, 58, 237, 0.08);
-  --ora-signal-ring: rgba(124, 58, 237, 0.12);
+  /* ── Legacy compatibility — mapped to the Ora violet token so the legacy
+   *    bg-ora-signal-light / text-ora-signal Tailwind utilities used across
+   *    older pages render in the current brand palette. ── */
+  --ora-signal: #7C5CE0;
+  --ora-signal-light: rgba(124, 92, 224, 0.06);
+  --ora-signal-medium: rgba(124, 92, 224, 0.10);
+  --ora-signal-ring: rgba(124, 92, 224, 0.14);
 
   --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;
