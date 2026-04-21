@@ -42,6 +42,16 @@ const PLATFORM_OPTIONS = [
   { id: "tiktok",          label: "TikTok",          emoji: "🎵" },
 ];
 
+/** Default format suggested per platform — matches the server's PLATFORM_FORMAT.
+ *  The user can flip any selected platform's format by tapping the inline icon. */
+const DEFAULT_PLATFORM_FORMAT: Record<string, "image" | "film"> = {
+  "instagram-feed":  "image",
+  "instagram-story": "film",
+  "linkedin":        "image",
+  "facebook":        "image",
+  "tiktok":          "film",
+};
+
 const PLATFORM_META: Record<string, { label: string; emoji: string }> = Object.fromEntries(
   PLATFORM_OPTIONS.map((p) => [p.id, { label: p.label, emoji: p.emoji }]),
 );
@@ -78,7 +88,23 @@ function SurpriseContent() {
   // Smart defaults everyone gets
   const [creativity, setCreativity] = useState<1 | 2 | 3 | 4>(2);
   const [assetCount, setAssetCount] = useState<number>(6);
-  const [platforms, setPlatforms] = useState<string[]>(["instagram-feed", "instagram-story", "linkedin", "tiktok"]);
+  // Each platform now carries its own format (image | film). Tap the chip to
+  // toggle selection, tap the small inline icon to flip image ↔ film.
+  type PickedPlatform = { id: string; format: "image" | "film" };
+  const [platformPicks, setPlatformPicks] = useState<PickedPlatform[]>(
+    ["instagram-feed", "instagram-story", "linkedin", "tiktok"].map((id) => ({
+      id, format: DEFAULT_PLATFORM_FORMAT[id] || "image",
+    }))
+  );
+  const platforms = platformPicks.map((p) => p.id);
+  const togglePlatform = (id: string) =>
+    setPlatformPicks((prev) => prev.some((p) => p.id === id)
+      ? prev.filter((p) => p.id !== id)
+      : [...prev, { id, format: DEFAULT_PLATFORM_FORMAT[id] || "image" }]);
+  const togglePlatformFormat = (id: string) =>
+    setPlatformPicks((prev) => prev.map((p) => p.id === id
+      ? { ...p, format: p.format === "image" ? "film" : "image" }
+      : p));
   const [mediaType, setMediaType] = useState<"image" | "film" | "carousel">("image");
   const [videoDuration, setVideoDuration] = useState<"3s" | "5s" | "8s">("5s");
   const [withCaption, setWithCaption] = useState<boolean>(true);
@@ -147,6 +173,7 @@ function SurpriseContent() {
         creativityLevel: creativity,
         assetCount,
         platforms,
+        platformFormats: Object.fromEntries(platformPicks.map((p) => [p.id, p.format])),
         mediaType,
         videoDuration,
         withCaption,
@@ -178,7 +205,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, creativity, assetCount, platforms, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
+  }, [busy, productPhoto, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -249,12 +276,13 @@ function SurpriseContent() {
               <span className="text-[12.5px] mx-1" style={{ color: MUTED }}>on</span>
 
               {PLATFORM_OPTIONS.map((p) => {
-                const on = platforms.includes(p.id);
+                const pick = platformPicks.find((x) => x.id === p.id);
+                const on = !!pick;
+                const formatIcon = pick?.format === "film" ? "🎬" : "📸";
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    onClick={() => setPlatforms((xs) => on ? xs.filter((x) => x !== p.id) : [...xs, p.id])}
-                    className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full text-[13px] transition"
+                    className="inline-flex items-stretch h-10 rounded-full overflow-hidden transition"
                     style={{
                       background: on ? INK : "#fff",
                       color: on ? INK_TEXT : TEXT,
@@ -262,8 +290,24 @@ function SurpriseContent() {
                       fontWeight: 500,
                     }}
                   >
-                    <span>{p.emoji}</span> {p.label.replace("Instagram ", "IG ")}
-                  </button>
+                    <button
+                      onClick={() => togglePlatform(p.id)}
+                      className="inline-flex items-center gap-1.5 px-3.5 text-[13px]"
+                      title={on ? "Remove platform" : "Add platform"}
+                    >
+                      <span>{p.emoji}</span> {p.label.replace("Instagram ", "IG ")}
+                    </button>
+                    {on && (
+                      <button
+                        onClick={() => togglePlatformFormat(p.id)}
+                        className="inline-flex items-center justify-center w-9 text-[15px] hover:bg-white/10"
+                        style={{ borderLeft: `1px solid rgba(255,255,255,0.18)` }}
+                        title={`Switch to ${pick?.format === "film" ? "image" : "film"}`}
+                      >
+                        {formatIcon}
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </motion.div>
@@ -331,42 +375,21 @@ function SurpriseContent() {
                              className="w-full" style={{ accentColor: INK }} />
                     </TuneBlock>
 
-                    <TuneBlock label="Asset type">
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { id: "image"    as const, label: "Images",        emoji: "🖼️" },
-                          { id: "film"     as const, label: "Images + Films", emoji: "🎞️", hint: "each image gets a 5s motion version" },
-                          { id: "carousel" as const, label: "Carousel",       emoji: "🗂️", disabled: true, hint: "soon" },
-                        ].map((m) => {
-                          const on = mediaType === m.id;
+                    {/* Film duration applies to any platform that gets motion (IG Story, TikTok, …) */}
+                    <TuneBlock label="Film duration">
+                      <div className="flex gap-2">
+                        {(["3s", "5s", "8s"] as const).map((d) => {
+                          const on = videoDuration === d;
                           return (
-                            <button key={m.id} disabled={m.disabled} onClick={() => setMediaType(m.id)}
-                                    title={m.hint}
-                                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] transition disabled:opacity-40"
+                            <button key={d} onClick={() => setVideoDuration(d)}
+                                    className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
                                     style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}>
-                              <span>{m.emoji}</span> {m.label}{m.hint ? <span className="opacity-60"> · {m.hint}</span> : null}
+                              {d}
                             </button>
                           );
                         })}
                       </div>
                     </TuneBlock>
-
-                    {mediaType === "film" && (
-                      <TuneBlock label="Film duration">
-                        <div className="flex gap-2">
-                          {(["3s", "5s", "8s"] as const).map((d) => {
-                            const on = videoDuration === d;
-                            return (
-                              <button key={d} onClick={() => setVideoDuration(d)}
-                                      className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
-                                      style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}>
-                                {d}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </TuneBlock>
-                    )}
 
                     <TuneBlock label="Caption with each asset">
                       <div className="flex gap-2">

@@ -8921,9 +8921,37 @@ app.post("/analyze/surprise-me", async (c) => {
     const fallbackBrief = [ctxWhat && `about: ${ctxWhat}`, ctxWho && `for: ${ctxWho}`, ctxWhy && `because: ${ctxWhy}`].filter(Boolean).join(" · ");
     const brief = [String(body?.brief || "").trim(), fallbackBrief].filter(Boolean).join(". ");
 
-    const wantsFilm = mediaType === "film";
+    // Per-platform format map — the network's natural usage drives whether a
+    // shot is a still image or a 5s motion clip. TikTok + IG Story lean film,
+    // IG Feed + LinkedIn + Facebook lean image. The client doesn't have to
+    // pick an "asset type" anymore — the platforms they choose determine the
+    // image/film mix.
+    const PLATFORM_FORMAT: Record<string, "image" | "film"> = {
+      "instagram-feed":  "image",
+      "instagram-story": "film",
+      "linkedin":        "image",
+      "facebook":        "image",
+      "tiktok":          "film",
+    };
+    // mediaType is an OPTIONAL global override:
+    //   - "film"     → force every shot to be filmed (legacy "Images + Films")
+    //   - any other  → auto per-platform (default, recommended)
+    const forceFormat: "image" | "film" | null = mediaType === "film" ? "film" : null;
+    // platformFormats lets the client override the per-platform default for
+    // any subset of the picked platforms. Example:
+    //   { "instagram-feed": "film", "linkedin": "film" }
+    // would force IG Feed + LinkedIn into motion clips even though their
+    // natural defaults are image. Anything not in this map falls back to
+    // PLATFORM_FORMAT.
+    const platformFormats: Record<string, "image" | "film"> =
+      (body?.platformFormats && typeof body.platformFormats === "object")
+        ? Object.fromEntries(
+            Object.entries(body.platformFormats)
+              .filter(([, v]) => v === "image" || v === "film")
+          ) as Record<string, "image" | "film">
+        : {};
 
-    // Carousel isn't a pipeline yet — only image and film (image+film pair) are supported.
+    // Carousel isn't a pipeline yet.
     if (mediaType === "carousel") {
       return c.json({ success: false, error: "carousel generation is not available yet." }, 400);
     }
@@ -9029,8 +9057,8 @@ OUTPUT JSON:
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched."${wantsFilm ? `,
-      "motion": "short motion brief in ENGLISH describing how THIS shot moves when animated — camera move (slow push-in, orbit, rack focus, dolly-zoom), subject motion (wind through hair, steam rising, particles drifting), and atmosphere (lightleak sweep, subtle parallax, flicker). 10-30 words. The product itself must stay identical to the first frame — only the world around it moves."` : ""}${withCaption ? `,
+      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched.",
+      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
@@ -9081,6 +9109,7 @@ OUTPUT JSON:
       platform: string; aspectRatio: string; label: string; scene: string; subject: string;
       twistElement: string; promptText: string; caption: string; fileName: string; videoFileName: string;
       motion: string;
+      format: "image" | "film";
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -9088,19 +9117,25 @@ OUTPUT JSON:
       const platform = String(sh?.platform || "").trim();
       const preset   = PLATFORMS.find((p) => p.id === platform);
       if (!preset) continue;
+      // Resolution order: global force → client per-platform override → natural default → image
+      const format: "image" | "film" =
+        forceFormat
+        ?? platformFormats[preset.id]
+        ?? PLATFORM_FORMAT[preset.id]
+        ?? "image";
       const label        = slug(String(sh?.label || "shot"));
       const scene        = String(sh?.scene || "").trim();
       const subject      = String(sh?.subject || "").trim();
       const twistElement = String(sh?.twistElement || "").trim();
       const promptText   = String(sh?.promptText || "").trim();
       const caption      = withCaption ? String(sh?.caption || "").trim() : "";
-      const motion       = wantsFilm ? String(sh?.motion || "").trim() : "";
+      const motion       = format === "film" ? String(sh?.motion || "").trim() : "";
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
       const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}`;
       const fileName      = `${baseName}.jpg`;
       const videoFileName = `${baseName}.mp4`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion });
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -9185,7 +9220,9 @@ OUTPUT JSON:
     // Luma Ray (image-to-video). The existing image is the FIRST FRAME,
     // so the product never morphs — only the world around it moves.
     // ══════════════════════════════════════════════════════════════════
-    if (wantsFilm) {
+    // Film pass — runs whenever any shot was assigned format=film
+    // (either by the per-platform map or by the all-film override).
+    if (jobs.some((j) => j.format === "film")) {
       const filmStart = Date.now();
       const arRayMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
 
@@ -9245,9 +9282,11 @@ OUTPUT JSON:
       };
 
       // Parallel film generation — concurrency 2 because each clip is heavy.
+      // Only animate shots whose per-job format is "film" (the rest stay as
+      // pure image deliverables for image-first platforms).
       const filmable = items
         .map((it, idx) => ({ it, idx, job: jobs.find((j) => j.fileName === it.fileName) }))
-        .filter((x) => x.it.status === "ok" && x.it.imageUrl && x.job);
+        .filter((x) => x.it.status === "ok" && x.it.imageUrl && x.job && x.job.format === "film");
       const FILM_CONCURRENCY = 2;
       for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
