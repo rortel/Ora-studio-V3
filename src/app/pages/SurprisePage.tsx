@@ -79,7 +79,7 @@ export function SurprisePage() {
 }
 
 function SurpriseContent() {
-  const { getAuthHeader, can } = useAuth();
+  const { getAuthHeader, can, remainingCredits, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
   // Core inputs (minimal — the two blanks)
@@ -119,6 +119,7 @@ function SurpriseContent() {
   const [pack, setPack] = useState<Pack | null>(null);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
+  const [outOfCredits, setOutOfCredits] = useState<{ remaining: number; required: number } | null>(null);
 
   // Brand Vault nudge: Studio+ users without a vault get a soft prompt to set
   // one up, since Surprise Me without brand context can't deliver on the
@@ -219,6 +220,12 @@ function SurpriseContent() {
         lang: "en",
       }, 240_000);
       if (!res?.success || !Array.isArray(res.items)) {
+        // Out-of-credits is a first-class case with a clear CTA.
+        if (res?.code === "out_of_credits") {
+          setStage("idle");
+          setOutOfCredits({ remaining: Number(res.remaining || 0), required: Number(res.required || assetCount) });
+          return;
+        }
         toast.error(res?.error || "Composition failed.");
         setStage("idle");
         return;
@@ -238,13 +245,15 @@ function SurpriseContent() {
       if (savedCount === 0) {
         toast.error("Generated but nothing saved to Library — check server logs.");
       }
+      // Refresh auth profile so the credits pill in AppTabs updates immediately.
+      refreshProfile().catch(() => {});
     } catch (err: any) {
       toast.error(String(err?.message || err));
       setStage("idle");
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost]);
+  }, [busy, productPhoto, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -387,16 +396,31 @@ function SurpriseContent() {
             {/* The one big button */}
             <motion.div
               initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
-              className="flex items-center justify-center"
+              className="flex flex-col items-center justify-center gap-3"
             >
-              <Button
-                variant="accent" size="lg"
-                onClick={handleSurprise}
-                disabled={busy || uploadingProduct || platforms.length === 0}
-                style={{ boxShadow: "0 20px 44px -14px rgba(255,92,57,0.55)" }}
-              >
-                <Sparkles size={18} /> Surprise me <ArrowRight size={16} />
-              </Button>
+              {(() => {
+                const needsCredits = remainingCredits < assetCount && remainingCredits < 999999;
+                return (
+                  <>
+                    <Button
+                      variant="accent" size="lg"
+                      onClick={handleSurprise}
+                      disabled={busy || uploadingProduct || platforms.length === 0 || needsCredits}
+                      style={{ boxShadow: needsCredits ? "none" : "0 20px 44px -14px rgba(255,92,57,0.55)" }}
+                    >
+                      <Sparkles size={18} /> Surprise me <ArrowRight size={16} />
+                    </Button>
+                    {needsCredits && (
+                      <p className="text-[12.5px]" style={{ color: COLORS.muted }}>
+                        {remainingCredits === 0
+                          ? <>Out of credits. <button onClick={() => navigate("/pricing")} className="underline" style={{ color: COLORS.ink, fontWeight: 600 }}>Upgrade</button> to keep going.</>
+                          : <>You have {remainingCredits} credit{remainingCredits === 1 ? "" : "s"} — drop the count to {remainingCredits} or <button onClick={() => navigate("/pricing")} className="underline" style={{ color: COLORS.ink, fontWeight: 600 }}>upgrade</button>.</>
+                        }
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </motion.div>
 
             {/* Fine-tune drawer toggle */}
@@ -684,6 +708,49 @@ function SurpriseContent() {
           if (sched > 0) toast.success(`Scheduled on ${sched} network${sched > 1 ? "s" : ""}`);
         }}
       />
+
+      {/* Out-of-credits modal — editorial, cream, not a red alert */}
+      <AnimatePresence>
+        {outOfCredits && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(17,17,17,0.4)", backdropFilter: "blur(8px)" }}
+            onClick={() => setOutOfCredits(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.96 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-[460px] w-full rounded-3xl p-8 md:p-10"
+              style={{ background: COLORS.cream, border: `1px solid ${COLORS.line}`, boxShadow: "0 30px 80px -20px rgba(17,17,17,0.3)" }}
+            >
+              <Badge tone="coral">
+                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FFFFFF" }} />
+                Out of credits
+              </Badge>
+              <h3 className="mt-5 leading-[0.95]" style={{ ...bagel, fontSize: "clamp(32px, 5vw, 48px)" }}>
+                {outOfCredits.remaining === 0
+                  ? <>That's the last shot for this month.</>
+                  : <>Almost.</>}
+              </h3>
+              <p className="mt-4 text-[15px] leading-relaxed" style={{ color: COLORS.muted }}>
+                {outOfCredits.remaining === 0
+                  ? <>You're at zero. Upgrade your plan or wait until next month — your credits refresh automatically.</>
+                  : <>You've got {outOfCredits.remaining} left and this run needs {outOfCredits.required}. Drop the asset count, or unlock more below.</>}
+              </p>
+              <div className="mt-6 flex items-center gap-2">
+                <Button variant="accent" size="md" onClick={() => { setOutOfCredits(null); navigate("/pricing"); }}>
+                  See plans <ArrowRight size={14} />
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => setOutOfCredits(null)}>
+                  Not now
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

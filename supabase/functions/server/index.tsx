@@ -8505,6 +8505,31 @@ app.post("/analyze/remix", async (c) => {
       return c.json({ success: false, error: "prompt, imageUrl and model are required" }, 400);
     }
 
+    // Pre-flight credits check — one remix = one asset = one credit.
+    // Auth required (anonymous remix is blocked). Admin bypasses.
+    if (!user) {
+      return c.json({ success: false, error: "Sign in to remix.", code: "auth_required" }, 401);
+    }
+    try {
+      const profile = await kv.get(`user:${user.id}`);
+      const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+      if (!isAdmin) {
+        const remaining = Math.max(0, (profile?.credits || 0) - (profile?.creditsUsed || 0));
+        if (remaining < 1) {
+          return c.json({
+            success: false,
+            error: "You're out of credits for this month.",
+            code: "out_of_credits",
+            remaining: 0,
+            required: 1,
+            plan: profile?.plan || "free",
+          }, 402);
+        }
+      }
+    } catch (err) {
+      console.log(`[remix] credits pre-check skipped: ${err}`);
+    }
+
     // Brand Vault cues (auth users only) — never overwrites the extracted DA.
     let brandSuffix = "";
     if (user) {
@@ -8529,8 +8554,11 @@ app.post("/analyze/remix", async (c) => {
 
     const r = await runRemix({ finalPrompt, imageUrl, model, aspectRatio, seed });
     if (!r.ok) {
+      // Generation failed — don't charge.
       return c.json({ success: false, error: r.error }, 502);
     }
+    // Only charge on success.
+    await deductCredit(user.id, 1).catch(() => {});
     console.log(`[remix] ok via ${r.provider} in ${Date.now() - t0}ms`);
     return c.json({ success: true, imageUrl: r.imageUrl, provider: r.provider, note: r.note });
   } catch (err: any) {
@@ -8746,6 +8774,35 @@ app.post("/analyze/series", async (c) => {
       return c.json({ success: false, error: "imageUrl and subject are required" }, 400);
     }
 
+    // Pre-flight credits check — each generated variation = 1 credit.
+    // The series endpoint produces up to `scenes × ratios` outputs, so
+    // reserve that worst case here and let the post-run deduction only
+    // charge for the ok ones.
+    const maxScenes = Math.min(6, Math.max(1, scenesIn.length || 4));
+    const maxRatios = Math.max(1, ratiosIn.length || 1);
+    const seriesMaxCost = maxScenes * maxRatios;
+    try {
+      const profile = await kv.get(`user:${user.id}`);
+      const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+      if (!isAdmin) {
+        const remaining = Math.max(0, (profile?.credits || 0) - (profile?.creditsUsed || 0));
+        if (remaining < seriesMaxCost) {
+          return c.json({
+            success: false,
+            error: remaining === 0
+              ? "You're out of credits for this month."
+              : `Only ${remaining} credit${remaining === 1 ? "" : "s"} left — this series needs ${seriesMaxCost}.`,
+            code: "out_of_credits",
+            remaining,
+            required: seriesMaxCost,
+            plan: profile?.plan || "free",
+          }, 402);
+        }
+      }
+    } catch (err) {
+      console.log(`[series] credits pre-check skipped: ${err}`);
+    }
+
     // ── Default scene presets when none provided ──
     const DEFAULT_SCENES = [
       { label: "hero",     framing: "wide cinematic shot",        angle: "eye-level",  placement: "centered",        lightingDirection: "front-side three-quarter", moment: "action" },
@@ -8897,13 +8954,19 @@ app.post("/analyze/series", async (c) => {
     }
 
     const okCount = items.filter((x) => x.status === "ok").length;
-    console.log(`[series] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms`);
+    let creditsCharged = 0;
+    if (okCount > 0) {
+      const deducted = await deductCredit(user.id, okCount);
+      if (deducted) creditsCharged = okCount;
+    }
+    console.log(`[series] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms, charged=${creditsCharged}`);
     return c.json({
       success: true,
       seed,
       campaignName,
       campaignSlug,
       items,
+      creditsCharged,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
@@ -9047,6 +9110,36 @@ app.post("/analyze/surprise-me", async (c) => {
       .map((p) => ({ ...p, count: 0 }));
     for (let i = 0; i < totalShots; i++) {
       PLATFORMS[i % PLATFORMS.length].count += 1;
+    }
+
+    // ── Pre-flight credits check ──
+    // One campaign asset = 1 credit (matches the pricing page: "60 assets /
+    // month" etc.). Charging happens AFTER generation on the count of shots
+    // that actually succeeded, so partial failures don't overcharge. We
+    // check here — BEFORE any API call — that the user has at least enough
+    // credits to pay for the worst case (every shot succeeds). If not, we
+    // refuse the run with a machine-readable 402 the UI turns into an
+    // upgrade / top-up prompt.
+    try {
+      const profile = await kv.get(`user:${user.id}`);
+      const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+      if (!isAdmin) {
+        const remaining = Math.max(0, (profile?.credits || 0) - (profile?.creditsUsed || 0));
+        if (remaining < totalShots) {
+          return c.json({
+            success: false,
+            error: remaining === 0
+              ? "You're out of credits for this month."
+              : `Only ${remaining} credit${remaining === 1 ? "" : "s"} left — this run needs ${totalShots}.`,
+            code: "out_of_credits",
+            remaining,
+            required: totalShots,
+            plan: profile?.plan || "free",
+          }, 402);
+        }
+      }
+    } catch (err) {
+      console.log(`[surprise-me] credits pre-check skipped: ${err}`);
     }
 
     // ── Concept + shot list via LLM ──
@@ -9349,6 +9442,17 @@ OUTPUT JSON:
     const okCount = items.filter((x) => x.status === "ok").length;
     console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, mediaType=${mediaType}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
 
+    // ── Deduct credits for the shots that actually succeeded ──
+    // This is how we avoid charging for failures: the pre-flight reserves
+    // worst-case headroom, the post-run deduction only charges okCount.
+    // Admin bypasses (deductCredit returns true without writing).
+    let creditsCharged = 0;
+    if (okCount > 0) {
+      const deducted = await deductCredit(user.id, okCount);
+      if (deducted) creditsCharged = okCount;
+      else console.log(`[surprise-me] credits post-deduction failed for ${okCount} assets — letting the user keep them this round`);
+    }
+
     // ── Persist the campaign as Library items ──
     //    We save two layers so Library is useful:
     //    1) a "campaign" wrapper item that groups the whole run (used for
@@ -9460,6 +9564,14 @@ OUTPUT JSON:
     if (perAssetFailed > 0) console.log(`[surprise-me] per-asset save: ${perAssetSaved} ok, ${perAssetFailed} failed`);
     else console.log(`[surprise-me] per-asset save: ${perAssetSaved} items`);
 
+    // Fresh remaining credits for the UI pill (best-effort — don't block on failure).
+    let remainingCredits: number | null = null;
+    try {
+      const latestProfile = await kv.get(`user:${user.id}`);
+      if (latestProfile?.role === "admin") remainingCredits = -1; // -1 = unlimited
+      else remainingCredits = Math.max(0, (latestProfile?.credits || 0) - (latestProfile?.creditsUsed || 0));
+    } catch {}
+
     return c.json({
       success: true,
       campaignName, campaignSlug,
@@ -9472,6 +9584,8 @@ OUTPUT JSON:
       items,
       libraryItemId,
       savedCount,
+      creditsCharged,
+      remainingCredits,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
