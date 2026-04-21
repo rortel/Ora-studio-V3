@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -8,20 +8,22 @@ import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
 import { downloadAsset } from "../lib/asset-persistence";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
+import { Button } from "../components/ora/Button";
+import { Badge } from "../components/ora/Badge";
+import { bagel, COLORS } from "../components/ora/tokens";
 
-/* ═══ Palette — matches the landing pop system ═══ */
-const BG = "#F4EFE6";   // CREAM — same cream as the landing
-const TEXT = "#0A0A0A";
-const MUTED = "#6E6E73";
-const BORDER = "rgba(10,10,10,0.08)";
-const INK = "#0A0A0A";
+/* ═══ Palette — aligned with the shared ora/ tokens ═══ */
+const BG       = COLORS.cream;
+const TEXT     = COLORS.ink;
+const MUTED    = COLORS.muted;
+const BORDER   = COLORS.line;
+const INK      = COLORS.ink;
 const INK_TEXT = "#FFFFFF";
-const ACCENT = "#2E5BFF"; // BLUE from the landing
-const PINK   = "#FF2D92";
-const LIME   = "#DFFF3F";
-const ORANGE = "#FF5B14";
-
-const DISPLAY = `"Bagel Fat One", "Inter", system-ui, sans-serif`;
+const ACCENT   = COLORS.coral;
+const PINK     = COLORS.coral;     // legacy alias kept to avoid touching every chip
+const LIME     = COLORS.butter;    // legacy alias — yellow accent for Saved-to-library pill
+const ORANGE   = COLORS.coral;
+const DISPLAY  = `"Bagel Fat One", "Inter", system-ui, sans-serif`;
 
 /* ═══ Constants ═══ */
 const CREATIVITY = [
@@ -253,15 +255,14 @@ function SurpriseContent() {
               initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
               className="flex items-center justify-center"
             >
-              <button
+              <Button
+                variant="accent" size="lg"
                 onClick={handleSurprise}
                 disabled={busy || uploadingProduct || platforms.length === 0}
-                className="group inline-flex items-center gap-3 h-16 px-10 rounded-full text-[22px] disabled:opacity-40 transition"
-                style={{ background: INK, color: LIME, fontFamily: DISPLAY, letterSpacing: "-0.01em", boxShadow: "0 20px 44px -14px rgba(10,10,10,0.35)" }}
+                style={{ boxShadow: "0 20px 44px -14px rgba(255,92,57,0.55)" }}
               >
-                <Sparkles size={22} /> Surprise me
-                <span className="transition-transform group-hover:translate-x-0.5">→</span>
-              </button>
+                <Sparkles size={18} /> Surprise me <ArrowRight size={16} />
+              </Button>
             </motion.div>
 
             {/* Fine-tune drawer toggle */}
@@ -432,22 +433,20 @@ function SurpriseContent() {
                 {pack.tone       && <Tag label="Tone"    value={pack.tone} />}
                 {pack.keyMessage && <Tag label="Message" value={pack.keyMessage} />}
               </div>
-              <div className="mt-4 inline-flex items-center gap-2 px-3 h-8 rounded-full text-[12px]"
-                   style={{ background: LIME, color: INK, fontWeight: 600 }}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
-                Saved to your library
+              <div className="mt-4">
+                <Badge tone="butter">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
+                  Saved to your library
+                </Badge>
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
-                <button onClick={() => navigate("/hub/library")}
-                        className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-[13.5px] text-white"
-                        style={{ background: INK, fontFamily: DISPLAY, letterSpacing: "-0.01em" }}>
+                <Button variant="ink" size="md" onClick={() => navigate("/hub/library")}>
                   <Package size={14} /> Open in Library
-                </button>
-                <button onClick={() => { setPack(null); setStage("idle"); }}
-                        className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full text-[13.5px] hover:bg-black/5"
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => { setPack(null); setStage("idle"); }}
                         style={{ border: `1px solid ${BORDER}` }}>
                   <Sparkles size={14} /> Surprise me again
-                </button>
+                </Button>
               </div>
             </motion.div>
 
