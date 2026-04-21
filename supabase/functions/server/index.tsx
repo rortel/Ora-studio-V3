@@ -8976,15 +8976,18 @@ app.post("/analyze/surprise-me", async (c) => {
     }
 
     // ── Creativity presets ──
-    // At every level the product MUST stay photo-real and recognizable. Only the
-    // world, framing and graphic twist around it move. The "twist" is a single
-    // graphic or scene idea that makes each shot distinct — its boldness scales
-    // with the level.
-    const CREATIVITY: Record<number, { temp: number; systemHint: string; refWeight: number }> = {
-      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky.", refWeight: 0.85 },
-      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated.", refWeight: 0.70 },
-      3: { temp: 0.95, systemHint: "Be BOLD. Each shot has a DISTINCT, memorable visual twist — oversized scale play, dramatic prop, editorial lighting, unexpected juxtaposition, daring color splash — but the product stays photo-real and identical to reality.", refWeight: 0.55 },
-      4: { temp: 1.10, systemHint: "Go WILD. Each shot carries a SURREAL twist — impossible physics, floating elements, scale distortion, dream logic, mixed-media collage, fashion-magazine experimentation. The product itself stays 100% photo-realistic and recognizable; only the universe around it bends.", refWeight: 0.40 },
+    // INVARIANT: the product is sacred. Across all four levels it stays
+    // photo-real, identical to the reference, recognizable at a glance.
+    // What creative level modulates is the UNIVERSE around the product —
+    // the scene, the mood, the twist — never the product itself. So the
+    // product reference weight is held constant (high) for every level;
+    // only the LLM system hint and temperature change.
+    const PRODUCT_REF_WEIGHT = 0.85; // tight fidelity on every level
+    const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
+      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. The product itself stays exactly as provided." },
+      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. The product itself stays exactly as provided." },
+      3: { temp: 0.95, systemHint: "Be BOLD. Each shot has a DISTINCT, memorable visual twist — oversized scale play, dramatic prop, editorial lighting, unexpected juxtaposition, daring color splash — but the product stays 100% photo-real and IDENTICAL to the reference. Only the world bends." },
+      4: { temp: 1.10, systemHint: "Go WILD. Each shot carries a SURREAL twist — impossible physics, floating elements, scale distortion, dream logic, mixed-media collage, fashion-magazine experimentation. CRITICAL: the product itself stays 100% photo-realistic and IDENTICAL to the reference. Only the universe around it bends." },
     };
     const creative = CREATIVITY[creativity];
 
@@ -9196,7 +9199,7 @@ OUTPUT JSON:
             const r = await runRemix({
               finalPrompt: job.promptText, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
-              refWeight: creative.refWeight,
+              refWeight: PRODUCT_REF_WEIGHT, // constant — product respect is non-negotiable
             });
             if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
