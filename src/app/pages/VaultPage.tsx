@@ -15,6 +15,7 @@ import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { useI18n } from "../lib/i18n";
 import { ImageBank } from "../components/ImageBank";
+import { bagel, COLORS } from "../components/ora/tokens";
 // PDF.js loaded lazily (only when a PDF is dropped)
 let pdfjsReady: typeof import("pdfjs-dist") | null = null;
 async function getPdfJs() {
@@ -1084,19 +1085,20 @@ function VaultPageContent() {
   // ════════════════════════════════════════
 
   return (
+    <div className="min-h-screen" style={{ background: COLORS.cream, color: COLORS.ink }}>
     <div className="max-w-[1200px] mx-auto px-6 py-10 md:py-16">
 
       {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
-            <p className="mb-3 uppercase" style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.1em", color: "var(--accent)" }}>
-              {t("vault.title")}
+            <p className="mb-3 uppercase" style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.18em", color: COLORS.coral }}>
+              Brand Vault
             </p>
-            <h1 style={{ fontSize: "clamp(1.75rem, 3.5vw, 2.5rem)", fontWeight: 500, letterSpacing: "-0.035em", lineHeight: 1.15, color: "var(--foreground)" }}>
+            <h1 className="leading-none mb-3" style={{ ...bagel, fontSize: "clamp(48px, 7vw, 96px)", color: COLORS.ink }}>
               {t("vault.title")}
             </h1>
-            <p className="mt-2" style={{ fontSize: "15px", lineHeight: 1.55, color: "var(--text-tertiary)", fontWeight: 400, maxWidth: 460 }}>
+            <p style={{ fontSize: "15px", lineHeight: 1.55, color: COLORS.muted, fontWeight: 500, maxWidth: 540 }}>
               {t("vault.subtitle")}
             </p>
           </div>
@@ -1171,7 +1173,7 @@ function VaultPageContent() {
           <button
             onClick={() => handleAnalyzeUrl(false)} disabled={analyzing || !urlInput.trim()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
-            style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
+            style={{ background: "linear-gradient(135deg, #FF5C39, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
             {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             {t("vault.scanBtn")}
           </button>
@@ -1921,8 +1923,8 @@ function VaultPageContent() {
                       <div
                         className="p-4 rounded-xl"
                         style={{
-                          background: "linear-gradient(135deg, rgba(124,58,237,0.06), rgba(236,72,153,0.06))",
-                          border: "1px solid rgba(124,58,237,0.2)",
+                          background: "linear-gradient(135deg, rgba(255,92,57,0.06), rgba(236,72,153,0.06))",
+                          border: "1px solid rgba(255,92,57,0.2)",
                         }}
                       >
                         <div className="flex items-center gap-2 mb-2">
@@ -1930,7 +1932,7 @@ function VaultPageContent() {
                             className="px-2 py-0.5 rounded-full"
                             style={{
                               fontSize: "9px", fontWeight: 600,
-                              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                              background: "linear-gradient(135deg, #FF5C39, #EC4899)",
                               color: "#fff", letterSpacing: "0.06em", textTransform: "uppercase",
                             }}
                           >
@@ -1998,7 +2000,7 @@ function VaultPageContent() {
                             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl cursor-pointer transition-all"
                             style={{
                               fontSize: "13px", fontWeight: 500, color: "#fff",
-                              background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                              background: "linear-gradient(135deg, #FF5C39, #EC4899)",
                               border: "none",
                               opacity: oraVoiceTraining ? 0.6 : 1,
                             }}
@@ -2320,7 +2322,7 @@ function VaultPageContent() {
                     </div>
                     <button onClick={handleScanCompetitor} disabled={competitorLoading || !competitorUrl.trim()}
                       className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
-                      style={{ background: "linear-gradient(135deg, #7C3AED, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
+                      style={{ background: "linear-gradient(135deg, #FF5C39, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
                       {competitorLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                       {t("vault.scanBtn")}
                     </button>
@@ -2481,6 +2483,7 @@ function VaultPageContent() {
       )}
 
       {!loading && !hasData && accessToken && <ImageBank accessToken={accessToken} refreshKey={imageBankRefreshKey} />}
+    </div>
     </div>
   );
 }

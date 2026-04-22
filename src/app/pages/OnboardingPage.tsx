@@ -9,6 +9,7 @@ import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
+import { bagel, COLORS } from "../components/ora/tokens";
 
 /* ═══════════════════════════════════
    TYPES
@@ -232,7 +233,8 @@ export function OnboardingPage() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "var(--background)",
+      background: COLORS.cream,
+      color: COLORS.ink,
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
@@ -283,7 +285,7 @@ export function OnboardingPage() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Building2 size={20} style={{ color: "var(--foreground)" }} />
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+                <h2 style={{ ...bagel, fontSize: 32, lineHeight: 1, color: COLORS.ink, margin: 0 }}>
                   {t("onboarding.yourBrand")}
                 </h2>
               </div>
@@ -343,7 +345,7 @@ export function OnboardingPage() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Sparkles size={20} style={{ color: "var(--foreground)" }} />
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+                <h2 style={{ ...bagel, fontSize: 32, lineHeight: 1, color: COLORS.ink, margin: 0 }}>
                   {t("onboarding.autoScan")}
                 </h2>
               </div>
@@ -484,7 +486,7 @@ export function OnboardingPage() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Upload size={20} style={{ color: "var(--foreground)" }} />
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+                <h2 style={{ ...bagel, fontSize: 32, lineHeight: 1, color: COLORS.ink, margin: 0 }}>
                   {t("onboarding.yourLogo")}
                 </h2>
               </div>
@@ -588,7 +590,7 @@ export function OnboardingPage() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <Check size={20} style={{ color: "var(--foreground)" }} />
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--foreground)", margin: 0 }}>
+                <h2 style={{ ...bagel, fontSize: 32, lineHeight: 1, color: COLORS.ink, margin: 0 }}>
                   {t("onboarding.confirmation")}
                 </h2>
               </div>
