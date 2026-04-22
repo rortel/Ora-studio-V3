@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router";
-import { Stage, Layer as KonvaLayerGroup, Rect } from "react-konva";
+import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Transformer } from "react-konva";
 import Konva from "konva";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
@@ -17,6 +17,10 @@ import { AppTabs } from "../components/AppTabs";
 import { Button } from "../components/ora/Button";
 import { COLORS } from "../components/ora/tokens";
 import { useEditorProject } from "../lib/editor/useEditorProject";
+import {
+  createTextLayer, createLogoLayer, createShapeLayer, createDefaultSpatial,
+  type UnifiedLayer, type TextLayer, type LogoLayer, type ShapeLayer,
+} from "../lib/editor/types";
 
 /* ──────────────────────────────────────────────────────────────
    Format presets — the platforms Ora ships into. Selecting one
@@ -64,6 +68,51 @@ function EditorAgency() {
   const applyFormat = useCallback((f: typeof FORMATS[number]) => {
     setActiveFormat(f.id);
     p.updateProjectProps({ width: f.w, height: f.h });
+  }, [p]);
+
+  // ── Layer add actions ──
+  // Each action drops a new layer roughly centred for the current canvas,
+  // sensibly sized, and selects it so the inspector (next commit) can
+  // pick it up immediately.
+  const addText = useCallback(() => {
+    const W = p.project.width, H = p.project.height;
+    const w = Math.round(W * 0.65), h = Math.round(W * 0.12);
+    const layer = createTextLayer({
+      text: "Your headline",
+      fontSize: Math.round(W * 0.065),
+      fontFamily: '"Bagel Fat One", "Inter", sans-serif',
+      fill: COLORS.ink,
+      align: "left",
+      spatial: { ...createDefaultSpatial(), x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), width: w, height: h },
+    });
+    p.addLayer(layer);
+    p.setSelectedLayerId(layer.id);
+  }, [p]);
+
+  const addShape = useCallback((shape: "rect" | "circle") => {
+    const W = p.project.width, H = p.project.height;
+    const size = Math.round(W * 0.25);
+    const layer = createShapeLayer(shape, {
+      fill: COLORS.coral,
+      fillType: "solid",
+      cornerRadius: shape === "rect" ? 24 : 0,
+      spatial: { ...createDefaultSpatial(), x: Math.round((W - size) / 2), y: Math.round((H - size) / 2), width: size, height: size },
+    });
+    p.addLayer(layer);
+    p.setSelectedLayerId(layer.id);
+  }, [p]);
+
+  const addLogo = useCallback(() => {
+    // Vault logo pull lands in commit 3. Placeholder shape for now so the
+    // button is clickable and the user sees a layer appear.
+    const W = p.project.width, H = p.project.height;
+    const size = Math.round(W * 0.15);
+    const layer = createLogoLayer("", {
+      name: "Logo",
+      spatial: { ...createDefaultSpatial(), x: W - size - 40, y: H - size - 40, width: size, height: size },
+    });
+    p.addLayer(layer);
+    p.setSelectedLayerId(layer.id);
   }, [p]);
 
   // Fit-to-viewport zoom: canvas should never overflow the center column.
@@ -202,11 +251,26 @@ function EditorAgency() {
               height={p.project.height * zoom}
               scaleX={zoom}
               scaleY={zoom}
+              onMouseDown={(e) => {
+                // Click-away deselect: Stage root targeted directly.
+                if (e.target === e.target.getStage()) p.setSelectedLayerId(null);
+              }}
               style={{ cursor: "default" }}
             >
               <KonvaLayerGroup>
-                {/* Placeholder — layers rendering lands in the next commit */}
-                <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" />
+                {/* Canvas background */}
+                <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" listening={false} />
+
+                {/* User layers — rendered in insertion order. z-index by array position. */}
+                {p.project.layers.filter((l) => l.visible).map((layer) => (
+                  <LayerNode
+                    key={layer.id}
+                    layer={layer}
+                    selected={p.selectedLayerId === layer.id}
+                    onSelect={() => p.setSelectedLayerId(layer.id)}
+                    onChange={(next) => p.updateLayer(layer.id, next)}
+                  />
+                ))}
               </KonvaLayerGroup>
             </Stage>
           </div>
@@ -228,24 +292,173 @@ function EditorAgency() {
         </aside>
       </div>
 
-      {/* Layer tools (next commit will light these up) */}
+      {/* Layer tools */}
       <footer
         className="flex items-center justify-center gap-2 px-5 py-3 border-t"
         style={{ background: "#FFFFFF", borderColor: COLORS.line }}
       >
-        <Button variant="ghost" size="sm" disabled>
+        <Button variant="ghost" size="sm" onClick={addText}>
           <TypeIcon size={14} /> Text
         </Button>
-        <Button variant="ghost" size="sm" disabled>
+        <Button variant="ghost" size="sm" onClick={addLogo}>
           <ImagePlus size={14} /> Logo
         </Button>
-        <Button variant="ghost" size="sm" disabled>
+        <Button variant="ghost" size="sm" onClick={() => addShape("rect")}>
           <Square size={14} /> Rectangle
         </Button>
-        <Button variant="ghost" size="sm" disabled>
+        <Button variant="ghost" size="sm" onClick={() => addShape("circle")}>
           <CircleIcon size={14} /> Circle
         </Button>
       </footer>
     </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   LayerNode — renders a single layer onto the Konva stage and
+   wires up draggable / Transformer. Keeps the Stage render
+   block clean; each layer type gets its own minimal mapping.
+   ────────────────────────────────────────────────────────────── */
+function LayerNode({
+  layer, selected, onSelect, onChange,
+}: {
+  layer: UnifiedLayer;
+  selected: boolean;
+  onSelect: () => void;
+  onChange: (next: Partial<UnifiedLayer>) => void;
+}) {
+  const nodeRef = useRef<Konva.Node | null>(null);
+  const trRef = useRef<Konva.Transformer | null>(null);
+
+  // Attach / detach the Transformer when selection flips.
+  useEffect(() => {
+    const tr = trRef.current;
+    const node = nodeRef.current;
+    if (!tr) return;
+    if (selected && node) {
+      tr.nodes([node]);
+      tr.getLayer()?.batchDraw();
+    } else {
+      tr.nodes([]);
+    }
+  }, [selected]);
+
+  const commitTransform = () => {
+    const node = nodeRef.current;
+    if (!node) return;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    node.scaleX(1);
+    node.scaleY(1);
+    onChange({
+      spatial: {
+        ...layer.spatial,
+        x: node.x(),
+        y: node.y(),
+        width: Math.max(10, node.width() * scaleX),
+        height: Math.max(10, node.height() * scaleY),
+        rotation: node.rotation(),
+      },
+    } as any);
+  };
+
+  const common = {
+    x: layer.spatial.x,
+    y: layer.spatial.y,
+    rotation: layer.spatial.rotation,
+    opacity: layer.spatial.opacity,
+    draggable: true,
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragEnd: commitTransform,
+    onTransformEnd: commitTransform,
+  };
+
+  let node: React.ReactNode = null;
+  if (layer.type === "text") {
+    const t = layer as TextLayer;
+    node = (
+      <KonvaText
+        {...common}
+        ref={(r) => { nodeRef.current = r; }}
+        text={t.text}
+        width={t.spatial.width}
+        fontSize={t.fontSize}
+        fontFamily={t.fontFamily}
+        fontStyle={t.fontStyle}
+        fill={t.fill}
+        align={t.align}
+        lineHeight={t.lineHeight}
+        letterSpacing={t.letterSpacing}
+      />
+    );
+  } else if (layer.type === "shape") {
+    const s = layer as ShapeLayer;
+    if (s.shape === "circle") {
+      node = (
+        <KonvaCircle
+          {...common}
+          ref={(r) => { nodeRef.current = r; }}
+          x={layer.spatial.x + layer.spatial.width / 2}
+          y={layer.spatial.y + layer.spatial.height / 2}
+          radius={Math.min(layer.spatial.width, layer.spatial.height) / 2}
+          fill={s.fill}
+          stroke={s.stroke || undefined}
+          strokeWidth={s.strokeWidth}
+        />
+      );
+    } else {
+      node = (
+        <Rect
+          {...common}
+          ref={(r) => { nodeRef.current = r; }}
+          width={layer.spatial.width}
+          height={layer.spatial.height}
+          fill={s.fill}
+          cornerRadius={s.cornerRadius}
+          stroke={s.stroke || undefined}
+          strokeWidth={s.strokeWidth}
+        />
+      );
+    }
+  } else if (layer.type === "logo") {
+    const l = layer as LogoLayer;
+    // Until the Vault logo pull lands (commit 3), render a ghosted
+    // placeholder rectangle so the dropped layer is still visible and
+    // selectable. Swap for a loaded image once sourceUrl is populated.
+    node = (
+      <Rect
+        {...common}
+        ref={(r) => { nodeRef.current = r; }}
+        width={layer.spatial.width}
+        height={layer.spatial.height}
+        fill="rgba(17,17,17,0.06)"
+        stroke="rgba(17,17,17,0.2)"
+        strokeWidth={1.5}
+        dash={[6, 6]}
+        cornerRadius={8}
+      />
+    );
+    void l;
+  }
+
+  return (
+    <>
+      {node}
+      {selected && (
+        <Transformer
+          ref={(r) => { trRef.current = r; }}
+          rotateEnabled
+          flipEnabled={false}
+          borderStroke={COLORS.coral}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.coral}
+          anchorFill="#FFFFFF"
+          anchorSize={8}
+          anchorCornerRadius={4}
+          boundBoxFunc={(oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox)}
+        />
+      )}
+    </>
   );
 }
