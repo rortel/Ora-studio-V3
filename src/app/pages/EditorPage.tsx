@@ -100,6 +100,22 @@ function EditorAgency() {
   const [vaultColors, setVaultColors] = useState<string[]>([]);
 
   const stageRef = useRef<Konva.Stage | null>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+  const nodeRegistry = useRef<Map<string, Konva.Node>>(new Map());
+
+  // Attach / detach the shared Transformer whenever selection flips.
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const sel = p.selectedLayerId;
+    const node = sel ? nodeRegistry.current.get(sel) : null;
+    if (node) {
+      tr.nodes([node]);
+    } else {
+      tr.nodes([]);
+    }
+    tr.getLayer()?.batchDraw();
+  }, [p.selectedLayerId, p.project.layers]);
 
   // Load the Brand Vault on mount. Studio+-gated server-side; for Creator
   // users this will return 402 and we silently leave vaultLogoUrl null
@@ -452,16 +468,33 @@ function EditorAgency() {
                   />
                 )}
 
-                {/* User layers — rendered in insertion order. z-index by array position. */}
+                {/* User layers — insertion order = z-index */}
                 {p.project.layers.filter((l) => l.visible).map((layer) => (
                   <LayerNode
                     key={layer.id}
                     layer={layer}
-                    selected={p.selectedLayerId === layer.id}
                     onSelect={() => p.setSelectedLayerId(layer.id)}
                     onChange={(next) => p.updateLayer(layer.id, next)}
+                    registerNode={(n) => { if (n) nodeRegistry.current.set(layer.id, n); else nodeRegistry.current.delete(layer.id); }}
                   />
                 ))}
+
+                {/* One shared Transformer — attaches dynamically to the
+                 *  selected layer's Konva node. Kept at Layer-level so we
+                 *  never render a fragment or conditional child, which some
+                 *  react-konva reconciler paths don't like (hello #306). */}
+                <Transformer
+                  ref={transformerRef}
+                  rotateEnabled
+                  flipEnabled={false}
+                  borderStroke={COLORS.coral}
+                  borderStrokeWidth={1.5}
+                  anchorStroke={COLORS.coral}
+                  anchorFill="#FFFFFF"
+                  anchorSize={8}
+                  anchorCornerRadius={4}
+                  boundBoxFunc={(oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox)}
+                />
               </KonvaLayerGroup>
             </Stage>
           </div>
@@ -504,33 +537,27 @@ function EditorAgency() {
 }
 
 /* ──────────────────────────────────────────────────────────────
-   LayerNode — renders a single layer onto the Konva stage and
-   wires up draggable / Transformer. Keeps the Stage render
-   block clean; each layer type gets its own minimal mapping.
+   LayerNode — renders ONE Konva primitive for a layer. Returns a
+   single element (no fragment, no conditional) so react-konva's
+   reconciler sees a stable tree even when selection changes. The
+   Transformer is rendered once at the Layer level in the parent.
    ────────────────────────────────────────────────────────────── */
 function LayerNode({
-  layer, selected, onSelect, onChange,
+  layer, onSelect, onChange, registerNode,
 }: {
   layer: UnifiedLayer;
-  selected: boolean;
   onSelect: () => void;
   onChange: (next: Partial<UnifiedLayer>) => void;
+  registerNode: (n: Konva.Node | null) => void;
 }) {
   const nodeRef = useRef<Konva.Node | null>(null);
-  const trRef = useRef<Konva.Transformer | null>(null);
 
-  // Attach / detach the Transformer when selection flips.
-  useEffect(() => {
-    const tr = trRef.current;
-    const node = nodeRef.current;
-    if (!tr) return;
-    if (selected && node) {
-      tr.nodes([node]);
-      tr.getLayer()?.batchDraw();
-    } else {
-      tr.nodes([]);
-    }
-  }, [selected]);
+  // Register the Konva node in the parent's registry so the shared
+  // Transformer can attach by id.
+  const attachRef = useCallback((n: Konva.Node | null) => {
+    nodeRef.current = n;
+    registerNode(n);
+  }, [registerNode]);
 
   const commitTransform = () => {
     const node = nodeRef.current;
@@ -563,13 +590,12 @@ function LayerNode({
     onTransformEnd: commitTransform,
   };
 
-  let node: React.ReactNode = null;
   if (layer.type === "text") {
     const t = layer as TextLayer;
-    node = (
+    return (
       <KonvaText
         {...common}
-        ref={(r) => { nodeRef.current = r; }}
+        ref={attachRef as any}
         text={t.text}
         width={t.spatial.width}
         fontSize={t.fontSize}
@@ -581,13 +607,14 @@ function LayerNode({
         letterSpacing={t.letterSpacing}
       />
     );
-  } else if (layer.type === "shape") {
+  }
+  if (layer.type === "shape") {
     const s = layer as ShapeLayer;
     if (s.shape === "circle") {
-      node = (
+      return (
         <KonvaCircle
           {...common}
-          ref={(r) => { nodeRef.current = r; }}
+          ref={attachRef as any}
           x={layer.spatial.x + layer.spatial.width / 2}
           y={layer.spatial.y + layer.spatial.height / 2}
           radius={Math.min(layer.spatial.width, layer.spatial.height) / 2}
@@ -596,49 +623,31 @@ function LayerNode({
           strokeWidth={s.strokeWidth}
         />
       );
-    } else {
-      node = (
-        <Rect
-          {...common}
-          ref={(r) => { nodeRef.current = r; }}
-          width={layer.spatial.width}
-          height={layer.spatial.height}
-          fill={s.fill}
-          cornerRadius={s.cornerRadius}
-          stroke={s.stroke || undefined}
-          strokeWidth={s.strokeWidth}
-        />
-      );
     }
-  } else if (layer.type === "logo") {
-    node = (
-      <LogoImageNode
-        layer={layer as LogoLayer}
-        common={common}
-        forwardRef={(r) => { nodeRef.current = r; }}
+    return (
+      <Rect
+        {...common}
+        ref={attachRef as any}
+        width={layer.spatial.width}
+        height={layer.spatial.height}
+        fill={s.fill}
+        cornerRadius={s.cornerRadius}
+        stroke={s.stroke || undefined}
+        strokeWidth={s.strokeWidth}
       />
     );
   }
-
-  return (
-    <>
-      {node}
-      {selected && (
-        <Transformer
-          ref={(r) => { trRef.current = r; }}
-          rotateEnabled
-          flipEnabled={false}
-          borderStroke={COLORS.coral}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.coral}
-          anchorFill="#FFFFFF"
-          anchorSize={8}
-          anchorCornerRadius={4}
-          boundBoxFunc={(oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox)}
-        />
-      )}
-    </>
-  );
+  if (layer.type === "logo") {
+    return (
+      <LogoImageNode
+        layer={layer as LogoLayer}
+        common={common}
+        forwardRef={attachRef}
+      />
+    );
+  }
+  // Fallback for unhandled layer types: render nothing rather than undefined.
+  return null;
 }
 
 /* ──────────────────────────────────────────────────────────────
