@@ -327,6 +327,20 @@ function VaultPageContent() {
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
+  // Brand memory — the longer the user stays, the smarter the Vault gets.
+  // `/vault/insights` scans their Library + image bank and surfaces the
+  // palette / moods that recur but aren't in the Vault yet. One-click
+  // adoption; dismissible per-user via localStorage.
+  type InsightColor = { hex: string; hits: number; score: number };
+  type InsightTerm  = { label: string; hits: number; score: number };
+  const [insights, setInsights] = useState<{
+    colors: InsightColor[]; moods: InsightTerm[]; styles: InsightTerm[]; lighting: InsightTerm[];
+    sampleSize: number;
+  } | null>(null);
+  const [insightsDismissed, setInsightsDismissed] = useState(() => {
+    try { return localStorage.getItem("ora:vault-insights-dismissed") === "1"; } catch { return false; }
+  });
+  const [adoptingInsights, setAdoptingInsights] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
@@ -418,6 +432,70 @@ function VaultPageContent() {
     } catch (err) { console.error("[Vault] Save error:", err); }
     setSaving(false);
   }, [vault]);
+
+  // ── Brand memory: fetch insights on mount (auth + Studio+ plan required,
+  //    the server gates it). Silently ignores non-200 so the rest of the
+  //    page keeps working if the user isn't eligible or the call fails. ──
+  useEffect(() => {
+    if (insightsDismissed) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(apiUrl("/vault/insights"), {
+          method: "POST",
+          headers: vaultHeaders(),
+          body: corsBody(tokenRef.current),
+        });
+        if (!res.ok) return;
+        const d = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (d?.success && d?.hasNewSignal) {
+          setInsights({
+            colors:   Array.isArray(d.suggestions?.colors)   ? d.suggestions.colors   : [],
+            moods:    Array.isArray(d.suggestions?.moods)    ? d.suggestions.moods    : [],
+            styles:   Array.isArray(d.suggestions?.styles)   ? d.suggestions.styles   : [],
+            lighting: Array.isArray(d.suggestions?.lighting) ? d.suggestions.lighting : [],
+            sampleSize: Number(d.sampleSize || 0),
+          });
+        }
+      } catch { /* silent */ }
+    })();
+    return () => { cancelled = true; };
+  }, [insightsDismissed]);
+
+  const dismissInsights = useCallback(() => {
+    try { localStorage.setItem("ora:vault-insights-dismissed", "1"); } catch {}
+    setInsightsDismissed(true);
+    setInsights(null);
+  }, []);
+
+  const adoptInsights = useCallback(async () => {
+    if (!insights || adoptingInsights) return;
+    setAdoptingInsights(true);
+    try {
+      // Merge: keep the existing palette, append the new colors (dedup by hex).
+      const existingHexes = new Set((vault.colors || []).map((c: any) => String(c?.hex || "").toUpperCase()));
+      const addedColors = insights.colors
+        .filter((c) => c.hex && !existingHexes.has(c.hex.toUpperCase()))
+        .map((c) => ({ hex: c.hex, name: "", role: "" }));
+      const mergedColors = [...(vault.colors || []), ...addedColors];
+
+      // Merge mood/style into photo_style if empty there, otherwise leave untouched
+      // to avoid overwriting user intent.
+      const nextPhotoStyle = { ...(vault.photo_style || {}) };
+      if (!nextPhotoStyle.mood     && insights.moods[0])    nextPhotoStyle.mood    = insights.moods[0].label;
+      if (!nextPhotoStyle.lighting && insights.lighting[0]) nextPhotoStyle.lighting = insights.lighting[0].label;
+
+      const nextVault: any = { ...vault, colors: mergedColors, photo_style: nextPhotoStyle };
+      setVault(nextVault);
+      await saveVault(nextVault);
+      dismissInsights();
+    } catch (err) {
+      console.error("[Vault] Adopt insights error:", err);
+    } finally {
+      setAdoptingInsights(false);
+    }
+  }, [insights, adoptingInsights, vault, saveVault, dismissInsights]);
 
   // ── Reset vault ──
   const handleResetVault = useCallback(async () => {
@@ -1150,6 +1228,107 @@ function VaultPageContent() {
           </motion.button>
         </div>
       </motion.div>
+
+      {/* ── Brand memory nudge — the longer you stay, the smarter it gets ── */}
+      <AnimatePresence>
+        {insights && !insightsDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            className="mb-8 rounded-3xl p-6 md:p-8"
+            style={{ background: COLORS.warm, border: `1px solid ${COLORS.line}` }}
+          >
+            <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+              <div>
+                <p className="uppercase mb-2" style={{ fontSize: "10.5px", fontWeight: 700, letterSpacing: "0.18em", color: COLORS.coral }}>
+                  Brand memory
+                </p>
+                <h3 className="leading-none mb-2" style={{ ...bagel, fontSize: "clamp(24px, 3vw, 34px)", color: COLORS.ink }}>
+                  We noticed.
+                </h3>
+                <p className="text-[14px] leading-relaxed" style={{ color: COLORS.muted, maxWidth: 620 }}>
+                  {insights.sampleSize > 1
+                    ? `Across ${insights.sampleSize} of your assets, these signals keep coming back. Lock them into your Vault so every surprise hits sharper.`
+                    : `These signals recur in your assets. Lock them into your Vault so every surprise hits sharper.`}
+                </p>
+              </div>
+              <button
+                onClick={dismissInsights}
+                aria-label="Dismiss"
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 transition shrink-0"
+                style={{ color: COLORS.muted }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-3 mb-5">
+              {insights.colors.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", minWidth: 60 }}>
+                    Palette
+                  </span>
+                  {insights.colors.slice(0, 6).map((c) => (
+                    <span
+                      key={c.hex}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full"
+                      style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}` }}
+                      title={`${c.hits} occurrence${c.hits > 1 ? "s" : ""}`}
+                    >
+                      <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ background: c.hex, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.06)" }} />
+                      <span className="font-mono" style={{ fontSize: 11, color: COLORS.ink }}>{c.hex}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {insights.moods.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", minWidth: 60 }}>
+                    Mood
+                  </span>
+                  {insights.moods.slice(0, 4).map((m) => (
+                    <span key={m.label} className="inline-flex items-center h-7 px-3 rounded-full capitalize"
+                          style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, fontSize: 12, color: COLORS.ink, fontWeight: 500 }}>
+                      {m.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {insights.lighting.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", minWidth: 60 }}>
+                    Light
+                  </span>
+                  {insights.lighting.slice(0, 3).map((l) => (
+                    <span key={l.label} className="inline-flex items-center h-7 px-3 rounded-full capitalize"
+                          style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}`, fontSize: 12, color: COLORS.ink, fontWeight: 500 }}>
+                      {l.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={adoptInsights}
+                disabled={adoptingInsights}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-full transition hover:opacity-90 disabled:opacity-60"
+                style={{ background: COLORS.ink, color: "#FFFFFF", fontSize: 13, fontWeight: 600 }}
+              >
+                {adoptingInsights ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {adoptingInsights ? "Locking…" : "Lock into my Vault"}
+              </button>
+              <button
+                onClick={dismissInsights}
+                className="inline-flex items-center h-10 px-4 rounded-full transition hover:bg-black/5"
+                style={{ color: COLORS.muted, fontSize: 13, fontWeight: 500 }}
+              >
+                Not this time
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Scanner ── */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}

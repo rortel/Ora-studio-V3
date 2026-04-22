@@ -13279,6 +13279,113 @@ app.post("/vault/load", async (c) => {
 });
 
 // POST /vault — Save vault data (CORS-safe: token in body)
+// ── POST /vault/insights — Brand memory (compounding moat) ─────────────
+// Scans the user's Library items + image-bank analyses to surface the
+// palette / moods / photo-styles that recur across the assets they've
+// kept. Returns a structured diff vs. what's currently in the vault so
+// the UI can offer a single-click "lock these into my vault" nudge.
+//
+// This is the "brand memory that learns" feature: the longer the user
+// stays, the smarter the Vault gets — no competitor (Blaze, Predis,
+// Freepik) does this today. Output is READ-ONLY; no writes until the
+// client calls /vault with the adopted deltas.
+//
+// Plan-gated (Studio+) because Brand Vault lives on Studio+.
+app.post("/vault/insights", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const gated = await vaultPlanGate(user.id, user.email);
+    if (gated) return c.json({ success: false, ...gated }, 402);
+
+    const [rawVault, items, brandImages] = await Promise.all([
+      kv.get(`vault:${user.id}`).catch(() => null),
+      kv.getByPrefix(`lib:${user.id}:`).catch(() => [] as any[]),
+      kv.getByPrefix(`brand-image:${user.id}:`).catch(() => [] as any[]),
+    ]);
+    const vault = rawVault || {};
+
+    // Tally signals from every source: ok generated items (classification),
+    // uploaded brand images (vision analysis), and campaign preview.assets.
+    const colorTally = new Map<string, number>();
+    const moodTally  = new Map<string, number>();
+    const styleTally = new Map<string, number>();
+    const lightTally = new Map<string, number>();
+
+    const bump = (m: Map<string, number>, k: string | undefined | null) => {
+      if (!k || typeof k !== "string") return;
+      const norm = k.trim();
+      if (!norm) return;
+      m.set(norm, (m.get(norm) || 0) + 1);
+    };
+    const bumpHex = (k: string) => {
+      if (!k || typeof k !== "string" || !k.startsWith("#")) return;
+      bump(colorTally, k.toUpperCase());
+    };
+
+    // 1. Brand-image analyses (most reliable — vision-derived)
+    for (const img of (brandImages as any[])) {
+      const a = img?.analysis;
+      if (!a || a._parseError) continue;
+      for (const hex of (a.color?.dominant_palette || [])) bumpHex(hex);
+      bump(moodTally, a.mood?.primary_emotion);
+      for (const e of (a.mood?.secondary_emotions || [])) bump(moodTally, e);
+      bump(styleTally, a.technique?.style_reference);
+      bump(lightTally, a.lighting?.type);
+      bump(lightTally, a.lighting?.quality);
+    }
+
+    // 2. Library items — classification tags + category
+    for (const it of (items as any[])) {
+      const cls = it?.classification;
+      if (cls) {
+        for (const hex of (cls.dominant_colors || [])) bumpHex(hex);
+        bump(moodTally, cls.category);
+      }
+    }
+
+    // Rank + diff against the vault's current lock.
+    const top = <T,>(m: Map<string, T>, n: number) =>
+      [...m.entries()].sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, n);
+
+    const existingColors = new Set<string>((vault.colors || []).map((c: any) => String(c?.hex || "").toUpperCase()).filter(Boolean));
+    const topColors = top(colorTally, 6).filter(([hex]) => !existingColors.has(hex));
+    const topMoods  = top(moodTally, 4);
+    const topStyles = top(styleTally, 3);
+    const topLight  = top(lightTally, 3);
+
+    const signalCount = Math.max(1,
+      brandImages.length + (items as any[]).filter((i) => i?.classification).length
+    );
+    const strong = (v: number) => Math.round((v / signalCount) * 100);
+
+    const suggestions = {
+      colors: topColors.map(([hex, v]) => ({ hex, hits: v, score: strong(v) })),
+      moods:  topMoods.map(([label, v]) => ({ label, hits: v, score: strong(v) })),
+      styles: topStyles.map(([label, v]) => ({ label, hits: v, score: strong(v) })),
+      lighting: topLight.map(([label, v]) => ({ label, hits: v, score: strong(v) })),
+    };
+
+    const hasNewSignal =
+      suggestions.colors.length > 0 ||
+      suggestions.moods.length > 0 ||
+      suggestions.styles.length > 0 ||
+      suggestions.lighting.length > 0;
+
+    console.log(`[vault/insights] user=${user.id.slice(0, 8)} items=${(items as any[]).length} imgs=${(brandImages as any[]).length} newColors=${suggestions.colors.length} ${Date.now() - t0}ms`);
+    return c.json({
+      success: true,
+      suggestions,
+      sampleSize: signalCount,
+      hasNewSignal,
+      tookMs: Date.now() - t0,
+    });
+  } catch (err: any) {
+    console.log(`[vault/insights] error: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 app.post("/vault", async (c) => {
   try {
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));

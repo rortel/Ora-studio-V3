@@ -207,20 +207,79 @@ export function LandingPage() {
           className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-4"
         >
           <div className="md:col-span-2 md:row-span-2 rounded-[28px] overflow-hidden aspect-[4/3] md:aspect-auto bg-white relative">
-            <video src={heroBig.src} poster={heroBig.poster || undefined} autoPlay muted loop playsInline className="w-full h-full object-cover" />
+            <video src={heroBig.src} poster={heroBig.poster || undefined} autoPlay muted loop playsInline preload="auto" className="w-full h-full object-cover" />
             <div className="absolute top-4 left-4"><Badge tone="ink">42s · {heroBig.label}</Badge></div>
           </div>
           {[heroTile2, heroTile3].map((t, i) => (
             <div key={i} className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
-              <img src={t.src} alt="" className="w-full h-full object-cover" />
+              <img src={t.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
               <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label}</Badge></div>
             </div>
           ))}
         </motion.div>
       </section>
 
+      {/* ═══ How it works — three moves, no prompting ═══ */}
+      <section id="how" className="px-5 md:px-10 pb-24 pt-6 max-w-[1400px] mx-auto">
+        <div className="text-center mb-12">
+          <div className="text-[13px] mb-3" style={{ color: COLORS.subtle }}>Three moves. No prompt writing.</div>
+          <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
+            How it <span style={{ color: COLORS.coral }}>works.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+          {[
+            {
+              n: "01",
+              tone: "warm" as const,
+              title: "Drop your URL.",
+              body: "Ora scans your site, locks palette, tone and photo style into your Brand Vault. 30 seconds, once.",
+              tag: "Vault",
+            },
+            {
+              n: "02",
+              tone: "butter" as const,
+              title: "Pick a direction.",
+              body: "Three editorial angles waiting — tuned to your month, your sector, your brand. Click one. That's the brief.",
+              tag: "Surprise Me",
+            },
+            {
+              n: "03",
+              tone: "coral" as const,
+              title: "Ship the pack.",
+              body: "Six assets, image + paired 5s film, framed for every network. Download the ZIP or publish in one click.",
+              tag: "Publish",
+            },
+          ].map((step, i) => (
+            <motion.div
+              key={step.n}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.6, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <Surface tone={step.tone} pad="lg" radius="2xl" className="md:p-10 h-full flex flex-col">
+                <div className="flex items-start justify-between mb-10">
+                  <span className="leading-none" style={{ ...bagel, fontSize: "clamp(44px, 5vw, 72px)" }}>{step.n}</span>
+                  <span className="inline-flex items-center h-7 px-3 rounded-full text-[10.5px]"
+                        style={{ background: "rgba(17,17,17,0.08)", color: step.tone === "coral" ? "#fff" : COLORS.ink, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                    {step.tag}
+                  </span>
+                </div>
+                <h3 className="leading-[0.98] mb-4" style={{ ...bagel, fontSize: "clamp(30px, 3.2vw, 44px)" }}>
+                  {step.title}
+                </h3>
+                <p className="text-[15px] leading-relaxed" style={{ color: step.tone === "coral" ? "rgba(255,255,255,0.85)" : "rgba(17,17,17,0.72)" }}>
+                  {step.body}
+                </p>
+              </Surface>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
       {/* ═══ Before / After ═══ */}
-      <section id="how" className="px-5 md:px-10 pb-20 max-w-[1400px] mx-auto">
+      <section className="px-5 md:px-10 pb-20 max-w-[1400px] mx-auto">
         <div className="text-center mb-10">
           <div className="text-[13px] mb-3" style={{ color: COLORS.subtle }}>The difference</div>
           <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
