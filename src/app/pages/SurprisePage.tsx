@@ -68,6 +68,7 @@ interface Pack {
   creativeAngle: string; tone: string; keyMessage: string;
   creativityLevel: number; items: PackItem[];
   savedCount: number;
+  brandLockScore: number;
 }
 
 export function SurprisePage() {
@@ -296,6 +297,7 @@ function SurpriseContent() {
         creativityLevel: Number(res.creativityLevel || creativity),
         items: res.items,
         savedCount,
+        brandLockScore: Math.max(0, Math.min(100, Number(res.brandLockScore || 0))),
       });
       setStage("done");
       if (savedCount === 0) {
@@ -730,13 +732,19 @@ function SurpriseContent() {
                 {pack.tone       && <Tag label="Tone"    value={pack.tone} />}
                 {pack.keyMessage && <Tag label="Message" value={pack.keyMessage} />}
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Badge tone={pack.savedCount > 0 ? "butter" : "coral"}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
                   {pack.savedCount > 0
                     ? `${pack.savedCount} item${pack.savedCount > 1 ? "s" : ""} saved to your library`
                     : "Not saved — open Library to retry"}
                 </Badge>
+                {pack.brandLockScore > 0 && (
+                  <Badge tone={pack.brandLockScore >= 80 ? "butter" : pack.brandLockScore >= 60 ? "warm" : "coral"}>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
+                    Brand lock · {pack.brandLockScore}%
+                  </Badge>
+                )}
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Button variant="ink" size="md" onClick={() => navigate("/hub/library")}>

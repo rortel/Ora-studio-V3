@@ -9010,6 +9010,32 @@ app.post("/analyze/suggest-angles", async (c) => {
       : monthIdx <= 7                   ? "summer"
       :                                    "autumn";
 
+    // Calendar events that fall in the next 45 days AND match the user's
+    // sector (or "all"). Surfaces moments the brand can ship into —
+    // Valentine's Day, Earth Day, Mother's Day, etc. — instead of vague
+    // seasonal angles. Makes the suggestions feel timed and relevant.
+    const sectorRaw = (ctx?.industry || "").toLowerCase();
+    const upcomingEvents: string[] = [];
+    try {
+      const today = new Date();
+      for (let d = 0; d <= 45; d++) {
+        const check = new Date(today);
+        check.setDate(check.getDate() + d);
+        const m = check.getMonth();
+        const day = check.getDate();
+        for (const ev of CALENDAR_EVENTS) {
+          if (ev.month === m && ev.day === day) {
+            if (ev.sectors.includes("all") || (sectorRaw && ev.sectors.some((s) => sectorRaw.includes(s)))) {
+              const when = d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
+              const dateLabel = check.toLocaleDateString("en", { month: "short", day: "numeric" });
+              upcomingEvents.push(`${ev.label} (${dateLabel}, ${when})`);
+            }
+          }
+        }
+        if (upcomingEvents.length >= 4) break;
+      }
+    } catch { /* best-effort: calendar is a bonus, not required */ }
+
     // Brand briefing, identical shape to surprise-me's brandSummary for
     // maximum prompt consistency.
     const parts: string[] = [];
@@ -9040,6 +9066,7 @@ RULES:
 
 CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — use tasteful generic editorial angles for the season."}
+${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days to consider (pick at most one to theme one angle — don't force all three):\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
 
 OUTPUT SHAPE (strict):
 {
@@ -9586,6 +9613,34 @@ OUTPUT JSON:
     const okCount = items.filter((x) => x.status === "ok").length;
     console.log(`[surprise-me] done: ${okCount}/${items.length} ok in ${Date.now() - t0}ms (lvl=${creativity}, mediaType=${mediaType}, brief=${!!brief}, vault=${!!ctx}, productRef=${!!productRef})`);
 
+    // ── Brand-lock score ──────────────────────────────────────────────
+    // Proxy metric that quantifies how well the pack respects the brand
+    // context, so the result screen can show it as a visible promise
+    // ("Brand lock: 92%"). Not a pixel-level analysis — it weights the
+    // structural signals that make a pack on-brand:
+    //   - Vault applied (palette, tone, photo style wired in)        30
+    //   - Product reference preserved (Kontext-Pro image-ref)        20
+    //   - Requested platforms fully delivered                        20
+    //   - Success rate (okCount / total)                             20
+    //   - Captions present on every ok shot                          10
+    // Total out of 100. Clamped to [0..100].
+    const requestedPlatformSet = new Set(chosenPlatformIds);
+    const deliveredPlatformSet = new Set(items.filter((x) => x.status === "ok").map((x) => x.platform));
+    const platformCoverage = requestedPlatformSet.size === 0
+      ? 1
+      : [...requestedPlatformSet].filter((p) => deliveredPlatformSet.has(p)).length / requestedPlatformSet.size;
+    const captionsOk = items.filter((x) => x.status === "ok" && !!x.caption).length;
+    const captionCoverage = okCount === 0 ? 0 : captionsOk / okCount;
+    const successRate = items.length === 0 ? 0 : okCount / items.length;
+    const brandLockScore = Math.max(0, Math.min(100, Math.round(
+      (ctx ? 30 : 0)
+      + (productRef ? 20 : 0)
+      + platformCoverage * 20
+      + successRate * 20
+      + captionCoverage * 10
+    )));
+    console.log(`[surprise-me] brand-lock=${brandLockScore}% (vault=${!!ctx}, productRef=${!!productRef}, plat=${(platformCoverage*100).toFixed(0)}%, ok=${(successRate*100).toFixed(0)}%, captions=${(captionCoverage*100).toFixed(0)}%)`);
+
     // ── Deduct credits for the shots that actually succeeded ──
     // This is how we avoid charging for failures: the pre-flight reserves
     // worst-case headroom, the post-run deduction only charges okCount.
@@ -9730,6 +9785,7 @@ OUTPUT JSON:
       savedCount,
       creditsCharged,
       remainingCredits,
+      brandLockScore,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {
