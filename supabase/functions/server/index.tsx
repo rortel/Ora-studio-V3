@@ -25580,7 +25580,30 @@ app.get("/showcase/featured", async (c) => {
       if (assets.length >= limit) break;
     }
 
-    return c.json({ success: true, items: assets });
+    // Group assets into campaigns (campaignSlug = logical pack). Single
+    // standalone items (Library uploads, one-off remixes) get grouped
+    // into a synthetic "singles" campaign so they still surface. Campaigns
+    // are sorted most-recently-featured first, same as the flat list.
+    const campaignsMap = new Map<string, any>();
+    for (const a of assets) {
+      const key = a.campaignSlug || "singles";
+      if (!campaignsMap.has(key)) {
+        campaignsMap.set(key, {
+          campaignSlug: key,
+          campaignName: a.campaignName || "Ora asset",
+          featuredAt: a.featuredAt,
+          assets: [] as any[],
+        });
+      }
+      const c = campaignsMap.get(key)!;
+      c.assets.push(a);
+      if (String(a.featuredAt || "") > String(c.featuredAt || "")) c.featuredAt = a.featuredAt;
+    }
+    const campaigns = [...campaignsMap.values()]
+      .sort((a, b) => String(b.featuredAt || "").localeCompare(String(a.featuredAt || "")))
+      .slice(0, 12);
+
+    return c.json({ success: true, items: assets, campaigns });
   } catch (err: any) {
     console.log(`[showcase/featured] error: ${err}`);
     return c.json({ success: false, error: String(err?.message || err) }, 500);

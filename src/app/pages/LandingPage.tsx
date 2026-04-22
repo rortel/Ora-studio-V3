@@ -20,6 +20,13 @@ interface ShowcaseAsset {
 }
 
 
+interface ShowcaseCampaign {
+  campaignSlug: string;
+  campaignName: string;
+  featuredAt: string;
+  assets: ShowcaseAsset[];
+}
+
 /* Fallback content when the public showcase endpoint returns nothing yet
  * (first deploy, admin hasn't featured anything). Once the admin marks
  * items from Library, these get overridden with real campaign output. */
@@ -58,13 +65,16 @@ export function LandingPage() {
   // Pull admin-curated showcase items. Falls back silently to templates
   // when the endpoint is empty or unreachable.
   const [showcase, setShowcase] = useState<ShowcaseAsset[]>([]);
+  const [showcaseCampaigns, setShowcaseCampaigns] = useState<ShowcaseCampaign[]>([]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const r = await fetch(`${API_BASE}/showcase/featured?limit=40`);
         const d = await r.json().catch(() => ({}));
-        if (!cancelled && d?.success && Array.isArray(d.items)) setShowcase(d.items);
+        if (cancelled) return;
+        if (d?.success && Array.isArray(d.items)) setShowcase(d.items);
+        if (d?.success && Array.isArray(d.campaigns)) setShowcaseCampaigns(d.campaigns);
       } catch { /* ignore — fallbacks cover us */ }
     })();
     return () => { cancelled = true; };
@@ -248,52 +258,109 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ Gallery (bento) ═══ */}
+      {/* ═══ Gallery — campaigns stacked, not isolated tiles ═══
+       *   Each case = one real campaign pack admin starred in Library:
+       *   brand name + asset count + a 4-tile mosaic of the assets.
+       *   Falls back to the hardcoded template set when no campaigns
+       *   have been featured yet (bento-style single case). */}
       <section id="gallery" className="px-5 md:px-10 pb-20 max-w-[1400px] mx-auto">
         <div className="text-center mb-10">
-          <div className="text-[13px] mb-3" style={{ color: COLORS.subtle }}>Real results</div>
+          <div className="text-[13px] mb-3" style={{ color: COLORS.subtle }}>Real packs, real brands</div>
           <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
-            Stunning assets, zero effort.
+            One click. <span style={{ color: COLORS.coral }}>Full pack.</span>
           </h2>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[200px] md:auto-rows-[260px]">
-          {gallery.slice(0, 6).map((item, i) => {
-            // Bento spans — two hero tiles, four side tiles. Tile dimensions
-            // are driven by the grid (fixed auto-rows + col/row spans); media
-            // fills via object-cover so mixed aspect ratios (9:16 stories,
-            // 16:9 LinkedIn, 1:1 feed) all sit in a clean, aligned bento.
-            const span =
-              i === 0 ? "md:col-span-4 md:row-span-2"
-            : i === 1 ? "md:col-span-2"
-            : i === 2 ? "md:col-span-2"
-            : i === 3 ? "md:col-span-3 md:row-span-2"
-            : "md:col-span-3";
-            return (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.05 }}
-                className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
+        {showcaseCampaigns.length > 0 ? (
+          <div className="flex flex-col gap-6 md:gap-8">
+            {showcaseCampaigns.slice(0, 3).map((c, i) => (
+              <motion.article
+                key={c.campaignSlug}
+                initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }} transition={{ duration: 0.6, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                className="rounded-[32px] overflow-hidden"
+                style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}` }}
               >
-                {item.videoSrc ? (
-                  <video
-                    src={item.videoSrc}
-                    poster={item.src}
-                    autoPlay muted loop playsInline preload="metadata"
-                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-                  />
-                ) : (
-                  <img
-                    src={item.src} alt=""
-                    loading="lazy" decoding="async"
-                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-                  />
-                )}
-                <div className="absolute top-3 left-3"><Badge tone="ink">42s · {item.label}</Badge></div>
-              </motion.div>
-            );
-          })}
-        </div>
+                <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-0">
+                  {/* Case header */}
+                  <div className="p-6 md:p-8 flex flex-col justify-between gap-6" style={{ background: i === 0 ? COLORS.warm : "#FFFFFF" }}>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.18em] mb-4" style={{ color: COLORS.coral, fontWeight: 700 }}>
+                        Case · {i + 1}
+                      </div>
+                      <h3 className="leading-[0.95] mb-3" style={{ ...bagel, fontSize: "clamp(32px, 3.5vw, 44px)" }}>
+                        {c.campaignName}
+                      </h3>
+                      <div className="flex items-center gap-2 flex-wrap text-[12px]" style={{ color: COLORS.muted }}>
+                        <span><b style={{ color: COLORS.ink, fontWeight: 700 }}>{c.assets.length}</b> assets</span>
+                        <span>·</span>
+                        <span>{[...new Set(c.assets.map((a) => a.platform).filter(Boolean))].length} networks</span>
+                        <span>·</span>
+                        <span>42s</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {[...new Set(c.assets.map((a) => platformLabel(a.platform)))].slice(0, 4).map((p) => (
+                        <Badge key={p} tone="cream">{p}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Mosaic — 2×2 tiles, object-cover, autoplay videos */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 p-3">
+                    {c.assets.slice(0, 4).map((a, ai) => (
+                      <div
+                        key={ai}
+                        className="relative rounded-2xl overflow-hidden"
+                        style={{ aspectRatio: "1 / 1", background: COLORS.warm }}
+                      >
+                        {a.videoUrl ? (
+                          <video
+                            src={a.videoUrl}
+                            poster={a.imageUrl}
+                            autoPlay muted loop playsInline preload="metadata"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : a.imageUrl ? (
+                          <img
+                            src={a.imageUrl} alt=""
+                            loading="lazy" decoding="async"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.article>
+            ))}
+          </div>
+        ) : (
+          /* Fallback: keep the old bento visible when no real campaigns have been featured */
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[200px] md:auto-rows-[260px]">
+            {gallery.slice(0, 6).map((item, i) => {
+              const span =
+                i === 0 ? "md:col-span-4 md:row-span-2"
+              : i === 1 ? "md:col-span-2"
+              : i === 2 ? "md:col-span-2"
+              : i === 3 ? "md:col-span-3 md:row-span-2"
+              : "md:col-span-3";
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }} transition={{ delay: i * 0.05 }}
+                  className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
+                >
+                  {item.videoSrc ? (
+                    <video src={item.videoSrc} poster={item.src} autoPlay muted loop playsInline preload="metadata" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
+                  ) : (
+                    <img src={item.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
+                  )}
+                  <div className="absolute top-3 left-3"><Badge tone="ink">42s · {item.label}</Badge></div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* ═══ Pillars (Locked / Bold / Unique) ═══ */}
