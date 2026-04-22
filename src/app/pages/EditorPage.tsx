@@ -245,6 +245,7 @@ function EditorPageContent() {
   // --- AI Prompt bar (prompt-first editor) ---
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiShowTyping, setAiShowTyping] = useState(false);
   const aiInputRef = useRef<HTMLInputElement>(null);
 
   // --- Core state ---
@@ -1080,14 +1081,15 @@ function EditorPageContent() {
     }
   }, [editorProject, imageUrl, isFr, canvasSize, serverPost, getAuthHeader, layers, libraryItems, historyIndex]);
 
-  const handleAiPrompt = useCallback(async () => {
-    const text = aiPrompt.trim();
-    if (!text || aiProcessing) return;
+  // Core AI action runner — takes a text instruction, asks the server to
+  // turn it into structured actions, executes them. Shared by the typed
+  // prompt and the no-type suggestion chips so both paths behave identically.
+  const runAiAction = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || aiProcessing) return;
     setAiProcessing(true);
-
     try {
-      // Build context for the AI
-      const hasVideo = editorProject.project.layers.some(l => l.type === "video");
+      const hasVideo = editorProject.project.layers.some((l) => l.type === "video");
       const context: Record<string, unknown> = {
         hasImage: !!imageUrl,
         hasVideo,
@@ -1095,32 +1097,50 @@ function EditorPageContent() {
         format: `${editorProject.project.width}x${editorProject.project.height}`,
         layerCount: editorProject.project.layers.length + layers.length,
         libraryCount: libraryItems.length,
-        selectedLayerType: editorProject.selectedLayer?.type || (selectedLayerId ? layers.find(l => l.id === selectedLayerId)?.type : null),
+        selectedLayerType: editorProject.selectedLayer?.type || (selectedLayerId ? layers.find((l) => l.id === selectedLayerId)?.type : null),
       };
-
       const res = await serverPost("/editor/ai-action", {
-        prompt: text,
+        prompt: trimmed,
         context,
         locale: isFr ? "fr" : "en",
       });
-
       if (!res.success || !res.actions?.length) {
         toast.error(res.error || (isFr ? "Je n'ai pas compris la demande" : "I didn't understand the request"));
         return;
       }
-
       setAiPrompt("");
-
-      // Execute each action returned by the AI
-      for (const action of res.actions) {
-        await executeAiAction(action);
-      }
+      for (const action of res.actions) await executeAiAction(action);
     } catch (err: any) {
       toast.error(err?.message || "Erreur réseau");
     } finally {
       setAiProcessing(false);
     }
-  }, [aiPrompt, aiProcessing, imageUrl, editorProject, layers, libraryItems, selectedLayerId, isFr, serverPost, executeAiAction]);
+  }, [aiProcessing, imageUrl, editorProject, layers, libraryItems, selectedLayerId, isFr, serverPost, executeAiAction]);
+
+  const handleAiPrompt = useCallback(() => runAiAction(aiPrompt), [aiPrompt, runAiAction]);
+
+  // Context-aware action suggestions — no LLM, no network cost, instant.
+  // The chips replace the typing-required "describe what you want" flow
+  // for the default case. Power users can still type via the input below.
+  const aiSuggestions = useMemo(() => {
+    const fr = isFr;
+    const hasVideo = editorProject.project.layers.some((l) => l.type === "video");
+    const hasText = layers.some((l) => l.type === "text") || editorProject.project.layers.some((l: any) => l.type === "text");
+    const base: Array<{ label: string; prompt: string; emoji: string }> = [];
+    if (imageUrl && !hasVideo) {
+      base.push({ emoji: "🌤",  label: fr ? "Fond plus clair"    : "Brighter background",   prompt: fr ? "Éclaircir le fond, garder le sujet intact." : "Brighten the background, keep the subject intact." });
+      base.push({ emoji: "✂️",  label: fr ? "Retirer le fond"    : "Remove background",     prompt: fr ? "Détourer le sujet principal et retirer le fond." : "Cut out the main subject and remove the background." });
+    }
+    if (!hasText) {
+      base.push({ emoji: "✍️",  label: fr ? "Ajouter un titre"    : "Add a tagline",         prompt: fr ? "Ajouter un titre éditorial court en haut à gauche." : "Add a short editorial tagline in the top-left." });
+    }
+    base.push({ emoji: "🔆",  label: fr ? "Plus dramatique"     : "More dramatic",         prompt: fr ? "Ambiance plus dramatique : contraste renforcé, lumière directionnelle." : "More dramatic mood: stronger contrast, directional light." });
+    base.push({ emoji: "🏷",   label: fr ? "Placer mon logo"     : "Place my logo",          prompt: fr ? "Placer subtilement le logo de la marque en bas à droite, taille modeste." : "Place the brand logo subtly in the bottom-right, modest size." });
+    if (hasVideo) {
+      base.push({ emoji: "🎬",  label: fr ? "Rallonger à 8s"     : "Stretch to 8s",          prompt: fr ? "Étendre la durée à 8 secondes, mouvement plus lent." : "Extend duration to 8 seconds, slower motion." });
+    }
+    return base.slice(0, 4);
+  }, [isFr, imageUrl, editorProject.project.layers, layers]);
 
   // --- Drag & drop handlers ---
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -2850,54 +2870,102 @@ function EditorPageContent() {
           )}
         </PanelGroup>
 
-        {/* ─── AI Prompt Bar — always visible ─── */}
+        {/* ─── AI action bar ───
+         *   Default: 3-4 one-click suggestions. Zero typing required —
+         *   chips are derived from the current asset / layers and fire
+         *   runAiAction on click. The typing input is still available
+         *   for power users via the discreet "Describe instead" link. */}
         <div style={{
-          height: 56, background: "#fff", borderTop: "1px solid rgba(17,17,17,0.08)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "0 20px", gap: 10, flexShrink: 0,
+          background: "#fff", borderTop: "1px solid rgba(17,17,17,0.08)",
+          padding: "10px 20px", flexShrink: 0,
         }}>
-          <div style={{
-            flex: 1, maxWidth: 640, display: "flex", alignItems: "center",
-            background: "rgba(17,17,17,0.04)", borderRadius: 12, padding: "0 6px 0 14px",
-            border: aiProcessing ? "1.5px solid #FF5C39" : "1.5px solid rgba(17,17,17,0.08)",
-            height: 42, transition: "border-color 0.2s",
-          }}>
-            <Sparkles size={15} style={{ color: "#FF5C39", flexShrink: 0, marginRight: 8 }} />
-            <input
-              ref={aiInputRef}
-              value={aiPrompt}
-              onChange={e => setAiPrompt(e.target.value)}
-              placeholder={isFr
-                ? "Décrivez ce que vous voulez : changer le fond, ajouter du texte, animer..."
-                : "Describe what you want: change background, add text, animate..."}
-              onKeyDown={e => { if (e.key === "Enter" && aiPrompt.trim() && !aiProcessing) handleAiPrompt(); }}
-              disabled={aiProcessing}
-              style={{
-                flex: 1, background: "none", border: "none", outline: "none",
-                color: "#111111", fontSize: 13, fontWeight: 400,
-              }}
-            />
-            <motion.button
-              whileHover={{ scale: aiPrompt.trim() ? 1.08 : 1 }}
-              whileTap={{ scale: aiPrompt.trim() ? 0.92 : 1 }}
-              onClick={handleAiPrompt}
-              disabled={!aiPrompt.trim() || aiProcessing}
-              style={{
-                width: 32, height: 32, borderRadius: 8, border: "none",
-                background: aiPrompt.trim() ? "#FF5C39" : "transparent",
-                color: aiPrompt.trim() ? "#fff" : "#ccc",
-                cursor: aiPrompt.trim() ? "pointer" : "default",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all 0.15s", flexShrink: 0,
-              }}
-            >
-              {aiProcessing ? (
-                <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
-              ) : (
-                <Send size={15} />
-              )}
-            </motion.button>
-          </div>
+          {aiShowTyping ? (
+            <div style={{
+              maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center",
+              background: "rgba(17,17,17,0.04)", borderRadius: 12, padding: "0 6px 0 14px",
+              border: aiProcessing ? "1.5px solid #FF5C39" : "1.5px solid rgba(17,17,17,0.08)",
+              height: 42, transition: "border-color 0.2s",
+            }}>
+              <Sparkles size={15} style={{ color: "#FF5C39", flexShrink: 0, marginRight: 8 }} />
+              <input
+                ref={aiInputRef}
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                placeholder={isFr ? "Décrivez précisément ce que vous voulez…" : "Describe precisely what you want…"}
+                onKeyDown={e => { if (e.key === "Enter" && aiPrompt.trim() && !aiProcessing) handleAiPrompt(); }}
+                disabled={aiProcessing}
+                autoFocus
+                style={{
+                  flex: 1, background: "none", border: "none", outline: "none",
+                  color: "#111111", fontSize: 13, fontWeight: 400,
+                }}
+              />
+              <button
+                onClick={() => { setAiShowTyping(false); setAiPrompt(""); }}
+                style={{ background: "none", border: "none", color: "#6C6C6C", fontSize: 11, marginRight: 6, cursor: "pointer" }}
+                aria-label="Back to suggestions"
+              >
+                ← {isFr ? "suggestions" : "back"}
+              </button>
+              <motion.button
+                whileHover={{ scale: aiPrompt.trim() ? 1.08 : 1 }}
+                whileTap={{ scale: aiPrompt.trim() ? 0.92 : 1 }}
+                onClick={handleAiPrompt}
+                disabled={!aiPrompt.trim() || aiProcessing}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: "none",
+                  background: aiPrompt.trim() ? "#FF5C39" : "transparent",
+                  color: aiPrompt.trim() ? "#fff" : "#ccc",
+                  cursor: aiPrompt.trim() ? "pointer" : "default",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.15s", flexShrink: 0,
+                }}
+              >
+                {aiProcessing ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={15} />}
+              </motion.button>
+            </div>
+          ) : (
+            <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+              <Sparkles size={13} style={{ color: "#FF5C39", flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6C6C6C", marginRight: 4 }}>
+                {isFr ? "Ora propose" : "Ora suggests"}
+              </span>
+              {aiSuggestions.map((s) => (
+                <button
+                  key={s.label}
+                  onClick={() => runAiAction(s.prompt)}
+                  disabled={aiProcessing}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    background: "rgba(17,17,17,0.04)",
+                    border: "1px solid rgba(17,17,17,0.08)",
+                    borderRadius: 999,
+                    padding: "7px 13px",
+                    fontSize: 12.5, fontWeight: 500, color: "#111111",
+                    cursor: aiProcessing ? "default" : "pointer",
+                    opacity: aiProcessing ? 0.5 : 1,
+                    transition: "all 0.12s",
+                  }}
+                  onMouseEnter={(e) => { if (!aiProcessing) (e.currentTarget as HTMLButtonElement).style.borderColor = "#FF5C39"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(17,17,17,0.08)"; }}
+                >
+                  <span>{s.emoji}</span>
+                  <span>{s.label}</span>
+                </button>
+              ))}
+              {aiProcessing && <Loader2 size={13} style={{ color: "#FF5C39", animation: "spin 1s linear infinite" }} />}
+              <button
+                onClick={() => setAiShowTyping(true)}
+                style={{
+                  background: "none", border: "none", color: "#6C6C6C",
+                  fontSize: 11.5, fontWeight: 500, cursor: "pointer",
+                  marginLeft: 4,
+                }}
+              >
+                {isFr ? "Écrire votre instruction →" : "Type your own →"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ─── Tool-specific action bar (only when brush tool is active) ─── */}
