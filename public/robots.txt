@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /hub/
+Disallow: /subscribe
+Disallow: /login
+Disallow: /signup
+Disallow: /admin
+Disallow: /onboarding
+Disallow: /zernio-callback
+
+Sitemap: https://ora-studio.app/sitemap.xml
