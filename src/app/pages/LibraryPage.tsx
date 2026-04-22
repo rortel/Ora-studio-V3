@@ -1890,7 +1890,7 @@ function LibraryPageContent() {
           >
             <motion.div
               initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              className="bg-card rounded-2xl w-[360px] mx-6 overflow-hidden"
+              className="bg-card rounded-2xl w-[360px] max-w-[90vw] mx-6 overflow-hidden"
               style={{ boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 24px 80px rgba(0,0,0,0.12)" }}
               onClick={(e) => e.stopPropagation()}
             >
