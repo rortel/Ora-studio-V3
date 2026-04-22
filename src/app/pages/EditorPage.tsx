@@ -11,7 +11,7 @@ import Konva from "konva";
 import { toast } from "sonner";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
-  Undo2, Redo2,
+  Undo2, Redo2, Trash2,
 } from "lucide-react";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -38,6 +38,28 @@ const FORMATS = [
 ] as const;
 
 type FormatId = typeof FORMATS[number]["id"];
+
+/* Fonts available in the text layer inspector — small curated list,
+ * not a system-wide picker. Bagel for display, Inter for editorial,
+ * a classic serif and a mono for contrast. */
+const FONTS = [
+  { label: "Bagel Fat One",   value: '"Bagel Fat One", sans-serif' },
+  { label: "Inter",           value: 'Inter, sans-serif' },
+  { label: "Playfair",        value: '"Playfair Display", Georgia, serif' },
+  { label: "Mono",            value: 'ui-monospace, "SFMono-Regular", Menlo, monospace' },
+];
+
+const WEIGHTS = [
+  { label: "Regular", value: "normal" },
+  { label: "Bold",    value: "bold" },
+  { label: "Italic",  value: "italic" },
+  { label: "B·I",     value: "bold italic" },
+];
+
+/* A tight default palette — always shown, regardless of Vault. */
+const DEFAULT_SWATCHES = [
+  COLORS.ink, "#FFFFFF", COLORS.coral, COLORS.butter, COLORS.violet, COLORS.warm,
+];
 
 /* ──────────────────────────────────────────────────────────────
    Route entry
@@ -354,19 +376,17 @@ function EditorAgency() {
           </div>
         </main>
 
-        {/* Inspector (right) — stays empty in this first pass */}
+        {/* Inspector (right) — context-aware controls for the selected layer */}
         <aside
           className="hidden lg:flex flex-col border-l overflow-y-auto"
-          style={{ width: 280, background: "#FFFFFF", borderColor: COLORS.line }}
+          style={{ width: 300, background: "#FFFFFF", borderColor: COLORS.line }}
         >
-          <div className="p-5">
-            <div className="text-[10px] uppercase tracking-[0.18em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-              Inspector
-            </div>
-            <p className="text-[13px] leading-relaxed" style={{ color: COLORS.muted }}>
-              Add a text, logo or shape layer to start editing.
-            </p>
-          </div>
+          <Inspector
+            selected={p.selectedLayer}
+            onUpdate={(next) => p.selectedLayer && p.updateLayer(p.selectedLayer.id, next)}
+            onDelete={() => p.selectedLayer && p.removeLayer(p.selectedLayer.id)}
+            vaultColors={vaultColors}
+          />
         </aside>
       </div>
 
@@ -577,5 +597,271 @@ function LogoImageNode({
       width={layer.spatial.width}
       height={layer.spatial.height}
     />
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Inspector — right panel. Switches on the selected layer type:
+     · text   → content, font, weight, size, line-height,
+                letter-spacing, colour, alignment
+     · shape  → fill colour, corner radius, opacity
+     · logo   → opacity, rotation
+   A shared "Position" block shows X / Y / W / H for every type.
+   Vault palette swatches sit above the hex input so one click
+   locks the colour into the current selection.
+   ────────────────────────────────────────────────────────────── */
+function Inspector({
+  selected, onUpdate, onDelete, vaultColors,
+}: {
+  selected: UnifiedLayer | undefined;
+  onUpdate: (next: Partial<UnifiedLayer>) => void;
+  onDelete: () => void;
+  vaultColors: string[];
+}) {
+  if (!selected) {
+    return (
+      <div className="p-5">
+        <div className="text-[10px] uppercase tracking-[0.18em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+          Inspector
+        </div>
+        <p className="text-[13px] leading-relaxed" style={{ color: COLORS.muted }}>
+          Pick a layer on the canvas, or drop a new one with Text, Logo, Rectangle or Circle below.
+        </p>
+      </div>
+    );
+  }
+
+  const label =
+    selected.type === "text"  ? "Text"
+    : selected.type === "logo" ? "Logo"
+    : selected.type === "shape" ? (selected as ShapeLayer).shape === "circle" ? "Circle" : "Rectangle"
+    : selected.type;
+
+  const swatches = [...new Set([...DEFAULT_SWATCHES, ...vaultColors])].slice(0, 12);
+
+  return (
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="px-5 pt-5 pb-3 flex items-center justify-between border-b" style={{ borderColor: COLORS.line }}>
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em]" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+            {label}
+          </div>
+          <div className="text-[13px] truncate max-w-[180px]" style={{ color: COLORS.ink, fontWeight: 600 }}>
+            {selected.name}
+          </div>
+        </div>
+        <button
+          onClick={onDelete}
+          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 transition"
+          title="Delete layer"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
+      {/* Type-specific block */}
+      {selected.type === "text"  && <TextControls  layer={selected as TextLayer}  onUpdate={onUpdate} swatches={swatches} />}
+      {selected.type === "shape" && <ShapeControls layer={selected as ShapeLayer} onUpdate={onUpdate} swatches={swatches} />}
+      {selected.type === "logo"  && <LogoControls  layer={selected as LogoLayer}  onUpdate={onUpdate} />}
+
+      {/* Position + size — common to every layer */}
+      <div className="px-5 py-4 border-t" style={{ borderColor: COLORS.line }}>
+        <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+          Position
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField label="X" value={Math.round(selected.spatial.x)}       onChange={(v) => onUpdate({ spatial: { ...selected.spatial, x: v } } as any)} />
+          <NumberField label="Y" value={Math.round(selected.spatial.y)}       onChange={(v) => onUpdate({ spatial: { ...selected.spatial, y: v } } as any)} />
+          <NumberField label="W" value={Math.round(selected.spatial.width)}   onChange={(v) => onUpdate({ spatial: { ...selected.spatial, width:  Math.max(10, v) } } as any)} />
+          <NumberField label="H" value={Math.round(selected.spatial.height)}  onChange={(v) => onUpdate({ spatial: { ...selected.spatial, height: Math.max(10, v) } } as any)} />
+        </div>
+        <div className="mt-3">
+          <RangeField label="Opacity" value={Math.round(selected.spatial.opacity * 100)} min={0} max={100}
+                      onChange={(v) => onUpdate({ spatial: { ...selected.spatial, opacity: v / 100 } } as any)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Text controls ── */
+function TextControls({ layer, onUpdate, swatches }: { layer: TextLayer; onUpdate: (n: any) => void; swatches: string[] }) {
+  return (
+    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
+      {/* Content */}
+      <div>
+        <Label>Content</Label>
+        <textarea
+          value={layer.text}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          rows={2}
+          className="w-full resize-none rounded-lg px-2.5 py-2 text-[13px] outline-none"
+          style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+        />
+      </div>
+      {/* Font family */}
+      <div>
+        <Label>Font</Label>
+        <select
+          value={layer.fontFamily}
+          onChange={(e) => onUpdate({ fontFamily: e.target.value })}
+          className="w-full rounded-lg px-2.5 h-9 text-[13px] outline-none cursor-pointer"
+          style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+        >
+          {FONTS.map((f) => (<option key={f.value} value={f.value}>{f.label}</option>))}
+        </select>
+      </div>
+      {/* Weight + alignment */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label>Weight</Label>
+          <div className="flex gap-1">
+            {WEIGHTS.map((w) => (
+              <button
+                key={w.value}
+                onClick={() => onUpdate({ fontStyle: w.value })}
+                className="flex-1 h-9 rounded-lg text-[11.5px] transition"
+                style={{
+                  background: layer.fontStyle === w.value ? COLORS.ink : "rgba(17,17,17,0.04)",
+                  color: layer.fontStyle === w.value ? "#FFFFFF" : COLORS.ink,
+                  border: `1px solid ${COLORS.line}`,
+                  fontWeight: 600,
+                }}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <Label>Align</Label>
+          <div className="flex gap-1">
+            {(["left","center","right"] as const).map((a) => (
+              <button
+                key={a}
+                onClick={() => onUpdate({ align: a })}
+                className="flex-1 h-9 rounded-lg text-[11.5px] capitalize transition"
+                style={{
+                  background: layer.align === a ? COLORS.ink : "rgba(17,17,17,0.04)",
+                  color: layer.align === a ? "#FFFFFF" : COLORS.ink,
+                  border: `1px solid ${COLORS.line}`,
+                  fontWeight: 600,
+                }}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Size / line-height / letter-spacing */}
+      <div className="grid grid-cols-3 gap-2">
+        <NumberField label="Size"   value={layer.fontSize}            onChange={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
+        <NumberField label="Line"   value={Number(layer.lineHeight.toFixed(2))} step={0.1} onChange={(v) => onUpdate({ lineHeight: v })} />
+        <NumberField label="Letter" value={layer.letterSpacing}       onChange={(v) => onUpdate({ letterSpacing: v })} />
+      </div>
+      {/* Colour */}
+      <ColourField label="Colour" value={layer.fill} swatches={swatches} onChange={(v) => onUpdate({ fill: v })} />
+    </div>
+  );
+}
+
+/* ── Shape controls ── */
+function ShapeControls({ layer, onUpdate, swatches }: { layer: ShapeLayer; onUpdate: (n: any) => void; swatches: string[] }) {
+  return (
+    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
+      <ColourField label="Fill" value={layer.fill} swatches={swatches} onChange={(v) => onUpdate({ fill: v })} />
+      {layer.shape !== "circle" && (
+        <div>
+          <Label>Corner radius</Label>
+          <RangeField label="" hideLabel value={layer.cornerRadius} min={0} max={120}
+                      onChange={(v) => onUpdate({ cornerRadius: v })} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Logo controls ── */
+function LogoControls({ layer, onUpdate }: { layer: LogoLayer; onUpdate: (n: any) => void }) {
+  return (
+    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
+      <div>
+        <Label>Rotation</Label>
+        <RangeField label="" hideLabel value={Math.round(layer.spatial.rotation)} min={-180} max={180}
+                    onChange={(v) => onUpdate({ spatial: { ...layer.spatial, rotation: v } } as any)} />
+      </div>
+    </div>
+  );
+}
+
+/* ── Reusable fields ── */
+function Label({ children }: { children: React.ReactNode }) {
+  return <div className="text-[10px] uppercase tracking-[0.12em] mb-1.5" style={{ color: COLORS.muted, fontWeight: 600 }}>{children}</div>;
+}
+
+function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
+  return (
+    <label className="flex flex-col">
+      <Label>{label}</Label>
+      <input
+        type="number"
+        value={Number.isFinite(value) ? value : 0}
+        step={step}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="rounded-lg px-2.5 h-9 text-[13px] outline-none font-mono"
+        style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+      />
+    </label>
+  );
+}
+
+function RangeField({ label, hideLabel, value, min, max, onChange }: { label: string; hideLabel?: boolean; value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      {!hideLabel && <div className="flex items-center justify-between mb-1"><Label>{label}</Label><span className="text-[11px] font-mono" style={{ color: COLORS.muted }}>{value}</span></div>}
+      <input
+        type="range" min={min} max={max} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+        style={{ accentColor: COLORS.coral, background: "rgba(17,17,17,0.08)" }}
+      />
+    </div>
+  );
+}
+
+function ColourField({ label, value, swatches, onChange }: { label: string; value: string; swatches: string[]; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <Label>{label}</Label>
+        <span className="font-mono text-[11px]" style={{ color: COLORS.muted }}>{value}</span>
+      </div>
+      <div className="flex items-center flex-wrap gap-1 mb-2">
+        {swatches.map((c) => (
+          <button
+            key={c}
+            onClick={() => onChange(c)}
+            aria-label={`Set color ${c}`}
+            className="w-7 h-7 rounded-full transition hover:scale-110"
+            style={{
+              background: c,
+              boxShadow: value.toUpperCase() === c.toUpperCase()
+                ? `0 0 0 2px #FFFFFF, 0 0 0 4px ${COLORS.coral}`
+                : "inset 0 0 0 1px rgba(17,17,17,0.08)",
+            }}
+          />
+        ))}
+      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="#RRGGBB"
+        className="w-full rounded-lg px-2.5 h-9 text-[12.5px] outline-none font-mono"
+        style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
+      />
+    </div>
   );
 }
