@@ -6,12 +6,15 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router";
-import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Transformer } from "react-konva";
+import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Image as KonvaImage, Transformer } from "react-konva";
 import Konva from "konva";
+import { toast } from "sonner";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
   Undo2, Redo2,
 } from "lucide-react";
+import { API_BASE, publicAnonKey } from "../lib/supabase";
+import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
 import { Button } from "../components/ora/Button";
@@ -53,8 +56,11 @@ export default function EditorPage() {
    prompt bar. Every action is explicit.
    ────────────────────────────────────────────────────────────── */
 function EditorAgency() {
-  // Route state (preload asset from Library) wires up in the next commit.
-  useLocation();
+  const { getAuthHeader } = useAuth();
+  const location = useLocation();
+  const navState = location.state as { assetUrl?: string; assetId?: string } | null;
+  const preloadUrl = navState?.assetUrl || null;
+  const preloadId  = navState?.assetId  || null;
 
   // Core project state (layers, history, selection) — reuses the shared hook
   const p = useEditorProject("Untitled", 1080, 1080);
@@ -63,7 +69,67 @@ function EditorAgency() {
   const [activeFormat, setActiveFormat] = useState<FormatId>("square");
   const [zoom, setZoom] = useState(1);
 
+  // Background image (if the user arrived from Library via Pencil icon)
+  const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
+
+  // Vault data — the logo URL the +Logo button will place, and palette
+  // colours the inspector (next commit) will render as one-click swatches.
+  const [vaultLogoUrl, setVaultLogoUrl] = useState<string | null>(null);
+  const [vaultColors, setVaultColors] = useState<string[]>([]);
+
   const stageRef = useRef<Konva.Stage | null>(null);
+
+  // Load the Brand Vault on mount. Studio+-gated server-side; for Creator
+  // users this will return 402 and we silently leave vaultLogoUrl null
+  // (the +Logo button will prompt to upload from Vault if pressed).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthHeader();
+        const r = await fetch(`${API_BASE}/vault/load`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ _token: token }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        const v = d?.vault;
+        if (v) {
+          setVaultLogoUrl(v.logo_url || v.logoUrl || null);
+          const hexes = (v.colors || [])
+            .map((c: any) => String(c?.hex || "").toUpperCase())
+            .filter((h: string) => /^#[0-9A-F]{3,8}$/.test(h));
+          setVaultColors(hexes);
+        }
+      } catch { /* silent — Vault is optional */ }
+    })();
+    return () => { cancelled = true; };
+  }, [getAuthHeader]);
+
+  // Preload asset handed over by Library's Pencil icon. Loaded into an
+  // <img> element with crossOrigin so Konva can use it as a full-canvas
+  // background; the canvas format is auto-matched to the image AR so
+  // the user starts on exactly the asset they were editing.
+  useEffect(() => {
+    if (!preloadUrl) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      setBackgroundImg(img);
+      // Match the project to the image dimensions. If the image AR maps
+      // to one of our format presets, switch the active chip too.
+      const w = img.naturalWidth || 1080;
+      const h = img.naturalHeight || 1080;
+      p.updateProjectProps({ width: w, height: h, backgroundImageUrl: preloadUrl });
+      const ar = w / h;
+      const match = FORMATS.find((f) => Math.abs(f.w / f.h - ar) < 0.02);
+      if (match) setActiveFormat(match.id);
+    };
+    img.onerror = () => { toast.error("Couldn't load that asset."); };
+    img.src = preloadUrl;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadUrl]);
 
   const applyFormat = useCallback((f: typeof FORMATS[number]) => {
     setActiveFormat(f.id);
@@ -103,17 +169,19 @@ function EditorAgency() {
   }, [p]);
 
   const addLogo = useCallback(() => {
-    // Vault logo pull lands in commit 3. Placeholder shape for now so the
-    // button is clickable and the user sees a layer appear.
+    if (!vaultLogoUrl) {
+      toast.error("No logo in your Brand Vault. Upload one there first.");
+      return;
+    }
     const W = p.project.width, H = p.project.height;
     const size = Math.round(W * 0.15);
-    const layer = createLogoLayer("", {
+    const layer = createLogoLayer(vaultLogoUrl, {
       name: "Logo",
       spatial: { ...createDefaultSpatial(), x: W - size - 40, y: H - size - 40, width: size, height: size },
     });
     p.addLayer(layer);
     p.setSelectedLayerId(layer.id);
-  }, [p]);
+  }, [p, vaultLogoUrl]);
 
   // Fit-to-viewport zoom: canvas should never overflow the center column.
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -258,8 +326,18 @@ function EditorAgency() {
               style={{ cursor: "default" }}
             >
               <KonvaLayerGroup>
-                {/* Canvas background */}
+                {/* Canvas background — solid fill + optional preloaded asset */}
                 <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" listening={false} />
+                {backgroundImg && (
+                  <KonvaImage
+                    image={backgroundImg}
+                    x={0}
+                    y={0}
+                    width={p.project.width}
+                    height={p.project.height}
+                    listening={false}
+                  />
+                )}
 
                 {/* User layers — rendered in insertion order. z-index by array position. */}
                 {p.project.layers.filter((l) => l.visible).map((layer) => (
@@ -422,24 +500,13 @@ function LayerNode({
       );
     }
   } else if (layer.type === "logo") {
-    const l = layer as LogoLayer;
-    // Until the Vault logo pull lands (commit 3), render a ghosted
-    // placeholder rectangle so the dropped layer is still visible and
-    // selectable. Swap for a loaded image once sourceUrl is populated.
     node = (
-      <Rect
-        {...common}
-        ref={(r) => { nodeRef.current = r; }}
-        width={layer.spatial.width}
-        height={layer.spatial.height}
-        fill="rgba(17,17,17,0.06)"
-        stroke="rgba(17,17,17,0.2)"
-        strokeWidth={1.5}
-        dash={[6, 6]}
-        cornerRadius={8}
+      <LogoImageNode
+        layer={layer as LogoLayer}
+        common={common}
+        forwardRef={(r) => { nodeRef.current = r; }}
       />
     );
-    void l;
   }
 
   return (
@@ -460,5 +527,55 @@ function LayerNode({
         />
       )}
     </>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+   LogoImageNode — loads a logo URL into an Image element once,
+   then renders it as a Konva Image. Extracted into its own
+   component so the load hook stays local and doesn't pollute
+   the LayerNode render body.
+   ────────────────────────────────────────────────────────────── */
+function LogoImageNode({
+  layer, common, forwardRef,
+}: {
+  layer: LogoLayer;
+  common: Record<string, any>;
+  forwardRef: (r: Konva.Node | null) => void;
+}) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (!layer.sourceUrl) { setImg(null); return; }
+    const i = new Image();
+    i.crossOrigin = "anonymous";
+    i.onload = () => setImg(i);
+    i.src = layer.sourceUrl;
+  }, [layer.sourceUrl]);
+
+  // Before the image resolves (or if sourceUrl is empty), show a
+  // dashed placeholder so the layer is still selectable.
+  if (!img) {
+    return (
+      <Rect
+        {...common}
+        ref={forwardRef as any}
+        width={layer.spatial.width}
+        height={layer.spatial.height}
+        fill="rgba(17,17,17,0.06)"
+        stroke="rgba(17,17,17,0.2)"
+        strokeWidth={1.5}
+        dash={[6, 6]}
+        cornerRadius={8}
+      />
+    );
+  }
+  return (
+    <KonvaImage
+      {...common}
+      ref={forwardRef as any}
+      image={img}
+      width={layer.spatial.width}
+      height={layer.spatial.height}
+    />
   );
 }
