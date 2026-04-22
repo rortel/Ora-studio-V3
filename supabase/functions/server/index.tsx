@@ -8981,6 +8981,150 @@ app.post("/analyze/series", async (c) => {
 // in parallel. All assets share the brand DA; each is framed for its channel
 // (Instagram Feed/Story, LinkedIn, Facebook, TikTok). A creativityLevel 1-4
 // controls how bold the concept/scenes are (temperature + system-prompt hints).
+// ── POST /analyze/suggest-angles — Kill the prompt ──
+// Returns 3 ready-to-run campaign angles derived from the user's Brand Vault
+// + current month + industry. The user never types a brief: they pick a card
+// and /analyze/surprise-me fires with the angle's params pre-filled. This is
+// how "Stop prompting." becomes true for the default flow — briefing the AI
+// is offloaded to the AI.
+//
+// No credits are charged: the endpoint only calls GPT-4o, not image/video
+// models. Auth required so we can read the user's vault. Admin bypasses.
+app.post("/analyze/suggest-angles", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const lang = body?.lang === "fr" ? "fr" : "en";
+
+    // Load vault — angles lean hard on it. If missing, we still return three
+    // generic angles from the current month so the UI stays functional.
+    const ctx = await buildBrandContext(user.id).catch(() => null);
+
+    const now = new Date();
+    const monthIdx = now.getMonth();
+    const monthName = ["January","February","March","April","May","June","July","August","September","October","November","December"][monthIdx];
+    const season =
+      monthIdx <= 1 || monthIdx === 11 ? "winter"
+      : monthIdx <= 4                   ? "spring"
+      : monthIdx <= 7                   ? "summer"
+      :                                    "autumn";
+
+    // Brand briefing, identical shape to surprise-me's brandSummary for
+    // maximum prompt consistency.
+    const parts: string[] = [];
+    if (ctx) {
+      if (ctx.brandName)    parts.push(`brand: ${ctx.brandName}`);
+      if (ctx.industry)     parts.push(`industry: ${ctx.industry}`);
+      if (ctx.tagline)      parts.push(`tagline: ${ctx.tagline}`);
+      const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 5);
+      if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
+      if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
+      if (ctx.photoStyle?.lighting) parts.push(`photo lighting: ${ctx.photoStyle.lighting}`);
+      if (Array.isArray((ctx as any).target_audiences) && (ctx as any).target_audiences.length > 0) {
+        parts.push(`audiences: ${((ctx as any).target_audiences).map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 2).join(", ")}`);
+      }
+    }
+    const brandSummary = parts.join(" · ");
+
+    const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, editorial campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
+
+The user should NEVER have to write a brief. Each angle must be self-contained and ready to turn into a full social campaign pack without any further input.
+
+RULES:
+- 3 angles, all DIFFERENT moods / narrative beats (don't repeat the same vibe).
+- Each grounded in the brand DA and the current season/moment.
+- Each ready for a 6-asset pack (images + paired films) across the right platforms.
+- Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief.
+- Output JSON only, no prose wrapper, no markdown.
+
+CONTEXT:
+${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — use tasteful generic editorial angles for the season."}
+
+OUTPUT SHAPE (strict):
+{
+  "angles": [
+    {
+      "id": "kebab-case-slug",
+      "emoji": "one emoji that fits the mood",
+      "title": "2-4 word editorial title",
+      "subtitle": "one sentence, max 12 words, describes the mood",
+      "brief": "3-5 sentences, prompt-grade detail — the scene, subject angle, mood, any narrative beat. This is what will feed the image-gen pipeline.",
+      "platforms": ["instagram-feed","instagram-story","linkedin","facebook","tiktok"] (subset, 2-4 items),
+      "creativityLevel": 1-4,
+      "assetCount": 6-8
+    },
+    // 3 total
+  ]
+}
+
+Pick varied creativityLevels across the three (e.g. 2 / 3 / 4). Pick varied platform mixes. Titles should feel editorial (fashion magazine, not SaaS).`;
+
+    const key = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("APIPOD_KEY");
+    if (!key) return c.json({ success: false, error: "LLM not configured" }, 500);
+    const apipod = !!Deno.env.get("APIPOD_KEY");
+    const endpoint = apipod ? "https://api.apipod.co/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
+
+    const llmRes = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.85,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user",   content: "Propose 3 angles." },
+        ],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!llmRes.ok) {
+      const t = await llmRes.text();
+      console.log(`[suggest-angles] LLM ${llmRes.status}: ${t.slice(0, 200)}`);
+      return c.json({ success: false, error: `Concept generation failed (${llmRes.status})` }, 502);
+    }
+    const payload = await llmRes.json();
+    const raw = payload?.choices?.[0]?.message?.content || "{}";
+    let angles: any[] = [];
+    try {
+      const parsed = JSON.parse(raw);
+      angles = Array.isArray(parsed?.angles) ? parsed.angles : [];
+    } catch (err) {
+      console.log(`[suggest-angles] JSON parse failed: ${err}`);
+      return c.json({ success: false, error: "Concept JSON parse failed" }, 502);
+    }
+    // Sanitize + clip
+    const clean = angles.slice(0, 3).map((a: any, i: number) => ({
+      id:               String(a?.id || `angle-${i + 1}`).slice(0, 60),
+      emoji:            String(a?.emoji || "✨").slice(0, 4),
+      title:            String(a?.title || "Untitled").slice(0, 40),
+      subtitle:         String(a?.subtitle || "").slice(0, 120),
+      brief:            String(a?.brief || "").slice(0, 600),
+      platforms:        Array.isArray(a?.platforms) ? a.platforms.filter((p: any) => typeof p === "string").slice(0, 5) : ["instagram-feed","instagram-story","tiktok"],
+      creativityLevel:  Math.max(1, Math.min(4, parseInt(String(a?.creativityLevel || 2), 10) || 2)),
+      assetCount:       Math.max(4, Math.min(8, parseInt(String(a?.assetCount || 6), 10) || 6)),
+    })).filter((a) => a.title && a.brief);
+
+    if (clean.length === 0) {
+      return c.json({ success: false, error: "No valid angles returned" }, 502);
+    }
+
+    console.log(`[suggest-angles] ${clean.length} angles in ${Date.now() - t0}ms for user=${user.id.slice(0, 8)} brand=${!!ctx}`);
+    return c.json({
+      success: true,
+      angles: clean,
+      month: monthName,
+      season,
+      hasVault: !!ctx,
+      tookMs: Date.now() - t0,
+    });
+  } catch (err: any) {
+    console.log(`[suggest-angles] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 app.post("/analyze/surprise-me", async (c) => {
   const t0 = Date.now();
   try {

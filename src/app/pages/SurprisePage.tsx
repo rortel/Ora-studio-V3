@@ -157,6 +157,43 @@ function SurpriseContent() {
     setVaultNudgeDismissed(true);
   }, []);
 
+  // ── Auto-angles ──────────────────────────────────────────────────────
+  // The anti-prompt play: on mount, ask /analyze/suggest-angles for 3
+  // ready-to-run campaign angles built from the user's Brand Vault + the
+  // current month. User clicks a card, campaign runs. Zero typing.
+  // If the fetch fails (no vault, no LLM key, network) we silently fall
+  // through to the inline-fields brief UI.
+  type AngleSuggestion = {
+    id: string; emoji: string; title: string; subtitle: string; brief: string;
+    platforms: string[]; creativityLevel: number; assetCount: number;
+  };
+  const [anglesLoading, setAnglesLoading] = useState(true);
+  const [suggestedAngles, setSuggestedAngles] = useState<AngleSuggestion[]>([]);
+  const [customBriefMode, setCustomBriefMode] = useState(false);
+  const [monthLabel, setMonthLabel] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthHeader();
+        const r = await fetch(`${API_BASE}/analyze/suggest-angles`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ lang: "en", _token: token }),
+          signal: AbortSignal.timeout(35_000),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (d?.success && Array.isArray(d.angles) && d.angles.length > 0) {
+          setSuggestedAngles(d.angles);
+          setMonthLabel(String(d.month || ""));
+        }
+      } catch { /* silent — inline brief remains the fallback */ }
+      finally { if (!cancelled) setAnglesLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [getAuthHeader]);
+
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
     const r = await fetch(`${API_BASE}${path}`, {
@@ -198,7 +235,17 @@ function SurpriseContent() {
     }
   }, [serverPost]);
 
-  const handleSurprise = useCallback(async () => {
+  // Run a full surprise-me campaign. When called without arguments, every
+  // parameter comes from the user's brief + picks. An `override` lets the
+  // auto-angle cards fire the same pipeline with a pre-composed brief and
+  // angle-specific platform/creativity defaults — no typing required.
+  const handleSurprise = useCallback(async (override?: {
+    brief?: string;
+    platforms?: string[];
+    platformFormats?: Record<string, "image" | "film">;
+    creativity?: 1 | 2 | 3 | 4;
+    assetCount?: number;
+  }) => {
     if (busy) return;
     setBusy(true);
     setStage("concept");
@@ -206,16 +253,22 @@ function SurpriseContent() {
     try {
       await new Promise((r) => setTimeout(r, 500));
       setStage("generating");
+      const effPlatforms = override?.platforms ?? platforms;
+      const effFormats = override?.platformFormats
+        ?? Object.fromEntries(platformPicks.map((p) => [p.id, p.format]));
+      const effCreativity = override?.creativity ?? creativity;
+      const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
         productImageUrl: productPhoto || undefined,
-        creativityLevel: creativity,
-        assetCount,
-        platforms,
-        platformFormats: Object.fromEntries(platformPicks.map((p) => [p.id, p.format])),
+        creativityLevel: effCreativity,
+        assetCount: effAssetCount,
+        platforms: effPlatforms,
+        platformFormats: effFormats,
         mediaType,
         videoDuration,
         withCaption,
-        context: {
+        brief: override?.brief || undefined,
+        context: override?.brief ? undefined : {
           who: who.trim() || undefined,
           what: what.trim() || undefined,
           why: ctxWhy.trim() || undefined,
@@ -226,7 +279,7 @@ function SurpriseContent() {
         // Out-of-credits is a first-class case with a clear CTA.
         if (res?.code === "out_of_credits") {
           setStage("idle");
-          setOutOfCredits({ remaining: Number(res.remaining || 0), required: Number(res.required || assetCount) });
+          setOutOfCredits({ remaining: Number(res.remaining || 0), required: Number(res.required || effAssetCount) });
           return;
         }
         toast.error(res?.error || "Composition failed.");
@@ -333,14 +386,102 @@ function SurpriseContent() {
               )}
             </AnimatePresence>
 
+            {suggestedAngles.length > 0 && !customBriefMode ? (
+              /* ═══ Auto-angles — the anti-prompt default ═══
+               *   Three ready-to-run campaign angles computed from the user's
+               *   Brand Vault + the current month. User clicks a card, the
+               *   campaign fires. Zero typing. Fallback: "Write a custom
+               *   brief instead →" drops back to the inline-fields UI. */
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+                className="mb-10"
+              >
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                  Ora suggests{monthLabel ? ` · ${monthLabel}` : ""}
+                </div>
+                <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 92px)" }}>
+                  Pick a direction.<br />
+                  <span style={{ color: COLORS.coral }}>We handle the rest.</span>
+                </h1>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                  {suggestedAngles.map((a, i) => (
+                    <motion.button
+                      key={a.id}
+                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.08 * i, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                      whileHover={{ y: -4 }}
+                      disabled={busy || uploadingProduct}
+                      onClick={() => handleSurprise({
+                        brief: a.brief,
+                        platforms: a.platforms,
+                        platformFormats: Object.fromEntries(a.platforms.map((p) => [p, p.includes("story") || p.includes("tiktok") ? "film" : "image"])),
+                        creativity: Math.max(1, Math.min(4, a.creativityLevel)) as 1 | 2 | 3 | 4,
+                        assetCount: a.assetCount,
+                      })}
+                      className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        background: "#FFFFFF",
+                        border: `1px solid ${COLORS.line}`,
+                        boxShadow: "0 1px 2px rgba(17,17,17,0.03)",
+                      }}
+                    >
+                      <div className="text-[28px] leading-none mb-4">{a.emoji || "✨"}</div>
+                      <h3 className="leading-[1.02] mb-2" style={{ ...bagel, fontSize: 28, color: COLORS.ink }}>
+                        {a.title}
+                      </h3>
+                      {a.subtitle && (
+                        <p className="text-[13.5px] leading-snug mb-5" style={{ color: COLORS.muted }}>
+                          {a.subtitle}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                        <span>{a.assetCount} assets</span>
+                        <span>·</span>
+                        <span>{a.platforms.length} network{a.platforms.length > 1 ? "s" : ""}</span>
+                        <span>·</span>
+                        <span>level {a.creativityLevel}</span>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+                <div className="mt-6 text-center">
+                  <button
+                    onClick={() => setCustomBriefMode(true)}
+                    className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1"
+                    style={{ color: MUTED, fontWeight: 500 }}
+                  >
+                    Write a custom brief instead <ArrowRight size={12} />
+                  </button>
+                </div>
+              </motion.div>
+            ) : (<>
+            {/* Loading skeleton while angles fetch */}
+            {anglesLoading && !customBriefMode && suggestedAngles.length === 0 && (
+              <div className="mb-10 flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
+                <Loader2 size={13} className="animate-spin" />
+                Composing three directions for you…
+              </div>
+            )}
             {/* Friendly opener */}
             <motion.div
               initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
               className="mb-8 md:mb-12"
             >
-              <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
-                What are you shipping?
+              <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4 flex items-center justify-between gap-3" style={{ color: MUTED }}>
+                <span>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                  What are you shipping?
+                </span>
+                {suggestedAngles.length > 0 && (
+                  <button
+                    onClick={() => setCustomBriefMode(false)}
+                    className="text-[10.5px] hover:text-black transition"
+                    style={{ color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}
+                  >
+                    ← Back to Ora's suggestions
+                  </button>
+                )}
               </div>
               <p className="leading-[1.02]"
                  style={{ fontFamily: DISPLAY, fontSize: "clamp(44px, 8vw, 104px)", letterSpacing: "-0.035em" }}>
@@ -530,6 +671,7 @@ function SurpriseContent() {
                 </motion.div>
               )}
             </AnimatePresence>
+            </>)}
           </div>
         </main>
       )}
