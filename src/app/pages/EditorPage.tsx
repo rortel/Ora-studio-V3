@@ -11,7 +11,7 @@ import Konva from "konva";
 import { toast } from "sonner";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
-  Undo2, Redo2, Trash2,
+  Undo2, Redo2, Trash2, Loader2,
 } from "lucide-react";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -205,6 +205,96 @@ function EditorAgency() {
     p.setSelectedLayerId(layer.id);
   }, [p, vaultLogoUrl]);
 
+  // ── Save to Library ──
+  // Rasterises the current Stage at 2× pixel ratio, POSTs the data URL to
+  // /editor/save which uploads to storage and creates a Library item
+  // (type:"image", preview.kind:"image", editedFrom: preloadId for lineage).
+  const [saving, setSaving] = useState(false);
+  const handleSave = useCallback(async () => {
+    if (saving) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    setSaving(true);
+    try {
+      // Take the dataURL at canvas-native size, not the zoomed display.
+      const dataUrl = stage.toDataURL({ pixelRatio: 2 / Math.max(0.01, zoom) });
+      const token = getAuthHeader();
+      const r = await fetch(`${API_BASE}/editor/save`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          imageDataUrl: dataUrl,
+          prompt: p.project.name || "Edited in ORA Editor",
+          sourceItemId: preloadId || null,
+          _token: token,
+        }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d?.success) toast.success("Saved to Library");
+      else toast.error(d?.error || "Save failed");
+    } catch (err: any) {
+      toast.error(String(err?.message || err));
+    } finally {
+      setSaving(false);
+    }
+  }, [saving, zoom, getAuthHeader, p.project.name, preloadId]);
+
+  // ── Export PNG at canvas-exact resolution ──
+  const handleExport = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const dataUrl = stage.toDataURL({ pixelRatio: 2 / Math.max(0.01, zoom) });
+    const slug = (p.project.name || "ora").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ora";
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `${slug}-${p.project.width}x${p.project.height}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, [zoom, p.project.name, p.project.width, p.project.height]);
+
+  // ── Keyboard shortcuts ──
+  // - ⌘/Ctrl + Z → undo, ⇧⌘/Ctrl+Z → redo (Y alias)
+  // - ⌘/Ctrl + S → save to Library
+  // - ⌘/Ctrl + E → export PNG
+  // - Delete / Backspace → remove selected layer
+  // - Arrow keys → nudge 1px (10px with Shift)
+  // Respects form focus: shortcuts skip when the active element is an
+  // input, textarea, select or contentEditable field.
+  useEffect(() => {
+    const isFormTarget = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isFormTarget(e.target)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) p.redo(); else p.undo();
+        return;
+      }
+      if (mod && (e.key.toLowerCase() === "y")) { e.preventDefault(); p.redo(); return; }
+      if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); handleSave(); return; }
+      if (mod && e.key.toLowerCase() === "e") { e.preventDefault(); handleExport(); return; }
+      const sel = p.selectedLayer;
+      if (!sel) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        p.removeLayer(sel.id);
+        return;
+      }
+      const step = e.shiftKey ? 10 : 1;
+      if (e.key === "ArrowLeft")  { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, x: sel.spatial.x - step } } as any); }
+      if (e.key === "ArrowRight") { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, x: sel.spatial.x + step } } as any); }
+      if (e.key === "ArrowUp")    { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, y: sel.spatial.y - step } } as any); }
+      if (e.key === "ArrowDown")  { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, y: sel.spatial.y + step } } as any); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [p, handleSave, handleExport]);
+
   // Fit-to-viewport zoom: canvas should never overflow the center column.
   const canvasRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -268,10 +358,11 @@ function EditorAgency() {
 
         <div className="w-px h-6 mx-1" style={{ background: COLORS.line }} />
 
-        <Button variant="ghost" size="sm">
-          <Save size={13} /> Save
+        <Button variant="ghost" size="sm" onClick={handleSave} disabled={saving} title="Save to Library (⌘S)">
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+          {saving ? "Saving…" : "Save"}
         </Button>
-        <Button variant="accent" size="sm">
+        <Button variant="accent" size="sm" onClick={handleExport} title="Export PNG (⌘E)">
           <Download size={13} /> Export
         </Button>
       </header>
