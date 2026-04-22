@@ -907,7 +907,7 @@ function EditorPageContent() {
         };
         const yPos = posMap[action.position] || posMap.center;
         const shapeLayer = createShapeLayer(shape, {
-          fill: action.color || "rgba(124, 58, 237, 0.85)",
+          fill: action.color || "rgba(255, 92, 57, 0.85)",
           spatial: createDefaultSpatial(projectW * 0.1, yPos, projectW * 0.8, projectH * 0.25),
           temporal: createDefaultTemporal(editorProject.project.durationInFrames),
         });
@@ -1565,7 +1565,7 @@ function EditorPageContent() {
           rotation: 0,
           fillType: "gradient",
           fill: "#EC4899",
-          gradientStart: "#7C3AED",
+          gradientStart: "#FF5C39",
           gradientEnd: "#EC4899",
           gradientAngle: 135,
           stroke: "#ffffff",
@@ -2163,15 +2163,14 @@ function EditorPageContent() {
     return (
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center",
-        height: "100vh", background: "#fff", color: "#1a1a1a",
+        height: "100vh", background: "#F4EFE6", color: "#111111",
         padding: "32px", textAlign: "center",
       }}>
         <div>
-          <Maximize size={48} style={{ color: "#7C3AED", marginBottom: 16, margin: "0 auto 16px" }} />
-          <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>Desktop Only</h2>
-          <p style={{ fontSize: 14, color: "#999", lineHeight: 1.6, maxWidth: 320 }}>
-            The AI image editor requires a desktop screen for the best experience.
-            Please open this page on a computer.
+          <Maximize size={48} style={{ color: "#FF5C39", marginBottom: 16, margin: "0 auto 16px" }} />
+          <h2 style={{ fontFamily: '"Bagel Fat One", "Inter", sans-serif', fontSize: 40, lineHeight: 0.95, letterSpacing: "-0.01em", marginBottom: 12 }}>Desktop only.</h2>
+          <p style={{ fontSize: 14, color: "#6C6C6C", lineHeight: 1.6, maxWidth: 340, margin: "0 auto" }}>
+            The editor needs a real screen. Open this page on a computer — we'll hand you the canvas.
           </p>
         </div>
       </div>
@@ -2179,7 +2178,7 @@ function EditorPageContent() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#f5f5f7", color: "#1a1a1a" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#F4EFE6", color: "#111111" }}>
       <AppTabs active="edit" />
       <div style={{
         display: "flex", flex: 1, minHeight: 0,
@@ -2238,16 +2237,16 @@ function EditorPageContent() {
                 exit={{ opacity: 0 }}
                 style={{
                   position: "absolute", inset: 0, zIndex: 50,
-                  background: "rgba(124, 58, 237, 0.15)",
-                  border: "3px dashed #7C3AED",
+                  background: "rgba(255, 92, 57, 0.15)",
+                  border: "3px dashed #FF5C39",
                   borderRadius: 12,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   margin: 8,
                 }}
               >
                 <div style={{ textAlign: "center" }}>
-                  <Upload size={40} style={{ color: "#7C3AED", margin: "0 auto 12px" }} />
-                  <p style={{ fontSize: 16, fontWeight: 600, color: "#7C3AED" }}>
+                  <Upload size={40} style={{ color: "#FF5C39", margin: "0 auto 12px" }} />
+                  <p style={{ fontSize: 16, fontWeight: 600, color: "#FF5C39" }}>
                     Drop image here
                   </p>
                 </div>
@@ -2264,10 +2263,10 @@ function EditorPageContent() {
             }}>
               <div style={{
                 width: 72, height: 72, borderRadius: 20,
-                background: "linear-gradient(135deg, #7C3AED20, #7C3AED10)",
+                background: "linear-gradient(135deg, #FF5C3920, #FF5C3910)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <ImageIcon size={32} style={{ color: "#7C3AED" }} />
+                <ImageIcon size={32} style={{ color: "#FF5C39" }} />
               </div>
               <div style={{ textAlign: "center" }}>
                 <p style={{ fontSize: 16, fontWeight: 500, color: "#555", marginBottom: 4 }}>
@@ -2280,12 +2279,12 @@ function EditorPageContent() {
                   onClick={() => fileInputRef.current?.click()}
                   style={{
                     padding: "10px 24px", borderRadius: 10, border: "none",
-                    background: "#7C3AED",
+                    background: "#FF5C39",
                     color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
                     display: "inline-flex", alignItems: "center", gap: 8,
                     transition: "transform 0.12s, box-shadow 0.12s",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(124,58,237,0.25)"; }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(255,92,57,0.25)"; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}
                 >
                   <Upload size={16} />
@@ -2609,10 +2608,10 @@ function EditorPageContent() {
                 <Transformer
                   ref={transformerRef}
                   rotateEnabled
-                  borderStroke="#7C3AED"
+                  borderStroke="#FF5C39"
                   borderStrokeWidth={2 / zoom}
                   anchorFill="#fff"
-                  anchorStroke="#7C3AED"
+                  anchorStroke="#FF5C39"
                   anchorSize={10 / zoom}
                   anchorCornerRadius={2}
                   keepRatio={false}
@@ -2802,8 +2801,8 @@ function EditorPageContent() {
                     style={{
                       width: 80, height: 80, borderRadius: 10, overflow: "hidden",
                       cursor: "pointer",
-                      border: selectedVariant === i ? "2px solid #7C3AED" : "2px solid #e8e8e8",
-                      boxShadow: selectedVariant === i ? "0 0 12px rgba(124,58,237,0.2)" : "0 2px 8px rgba(0,0,0,0.08)",
+                      border: selectedVariant === i ? "2px solid #FF5C39" : "2px solid rgba(17,17,17,0.08)",
+                      boxShadow: selectedVariant === i ? "0 0 12px rgba(255,92,57,0.2)" : "0 2px 8px rgba(0,0,0,0.08)",
                       background: "#fff",
                       transition: "border-color 0.15s",
                     }}
@@ -2824,7 +2823,7 @@ function EditorPageContent() {
           {/* ── Timeline panel (resizable) ── */}
           {timelineOpen && (
             <>
-              <PanelResizeHandle style={{ height: 3, background: "#e8e8e8", cursor: "row-resize" }} />
+              <PanelResizeHandle style={{ height: 3, background: "rgba(17,17,17,0.08)", cursor: "row-resize" }} />
               <Panel defaultSize={25} minSize={12} maxSize={50}>
                 <EditorTimeline
                   layers={editorProject.project.layers}
@@ -2853,17 +2852,17 @@ function EditorPageContent() {
 
         {/* ─── AI Prompt Bar — always visible ─── */}
         <div style={{
-          height: 56, background: "#fff", borderTop: "1px solid #e8e8e8",
+          height: 56, background: "#fff", borderTop: "1px solid rgba(17,17,17,0.08)",
           display: "flex", alignItems: "center", justifyContent: "center",
           padding: "0 20px", gap: 10, flexShrink: 0,
         }}>
           <div style={{
             flex: 1, maxWidth: 640, display: "flex", alignItems: "center",
-            background: "#f5f5f7", borderRadius: 12, padding: "0 6px 0 14px",
-            border: aiProcessing ? "1.5px solid #7C3AED" : "1.5px solid #e8e8e8",
+            background: "rgba(17,17,17,0.04)", borderRadius: 12, padding: "0 6px 0 14px",
+            border: aiProcessing ? "1.5px solid #FF5C39" : "1.5px solid rgba(17,17,17,0.08)",
             height: 42, transition: "border-color 0.2s",
           }}>
-            <Sparkles size={15} style={{ color: "#7C3AED", flexShrink: 0, marginRight: 8 }} />
+            <Sparkles size={15} style={{ color: "#FF5C39", flexShrink: 0, marginRight: 8 }} />
             <input
               ref={aiInputRef}
               value={aiPrompt}
@@ -2875,7 +2874,7 @@ function EditorPageContent() {
               disabled={aiProcessing}
               style={{
                 flex: 1, background: "none", border: "none", outline: "none",
-                color: "#1a1a1a", fontSize: 13, fontWeight: 400,
+                color: "#111111", fontSize: 13, fontWeight: 400,
               }}
             />
             <motion.button
@@ -2885,7 +2884,7 @@ function EditorPageContent() {
               disabled={!aiPrompt.trim() || aiProcessing}
               style={{
                 width: 32, height: 32, borderRadius: 8, border: "none",
-                background: aiPrompt.trim() ? "#7C3AED" : "transparent",
+                background: aiPrompt.trim() ? "#FF5C39" : "transparent",
                 color: aiPrompt.trim() ? "#fff" : "#ccc",
                 cursor: aiPrompt.trim() ? "pointer" : "default",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -2919,14 +2918,14 @@ function EditorPageContent() {
                 <div style={{
                   flex: 1, maxWidth: 400, display: "flex", alignItems: "center",
                   background: "#fff", borderRadius: 8, padding: "0 12px",
-                  border: "1px solid #e8e8e8", height: 36,
+                  border: "1px solid rgba(17,17,17,0.08)", height: 36,
                 }}>
                   <input
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
                     placeholder={PROMPT_PLACEHOLDERS[tool]}
                     onKeyDown={e => { if (e.key === "Enter" && canExecute()) handleAction(); }}
-                    style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#1a1a1a", fontSize: 12 }}
+                    style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#111111", fontSize: 12 }}
                   />
                 </div>
               )}
@@ -2937,7 +2936,7 @@ function EditorPageContent() {
                 disabled={!canExecute()}
                 style={{
                   padding: "0 18px", height: 36, borderRadius: 8, border: "none",
-                  background: canExecute() ? "#7C3AED" : "#e8e8e8",
+                  background: canExecute() ? "#FF5C39" : "rgba(17,17,17,0.08)",
                   color: canExecute() ? "#fff" : "#bbb",
                   fontSize: 12, fontWeight: 600, cursor: canExecute() ? "pointer" : "default",
                   display: "flex", alignItems: "center", gap: 6,
@@ -2991,7 +2990,7 @@ function EditorPageContent() {
           width: 14px;
           height: 14px;
           border-radius: 50%;
-          background: #7C3AED;
+          background: #FF5C39;
           cursor: pointer;
           border: 2px solid #fff;
           box-shadow: 0 1px 3px rgba(0,0,0,0.12);
@@ -3000,7 +2999,7 @@ function EditorPageContent() {
           width: 14px;
           height: 14px;
           border-radius: 50%;
-          background: #7C3AED;
+          background: #FF5C39;
           cursor: pointer;
           border: 2px solid #fff;
           box-shadow: 0 1px 3px rgba(0,0,0,0.12);
@@ -3037,7 +3036,7 @@ function EditorPageContent() {
               exit={{ scale: 0.97, opacity: 0 }}
               onClick={e => e.stopPropagation()}
               style={{
-                background: "#fff", border: "1px solid #e8e8e8",
+                background: "#fff", border: "1px solid rgba(17,17,17,0.08)",
                 borderRadius: 14, width: "100%", maxWidth: 520,
                 boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
                 overflow: "hidden",
@@ -3049,8 +3048,8 @@ function EditorPageContent() {
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Film size={18} style={{ color: "#7C3AED" }} />
-                  <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0 }}>
+                  <Film size={18} style={{ color: "#FF5C39" }} />
+                  <h3 style={{ fontSize: 15, fontWeight: 600, color: "#111111", margin: 0 }}>
                     {isFr ? "Animer cette image" : "Animate this image"}
                   </h3>
                 </div>
@@ -3079,8 +3078,8 @@ function EditorPageContent() {
                     rows={3}
                     disabled={animate.running}
                     style={{
-                      width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
-                      borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13,
+                      width: "100%", background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)",
+                      borderRadius: 8, padding: "10px 12px", color: "#111111", fontSize: 13,
                       outline: "none", resize: "vertical", fontFamily: "inherit",
                     }}
                   />
@@ -3096,8 +3095,8 @@ function EditorPageContent() {
                       onChange={e => setAnimate(a => ({ ...a, model: e.target.value }))}
                       disabled={animate.running}
                       style={{
-                        width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
-                        borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
+                        width: "100%", background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)",
+                        borderRadius: 8, padding: "10px 12px", color: "#111111", fontSize: 13, outline: "none",
                       }}
                     >
                       <optgroup label="🎬 Premium">
@@ -3154,8 +3153,8 @@ function EditorPageContent() {
                       onChange={e => setAnimate(a => ({ ...a, duration: Number(e.target.value) }))}
                       disabled={animate.running}
                       style={{
-                        width: "100%", background: "#f5f5f7", border: "1px solid #e8e8e8",
-                        borderRadius: 8, padding: "10px 12px", color: "#1a1a1a", fontSize: 13, outline: "none",
+                        width: "100%", background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)",
+                        borderRadius: 8, padding: "10px 12px", color: "#111111", fontSize: 13, outline: "none",
                       }}
                     >
                       <option value={5}>5s</option>
@@ -3166,7 +3165,7 @@ function EditorPageContent() {
 
                 {/* Result preview */}
                 {animate.videoUrl && (
-                  <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #e8e8e8" }}>
+                  <div style={{ borderRadius: 8, overflow: "hidden", border: "1px solid rgba(17,17,17,0.08)" }}>
                     <video
                       src={animate.videoUrl}
                       controls
@@ -3187,7 +3186,7 @@ function EditorPageContent() {
                   onClick={() => setAnimateOpen(false)}
                   disabled={animate.running}
                   style={{
-                    padding: "8px 16px", borderRadius: 8, border: "1px solid #e8e8e8",
+                    padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(17,17,17,0.08)",
                     background: "#fff", color: "#999",
                     fontSize: 13, cursor: animate.running ? "default" : "pointer",
                   }}
@@ -3200,8 +3199,8 @@ function EditorPageContent() {
                   style={{
                     padding: "8px 18px", borderRadius: 8, border: "none",
                     background: animate.running || !animate.prompt.trim()
-                      ? "#e8e8e8"
-                      : "#7C3AED",
+                      ? "rgba(17,17,17,0.08)"
+                      : "#FF5C39",
                     color: animate.running || !animate.prompt.trim() ? "#bbb" : "#fff",
                     fontSize: 13, fontWeight: 600,
                     cursor: animate.running || !animate.prompt.trim() ? "default" : "pointer",

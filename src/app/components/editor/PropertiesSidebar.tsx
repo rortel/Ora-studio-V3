@@ -55,12 +55,12 @@ export function PropertiesSidebar({
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.15 }}
           style={{
-            background: "#fff", borderLeft: "1px solid #e8e8e8",
+            background: "#fff", borderLeft: "1px solid rgba(17,17,17,0.08)",
             display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
           }}
         >
           <div style={{
-            padding: "12px 14px", borderBottom: "1px solid #e8e8e8",
+            padding: "12px 14px", borderBottom: "1px solid rgba(17,17,17,0.08)",
             display: "flex", alignItems: "center", gap: 8,
           }}>
             <Settings2 size={14} style={{ color: "#999" }} />
@@ -192,7 +192,7 @@ function TextProperties({ layer, onUpdate, isFr }: {
       <Section title="Style">
         <Row label={isFr ? "Couleur" : "Color"}>
           <input type="color" value={layer.fill} onChange={e => upd({ fill: e.target.value })}
-            style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+            style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
           />
         </Row>
         <Row label={isFr ? "Alignement" : "Align"}>
@@ -202,8 +202,8 @@ function TextProperties({ layer, onUpdate, isFr }: {
                 key={a} onClick={() => upd({ align: a })}
                 style={{
                   ...miniBtn,
-                  background: layer.align === a ? "rgba(124,58,237,0.08)" : "#f5f5f7",
-                  color: layer.align === a ? "#7C3AED" : "#999",
+                  background: layer.align === a ? "rgba(255,92,57,0.08)" : "rgba(17,17,17,0.04)",
+                  color: layer.align === a ? "#FF5C39" : "#999",
                 }}
               >
                 {a === "left" ? <AlignLeft size={12} /> : a === "center" ? <AlignCenter size={12} /> : <AlignRight size={12} />}
@@ -231,7 +231,7 @@ function TextProperties({ layer, onUpdate, isFr }: {
               <input type="color"
                 value={layer.shadow.color.startsWith("rgba") ? "#000000" : layer.shadow.color}
                 onChange={e => upd({ shadow: { ...layer.shadow, color: e.target.value } })}
-                style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+                style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
               />
             </Row>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
@@ -284,8 +284,8 @@ function ShapeProperties({ layer, onUpdate, isFr }: {
               key={ft} onClick={() => upd({ fillType: ft })}
               style={{
                 ...miniBtn, flex: 1, fontSize: 11, padding: "4px 8px",
-                background: layer.fillType === ft ? "rgba(124,58,237,0.08)" : "#f5f5f7",
-                color: layer.fillType === ft ? "#7C3AED" : "#999",
+                background: layer.fillType === ft ? "rgba(255,92,57,0.08)" : "rgba(17,17,17,0.04)",
+                color: layer.fillType === ft ? "#FF5C39" : "#999",
               }}
             >
               {ft === "solid" ? (isFr ? "Uni" : "Solid") : "Gradient"}
@@ -295,21 +295,21 @@ function ShapeProperties({ layer, onUpdate, isFr }: {
         {layer.fillType === "solid" ? (
           <Row label={isFr ? "Couleur" : "Color"}>
             <input type="color"
-              value={layer.fill.startsWith("rgba") ? "#7C3AED" : layer.fill}
+              value={layer.fill.startsWith("rgba") ? "#FF5C39" : layer.fill}
               onChange={e => upd({ fill: e.target.value })}
-              style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+              style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
             />
           </Row>
         ) : (
           <>
             <Row label={isFr ? "Début" : "Start"}>
               <input type="color" value={layer.gradientStart} onChange={e => upd({ gradientStart: e.target.value })}
-                style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+                style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
               />
             </Row>
             <Row label={isFr ? "Fin" : "End"}>
               <input type="color" value={layer.gradientEnd} onChange={e => upd({ gradientEnd: e.target.value })}
-                style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+                style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
               />
             </Row>
             <NumInput label="Angle" value={layer.gradientAngle} onChange={v => upd({ gradientAngle: v })} min={0} max={360} suffix="°" />
@@ -320,7 +320,7 @@ function ShapeProperties({ layer, onUpdate, isFr }: {
       <Section title={isFr ? "Contour" : "Stroke"}>
         <Row label={isFr ? "Couleur" : "Color"}>
           <input type="color" value={layer.stroke || "#ffffff"} onChange={e => upd({ stroke: e.target.value })}
-            style={{ width: 28, height: 22, border: "1px solid #e8e8e8", borderRadius: 4, cursor: "pointer", background: "#fff" }}
+            style={{ width: 28, height: 22, border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, cursor: "pointer", background: "#fff" }}
           />
         </Row>
         <NumInput label={isFr ? "Épaisseur" : "Width"} value={layer.strokeWidth} onChange={v => upd({ strokeWidth: v })} min={0} max={20} suffix="px" />
@@ -407,8 +407,8 @@ function MiniToggle({ active, onClick, iconOn, iconOff, title }: {
     <button onClick={onClick} title={title}
       style={{
         ...miniBtn,
-        background: active ? "rgba(124,58,237,0.08)" : "#f5f5f7",
-        color: active ? "#7C3AED" : "#bbb",
+        background: active ? "rgba(255,92,57,0.08)" : "rgba(17,17,17,0.04)",
+        color: active ? "#FF5C39" : "#bbb",
       }}
     >
       {active ? iconOn : iconOff}
@@ -420,11 +420,11 @@ function MiniToggle({ active, onClick, iconOn, iconOff, title }: {
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  background: "#f5f5f7",
-  border: "1px solid #e8e8e8",
+  background: "rgba(17,17,17,0.04)",
+  border: "1px solid rgba(17,17,17,0.08)",
   borderRadius: 6,
   padding: "5px 8px",
-  color: "#1a1a1a",
+  color: "#111111",
   fontSize: 12,
   outline: "none",
 };

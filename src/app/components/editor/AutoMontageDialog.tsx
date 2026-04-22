@@ -216,7 +216,7 @@ export function AutoMontageDialog({
           onClick={(e) => e.stopPropagation()}
           style={{
             background: "#fff",
-            border: "1px solid #e8e8e8",
+            border: "1px solid rgba(17,17,17,0.08)",
             borderRadius: 16,
             width: "100%",
             maxWidth: 560,
@@ -239,12 +239,12 @@ export function AutoMontageDialog({
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 28, height: 28, borderRadius: 8,
-                background: "linear-gradient(135deg, #7C3AED, #a78bfa)",
+                background: "linear-gradient(135deg, #FF5C39, #a78bfa)",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
                 <Sparkles size={14} style={{ color: "#fff" }} />
               </div>
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#111111", margin: 0 }}>
                 {isFr ? "Montage IA" : "AI Montage"}
               </h3>
             </div>
@@ -278,8 +278,8 @@ export function AutoMontageDialog({
                   </button>
                   <span style={{
                     fontSize: 11, fontWeight: 600,
-                    color: selectedCount >= 2 ? "#7C3AED" : "#bbb",
-                    background: selectedCount >= 2 ? "rgba(124,58,237,0.08)" : "#f5f5f7",
+                    color: selectedCount >= 2 ? "#FF5C39" : "#bbb",
+                    background: selectedCount >= 2 ? "rgba(255,92,57,0.08)" : "rgba(17,17,17,0.04)",
                     padding: "2px 8px", borderRadius: 10,
                   }}>
                     {selectedCount}
@@ -319,9 +319,9 @@ export function AutoMontageDialog({
                           overflow: "hidden",
                           cursor: loading ? "default" : "pointer",
                           aspectRatio: "1",
-                          background: "#f5f5f7",
-                          border: selected ? "2px solid #7C3AED" : "2px solid transparent",
-                          boxShadow: selected ? "0 0 0 2px rgba(124,58,237,0.18)" : "none",
+                          background: "rgba(17,17,17,0.04)",
+                          border: selected ? "2px solid #FF5C39" : "2px solid transparent",
+                          boxShadow: selected ? "0 0 0 2px rgba(255,92,57,0.18)" : "none",
                           transition: "border-color 0.15s, box-shadow 0.15s",
                         }}
                       >
@@ -360,7 +360,7 @@ export function AutoMontageDialog({
                         <div style={{
                           position: "absolute", top: 5, right: 5,
                           width: 18, height: 18, borderRadius: 5,
-                          background: selected ? "#7C3AED" : "rgba(255,255,255,0.7)",
+                          background: selected ? "#FF5C39" : "rgba(255,255,255,0.7)",
                           border: selected ? "none" : "1.5px solid rgba(0,0,0,0.15)",
                           display: "flex", alignItems: "center", justifyContent: "center",
                           transition: "background 0.15s",
@@ -413,8 +413,8 @@ export function AutoMontageDialog({
                         flex: 1,
                         padding: "8px 4px",
                         borderRadius: 8,
-                        border: format === f.key ? "1px solid #7C3AED" : "1px solid #e8e8e8",
-                        background: format === f.key ? "rgba(124,58,237,0.06)" : "#fafafa",
+                        border: format === f.key ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
+                        background: format === f.key ? "rgba(255,92,57,0.06)" : "#fafafa",
                         cursor: "pointer",
                         display: "flex",
                         flexDirection: "column",
@@ -428,12 +428,12 @@ export function AutoMontageDialog({
                         width: f.w >= f.h ? 26 : Math.round(26 * (f.w / f.h)),
                         height: f.h >= f.w ? 26 : Math.round(26 * (f.h / f.w)),
                         borderRadius: 3,
-                        border: `1.5px solid ${format === f.key ? "#7C3AED" : "#ccc"}`,
+                        border: `1.5px solid ${format === f.key ? "#FF5C39" : "#ccc"}`,
                         transition: "border-color 0.12s",
                       }} />
                       <span style={{
                         fontSize: 10, fontWeight: 600,
-                        color: format === f.key ? "#7C3AED" : "#999",
+                        color: format === f.key ? "#FF5C39" : "#999",
                       }}>
                         {f.label}
                       </span>
@@ -456,13 +456,13 @@ export function AutoMontageDialog({
                   rows={2}
                   style={{
                     width: "100%", padding: "10px 12px", borderRadius: 8,
-                    border: "1px solid #e8e8e8", background: "#fafafa",
-                    fontSize: 12, color: "#1a1a1a", resize: "vertical",
+                    border: "1px solid rgba(17,17,17,0.08)", background: "#fafafa",
+                    fontSize: 12, color: "#111111", resize: "vertical",
                     outline: "none", fontFamily: "inherit",
                     lineHeight: 1.5,
                   }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = "#7C3AED"; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = "#e8e8e8"; }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = "#FF5C39"; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(17,17,17,0.08)"; }}
                 />
               </div>
 
@@ -478,14 +478,14 @@ export function AutoMontageDialog({
                   <div style={{
                     width: 18, height: 18, borderRadius: 5,
                     border: musicEnabled ? "none" : "1.5px solid #ccc",
-                    background: musicEnabled ? "#7C3AED" : "#fafafa",
+                    background: musicEnabled ? "#FF5C39" : "#fafafa",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     transition: "background 0.12s",
                     flexShrink: 0,
                   }}>
                     {musicEnabled && <Check size={11} style={{ color: "#fff" }} />}
                   </div>
-                  <Music size={14} style={{ color: musicEnabled ? "#7C3AED" : "#bbb" }} />
+                  <Music size={14} style={{ color: musicEnabled ? "#FF5C39" : "#bbb" }} />
                   <span style={{ fontSize: 12, color: "#555", fontWeight: 500 }}>
                     {isFr ? "Générer une musique de fond" : "Generate background music"}
                   </span>
@@ -511,12 +511,12 @@ export function AutoMontageDialog({
                         }
                         style={{
                           width: "100%", padding: "8px 12px", borderRadius: 8,
-                          border: "1px solid #e8e8e8", background: "#fafafa",
-                          fontSize: 12, color: "#1a1a1a", outline: "none",
+                          border: "1px solid rgba(17,17,17,0.08)", background: "#fafafa",
+                          fontSize: 12, color: "#111111", outline: "none",
                           fontFamily: "inherit", marginTop: 8,
                         }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = "#7C3AED"; }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = "#e8e8e8"; }}
+                        onFocus={(e) => { e.currentTarget.style.borderColor = "#FF5C39"; }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(17,17,17,0.08)"; }}
                       />
                     </motion.div>
                   )}
@@ -547,7 +547,7 @@ export function AutoMontageDialog({
                 disabled={loading}
                 style={{
                   padding: "8px 16px", borderRadius: 8,
-                  border: "1px solid #e8e8e8", background: "#fff",
+                  border: "1px solid rgba(17,17,17,0.08)", background: "#fff",
                   color: "#999", fontSize: 13,
                   cursor: loading ? "default" : "pointer",
                 }}
@@ -560,13 +560,13 @@ export function AutoMontageDialog({
                 style={{
                   padding: "8px 20px", borderRadius: 8, border: "none",
                   background: canCreate
-                    ? "linear-gradient(135deg, #7C3AED, #9333EA)"
+                    ? "linear-gradient(135deg, #FF5C39, #9333EA)"
                     : "#f0f0f0",
                   color: canCreate ? "#fff" : "#ccc",
                   fontSize: 13, fontWeight: 600,
                   cursor: canCreate ? "pointer" : "default",
                   display: "flex", alignItems: "center", gap: 8,
-                  boxShadow: canCreate ? "0 2px 8px rgba(124,58,237,0.25)" : "none",
+                  boxShadow: canCreate ? "0 2px 8px rgba(255,92,57,0.25)" : "none",
                   transition: "background 0.15s, box-shadow 0.15s",
                 }}
               >
@@ -604,7 +604,7 @@ const fieldLabel: React.CSSProperties = {
 
 const linkButton: React.CSSProperties = {
   background: "none", border: "none",
-  color: "#7C3AED", fontSize: 11, fontWeight: 500,
+  color: "#FF5C39", fontSize: 11, fontWeight: 500,
   cursor: "pointer", padding: 0, textDecoration: "underline",
   textUnderlineOffset: 2,
 };

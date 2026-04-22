@@ -88,7 +88,7 @@ export function ExportDialog({
           exit={{ scale: 0.97, opacity: 0 }}
           onClick={e => e.stopPropagation()}
           style={{
-            background: "#fff", border: "1px solid #e8e8e8",
+            background: "#fff", border: "1px solid rgba(17,17,17,0.08)",
             borderRadius: 14, width: "100%", maxWidth: 420,
             boxShadow: "0 12px 40px rgba(0,0,0,0.1)",
             overflow: "hidden",
@@ -100,8 +100,8 @@ export function ExportDialog({
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Download size={18} style={{ color: "#7C3AED" }} />
-              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1a1a1a", margin: 0 }}>
+              <Download size={18} style={{ color: "#FF5C39" }} />
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "#111111", margin: 0 }}>
                 {isFr ? "Exporter" : "Export"}
               </h3>
             </div>
@@ -130,9 +130,9 @@ export function ExportDialog({
                     {(["png", "jpeg", "webp"] as const).map(f => (
                       <button key={f} onClick={() => setImageFormat(f)} style={{
                         flex: 1, padding: "8px 0", borderRadius: 8,
-                        border: imageFormat === f ? "1px solid #7C3AED" : "1px solid #e8e8e8",
-                        background: imageFormat === f ? "rgba(124,58,237,0.06)" : "#fafafa",
-                        color: imageFormat === f ? "#7C3AED" : "#999",
+                        border: imageFormat === f ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
+                        background: imageFormat === f ? "rgba(255,92,57,0.06)" : "#fafafa",
+                        color: imageFormat === f ? "#FF5C39" : "#999",
                         fontSize: 12, fontWeight: 500, cursor: "pointer", textTransform: "uppercase",
                       }}>
                         {f}
@@ -145,7 +145,7 @@ export function ExportDialog({
                     <label style={labelStyle}>{isFr ? "Qualité" : "Quality"}: {imageQuality}%</label>
                     <input type="range" min={10} max={100} value={imageQuality}
                       onChange={e => setImageQuality(Number(e.target.value))}
-                      style={{ width: "100%", accentColor: "#7C3AED" }}
+                      style={{ width: "100%", accentColor: "#FF5C39" }}
                     />
                   </div>
                 )}
@@ -163,9 +163,9 @@ export function ExportDialog({
                     {(["standard", "high"] as const).map(q => (
                       <button key={q} onClick={() => setVideoQuality(q)} style={{
                         flex: 1, padding: "8px 0", borderRadius: 8,
-                        border: videoQuality === q ? "1px solid #7C3AED" : "1px solid #e8e8e8",
-                        background: videoQuality === q ? "rgba(124,58,237,0.06)" : "#fafafa",
-                        color: videoQuality === q ? "#7C3AED" : "#999",
+                        border: videoQuality === q ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
+                        background: videoQuality === q ? "rgba(255,92,57,0.06)" : "#fafafa",
+                        color: videoQuality === q ? "#FF5C39" : "#999",
                         fontSize: 12, fontWeight: 500, cursor: "pointer",
                       }}>
                         {q === "standard" ? "Standard" : (isFr ? "Haute qualité" : "High quality")}
@@ -191,7 +191,7 @@ export function ExportDialog({
                 {exportResult.success ? (isFr ? "Export réussi !" : "Export successful!") : exportResult.error}
                 {exportResult.url && (
                   <a href={exportResult.url} download={`${project.name || "export"}.mp4`}
-                    style={{ marginLeft: "auto", color: "#7C3AED", textDecoration: "underline" }}>
+                    style={{ marginLeft: "auto", color: "#FF5C39", textDecoration: "underline" }}>
                     Download
                   </a>
                 )}
@@ -205,7 +205,7 @@ export function ExportDialog({
             display: "flex", justifyContent: "flex-end", gap: 10,
           }}>
             <button onClick={onClose} disabled={exporting} style={{
-              padding: "8px 16px", borderRadius: 8, border: "1px solid #e8e8e8",
+              padding: "8px 16px", borderRadius: 8, border: "1px solid rgba(17,17,17,0.08)",
               background: "#fff", color: "#999",
               fontSize: 13, cursor: exporting ? "default" : "pointer",
             }}>
@@ -216,7 +216,7 @@ export function ExportDialog({
               disabled={exporting}
               style={{
                 padding: "8px 18px", borderRadius: 8, border: "none",
-                background: exporting ? "#f5f5f7" : "#7C3AED",
+                background: exporting ? "rgba(17,17,17,0.04)" : "#FF5C39",
                 color: exporting ? "#bbb" : "#fff",
                 fontSize: 13, fontWeight: 600,
                 cursor: exporting ? "default" : "pointer",
@@ -248,12 +248,12 @@ function ModeButton({ active, onClick, icon, label, sub }: {
   return (
     <button onClick={onClick} style={{
       flex: 1, padding: "12px 14px", borderRadius: 10,
-      border: active ? "1px solid #7C3AED" : "1px solid #e8e8e8",
-      background: active ? "rgba(124,58,237,0.04)" : "#fafafa",
+      border: active ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
+      background: active ? "rgba(255,92,57,0.04)" : "#fafafa",
       cursor: "pointer", textAlign: "left",
       display: "flex", flexDirection: "column", gap: 4,
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, color: active ? "#7C3AED" : "#999" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, color: active ? "#FF5C39" : "#999" }}>
         {icon}
         <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
       </div>

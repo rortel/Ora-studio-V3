@@ -54,13 +54,13 @@ export function LibrarySidebar({
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.15 }}
           style={{
-            background: "#fff", borderRight: "1px solid #e8e8e8",
+            background: "#fff", borderRight: "1px solid rgba(17,17,17,0.08)",
             display: "flex", flexDirection: "column", overflow: "hidden",
             flexShrink: 0,
           }}
         >
           <div style={{
-            padding: "12px 12px 8px", borderBottom: "1px solid #e8e8e8",
+            padding: "12px 12px 8px", borderBottom: "1px solid rgba(17,17,17,0.08)",
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#999", textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -81,8 +81,8 @@ export function LibrarySidebar({
           <div style={{ padding: "8px 10px" }}>
             <div style={{
               display: "flex", alignItems: "center", gap: 6,
-              background: "#f5f5f7", borderRadius: 8, padding: "6px 10px",
-              border: "1px solid #e8e8e8",
+              background: "rgba(17,17,17,0.04)", borderRadius: 8, padding: "6px 10px",
+              border: "1px solid rgba(17,17,17,0.08)",
             }}>
               <Search size={14} style={{ color: "#bbb", flexShrink: 0 }} />
               <input
@@ -90,7 +90,7 @@ export function LibrarySidebar({
                 onChange={e => onSearchChange(e.target.value)}
                 placeholder="Search..."
                 style={{
-                  background: "none", border: "none", outline: "none", color: "#1a1a1a",
+                  background: "none", border: "none", outline: "none", color: "#111111",
                   fontSize: 12, width: "100%",
                 }}
               />
@@ -123,8 +123,8 @@ export function LibrarySidebar({
                       onClick={() => video ? onSelectVideo?.(url) : onSelectImage(url)}
                       style={{
                         borderRadius: 8, overflow: "hidden", cursor: "pointer",
-                        aspectRatio: "1", background: "#f5f5f7",
-                        border: activeImageUrl === url ? "2px solid #7C3AED" : "2px solid transparent",
+                        aspectRatio: "1", background: "rgba(17,17,17,0.04)",
+                        border: activeImageUrl === url ? "2px solid #FF5C39" : "2px solid transparent",
                         transition: "border-color 0.12s",
                         position: "relative",
                       }}

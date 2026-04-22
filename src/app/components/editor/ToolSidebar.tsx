@@ -67,7 +67,7 @@ interface ToolSidebarProps {
 /* ── Shared button style ── */
 const iconBtn = (active: boolean, enabled: boolean): React.CSSProperties => ({
   width: 36, height: 36, borderRadius: 8, border: "none",
-  background: active ? "#7C3AED" : "transparent",
+  background: active ? "#FF5C39" : "transparent",
   color: active ? "#fff" : enabled ? "#555" : "#ccc",
   cursor: enabled ? "pointer" : "default",
   display: "flex", alignItems: "center", justifyContent: "center",
@@ -89,7 +89,7 @@ export function ToolSidebar({
 }: ToolSidebarProps) {
   return (
     <div style={{
-      width: 52, background: "#fff", borderRight: "1px solid #e8e8e8",
+      width: 52, background: "#fff", borderRight: "1px solid rgba(17,17,17,0.08)",
       display: "flex", flexDirection: "column", alignItems: "center",
       paddingTop: 8, gap: 1, flexShrink: 0,
     }}>
@@ -122,7 +122,7 @@ export function ToolSidebar({
       })}
 
       {/* Divider */}
-      <div style={{ width: 24, height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+      <div style={{ width: 24, height: 1, background: "rgba(17,17,17,0.08)", margin: "4px 0" }} />
 
       {/* Undo / Redo */}
       <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)" style={iconBtn(false, canUndo)}>
@@ -132,7 +132,7 @@ export function ToolSidebar({
         <Redo2 size={15} />
       </button>
 
-      <div style={{ width: 24, height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+      <div style={{ width: 24, height: 1, background: "rgba(17,17,17,0.08)", margin: "4px 0" }} />
 
       {/* Add Text */}
       <button
@@ -180,7 +180,7 @@ export function ToolSidebar({
               exit={{ opacity: 0, x: -4 }}
               style={{
                 position: "absolute", left: 44, top: 0,
-                background: "#fff", border: "1px solid #e8e8e8", borderRadius: 10,
+                background: "#fff", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 10,
                 padding: 4, display: "flex", flexDirection: "column", gap: 1,
                 zIndex: 40, boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
               }}
@@ -200,10 +200,10 @@ export function ToolSidebar({
                     background: "transparent", color: "#444", cursor: "pointer",
                     fontSize: 12, whiteSpace: "nowrap",
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "#f5f5f7"; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(17,17,17,0.04)"; }}
                   onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
                 >
-                  <Icon size={13} style={{ color: "#7C3AED" }} />
+                  <Icon size={13} style={{ color: "#FF5C39" }} />
                   {label}
                 </button>
               ))}
@@ -234,7 +234,7 @@ export function ToolSidebar({
         <Film size={16} />
       </button>
 
-      <div style={{ width: 24, height: 1, background: "#e8e8e8", margin: "4px 0" }} />
+      <div style={{ width: 24, height: 1, background: "rgba(17,17,17,0.08)", margin: "4px 0" }} />
 
       {/* Video clip */}
       <button
@@ -275,11 +275,11 @@ export function ToolSidebar({
         title={isFr ? "Timeline" : "Toggle timeline"}
         style={{
           ...iconBtn(false, true),
-          background: timelineOpen ? "rgba(124,58,237,0.06)" : "transparent",
-          color: timelineOpen ? "#7C3AED" : "#999",
+          background: timelineOpen ? "rgba(255,92,57,0.06)" : "transparent",
+          color: timelineOpen ? "#FF5C39" : "#999",
         }}
         onMouseEnter={e => { if (!timelineOpen) e.currentTarget.style.background = "#f0f0f2"; }}
-        onMouseLeave={e => { if (!timelineOpen) e.currentTarget.style.background = timelineOpen ? "rgba(124,58,237,0.06)" : "transparent"; }}
+        onMouseLeave={e => { if (!timelineOpen) e.currentTarget.style.background = timelineOpen ? "rgba(255,92,57,0.06)" : "transparent"; }}
       >
         <Clock size={16} />
       </button>
@@ -290,12 +290,12 @@ export function ToolSidebar({
         title={isFr ? "Calques" : "Layers"}
         style={{
           ...iconBtn(false, true),
-          background: layersPanelOpen ? "rgba(124,58,237,0.06)" : "transparent",
-          color: layersPanelOpen ? "#7C3AED" : "#999",
+          background: layersPanelOpen ? "rgba(255,92,57,0.06)" : "transparent",
+          color: layersPanelOpen ? "#FF5C39" : "#999",
           marginBottom: 2,
         }}
         onMouseEnter={e => { if (!layersPanelOpen) e.currentTarget.style.background = "#f0f0f2"; }}
-        onMouseLeave={e => { if (!layersPanelOpen) e.currentTarget.style.background = layersPanelOpen ? "rgba(124,58,237,0.06)" : "transparent"; }}
+        onMouseLeave={e => { if (!layersPanelOpen) e.currentTarget.style.background = layersPanelOpen ? "rgba(255,92,57,0.06)" : "transparent"; }}
       >
         <Layers3 size={16} />
       </button>
@@ -306,17 +306,17 @@ export function ToolSidebar({
         title={isFr ? "Propriétés" : "Properties"}
         style={{
           ...iconBtn(false, true),
-          background: propertiesOpen ? "rgba(124,58,237,0.06)" : "transparent",
-          color: propertiesOpen ? "#7C3AED" : "#999",
+          background: propertiesOpen ? "rgba(255,92,57,0.06)" : "transparent",
+          color: propertiesOpen ? "#FF5C39" : "#999",
           marginBottom: 4,
         }}
         onMouseEnter={e => { if (!propertiesOpen) e.currentTarget.style.background = "#f0f0f2"; }}
-        onMouseLeave={e => { if (!propertiesOpen) e.currentTarget.style.background = propertiesOpen ? "rgba(124,58,237,0.06)" : "transparent"; }}
+        onMouseLeave={e => { if (!propertiesOpen) e.currentTarget.style.background = propertiesOpen ? "rgba(255,92,57,0.06)" : "transparent"; }}
       >
         <Settings2 size={16} />
       </button>
 
-      <div style={{ width: 24, height: 1, background: "#e8e8e8", margin: "2px 0" }} />
+      <div style={{ width: 24, height: 1, background: "rgba(17,17,17,0.08)", margin: "2px 0" }} />
 
       {/* Save */}
       <button
@@ -337,7 +337,7 @@ export function ToolSidebar({
         title={isFr ? "Publier" : "Publish"}
         style={{
           width: 36, height: 36, borderRadius: 8, border: "none",
-          background: imageUrl ? "#7C3AED" : "#f0f0f2",
+          background: imageUrl ? "#FF5C39" : "#f0f0f2",
           color: imageUrl ? "#fff" : "#ccc",
           cursor: imageUrl ? "pointer" : "default",
           display: "flex", alignItems: "center", justifyContent: "center",

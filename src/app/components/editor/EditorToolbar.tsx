@@ -180,7 +180,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
             exit={{ opacity: 0, y: 8, scale: 0.97 }}
             transition={{ duration: 0.15 }}
             style={{
-              background: "#fff", border: "1px solid #e8e8e8",
+              background: "#fff", border: "1px solid rgba(17,17,17,0.08)",
               borderRadius: 10, height: 36,
               display: "flex", alignItems: "center", gap: 8,
               padding: "0 12px",
@@ -209,18 +209,18 @@ export function EditorToolbar(props: EditorToolbarProps) {
             )}
 
             {/* Opacity */}
-            <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto", paddingLeft: 8, borderLeft: "1px solid #e8e8e8" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto", paddingLeft: 8, borderLeft: "1px solid rgba(17,17,17,0.08)" }}>
               <span style={{ fontSize: 10, color: "#bbb" }}>Op</span>
               <input type="range" min={0} max={100}
                 value={Math.round(selectedLayer.opacity * 100)}
                 onChange={e => onUpdateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
-                style={{ width: 50, accentColor: "#7C3AED" }}
+                style={{ width: 50, accentColor: "#FF5C39" }}
               />
               <span style={{ fontSize: 10, color: "#888", width: 26 }}>{Math.round(selectedLayer.opacity * 100)}%</span>
             </div>
 
             {/* Z-order */}
-            <div style={{ display: "flex", gap: 1, paddingLeft: 6, borderLeft: "1px solid #e8e8e8" }}>
+            <div style={{ display: "flex", gap: 1, paddingLeft: 6, borderLeft: "1px solid rgba(17,17,17,0.08)" }}>
               {([
                 { dir: "top" as const, icon: ArrowUpToLine },
                 { dir: "up" as const, icon: ArrowUp },
@@ -249,7 +249,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
 
       {/* ═══ MAIN FLOATING TOOLBAR ═══ */}
       <div style={{
-        background: "#fff", border: "1px solid #e8e8e8",
+        background: "#fff", border: "1px solid rgba(17,17,17,0.08)",
         borderRadius: 12, height: 44,
         display: "flex", alignItems: "center", gap: 4,
         padding: "0 8px",
@@ -264,7 +264,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
         {/* ── Tool segmented picker ── */}
         <div style={{
           display: "flex", alignItems: "center",
-          background: "#f5f5f7", borderRadius: 8, padding: 2,
+          background: "rgba(17,17,17,0.04)", borderRadius: 8, padding: 2,
         }}>
           {TOOLS.map(({ id, label, icon: Icon, shortcut }) => {
             const active = tool === id;
@@ -276,7 +276,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                 style={{
                   height: 28, padding: "0 8px", borderRadius: 6, border: "none",
                   background: active ? "#fff" : "transparent",
-                  color: active ? "#7C3AED" : "#888",
+                  color: active ? "#FF5C39" : "#888",
                   cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
                   fontSize: 11, fontWeight: active ? 600 : 400,
                   boxShadow: active ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
@@ -312,16 +312,16 @@ export function EditorToolbar(props: EditorToolbarProps) {
                 type="range" min={5} max={150}
                 value={brushSize}
                 onChange={e => onBrushSizeChange(Number(e.target.value))}
-                style={{ width: 70, accentColor: "#7C3AED" }}
+                style={{ width: 70, accentColor: "#FF5C39" }}
               />
               <span style={{ fontSize: 10, color: "#666", width: 20, textAlign: "right" }}>{brushSize}</span>
               <button
                 onClick={onInvertMaskToggle}
                 style={{
                   ...pillBtn,
-                  background: invertMask ? "#7C3AED" : "transparent",
+                  background: invertMask ? "#FF5C39" : "transparent",
                   color: invertMask ? "#fff" : "#888",
-                  border: invertMask ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+                  border: invertMask ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
                 }}
               >
                 <FlipHorizontal2 size={11} /> Inv
@@ -351,8 +351,8 @@ export function EditorToolbar(props: EditorToolbarProps) {
                   onClick={() => onReframeFormatChange(fmt.value)}
                   title={fmt.ratio}
                   style={{
-                    padding: "3px 7px", borderRadius: 5, border: "1px solid #e8e8e8",
-                    background: reframeFormat === fmt.value ? "#7C3AED" : "transparent",
+                    padding: "3px 7px", borderRadius: 5, border: "1px solid rgba(17,17,17,0.08)",
+                    background: reframeFormat === fmt.value ? "#FF5C39" : "transparent",
                     color: reframeFormat === fmt.value ? "#fff" : "#888",
                     fontSize: 10, cursor: "pointer", fontWeight: 500,
                   }}
@@ -389,7 +389,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                 onClick={e => e.stopPropagation()}
                 style={{
                   position: "absolute", bottom: "100%", left: 0, marginBottom: 6,
-                  background: "#fff", border: "1px solid #e8e8e8", borderRadius: 10,
+                  background: "#fff", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 10,
                   padding: 4, zIndex: 50,
                   boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
                   minWidth: 170,
@@ -402,7 +402,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                     style={{
                       display: "flex", alignItems: "center", gap: 8,
                       width: "100%", padding: "8px 10px", borderRadius: 6, border: "none",
-                      background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                      background: "linear-gradient(135deg, #FF5C39, #EC4899)",
                       color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
                       margin: "2px 0 4px",
                     }}
@@ -430,7 +430,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
                         { kind: "circle" as ShapeKind, icon: CircleIcon, label: isFr ? "Pastille" : "Circle" },
                         { kind: "star" as ShapeKind, icon: StarIcon, label: isFr ? "Étoile" : "Star" },
                       ]).map(({ kind, icon: Icon, label }) => (
-                        <DropdownItem key={kind} icon={<Icon size={12} style={{ color: "#7C3AED" }} />}
+                        <DropdownItem key={kind} icon={<Icon size={12} style={{ color: "#FF5C39" }} />}
                           label={label} onClick={() => { onAddShape(kind); setAddMenuOpen(false); onShapesOpenChange(false); }} />
                       ))}
                     </motion.div>
@@ -457,31 +457,31 @@ export function EditorToolbar(props: EditorToolbarProps) {
 
                 {/* ── AI Tools ── */}
                 <div style={{ height: 1, background: "#f0f0f0", margin: "3px 0" }} />
-                <div style={{ padding: "4px 10px 2px", fontSize: 9, fontWeight: 600, color: "#7C3AED", textTransform: "uppercase", letterSpacing: 1 }}>
+                <div style={{ padding: "4px 10px 2px", fontSize: 9, fontWeight: 600, color: "#FF5C39", textTransform: "uppercase", letterSpacing: 1 }}>
                   {isFr ? "Outils IA" : "AI Tools"}
                 </div>
-                <DropdownItem icon={<ImageOff size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<ImageOff size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Supprimer le fond" : "Remove background"}
                   onClick={() => { onAiTool?.("image-bg-remove"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<PaintBucket size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<PaintBucket size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Changer le fond" : "Change background"}
                   onClick={() => { onAiTool?.("image-bg-change"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<ScanEye size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<ScanEye size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Supprimer objet" : "Remove object"}
                   onClick={() => { onAiTool?.("image-object-remove"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<ArrowUpRight size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<ArrowUpRight size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Upscale image" : "Upscale image"}
                   onClick={() => { onAiTool?.("image-upscale"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<UncropIcon size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<UncropIcon size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Étendre l'image" : "Uncrop / Outpaint"}
                   onClick={() => { onAiTool?.("image-uncrop"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<UserRound size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<UserRound size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Face swap" : "Face swap"}
                   onClick={() => { onAiTool?.("image-face-swap"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<Wand2 size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<Wand2 size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Suppr. watermark" : "Remove watermark"}
                   onClick={() => { onAiTool?.("image-watermark-remove"); setAddMenuOpen(false); }} />
-                <DropdownItem icon={<Palette size={13} style={{ color: "#7C3AED" }} />}
+                <DropdownItem icon={<Palette size={13} style={{ color: "#FF5C39" }} />}
                   label={isFr ? "Inpainting" : "Inpainting"}
                   onClick={() => { onAiTool?.("image-inpaint"); setAddMenuOpen(false); }} />
 
@@ -553,7 +553,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
           title={isFr ? "Publier" : "Publish"}
           style={{
             width: 30, height: 30, borderRadius: 7, border: "none",
-            background: imageUrl ? "#7C3AED" : "#f0f0f2",
+            background: imageUrl ? "#FF5C39" : "#f0f0f2",
             color: imageUrl ? "#fff" : "#ccc",
             cursor: imageUrl ? "pointer" : "default",
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -570,7 +570,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
 /* ━━━━ Sub-components ━━━━ */
 
 function Divider() {
-  return <div style={{ width: 1, height: 16, background: "#e8e8e8", flexShrink: 0, margin: "0 1px" }} />;
+  return <div style={{ width: 1, height: 16, background: "rgba(17,17,17,0.08)", flexShrink: 0, margin: "0 1px" }} />;
 }
 
 function ToolbarBtn({ onClick, disabled, title, icon }: {
@@ -597,8 +597,8 @@ function PanelToggle({ active, onClick, icon, title }: {
     <button onClick={onClick} title={title}
       style={{
         width: 30, height: 30, borderRadius: 6, border: "none",
-        background: active ? "rgba(124,58,237,0.06)" : "transparent",
-        color: active ? "#7C3AED" : "#bbb",
+        background: active ? "rgba(255,92,57,0.06)" : "transparent",
+        color: active ? "#FF5C39" : "#bbb",
         cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >
@@ -620,7 +620,7 @@ function DropdownItem({ icon, label, onClick, disabled, hasSubmenu }: {
         cursor: disabled ? "default" : "pointer", fontSize: 12, whiteSpace: "nowrap",
         textAlign: "left",
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "#f5f5f7"; }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "rgba(17,17,17,0.04)"; }}
       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
     >
       {icon}
@@ -631,15 +631,15 @@ function DropdownItem({ icon, label, onClick, disabled, hasSubmenu }: {
 }
 
 const pillBtn: React.CSSProperties = {
-  padding: "3px 7px", borderRadius: 5, border: "1px solid #e8e8e8",
+  padding: "3px 7px", borderRadius: 5, border: "1px solid rgba(17,17,17,0.08)",
   background: "transparent", color: "#888",
   fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 3,
   whiteSpace: "nowrap",
 };
 
 const ctxInput: React.CSSProperties = {
-  background: "#f5f5f7", border: "1px solid #e8e8e8", borderRadius: 5,
-  padding: "3px 6px", color: "#1a1a1a", fontSize: 11, outline: "none",
+  background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 5,
+  padding: "3px 6px", color: "#111111", fontSize: 11, outline: "none",
 };
 
 /* ── Text layer inline controls ── */
@@ -661,7 +661,7 @@ function TextControls({ layer, onUpdate, inputRef, isFr }: {
       />
       <input type="color" value={layer.fill}
         onChange={e => onUpdate(layer.id, { fill: e.target.value })}
-        style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+        style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
       />
       <button onClick={() => {
         const next = layer.fontStyle.includes("bold")
@@ -670,9 +670,9 @@ function TextControls({ layer, onUpdate, inputRef, isFr }: {
         onUpdate(layer.id, { fontStyle: next });
       }} style={{
         ...pillBtn, fontWeight: 700, fontSize: 11,
-        background: layer.fontStyle.includes("bold") ? "#7C3AED" : "transparent",
+        background: layer.fontStyle.includes("bold") ? "#FF5C39" : "transparent",
         color: layer.fontStyle.includes("bold") ? "#fff" : "#888",
-        border: layer.fontStyle.includes("bold") ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+        border: layer.fontStyle.includes("bold") ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
       }}>B</button>
       <button onClick={() => {
         const next = layer.fontStyle.includes("italic")
@@ -681,9 +681,9 @@ function TextControls({ layer, onUpdate, inputRef, isFr }: {
         onUpdate(layer.id, { fontStyle: next });
       }} style={{
         ...pillBtn, fontStyle: "italic", fontSize: 11,
-        background: layer.fontStyle.includes("italic") ? "#7C3AED" : "transparent",
+        background: layer.fontStyle.includes("italic") ? "#FF5C39" : "transparent",
         color: layer.fontStyle.includes("italic") ? "#fff" : "#888",
-        border: layer.fontStyle.includes("italic") ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+        border: layer.fontStyle.includes("italic") ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
       }}>I</button>
     </>
   );
@@ -699,9 +699,9 @@ function ShapeControls({ layer, onUpdate, isFr }: {
         <button key={ft} onClick={() => onUpdate(layer.id, { fillType: ft })}
           style={{
             ...pillBtn,
-            background: layer.fillType === ft ? "#7C3AED" : "transparent",
+            background: layer.fillType === ft ? "#FF5C39" : "transparent",
             color: layer.fillType === ft ? "#fff" : "#888",
-            border: layer.fillType === ft ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+            border: layer.fillType === ft ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
           }}>
           {ft === "solid" ? (isFr ? "Uni" : "Solid") : "Gradient"}
         </button>
@@ -709,21 +709,21 @@ function ShapeControls({ layer, onUpdate, isFr }: {
       {layer.fillType === "solid" ? (
         <input type="color" value={layer.fill}
           onChange={e => onUpdate(layer.id, { fill: e.target.value })}
-          style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+          style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
         />
       ) : (
         <>
           <input type="color" value={layer.gradientStart}
             onChange={e => onUpdate(layer.id, { gradientStart: e.target.value })}
-            style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+            style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
           />
           <input type="color" value={layer.gradientEnd}
             onChange={e => onUpdate(layer.id, { gradientEnd: e.target.value })}
-            style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+            style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
           />
           <input type="range" min={0} max={360} value={layer.gradientAngle}
             onChange={e => onUpdate(layer.id, { gradientAngle: Number(e.target.value) })}
-            style={{ width: 40, accentColor: "#7C3AED" }}
+            style={{ width: 40, accentColor: "#FF5C39" }}
           />
         </>
       )}

@@ -161,13 +161,13 @@ export function EditorTimeline({
 
   return (
     <div style={{
-      background: "#fafafa", borderTop: "1px solid #e8e8e8",
+      background: "#fafafa", borderTop: "1px solid rgba(17,17,17,0.08)",
       display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
     }}>
       {/* Toolbar */}
       <div style={{
         height: 36, display: "flex", alignItems: "center", gap: 6,
-        padding: "0 12px", borderBottom: "1px solid #e8e8e8",
+        padding: "0 12px", borderBottom: "1px solid rgba(17,17,17,0.08)",
         background: "#fff", flexShrink: 0,
       }}>
         <button onClick={() => onPlayheadChange(0)} style={tbBtn} title={isFr ? "Début" : "Go to start"}>
@@ -175,7 +175,7 @@ export function EditorTimeline({
         </button>
         <button
           onClick={onTogglePlay}
-          style={{ ...tbBtn, background: isPlaying ? "#7C3AED" : "transparent", color: isPlaying ? "#fff" : "#888" }}
+          style={{ ...tbBtn, background: isPlaying ? "#FF5C39" : "transparent", color: isPlaying ? "#fff" : "#888" }}
           title={isPlaying ? "Pause" : "Play"}
         >
           {isPlaying ? <Pause size={13} /> : <Play size={13} />}
@@ -189,7 +189,7 @@ export function EditorTimeline({
           type="range" min={25} max={400}
           value={Math.round(zoom * 100)}
           onChange={e => setZoom(Number(e.target.value) / 100)}
-          style={{ width: 80, accentColor: "#7C3AED" }}
+          style={{ width: 80, accentColor: "#FF5C39" }}
         />
         <span style={{ fontSize: 10, color: "#999", width: 32, textAlign: "right" }}>
           {Math.round(zoom * 100)}%
@@ -200,7 +200,7 @@ export function EditorTimeline({
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Sidebar labels */}
         <div style={{
-          width: SIDEBAR_WIDTH, flexShrink: 0, borderRight: "1px solid #e8e8e8",
+          width: SIDEBAR_WIDTH, flexShrink: 0, borderRight: "1px solid rgba(17,17,17,0.08)",
           overflow: "hidden", display: "flex", flexDirection: "column",
         }}>
           <div style={{ height: RULER_HEIGHT, borderBottom: "1px solid #f0f0f0" }} />
@@ -227,7 +227,7 @@ export function EditorTimeline({
             {/* Ruler */}
             <div onClick={handleRulerClick} style={{
               height: RULER_HEIGHT, position: "sticky", top: 0, zIndex: 10,
-              background: "#fff", borderBottom: "1px solid #e8e8e8", cursor: "pointer",
+              background: "#fff", borderBottom: "1px solid rgba(17,17,17,0.08)", cursor: "pointer",
             }}>
               {rulerMarks.map(m => (
                 <div key={m.frame} style={{
@@ -249,7 +249,7 @@ export function EditorTimeline({
               <div key={layer.id} onClick={() => onSelectLayer(layer.id)} style={{
                 height: TRACK_HEIGHT, position: "relative",
                 borderBottom: "1px solid #f0f0f0",
-                background: selectedLayerId === layer.id ? "rgba(124,58,237,0.03)" : "transparent",
+                background: selectedLayerId === layer.id ? "rgba(255,92,57,0.03)" : "transparent",
               }}>
                 <ClipBlock
                   id={layer.id}
@@ -289,7 +289,7 @@ export function EditorTimeline({
             <div style={{
               position: "absolute", top: 0, bottom: 0,
               left: playheadFrame * ppf, width: 1,
-              background: "#7C3AED", zIndex: 20, pointerEvents: "none",
+              background: "#FF5C39", zIndex: 20, pointerEvents: "none",
             }}>
               <div
                 style={{
@@ -319,7 +319,7 @@ export function EditorTimeline({
               >
                 {/* Playhead head — inverted triangle */}
                 <svg width="11" height="11" viewBox="0 0 11 11" style={{ display: "block" }}>
-                  <polygon points="0,0 11,0 5.5,9" fill="#7C3AED" />
+                  <polygon points="0,0 11,0 5.5,9" fill="#FF5C39" />
                 </svg>
               </div>
             </div>
@@ -349,8 +349,8 @@ function TrackLabel({ layer, selected, onClick, isFr }: {
     <div onClick={onClick} style={{
       height: TRACK_HEIGHT, display: "flex", alignItems: "center", gap: 6,
       padding: "0 10px", borderBottom: "1px solid #f0f0f0",
-      background: selected ? "rgba(124,58,237,0.04)" : "transparent",
-      cursor: "pointer", fontSize: 11, color: selected ? "#1a1a1a" : "#999",
+      background: selected ? "rgba(255,92,57,0.04)" : "transparent",
+      cursor: "pointer", fontSize: 11, color: selected ? "#111111" : "#999",
     }}>
       <Icon size={11} style={{ color, flexShrink: 0 }} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
@@ -415,7 +415,7 @@ function ClipBlock({ id, startFrame, durationInFrames, color, label, ppf, select
           onMouseDown={e => e.stopPropagation()}
           style={{
             position: "absolute", top: TRACK_HEIGHT, left: 0, zIndex: 50,
-            background: "#fff", border: "1px solid #e8e8e8", borderRadius: 8,
+            background: "#fff", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 8,
             padding: 4, boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
             display: "flex", flexDirection: "column", gap: 1, minWidth: 140,
           }}
@@ -426,8 +426,8 @@ function ClipBlock({ id, startFrame, durationInFrames, color, label, ppf, select
               onClick={() => { onPresetChange(opt.value); setShowPresets(false); }}
               style={{
                 padding: "4px 8px", borderRadius: 4, border: "none",
-                background: preset === opt.value ? "rgba(124,58,237,0.08)" : "transparent",
-                color: preset === opt.value ? "#7C3AED" : "#666",
+                background: preset === opt.value ? "rgba(255,92,57,0.08)" : "transparent",
+                color: preset === opt.value ? "#FF5C39" : "#666",
                 fontSize: 11, textAlign: "left", cursor: "pointer", whiteSpace: "nowrap",
               }}
             >

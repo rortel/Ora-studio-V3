@@ -11300,7 +11300,7 @@ app.post("/editor/save-video", async (c) => {
       savedAt: now,
       updatedAt: now,
       folderId: null,
-      preview: { kind: "video", videoUrl, imageUrl: posterUrl || sourceImageUrl || null },
+      preview: { kind: "film", videoUrl, imageUrl: posterUrl || sourceImageUrl || null },
       editedFrom: sourceImageUrl || null,
     };
     await kv.set(`lib:${user.id}:${itemId}`, libItem);
@@ -11370,6 +11370,7 @@ app.post("/editor/segment-subject", async (c) => {
     const { data: subjPub } = supabase.storage.from("generations").getPublicUrl(subjUp.path);
 
     console.log(`[editor/segment-subject] OK in ${Date.now() - t0}ms`);
+    deductCredit(user.id, 1).catch(() => {});
     return c.json({
       success: true,
       subjectUrl: subjPub.publicUrl,
@@ -11436,6 +11437,7 @@ app.post("/editor/inpaint-background", async (c) => {
     const { data: pubData } = supabase.storage.from("generations").getPublicUrl(upData.path);
 
     console.log(`[editor/inpaint-background] OK in ${Date.now() - t0}ms`);
+    deductCredit(user.id, 1).catch(() => {});
     return c.json({ success: true, backgroundUrl: pubData.publicUrl });
   } catch (err: any) {
     console.error("[editor/inpaint-background] Error:", err?.message || err);

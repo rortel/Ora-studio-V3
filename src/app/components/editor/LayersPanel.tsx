@@ -58,12 +58,12 @@ export function LayersPanel({
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.15 }}
           style={{
-            background: "#fff", borderLeft: "1px solid #e8e8e8",
+            background: "#fff", borderLeft: "1px solid rgba(17,17,17,0.08)",
             display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden",
           }}
         >
           <div style={{
-            padding: "12px 14px", borderBottom: "1px solid #e8e8e8",
+            padding: "12px 14px", borderBottom: "1px solid rgba(17,17,17,0.08)",
             display: "flex", alignItems: "center", gap: 8,
           }}>
             <Layers3 size={14} style={{ color: "#999" }} />
@@ -110,17 +110,17 @@ export function LayersPanel({
                   onClick={() => onSelectLayer(layer.id)}
                   style={{
                     padding: "8px 10px", marginBottom: 2, borderRadius: 8,
-                    background: selected ? "rgba(124,58,237,0.05)" : "transparent",
-                    border: selected ? "1px solid rgba(124,58,237,0.2)" : "1px solid transparent",
+                    background: selected ? "rgba(255,92,57,0.05)" : "transparent",
+                    border: selected ? "1px solid rgba(255,92,57,0.2)" : "1px solid transparent",
                     cursor: "pointer", transition: "background 0.1s",
                   }}
                   onMouseEnter={e => { if (!selected) e.currentTarget.style.background = "#f8f8f8"; }}
                   onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "transparent"; }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <Icon size={13} style={{ color: selected ? "#7C3AED" : "#bbb", flexShrink: 0 }} />
+                    <Icon size={13} style={{ color: selected ? "#FF5C39" : "#bbb", flexShrink: 0 }} />
                     <div style={{
-                      flex: 1, minWidth: 0, fontSize: 12, color: selected ? "#1a1a1a" : "#555",
+                      flex: 1, minWidth: 0, fontSize: 12, color: selected ? "#111111" : "#555",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                       fontWeight: selected ? 500 : 400,
                     }}>
@@ -161,7 +161,7 @@ export function LayersPanel({
                       value={Math.round(layer.opacity * 100)}
                       onClick={e => e.stopPropagation()}
                       onChange={e => onUpdateLayer(layer.id, { opacity: Number(e.target.value) / 100 })}
-                      style={{ flex: 1, accentColor: "#7C3AED" }}
+                      style={{ flex: 1, accentColor: "#FF5C39" }}
                     />
                   </div>
                   {/* Z-order */}
@@ -178,7 +178,7 @@ export function LayersPanel({
                         title={title}
                         style={{
                           width: 20, height: 20, border: "none", borderRadius: 4,
-                          background: "#f5f5f7", color: "#bbb", cursor: "pointer",
+                          background: "rgba(17,17,17,0.04)", color: "#bbb", cursor: "pointer",
                           display: "flex", alignItems: "center", justifyContent: "center",
                         }}
                       >

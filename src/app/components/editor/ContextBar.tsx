@@ -76,14 +76,14 @@ interface ContextBarProps {
 
 /* ── Shared styles ── */
 const ctxBtn: React.CSSProperties = {
-  padding: "4px 10px", borderRadius: 6, border: "1px solid #e8e8e8",
+  padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)",
   background: "transparent", color: "#666",
   fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
 };
 
 const ctxInput: React.CSSProperties = {
-  background: "#f5f5f7", border: "1px solid #e8e8e8", borderRadius: 6,
-  padding: "5px 8px", color: "#1a1a1a", fontSize: 12, outline: "none",
+  background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 6,
+  padding: "5px 8px", color: "#111111", fontSize: 12, outline: "none",
 };
 
 const zoomBtn: React.CSSProperties = {
@@ -106,7 +106,7 @@ export function ContextBar({
     <>
       {/* ─── Top bar ─── */}
       <div style={{
-        height: 44, background: "#fff", borderBottom: "1px solid #e8e8e8",
+        height: 44, background: "#fff", borderBottom: "1px solid rgba(17,17,17,0.08)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: "0 16px", flexShrink: 0,
       }}>
@@ -125,7 +125,7 @@ export function ContextBar({
                   type="range" min={5} max={150}
                   value={brushSize}
                   onChange={e => onBrushSizeChange(Number(e.target.value))}
-                  style={{ width: 100, accentColor: "#7C3AED" }}
+                  style={{ width: 100, accentColor: "#FF5C39" }}
                 />
                 <span style={{ fontSize: 11, color: "#666", width: 28, textAlign: "right" }}>
                   {brushSize}
@@ -144,9 +144,9 @@ export function ContextBar({
                 title="Invert mask"
                 style={{
                   ...ctxBtn,
-                  background: invertMask ? "#7C3AED" : "transparent",
+                  background: invertMask ? "#FF5C39" : "transparent",
                   color: invertMask ? "#fff" : "#666",
-                  border: invertMask ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+                  border: invertMask ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
                 }}
               >
                 <FlipHorizontal2 size={13} />
@@ -185,8 +185,8 @@ export function ContextBar({
                     key={fmt.value}
                     onClick={() => onReframeFormatChange(fmt.value)}
                     style={{
-                      padding: "3px 8px", borderRadius: 5, border: "1px solid #e8e8e8",
-                      background: reframeFormat === fmt.value ? "#7C3AED" : "transparent",
+                      padding: "3px 8px", borderRadius: 5, border: "1px solid rgba(17,17,17,0.08)",
+                      background: reframeFormat === fmt.value ? "#FF5C39" : "transparent",
                       color: reframeFormat === fmt.value ? "#fff" : "#666",
                       fontSize: 11, cursor: "pointer", fontWeight: 500,
                     }}
@@ -226,7 +226,7 @@ export function ContextBar({
             transition={{ duration: 0.15 }}
             style={{
               background: "#fafafa",
-              borderBottom: "1px solid #e8e8e8",
+              borderBottom: "1px solid rgba(17,17,17,0.08)",
               display: "flex", alignItems: "center", gap: 8,
               padding: "0 16px", overflow: "hidden", flexShrink: 0,
             }}
@@ -253,13 +253,13 @@ export function ContextBar({
             )}
 
             {/* Opacity */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #e8e8e8" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid rgba(17,17,17,0.08)" }}>
               <span style={{ fontSize: 10, color: "#999" }}>{isFr ? "Opacité" : "Opacity"}</span>
               <input
                 type="range" min={0} max={100}
                 value={Math.round(selectedLayer.opacity * 100)}
                 onChange={e => onUpdateLayer(selectedLayer.id, { opacity: Number(e.target.value) / 100 })}
-                style={{ width: 80, accentColor: "#7C3AED" }}
+                style={{ width: 80, accentColor: "#FF5C39" }}
               />
               <span style={{ fontSize: 11, color: "#666", width: 30, textAlign: "right" }}>
                 {Math.round(selectedLayer.opacity * 100)}%
@@ -267,7 +267,7 @@ export function ContextBar({
             </div>
 
             {/* Z-order */}
-            <div style={{ display: "flex", gap: 2, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid #e8e8e8" }}>
+            <div style={{ display: "flex", gap: 2, marginLeft: 8, paddingLeft: 10, borderLeft: "1px solid rgba(17,17,17,0.08)" }}>
               {([
                 { dir: "top" as const, icon: ArrowUpToLine, title: isFr ? "Premier plan" : "To front" },
                 { dir: "up" as const, icon: ArrowUp, title: isFr ? "Avancer" : "Forward" },
@@ -278,7 +278,7 @@ export function ContextBar({
                   key={dir}
                   onClick={() => onMoveLayer(selectedLayer.id, dir)}
                   title={title}
-                  style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid #e8e8e8", background: "#fff", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
+                  style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", color: "#888", cursor: "pointer", display: "flex", alignItems: "center" }}
                 >
                   <Icon size={13} />
                 </button>
@@ -336,7 +336,7 @@ function TextLayerControls({ layer, onUpdate, inputRef, isFr }: {
         type="color" value={layer.fill}
         onChange={e => onUpdate(layer.id, { fill: e.target.value })}
         title={isFr ? "Couleur" : "Color"}
-        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+        style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
       />
       <button
         onClick={() => {
@@ -348,9 +348,9 @@ function TextLayerControls({ layer, onUpdate, inputRef, isFr }: {
         title="Bold"
         style={{
           ...ctxBtn,
-          background: layer.fontStyle.includes("bold") ? "#7C3AED" : "#fff",
+          background: layer.fontStyle.includes("bold") ? "#FF5C39" : "#fff",
           color: layer.fontStyle.includes("bold") ? "#fff" : "#666",
-          border: layer.fontStyle.includes("bold") ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+          border: layer.fontStyle.includes("bold") ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
           fontWeight: 700, fontSize: 12,
         }}
       >
@@ -366,9 +366,9 @@ function TextLayerControls({ layer, onUpdate, inputRef, isFr }: {
         title="Italic"
         style={{
           ...ctxBtn,
-          background: layer.fontStyle.includes("italic") ? "#7C3AED" : "#fff",
+          background: layer.fontStyle.includes("italic") ? "#FF5C39" : "#fff",
           color: layer.fontStyle.includes("italic") ? "#fff" : "#666",
-          border: layer.fontStyle.includes("italic") ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+          border: layer.fontStyle.includes("italic") ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
           fontStyle: "italic", fontSize: 12,
         }}
       >
@@ -389,9 +389,9 @@ function ShapeLayerControls({ layer, onUpdate, isFr }: {
         onClick={() => onUpdate(layer.id, { fillType: "solid" })}
         style={{
           ...ctxBtn,
-          background: layer.fillType === "solid" ? "#7C3AED" : "#fff",
+          background: layer.fillType === "solid" ? "#FF5C39" : "#fff",
           color: layer.fillType === "solid" ? "#fff" : "#666",
-          border: layer.fillType === "solid" ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+          border: layer.fillType === "solid" ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
         }}
       >
         {isFr ? "Uni" : "Solid"}
@@ -400,9 +400,9 @@ function ShapeLayerControls({ layer, onUpdate, isFr }: {
         onClick={() => onUpdate(layer.id, { fillType: "gradient" })}
         style={{
           ...ctxBtn,
-          background: layer.fillType === "gradient" ? "#7C3AED" : "#fff",
+          background: layer.fillType === "gradient" ? "#FF5C39" : "#fff",
           color: layer.fillType === "gradient" ? "#fff" : "#666",
-          border: layer.fillType === "gradient" ? "1px solid #7C3AED" : "1px solid #e8e8e8",
+          border: layer.fillType === "gradient" ? "1px solid #FF5C39" : "1px solid rgba(17,17,17,0.08)",
         }}
       >
         {isFr ? "Dégradé" : "Gradient"}
@@ -411,23 +411,23 @@ function ShapeLayerControls({ layer, onUpdate, isFr }: {
         <input
           type="color" value={layer.fill}
           onChange={e => onUpdate(layer.id, { fill: e.target.value })}
-          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
         />
       ) : (
         <>
           <input type="color" value={layer.gradientStart}
             onChange={e => onUpdate(layer.id, { gradientStart: e.target.value })}
-            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
           />
           <input type="color" value={layer.gradientEnd}
             onChange={e => onUpdate(layer.id, { gradientEnd: e.target.value })}
-            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
           />
           <input type="range" min={0} max={360}
             value={layer.gradientAngle}
             onChange={e => onUpdate(layer.id, { gradientAngle: Number(e.target.value) })}
             title={`Angle: ${layer.gradientAngle}°`}
-            style={{ width: 70, accentColor: "#7C3AED" }}
+            style={{ width: 70, accentColor: "#FF5C39" }}
           />
         </>
       )}
@@ -441,7 +441,7 @@ function ShapeLayerControls({ layer, onUpdate, isFr }: {
       {layer.strokeWidth > 0 && (
         <input type="color" value={layer.stroke}
           onChange={e => onUpdate(layer.id, { stroke: e.target.value })}
-          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #e8e8e8", background: "#fff", cursor: "pointer", padding: 0 }}
+          style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(17,17,17,0.08)", background: "#fff", cursor: "pointer", padding: 0 }}
         />
       )}
       {(layer.shape === "rect" || layer.shape === "patch") && (
@@ -450,7 +450,7 @@ function ShapeLayerControls({ layer, onUpdate, isFr }: {
           value={layer.cornerRadius}
           onChange={e => onUpdate(layer.id, { cornerRadius: Number(e.target.value) })}
           title={`${isFr ? "Arrondi" : "Radius"}: ${Math.round(layer.cornerRadius)}`}
-          style={{ width: 70, accentColor: "#7C3AED" }}
+          style={{ width: 70, accentColor: "#FF5C39" }}
         />
       )}
     </>
