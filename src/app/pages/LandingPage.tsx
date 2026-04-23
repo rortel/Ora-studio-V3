@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion } from "motion/react";
 import { ArrowRight, Lock, Sparkles, Zap } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
@@ -13,11 +13,6 @@ import heroVideo from "../../assets/hero-video.mp4";
 
 interface ShowcaseAsset {
   itemId: string; featuredAt: string;
-  /** Landing slot set by admin in Library. "hero" / "statement" fill the
-   *  two full-screen parallax sections; "gallery" (default) flows into the
-   *  horizontal bento below. Undefined on legacy records → treated as
-   *  "gallery". */
-  slot?: "hero" | "statement" | "gallery";
   campaignName: string; campaignSlug: string;
   platform: string; aspectRatio: string;
   imageUrl: string; videoUrl: string;
@@ -50,109 +45,6 @@ const FALLBACK_GALLERY = [
   { src: "/templates/figma-fashion-post-02.png", label: "fashion",        platform: "instagram-feed",  ar: "1:1"  },
   { src: "/templates/figma-skincare-02.png",     label: "skincare",       platform: "instagram-feed",  ar: "1:1"  },
 ];
-
-/**
- * Full-screen parallax canvas with an overlay title + optional CTA. Used for
- * the hero ("Stop prompting.") and the statement ("Start shipping.") slots.
- * The admin picks the background asset (image or video) from Library; we
- * fall back to the local hero video when the slot is empty so the page
- * never renders a hole.
- *
- * Parallax: the background moves up slower than the viewport scroll, the
- * title slides in and fades out on exit. All easings are sharp
- * (cubic-bezier 0.16,1,0.3,1) — not spring — so the motion reads as
- * "engineered" rather than "playful", which keeps the Bagel display font
- * feeling confident instead of cozy.
- */
-function ParallaxFullscreen({
-  videoUrl,
-  posterUrl,
-  imageUrl,
-  eyebrow,
-  title,
-  subtitle,
-  cta,
-  alignment = "center",
-}: {
-  videoUrl?: string;
-  posterUrl?: string;
-  imageUrl?: string;
-  eyebrow?: string;
-  title: React.ReactNode;
-  subtitle?: React.ReactNode;
-  cta?: React.ReactNode;
-  alignment?: "center" | "bottom-left";
-}) {
-  const sectionRef = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  });
-  // Background translates from -15% to 15% as the user scrolls through.
-  // 1.2× scale on the wrapper so the parallax doesn't reveal the edge.
-  const bgY = useTransform(scrollYProgress, [0, 1], ["-15%", "15%"]);
-  // Title enters from below, holds in the center band, then exits upward.
-  const titleY = useTransform(scrollYProgress, [0, 0.35, 0.65, 1], [80, 0, 0, -80]);
-  const titleOpacity = useTransform(scrollYProgress, [0, 0.2, 0.75, 1], [0, 1, 1, 0]);
-
-  const useVideo = !!videoUrl;
-  const alignClass =
-    alignment === "center"
-      ? "items-center justify-center text-center"
-      : "items-end justify-start text-left";
-
-  return (
-    <section ref={sectionRef} className="relative h-screen w-full overflow-hidden bg-black">
-      <motion.div
-        style={{ y: bgY }}
-        className="absolute inset-0 scale-[1.2] will-change-transform"
-      >
-        {useVideo ? (
-          <video
-            src={videoUrl}
-            poster={posterUrl}
-            autoPlay muted loop playsInline preload="auto"
-            className="h-full w-full object-cover"
-          />
-        ) : imageUrl ? (
-          <img src={imageUrl} alt="" className="h-full w-full object-cover" />
-        ) : null}
-      </motion.div>
-      {/* Legibility overlay — heavier at the bottom where the title sits. */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            alignment === "center"
-              ? "linear-gradient(180deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 40%, rgba(0,0,0,0.55) 100%)"
-              : "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.75) 100%)",
-        }}
-      />
-      <motion.div
-        style={{ y: titleY, opacity: titleOpacity }}
-        className={`relative z-10 flex h-full flex-col ${alignClass} px-6 md:px-16 pb-[6vh] md:pb-[8vh]`}
-      >
-        {eyebrow && (
-          <div className="mb-5 font-mono text-[11px] uppercase tracking-[0.24em] text-white/80">
-            • {eyebrow}
-          </div>
-        )}
-        <h1
-          className="max-w-[14ch] leading-[0.92] text-white"
-          style={{ ...bagel, fontSize: "clamp(56px, 11vw, 180px)" }}
-        >
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="mt-6 max-w-xl text-[15px] md:text-[17px] leading-snug text-white/85">
-            {subtitle}
-          </p>
-        )}
-        {cta && <div className="mt-8">{cta}</div>}
-      </motion.div>
-    </section>
-  );
-}
 
 function platformLabel(p: string): string {
   const s = (p || "").toLowerCase();
@@ -189,12 +81,19 @@ export function LandingPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Resolve full-screen parallax section backgrounds by admin-picked slot.
-  // Admin cycles an asset in Library through Hero / Statement / Gallery;
-  // the first two drive the big parallax sections below, the rest flow
-  // into the bento gallery. Empty slot → fallback hero video (cream-tinted).
-  const heroSlotAsset = showcase.find((a) => a.slot === "hero");
-  const statementSlotAsset = showcase.find((a) => a.slot === "statement");
+  // Resolve hero tiles: 1 big (video if available) + 2 mediums.
+  const showcaseVideo = showcase.find((a) => a.videoUrl);
+  const showcaseImages = showcase.filter((a) => a.imageUrl);
+  const heroBig  = showcaseVideo
+    ? { kind: "video" as const, src: showcaseVideo.videoUrl, label: platformLabel(showcaseVideo.platform), poster: showcaseVideo.imageUrl }
+    : { kind: "video" as const, src: FALLBACK_HERO_VIDEO,    label: "hero film", poster: undefined };
+  const heroTile2 = showcaseImages[0]
+    ? { kind: "img" as const, src: showcaseImages[0].imageUrl, label: platformLabel(showcaseImages[0].platform) }
+    : FALLBACK_HERO[1];
+  const heroTile3 = showcaseImages[1]
+    ? { kind: "img" as const, src: showcaseImages[1].imageUrl, label: platformLabel(showcaseImages[1].platform) }
+    : FALLBACK_HERO[2];
+
   // Gallery: prefer featured assets slot-by-slot, pad remaining slots with the
   // hardcoded templates. Starring a single item in Library should immediately
   // replace the first gallery tile — not require exactly 6 items to take effect.
@@ -238,47 +137,88 @@ export function LandingPage() {
         </nav>
       </header>
 
-      {/* ═══ Hero — full-screen parallax ═══
-       *   Background: admin-picked asset (slot=hero) or fallback hero video.
-       *   Title: "Stop prompting." in Bagel over the visual, mono eyebrow. */}
-      <ParallaxFullscreen
-        videoUrl={heroSlotAsset?.videoUrl || (heroSlotAsset ? undefined : FALLBACK_HERO_VIDEO)}
-        imageUrl={heroSlotAsset && !heroSlotAsset.videoUrl ? heroSlotAsset.imageUrl : undefined}
-        posterUrl={heroSlotAsset?.imageUrl}
-        eyebrow="2,847 brands · 127,493 assets generated"
-        title={<>Stop prompting.</>}
-        subtitle={
-          <>Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn, Instagram, TikTok — in one click. No prompt writing.</>
-        }
-        cta={
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+      {/* ═══ Hero ═══ */}
+      <section className="relative px-5 md:px-10 pt-10 pb-20 max-w-[1400px] mx-auto">
+        <div className="relative text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            className="inline-flex mb-8"
+          >
+            <Badge tone="cream">
+              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
+              2,847 brands · 127,493 assets generated
+            </Badge>
+          </motion.div>
+
+          {/* Kinetic headline — each line reveals separately, and "your brand"
+           *  snaps from ink to coral after landing so the eye lands on the
+           *  product promise, not just reads the sentence. */}
+          <h1 className="leading-[0.88] mb-8" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 156px)" }}>
+            <motion.span
+              className="block"
+              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Stop prompting.
+            </motion.span>
+            <motion.span
+              className="block"
+              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            >
+              Surprise{" "}
+              <motion.span
+                initial={{ color: COLORS.ink }}
+                animate={{ color: COLORS.coral }}
+                transition={{ duration: 0.45, delay: 0.9 }}
+                style={{ display: "inline-block" }}
+              >
+                your brand.
+              </motion.span>
+            </motion.span>
+          </h1>
+
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
+            className="text-[17px] md:text-[20px] max-w-2xl mx-auto mb-10"
+            style={{ color: COLORS.muted }}
+          >
+            Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn,
+            Instagram, TikTok — in one click. No prompt writing.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-3"
+          >
             <Link to={primaryHref}>
               <Button variant="accent" size="lg">
                 Pick a plan · Start shipping <ArrowRight size={16} />
               </Button>
             </Link>
-            <span className="text-[13px] text-white/70">From €19/mo · Cancel anytime</span>
-          </div>
-        }
-        alignment="bottom-left"
-      />
+            <span className="text-[13px]" style={{ color: COLORS.subtle }}>
+              From €19/mo · Cancel anytime
+            </span>
+          </motion.div>
+        </div>
 
-      {/* ═══ Statement — full-screen parallax ═══
-       *   Second half of the brand tagline ("Start shipping.") on its own
-       *   full-screen canvas. Admin picks the background from Library
-       *   (slot=statement); falls back to the hero video tinted so the two
-       *   sections don't feel identical when the slot is empty. */}
-      <ParallaxFullscreen
-        videoUrl={statementSlotAsset?.videoUrl || (statementSlotAsset ? undefined : FALLBACK_HERO_VIDEO)}
-        imageUrl={statementSlotAsset && !statementSlotAsset.videoUrl ? statementSlotAsset.imageUrl : undefined}
-        posterUrl={statementSlotAsset?.imageUrl}
-        eyebrow="Brand-locked · 42 seconds · full pack"
-        title={<>Start shipping.</>}
-        subtitle={
-          <>Every asset lands on-brand, on-format, ready to publish. Stop tweaking prompts. Start reviewing output.</>
-        }
-        alignment="bottom-left"
-      />
+        {/* Hero showcase — 1 big video + 2 medium */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+          className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-4"
+        >
+          <div className="md:col-span-2 md:row-span-2 rounded-[28px] overflow-hidden aspect-[4/3] md:aspect-auto bg-white relative">
+            <video src={heroBig.src} poster={heroBig.poster || undefined} autoPlay muted loop playsInline preload="auto" className="w-full h-full object-cover" />
+            <div className="absolute top-4 left-4"><Badge tone="ink">42s · {heroBig.label}</Badge></div>
+          </div>
+          {[heroTile2, heroTile3].map((t, i) => (
+            <div key={i} className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
+              <img src={t.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+              <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label}</Badge></div>
+            </div>
+          ))}
+        </motion.div>
+      </section>
 
       {/* ═══ How it works — three moves, no prompting ═══ */}
       <section id="how" className="px-5 md:px-10 pb-24 pt-6 max-w-[1400px] mx-auto">
