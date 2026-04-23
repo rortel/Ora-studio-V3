@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 
 // ══════════════════════════════════════
@@ -261,6 +262,7 @@ export function ProductsPage() {
   return (
     <RouteGuard requiredPlan="free">
       <div className="min-h-screen" style={{ background: "var(--background)" }}>
+        <AppTabs active="vault" />
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
           {/* ── Header ── */}

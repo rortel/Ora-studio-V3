@@ -13,6 +13,7 @@ import {
 import { apiUrl, apiHeaders } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 import { ImageBank } from "../components/ImageBank";
 import { bagel, COLORS } from "../components/ora/tokens";
@@ -1167,6 +1168,7 @@ function VaultPageContent() {
 
   return (
     <div className="min-h-screen" style={{ background: COLORS.cream, color: COLORS.ink }}>
+    <AppTabs active="vault" />
     <div className="max-w-[1200px] mx-auto px-6 py-10 md:py-16">
 
       {/* ── Header ── */}

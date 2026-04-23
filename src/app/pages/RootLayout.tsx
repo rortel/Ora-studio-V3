@@ -23,13 +23,15 @@ export function RootLayout() {
   const isAdmin = location.pathname.startsWith("/admin");
   const isSubscribe = location.pathname.startsWith("/subscribe");
   const isVideoEditor = location.pathname === "/hub/video-editor";
-  // The new 3-tab app shell (Surprise Me / Library / Edit) renders its own
-  // sticky <AppTabs> header, so we drop the left AppSidebar on those routes
-  // to avoid a duplicate brand + double nav.
+  // The 4-tab app shell (Surprise Me / Library / Edit / Vault) renders its
+  // own sticky <AppTabs> header, so we drop the left AppSidebar on those
+  // routes to avoid a duplicate brand + double nav. Vault sub-pages
+  // (/hub/vault/products) inherit the same shell.
   const isThreeTabApp =
     location.pathname === "/hub/surprise" ||
     location.pathname.startsWith("/hub/library") ||
-    location.pathname.startsWith("/hub/editor");
+    location.pathname.startsWith("/hub/editor") ||
+    location.pathname.startsWith("/hub/vault");
   // The marketing landing (`/`) owns its own header + footer, so we skip the
   // shared Navbar/Footer for that path.
   const isLanding = location.pathname === "/";
