@@ -605,25 +605,45 @@ function LibraryPageContent() {
     }
   }, []);
 
-  // Toggle an item as "Featured on landing" — surfaced on ora-studio.app
+  // Cycle an item through landing slots: off → hero → statement → gallery → off.
+  // Admin-only. Hero and Statement are exclusive (the server moves any
+  // incumbent out of the slot automatically when a new pick lands). Gallery
+  // is the default bucket and can host many items.
+  const LANDING_CYCLE = [null, "hero", "statement", "gallery"] as const;
   const handleToggleFeature = useCallback(async (item: LibraryItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const next = !(item as any).featured;
+    const current = (item as any).featuredSlot || null;
+    const idx = LANDING_CYCLE.indexOf(current as any);
+    const nextSlot = LANDING_CYCLE[(idx + 1) % LANDING_CYCLE.length];
+    const nextFeatured = nextSlot !== null;
     // Optimistic update
-    setItems((prev) => prev.map((x) => (x.id === item.id ? ({ ...x, featured: next } as any) : x)));
+    setItems((prev) => prev.map((x) =>
+      x.id === item.id
+        ? ({ ...x, featured: nextFeatured, featuredSlot: nextSlot } as any)
+        : x,
+    ));
     try {
       const token = getAuthHeader();
       const r = await fetch(`${API_BASE}/library/feature`, {
         method: "POST",
         headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: JSON.stringify({ itemId: item.id, featured: next, _token: token }),
+        body: JSON.stringify({ itemId: item.id, featured: nextFeatured, slot: nextSlot || undefined, _token: token }),
       });
       const data = await r.json().catch(() => ({}));
       if (!data.success) throw new Error(data.error || "feature failed");
-      toast.success(next ? "Featured on landing" : "Removed from landing");
+      const slotLabel = nextSlot
+        ? nextSlot === "hero" ? "landing hero"
+        : nextSlot === "statement" ? "landing statement"
+        : "landing gallery"
+        : "off the landing";
+      toast.success(`Now on ${slotLabel}`);
     } catch (err: any) {
       // Revert
-      setItems((prev) => prev.map((x) => (x.id === item.id ? ({ ...x, featured: !next } as any) : x)));
+      setItems((prev) => prev.map((x) =>
+        x.id === item.id
+          ? ({ ...x, featured: !!current, featuredSlot: current } as any)
+          : x,
+      ));
       toast.error(String(err?.message || err));
     }
   }, [getAuthHeader]);
@@ -898,24 +918,32 @@ function LibraryPageContent() {
                     >
                       {/* Cover image — mosaic of up to 4 thumbnails */}
                       <div className="relative h-[160px] overflow-hidden bg-black/20">
-                        {/* Feature-on-landing star (admin only, persistent). */}
-                        {(item as any).canFeature && (
-                          <button
-                            onClick={(e) => handleToggleFeature(item, e)}
-                            className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
-                            style={{
-                              background: (item as any).featured ? COLORS.butter : "rgba(255,255,255,0.92)",
-                              color: (item as any).featured ? COLORS.ink : COLORS.muted,
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-                              backdropFilter: "blur(6px)",
-                              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
-                            }}
-                            title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
-                          >
-                            <Star size={12} fill={(item as any).featured ? "currentColor" : "none"} />
-                            {(item as any).featured ? "On landing" : "Feature"}
-                          </button>
-                        )}
+                        {/* Landing slot cycler (admin only, persistent).
+                            Click cycles Off → Hero → Statement → Gallery → Off. */}
+                        {(item as any).canFeature && (() => {
+                          const slot = (item as any).featuredSlot as null | "hero" | "statement" | "gallery";
+                          const cfg =
+                            slot === "hero"      ? { bg: COLORS.coral, fg: "#FFFFFF",    label: "Hero" }
+                          : slot === "statement" ? { bg: COLORS.ink,   fg: COLORS.butter, label: "Statement" }
+                          : slot === "gallery"   ? { bg: COLORS.butter,fg: COLORS.ink,   label: "Gallery" }
+                          :                        { bg: "rgba(255,255,255,0.92)", fg: COLORS.muted, label: "Feature" };
+                          return (
+                            <button
+                              onClick={(e) => handleToggleFeature(item, e)}
+                              className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
+                              style={{
+                                background: cfg.bg, color: cfg.fg,
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                                backdropFilter: "blur(6px)",
+                                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
+                              }}
+                              title={slot ? `Landing slot: ${cfg.label} — click to cycle` : "Add to landing (click to cycle through slots)"}
+                            >
+                              <Star size={12} fill={slot ? "currentColor" : "none"} />
+                              {cfg.label}
+                            </button>
+                          );
+                        })()}
                         {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).length >= 4 ? (
                           <div className="grid grid-cols-2 grid-rows-2 w-full h-full">
                             {cAssets.filter((a: any) => a.imageUrl || a.videoUrl).slice(0, 4).map((a: any, ti: number) => (
@@ -1580,24 +1608,31 @@ function LibraryPageContent() {
                       )}
                       {/* Thumbnail */}
                       <div className={`relative ${isVisual ? "" : "aspect-[4/3]"}`} style={{ background: isVisual ? undefined : "var(--secondary)" }} onClick={() => { if (selectMode) { toggleSelected(item.id); } else { setPreviewItem(item); } }}>
-                        {/* Feature on landing (admin only — persistent, top-right). */}
-                        {(item as any).canFeature && !selectMode && (
-                          <button
-                            onClick={(e) => handleToggleFeature(item, e)}
-                            className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
-                            style={{
-                              background: (item as any).featured ? COLORS.butter : "rgba(255,255,255,0.92)",
-                              color: (item as any).featured ? COLORS.ink : COLORS.muted,
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-                              backdropFilter: "blur(6px)",
-                              fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
-                            }}
-                            title={(item as any).featured ? "Featured on landing — click to remove" : "Feature on landing"}
-                          >
-                            <Star size={12} fill={(item as any).featured ? "currentColor" : "none"} />
-                            {(item as any).featured ? "On landing" : "Feature"}
-                          </button>
-                        )}
+                        {/* Landing slot cycler (admin only — persistent). */}
+                        {(item as any).canFeature && !selectMode && (() => {
+                          const slot = (item as any).featuredSlot as null | "hero" | "statement" | "gallery";
+                          const cfg =
+                            slot === "hero"      ? { bg: COLORS.coral, fg: "#FFFFFF",    label: "Hero" }
+                          : slot === "statement" ? { bg: COLORS.ink,   fg: COLORS.butter, label: "Statement" }
+                          : slot === "gallery"   ? { bg: COLORS.butter,fg: COLORS.ink,   label: "Gallery" }
+                          :                        { bg: "rgba(255,255,255,0.92)", fg: COLORS.muted, label: "Feature" };
+                          return (
+                            <button
+                              onClick={(e) => handleToggleFeature(item, e)}
+                              className="absolute top-2 right-2 z-20 inline-flex items-center gap-1.5 h-7 pl-1.5 pr-2.5 rounded-full transition-all"
+                              style={{
+                                background: cfg.bg, color: cfg.fg,
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                                backdropFilter: "blur(6px)",
+                                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase",
+                              }}
+                              title={slot ? `Landing slot: ${cfg.label} — click to cycle` : "Add to landing (click to cycle through slots)"}
+                            >
+                              <Star size={12} fill={slot ? "currentColor" : "none"} />
+                              {cfg.label}
+                            </button>
+                          );
+                        })()}
                         {/* Deployment badge (top-left) */}
                         {(() => {
                           const badge = getDeploymentBadge(item);

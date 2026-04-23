@@ -25407,9 +25407,17 @@ app.post("/library/list", async (c) => {
       const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
       if (isAdmin) {
         const featuredPointers = (await kv.getByPrefix("showcase:featured:")) || [];
-        const featuredSet = new Set<string>(featuredPointers.map((p: any) => p?.itemId).filter(Boolean));
+        // Admin Library UI cycles through slots — it needs to know NOT just
+        // whether an item is featured but which slot (hero / statement /
+        // gallery) it occupies so the pill reads the right state.
+        const slotByItem = new Map<string, string>();
+        for (const p of featuredPointers) {
+          if (p?.itemId) slotByItem.set(p.itemId, p.slot || "gallery");
+        }
         for (const it of allItems as any[]) {
-          it.featured = featuredSet.has(it.id);
+          const slot = slotByItem.get(it.id);
+          it.featured = !!slot;
+          it.featuredSlot = slot || null;
           it.canFeature = true;
         }
       }
@@ -25781,22 +25789,41 @@ app.post("/library/items-update", async (c) => {
 // ── POST /library/feature — toggle "featured on landing" (ADMIN ONLY) ──
 // Only the Ora owner (admin) can mark items to surface on the public landing.
 // Client libraries are untouched; no feature button will be shown to them.
-// Pointer key: showcase:featured:{itemId} stores { itemId, userId, featuredAt }.
+// Pointer key: showcase:featured:{itemId} stores
+//   { itemId, userId, featuredAt, slot }
+// where slot ∈ { "hero", "statement", "gallery" } drives where on the landing
+// the asset lands. Default slot is "gallery" for backward compatibility.
+const LANDING_SLOTS = ["hero", "statement", "gallery"] as const;
+type LandingSlot = typeof LANDING_SLOTS[number];
 app.post("/library/feature", async (c) => {
   try {
     const user = await requireAdmin(c);
     const body = c.get?.("parsedBody") || await c.req.json();
     const itemId = String(body?.itemId || "").trim();
     const featured = body?.featured !== false;
+    const slotRaw = String(body?.slot || "").trim().toLowerCase();
+    const slot: LandingSlot = (LANDING_SLOTS as readonly string[]).includes(slotRaw) ? (slotRaw as LandingSlot) : "gallery";
     if (!itemId) return c.json({ success: false, error: "itemId required" }, 400);
 
     const key = `showcase:featured:${itemId}`;
     if (featured) {
       const libItem = await kv.get(`lib:${user.id}:${itemId}`);
       if (!libItem) return c.json({ success: false, error: "Library item not found" }, 404);
-      await kv.set(key, { itemId, userId: user.id, featuredAt: new Date().toISOString() });
-      console.log(`[library/feature] admin featured ${itemId}`);
-      return c.json({ success: true, featured: true });
+      // If the caller wants an exclusive slot (hero / statement), clear any
+      // other item currently holding that slot — only one asset per hero /
+      // statement section at a time.
+      if (slot === "hero" || slot === "statement") {
+        const existingPointers = (await kv.getByPrefix("showcase:featured:")) || [];
+        for (const p of existingPointers) {
+          if (p?.slot === slot && p?.itemId && p.itemId !== itemId) {
+            await kv.set(`showcase:featured:${p.itemId}`, { ...p, slot: "gallery", updatedAt: new Date().toISOString() });
+            console.log(`[library/feature] moved ${p.itemId} from slot ${slot} → gallery (displaced by ${itemId})`);
+          }
+        }
+      }
+      await kv.set(key, { itemId, userId: user.id, slot, featuredAt: new Date().toISOString() });
+      console.log(`[library/feature] admin featured ${itemId} in slot=${slot}`);
+      return c.json({ success: true, featured: true, slot });
     } else {
       await kv.del(key);
       console.log(`[library/feature] admin un-featured ${itemId}`);
@@ -25832,6 +25859,10 @@ app.get("/showcase/featured", async (c) => {
         assets.push({
           itemId: p.itemId,
           featuredAt: p.featuredAt,
+          // Slot drives landing placement: "hero" / "statement" fill the
+          // full-screen parallax sections, "gallery" (default) flows into
+          // the bento grid.
+          slot: p.slot || "gallery",
           campaignName, campaignSlug,
           platform: a.platform || libItem.platform || "",
           aspectRatio: a.aspectRatio || libItem.aspectRatio || "1:1",
