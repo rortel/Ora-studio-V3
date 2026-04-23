@@ -8996,6 +8996,13 @@ app.post("/analyze/suggest-angles", async (c) => {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const lang = body?.lang === "fr" ? "fr" : "en";
+    // Product context from the new Surprise Me input form — photo is
+    // required client-side, description and price are optional. Angles
+    // returned should be specific to THIS product, not a generic brand
+    // sweep, so the LLM gets a dedicated Product block in its prompt.
+    const productImageUrl = typeof body?.productImageUrl === "string" ? body.productImageUrl.trim() : "";
+    const productDescription = typeof body?.productDescription === "string" ? body.productDescription.trim().slice(0, 400) : "";
+    const productPrice = typeof body?.productPrice === "string" ? body.productPrice.trim().slice(0, 40) : "";
 
     // Load vault — angles lean hard on it. If missing, we still return three
     // generic angles from the current month so the UI stays functional.
@@ -9066,6 +9073,7 @@ RULES:
 
 CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — use tasteful generic editorial angles for the season."}
+${productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST be anchored on this product. The photo is the hero in every asset the pipeline will generate.` : ""}
 ${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days to consider (pick at most one to theme one angle — don't force all three):\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
 
 OUTPUT SHAPE (strict):

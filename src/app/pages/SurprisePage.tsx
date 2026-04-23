@@ -112,6 +112,15 @@ function SurpriseContent() {
   const [withCaption, setWithCaption] = useState<boolean>(true);
   const [ctxWhy, setCtxWhy] = useState("");
   const [productPhoto, setProductPhoto] = useState<string | null>(null);
+  // Product-first inputs — the new default flow is "upload your product,
+  // we propose brand-compliant angles." Photo is required; description and
+  // price are optional and get forwarded to the caption generator.
+  const [productDescription, setProductDescription] = useState("");
+  const [productPrice, setProductPrice] = useState("");
+  // idle sub-view: "input" = product form, "angles" = the 3 suggestions
+  // we show after the user clicks "Propose angles". Custom-brief mode is
+  // a separate flag below that short-circuits straight to generation.
+  const [idleView, setIdleView] = useState<"input" | "angles">("input");
 
   // UI state
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
@@ -168,32 +177,48 @@ function SurpriseContent() {
     id: string; emoji: string; title: string; subtitle: string; brief: string;
     platforms: string[]; creativityLevel: number; assetCount: number;
   };
-  const [anglesLoading, setAnglesLoading] = useState(true);
+  const [anglesLoading, setAnglesLoading] = useState(false);
   const [suggestedAngles, setSuggestedAngles] = useState<AngleSuggestion[]>([]);
   const [customBriefMode, setCustomBriefMode] = useState(false);
   const [monthLabel, setMonthLabel] = useState<string>("");
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = getAuthHeader();
-        const r = await fetch(`${API_BASE}/analyze/suggest-angles`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-          body: JSON.stringify({ lang: "en", _token: token }),
-          signal: AbortSignal.timeout(35_000),
-        });
-        const d = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        if (d?.success && Array.isArray(d.angles) && d.angles.length > 0) {
-          setSuggestedAngles(d.angles);
-          setMonthLabel(String(d.month || ""));
-        }
-      } catch { /* silent — inline brief remains the fallback */ }
-      finally { if (!cancelled) setAnglesLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [getAuthHeader]);
+
+  // Fetch angles ON DEMAND when the user clicks "Propose angles" from the
+  // input form. Previously this ran on mount and drove the entire landing
+  // experience; now the product-first input is the default and angles are
+  // the second step. We still cache results so re-entering the angles view
+  // doesn't re-spin the LLM.
+  const fetchAngles = useCallback(async () => {
+    if (anglesLoading) return;
+    setAnglesLoading(true);
+    try {
+      const token = getAuthHeader();
+      const r = await fetch(`${API_BASE}/analyze/suggest-angles`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          lang: "en",
+          _token: token,
+          // Forward product context so the angles the LLM proposes are
+          // specific to THIS product, not a generic brand-level sweep.
+          productImageUrl: productPhoto || undefined,
+          productDescription: productDescription.trim() || undefined,
+          productPrice: productPrice.trim() || undefined,
+        }),
+        signal: AbortSignal.timeout(35_000),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d?.success && Array.isArray(d.angles) && d.angles.length > 0) {
+        setSuggestedAngles(d.angles);
+        setMonthLabel(String(d.month || ""));
+      } else {
+        toast.error(d?.error || "Couldn't propose angles — try again.");
+      }
+    } catch (err: any) {
+      toast.error(String(err?.message || err));
+    } finally {
+      setAnglesLoading(false);
+    }
+  }, [anglesLoading, getAuthHeader, productPhoto, productDescription, productPrice]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -261,6 +286,8 @@ function SurpriseContent() {
       const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
         productImageUrl: productPhoto || undefined,
+        productDescription: productDescription.trim() || undefined,
+        productPrice: productPrice.trim() || undefined,
         creativityLevel: effCreativity,
         assetCount: effAssetCount,
         platforms: effPlatforms,
@@ -311,7 +338,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
+  }, [busy, productPhoto, productDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -388,76 +415,11 @@ function SurpriseContent() {
               )}
             </AnimatePresence>
 
-            {suggestedAngles.length > 0 && !customBriefMode ? (
-              /* ═══ Auto-angles — the anti-prompt default ═══
-               *   Three ready-to-run campaign angles computed from the user's
-               *   Brand Vault + the current month. User clicks a card, the
-               *   campaign fires. Zero typing. Fallback: "Write a custom
-               *   brief instead →" drops back to the inline-fields UI. */
-              <motion.div
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                className="mb-10"
-              >
-                <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
-                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
-                  Ora suggests{monthLabel ? ` · ${monthLabel}` : ""}
-                </div>
-                <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 92px)" }}>
-                  Pick a direction.<br />
-                  <span style={{ color: COLORS.coral }}>We handle the rest.</span>
-                </h1>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-                  {suggestedAngles.map((a, i) => (
-                    <motion.button
-                      key={a.id}
-                      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.08 * i, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-                      whileHover={{ y: -4 }}
-                      disabled={busy || uploadingProduct}
-                      onClick={() => handleSurprise({
-                        brief: a.brief,
-                        platforms: a.platforms,
-                        platformFormats: Object.fromEntries(a.platforms.map((p) => [p, p.includes("story") || p.includes("tiktok") ? "film" : "image"])),
-                        creativity: Math.max(1, Math.min(4, a.creativityLevel)) as 1 | 2 | 3 | 4,
-                        assetCount: a.assetCount,
-                      })}
-                      className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{
-                        background: "#FFFFFF",
-                        border: `1px solid ${COLORS.line}`,
-                        boxShadow: "0 1px 2px rgba(17,17,17,0.03)",
-                      }}
-                    >
-                      <div className="text-[28px] leading-none mb-4">{a.emoji || "✨"}</div>
-                      <h3 className="leading-[1.02] mb-2" style={{ ...bagel, fontSize: 28, color: COLORS.ink }}>
-                        {a.title}
-                      </h3>
-                      {a.subtitle && (
-                        <p className="text-[13.5px] leading-snug mb-5" style={{ color: COLORS.muted }}>
-                          {a.subtitle}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                        <span>{a.assetCount} assets</span>
-                        <span>·</span>
-                        <span>{a.platforms.length} network{a.platforms.length > 1 ? "s" : ""}</span>
-                        <span>·</span>
-                        <span>level {a.creativityLevel}</span>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-                <div className="mt-6 text-center">
-                  <button
-                    onClick={() => setCustomBriefMode(true)}
-                    className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1"
-                    style={{ color: MUTED, fontWeight: 500 }}
-                  >
-                    Write a custom brief instead <ArrowRight size={12} />
-                  </button>
-                </div>
-              </motion.div>
-            ) : (<>
+            {customBriefMode ? (<>
+            {/* ═══ CUSTOM BRIEF MODE — typing fallback ═══
+             *   User opted out of the product-first flow. Matches the old
+             *   "I'm launching X for Y" UI + a "Surprise me" CTA that
+             *   bypasses angle selection and generates directly. */}
             {/* Loading skeleton while angles fetch */}
             {anglesLoading && !customBriefMode && suggestedAngles.length === 0 && (
               <div className="mb-10 flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
@@ -475,15 +437,13 @@ function SurpriseContent() {
                   <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
                   What are you shipping?
                 </span>
-                {suggestedAngles.length > 0 && (
-                  <button
-                    onClick={() => setCustomBriefMode(false)}
-                    className="text-[10.5px] hover:text-black transition"
-                    style={{ color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}
-                  >
-                    ← Back to Ora's suggestions
-                  </button>
-                )}
+                <button
+                  onClick={() => { setCustomBriefMode(false); setIdleView("input"); }}
+                  className="text-[10.5px] hover:text-black transition"
+                  style={{ color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}
+                >
+                  ← Back to product input
+                </button>
               </div>
               <p className="leading-[1.02]"
                  style={{ fontFamily: DISPLAY, fontSize: "clamp(44px, 8vw, 104px)", letterSpacing: "-0.035em" }}>
@@ -673,7 +633,258 @@ function SurpriseContent() {
                 </motion.div>
               )}
             </AnimatePresence>
-            </>)}
+            </>) : idleView === "angles" ? (
+              /* ═══ Angle grid — shown AFTER user submits the product form ═══
+               *   Three brand+product-compliant directions the user picks
+               *   from. Clicking a card fires the full generation. */
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+                className="mb-10"
+              >
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4 flex items-center justify-between gap-3" style={{ color: MUTED }}>
+                  <span>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                    Ora suggests{monthLabel ? ` · ${monthLabel}` : ""}
+                  </span>
+                  <button
+                    onClick={() => setIdleView("input")}
+                    className="text-[10.5px] hover:text-black transition"
+                    style={{ color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}
+                  >
+                    ← Change product
+                  </button>
+                </div>
+                <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 92px)" }}>
+                  Pick a direction.<br />
+                  <span style={{ color: COLORS.coral }}>We handle the rest.</span>
+                </h1>
+                {anglesLoading && suggestedAngles.length === 0 ? (
+                  <div className="flex items-center gap-2 text-[13px]" style={{ color: MUTED }}>
+                    <Loader2 size={14} className="animate-spin" />
+                    Reading your brand + product…
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+                    {suggestedAngles.map((a, i) => (
+                      <motion.button
+                        key={a.id}
+                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.08 * i, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                        whileHover={{ y: -4 }}
+                        disabled={busy || uploadingProduct}
+                        onClick={() => handleSurprise({
+                          brief: a.brief,
+                          platforms: a.platforms,
+                          platformFormats: Object.fromEntries(a.platforms.map((p) => [p, p.includes("story") || p.includes("tiktok") ? "film" : "image"])),
+                          creativity: Math.max(1, Math.min(4, a.creativityLevel)) as 1 | 2 | 3 | 4,
+                          assetCount: a.assetCount,
+                        })}
+                        className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          background: "#FFFFFF",
+                          border: `1px solid ${COLORS.line}`,
+                          boxShadow: "0 1px 2px rgba(17,17,17,0.03)",
+                        }}
+                      >
+                        <div className="text-[28px] leading-none mb-4">{a.emoji || "✨"}</div>
+                        <h3 className="leading-[1.02] mb-2" style={{ ...bagel, fontSize: 28, color: COLORS.ink }}>
+                          {a.title}
+                        </h3>
+                        {a.subtitle && (
+                          <p className="text-[13.5px] leading-snug mb-5" style={{ color: COLORS.muted }}>
+                            {a.subtitle}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                          <span>{a.assetCount} assets</span>
+                          <span>·</span>
+                          <span>{a.platforms.length} network{a.platforms.length > 1 ? "s" : ""}</span>
+                          <span>·</span>
+                          <span>level {a.creativityLevel}</span>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              // PRODUCT INPUT — the new default view
+              // 1. Upload product photo (required)
+              // 2. Description + price (optional)
+              // 3. Settings (assets, networks, film, caption, creativity)
+              // 4. CTA "Propose angles" → fetches Vault+product angles
+              // 5. "Just write what you want" drops to customBriefMode
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+              >
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                  Your product · your moment
+                </div>
+                <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(40px, 7vw, 88px)" }}>
+                  Drop the photo.<br />
+                  <span style={{ color: COLORS.coral }}>We compose the rest.</span>
+                </h1>
+
+                {/* 1. Product photo — mandatory */}
+                {productPhoto ? (
+                  <div className="mb-6 flex items-start gap-4 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                    <img src={productPhoto} alt="" className="w-24 h-24 rounded-xl object-cover" />
+                    <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[13px] font-semibold" style={{ color: TEXT }}>Product photo locked</div>
+                        <p className="text-[12px]" style={{ color: MUTED }}>Ora will build every asset on top of this shot.</p>
+                      </div>
+                      <button onClick={() => setProductPhoto(null)} className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1" style={{ color: MUTED }}>
+                        <X size={14} /> Replace
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="mb-6 flex flex-col items-center justify-center gap-2 py-12 rounded-2xl cursor-pointer transition hover:bg-black/[0.02]"
+                         style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
+                    {uploadingProduct ? <Loader2 size={22} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={22} style={{ color: COLORS.coral }} />}
+                    <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
+                      {uploadingProduct ? "Uploading…" : "Drop your product photo"}
+                    </span>
+                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · required</span>
+                    <input type="file" accept="image/*" className="hidden"
+                           onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
+                  </label>
+                )}
+
+                {/* 2. Description + price */}
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3 mb-6">
+                  <textarea
+                    value={productDescription}
+                    onChange={(e) => setProductDescription(e.target.value)}
+                    rows={2}
+                    placeholder="Short product description (optional — e.g. linen polo, relaxed fit, cream)"
+                    className="rounded-xl px-3 py-2.5 text-[14px] outline-none resize-none"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                  />
+                  <input
+                    value={productPrice}
+                    onChange={(e) => setProductPrice(e.target.value)}
+                    placeholder="Price (optional)"
+                    className="rounded-xl px-3 h-10 text-[14px] outline-none"
+                    style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                  />
+                </div>
+
+                {/* 3. Networks — chips with image/film toggle (reused from custom brief UI) */}
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <span className="text-[11px] font-mono uppercase tracking-[0.2em] mr-1" style={{ color: MUTED }}>Networks</span>
+                  {PLATFORM_OPTIONS.map((p) => {
+                    const pick = platformPicks.find((x) => x.id === p.id);
+                    const on = !!pick;
+                    const formatIcon = pick?.format === "film" ? "🎬" : "📸";
+                    return (
+                      <div key={p.id} className="inline-flex items-stretch h-9 rounded-full overflow-hidden transition"
+                           style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}>
+                        <button onClick={() => togglePlatform(p.id)} className="inline-flex items-center gap-1.5 px-3 text-[12.5px]">
+                          <span>{p.emoji}</span> {p.label.replace("Instagram ", "IG ")}
+                        </button>
+                        {on && (
+                          <button onClick={() => togglePlatformFormat(p.id)} className="inline-flex items-center justify-center w-8 text-[14px] hover:bg-white/10"
+                                  style={{ borderLeft: `1px solid rgba(255,255,255,0.18)` }}
+                                  title={`Switch to ${pick?.format === "film" ? "image" : "film"}`}>
+                            {formatIcon}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 4. Settings row — assets, creativity, caption */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>Assets · {assetCount}</div>
+                    <input type="range" min={1} max={16} value={assetCount}
+                           onChange={(e) => setAssetCount(parseInt(e.target.value, 10))}
+                           className="w-full" style={{ accentColor: INK }} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>Creative level</div>
+                    <div className="flex gap-1">
+                      {CREATIVITY.map((c) => {
+                        const on = creativity === c.id;
+                        return (
+                          <button key={c.id} onClick={() => setCreativity(c.id)} title={c.hint}
+                                  className="flex-1 inline-flex items-center justify-center h-8 rounded-full text-[12px] transition"
+                                  style={{ background: on ? INK : "transparent", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 600 }}>
+                            {c.emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>Caption</div>
+                    <div className="flex gap-1">
+                      {[{ v: true, l: "Yes" }, { v: false, l: "No" }].map((opt) => {
+                        const on = withCaption === opt.v;
+                        return (
+                          <button key={String(opt.v)} onClick={() => setWithCaption(opt.v)}
+                                  className="flex-1 inline-flex items-center justify-center h-8 rounded-full text-[12.5px] transition"
+                                  style={{ background: on ? INK : "transparent", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 600 }}>
+                            {opt.l}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. CTA "Propose angles" — disabled without a product photo */}
+                <div className="flex flex-col items-center justify-center gap-3">
+                  {(() => {
+                    const noPhoto = !productPhoto;
+                    const noPlatform = platforms.length === 0;
+                    const disabled = busy || uploadingProduct || anglesLoading || noPhoto || noPlatform;
+                    return (
+                      <>
+                        <Button
+                          variant="accent" size="lg"
+                          onClick={async () => {
+                            await fetchAngles();
+                            setIdleView("angles");
+                          }}
+                          disabled={disabled}
+                          style={{ boxShadow: disabled ? "none" : "0 20px 44px -14px rgba(255,92,57,0.55)" }}
+                        >
+                          {anglesLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                          {anglesLoading ? "Reading brand + product…" : "Propose me angles"}
+                          <ArrowRight size={16} />
+                        </Button>
+                        {noPhoto && (
+                          <p className="text-[12.5px]" style={{ color: MUTED }}>
+                            Upload a product photo to continue.
+                          </p>
+                        )}
+                        {!noPhoto && noPlatform && (
+                          <p className="text-[12.5px]" style={{ color: MUTED }}>
+                            Pick at least one network.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                {/* Fallback to custom brief typing */}
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => setCustomBriefMode(true)}
+                    className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1"
+                    style={{ color: MUTED, fontWeight: 500 }}
+                  >
+                    Or just write what you want <ArrowRight size={12} />
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </div>
         </main>
       )}
