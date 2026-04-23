@@ -530,17 +530,20 @@ function VaultPageContent() {
   }, []);
 
   // ── Analyze URL ──
-  const handleAnalyzeUrl = async (deepScan = false) => {
+  // Deep-only by design: crawls up to 20 brand-relevant sub-pages via Jina.
+  // The light "homepage-only" mode was removed since the deep crawl is the
+  // only one that produces a complete DNA (voice, products, values, team).
+  const handleAnalyzeUrl = async () => {
     let url = urlInput.trim();
     if (!url) return;
     if (!/^https?:\/\//.test(url)) url = `https://${url}`;
     setAnalyzing(true);
     setAnalyzeError(null);
-    setAnalyzeProgress(deepScan ? t("vault.deepScanning") : t("vault.scanning"));
+    setAnalyzeProgress(t("vault.deepScanning"));
     try {
-      console.log("[Vault] Analyzing URL:", url, "deep:", deepScan);
+      console.log("[Vault] Analyzing URL:", url, "deep:true");
       const res = await fetch(apiUrl("/vault/analyze"), {
-        method: "POST", headers: vaultHeaders(), body: corsBody(token(), { url, deep: deepScan }),
+        method: "POST", headers: vaultHeaders(), body: corsBody(token(), { url, deep: true }),
       });
       const data = await res.json();
       if (data.success && (data.dna || data.vault)) {
@@ -1338,7 +1341,7 @@ function VaultPageContent() {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}>
 
-        {/* URL row */}
+        {/* URL row — single deep-scan button (no light mode anymore) */}
         <div className="flex items-center gap-2.5 mb-3">
           <div className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-xl"
             style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)" }}>
@@ -1350,17 +1353,12 @@ function VaultPageContent() {
               style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 400 }} />
           </div>
           <button
-            onClick={() => handleAnalyzeUrl(false)} disabled={analyzing || !urlInput.trim()}
+            onClick={handleAnalyzeUrl} disabled={analyzing || !urlInput.trim()}
+            title="Crawls up to 20 brand-relevant sub-pages via Jina Reader"
             className="flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
             style={{ background: "linear-gradient(135deg, #FF5C39, #EC4899)", fontSize: "13px", fontWeight: 500, color: "#FFFFFF" }}>
-            {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+            {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Layers size={13} />}
             {t("vault.scanBtn")}
-          </button>
-          <button
-            onClick={() => handleAnalyzeUrl(true)} disabled={analyzing || !urlInput.trim()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-full cursor-pointer disabled:opacity-30 transition-opacity"
-            style={{ border: "1px solid var(--border-strong)", fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>
-            <Layers size={13} /> {t("vault.deep")}
           </button>
         </div>
 
@@ -1406,6 +1404,53 @@ function VaultPageContent() {
             </motion.div>
           )}
         </AnimatePresence>
+      </motion.div>
+
+      {/* ── Products gateway ── */}
+      {/* Parallel to the brand scanner: same mental model (deep URL scrape
+       *  via Jina), but the catalog itself lives on its own page so the
+       *  per-product fields (SKU, variants, photos) stay tidy. Kept at the
+       *  top of Vault — above Brand Data — so it's the first thing users
+       *  see after scanning their brand URL. */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+        className="rounded-xl p-5 mb-10"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #FF5C39, #EC4899)" }}>
+              <ShoppingBag size={18} color="#FFFFFF" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--foreground)" }}>
+                  {t("vault.products")}
+                </span>
+                {vault.products_services.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full" style={{
+                    background: "rgba(26,23,20,0.06)",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "var(--foreground)",
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
+                    {vault.products_services.length}
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: "12.5px", color: "var(--muted-foreground, #666)", marginTop: 2, lineHeight: 1.5 }}>
+                Deep-scrape product pages from any URL — same model as your brand vault.
+              </p>
+            </div>
+          </div>
+          <Link to="/hub/vault/products"
+            className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer transition-opacity hover:opacity-90"
+            style={{ background: "var(--foreground)", fontSize: "13px", fontWeight: 600, color: "var(--background, #FFFFFF)" }}>
+            {vault.products_services.length > 0 ? <ShoppingBag size={13} /> : <Plus size={13} />}
+            <span>{vault.products_services.length > 0 ? t("vault.manageProducts") : "Add your first product"}</span>
+            <ArrowRight size={13} />
+          </Link>
+        </div>
       </motion.div>
 
       {/* ── Brand Data ── */}
