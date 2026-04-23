@@ -28763,7 +28763,8 @@ app.post("/products/scrape-url", async (c) => {
 
     // Fetch page via Jina Reader (same as brand vault) — works from Deno Edge Functions
     const jinaKey = Deno.env.get("JINA_API_KEY");
-    let html = "";
+    let html = "";          // Markdown content from Jina (or text via direct fetch) — used for the LLM extraction
+    let rawHtml = "";       // Raw HTML preserving tags — used for og:image + <img> scoring
     let jinaImages: string[] = [];
 
     if (jinaKey) {
@@ -28782,7 +28783,9 @@ app.post("/products/scrape-url", async (c) => {
         if (jinaRes.ok) {
           const jinaData = await jinaRes.json();
           html = jinaData.data?.content || jinaData.data?.text || jinaData.content || "";
-          // Jina returns images in structured data
+          // Jina returns images in structured data — these are typically the
+          // content-relevant images (not chrome/nav), which is exactly what
+          // we want as a high-confidence seed for the scoring pass below.
           const jinaImgs = jinaData.data?.images || [];
           if (Array.isArray(jinaImgs)) {
             for (const img of jinaImgs) {
@@ -28797,58 +28800,144 @@ app.post("/products/scrape-url", async (c) => {
       }
     }
 
-    // Fallback: direct fetch if Jina failed
-    if (!html) {
-      try {
-        const pageRes = await fetch(url, {
-          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
-          redirect: "follow",
-          signal: AbortSignal.timeout(10_000),
-        });
-        const rawHtml = await pageRes.text();
-        html = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
-        html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-      } catch (fetchErr) {
-        console.log(`[products/scrape-url] Direct fetch failed: ${fetchErr}`);
-      }
+    // Always fetch the raw HTML in parallel — we need the tags intact so we
+    // can read og:image / twitter:image / <img srcset> etc. Previous version
+    // only did this as a fallback and stripped tags, so image scoring never
+    // had anything to work with outside the Jina structured list.
+    try {
+      const pageRes = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+        redirect: "follow",
+        signal: AbortSignal.timeout(10_000),
+      });
+      rawHtml = await pageRes.text();
+      console.log(`[products/scrape-url] Raw HTML: ${rawHtml.length} chars`);
+    } catch (fetchErr) {
+      console.log(`[products/scrape-url] Raw HTML fetch failed (non-fatal): ${fetchErr}`);
     }
-    html = html.slice(0, 8000);
 
-    if (!html) return c.json({ success: false, error: "Could not fetch page" }, 422);
+    // Fallback text if Jina didn't give us anything usable: strip tags from
+    // the raw HTML we just fetched.
+    if (!html && rawHtml) {
+      html = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+      html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    }
 
-    // Extract image URLs from content (Jina structured + markdown syntax + HTML img tags)
-    const imageUrls: string[] = [...jinaImages];
-    const seenUrls = new Set<string>(jinaImages);
+    if (!html && !rawHtml) return c.json({ success: false, error: "Could not fetch page" }, 422);
+
+    // ── Image extraction with scoring ──
+    // Collect candidates from: og:image / twitter:image (highest confidence),
+    // Jina's structured image list (content-relevant), markdown from Jina
+    // content, and every <img src|data-src|srcset> in raw HTML. Then score
+    // each candidate and keep the top N. Raw HTML is parsed in full (no
+    // 8KB slice) so gallery images below the fold aren't lost.
     const baseUrl = new URL(url);
-
     const resolveUrl = (src: string): string | null => {
+      if (!src) return null;
+      src = src.trim();
       if (!src || src.startsWith("data:")) return null;
-      if (/\.(svg|gif)(\?|$)/i.test(src)) return null;
-      if (/1x1|pixel|track|spacer|blank|favicon/i.test(src)) return null;
       if (src.startsWith("//")) return baseUrl.protocol + src;
       if (src.startsWith("/")) return baseUrl.origin + src;
-      if (!src.startsWith("http")) return baseUrl.origin + "/" + src;
+      if (!src.startsWith("http")) {
+        try { return new URL(src, url).href; } catch { return null; }
+      }
       return src;
     };
 
-    // Parse markdown images ![alt](url) from Jina content
+    // Extract the URL slug (last non-empty path segment) to boost images
+    // whose filename references the product — very reliable for e-commerce
+    // CDNs that bake the SKU into the image path.
+    const urlSlug = (baseUrl.pathname.split("/").filter(Boolean).pop() || "").toLowerCase().replace(/\.[a-z]+$/i, "");
+    const slugTokens = urlSlug.split(/[-_]/).filter(t => t.length >= 3);
+
+    type Candidate = { url: string; score: number; sources: string[] };
+    const candidates = new Map<string, Candidate>();
+    const addCandidate = (raw: string, boost: number, source: string) => {
+      const resolved = resolveUrl(raw);
+      if (!resolved) return;
+      // Hard rejects: data URIs, sub-pixel trackers, favicons, data:gif spacers
+      if (/\.svg(\?|$)/i.test(resolved)) return; // usually icons/logos
+      if (/\bfavicon\b|apple-touch-icon|og-image-default/i.test(resolved)) return;
+      if (/\b1x1\b|\bspacer\b|\bblank\b|\bpixel\b|\btrack(er|ing)?\b|\bbeacon\b/i.test(resolved)) return;
+      const existing = candidates.get(resolved);
+      if (existing) {
+        existing.score += boost;
+        existing.sources.push(source);
+      } else {
+        candidates.set(resolved, { url: resolved, score: boost, sources: [source] });
+      }
+    };
+
+    // 1. og:image / twitter:image — the canonical product photo for most
+    //    e-commerce sites, hand-picked by the site owner. Score high.
+    const ogMatches = rawHtml.match(/<meta[^>]+(?:property|name)=["'](?:og:image|og:image:secure_url|twitter:image|twitter:image:src)["'][^>]*content=["']([^"']+)["']/gi) || [];
+    for (const m of ogMatches) {
+      const u = m.match(/content=["']([^"']+)["']/)?.[1];
+      if (u) addCandidate(u, 50, "og:image");
+    }
+    // Also reverse order (content before property)
+    const ogMatches2 = rawHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/gi) || [];
+    for (const m of ogMatches2) {
+      const u = m.match(/content=["']([^"']+)["']/)?.[1];
+      if (u) addCandidate(u, 50, "og:image-rev");
+    }
+
+    // 2. Jina structured list — content-relevant images that Jina identified.
+    for (const u of jinaImages) addCandidate(u, 20, "jina-structured");
+
+    // 3. Markdown images in Jina content
     const mdRegex = /!\[[^\]]*\]\(([^)]+)\)/g;
     let mdMatch;
-    while ((mdMatch = mdRegex.exec(html)) !== null) {
-      const resolved = resolveUrl(mdMatch[1]);
-      if (resolved && !seenUrls.has(resolved)) { seenUrls.add(resolved); imageUrls.push(resolved); }
+    while ((mdMatch = mdRegex.exec(html)) !== null) addCandidate(mdMatch[1], 8, "markdown");
+
+    // 4. Every <img> in the raw HTML (src, data-src, srcset's largest).
+    const imgTags = rawHtml.matchAll(/<img\b[^>]*>/gi);
+    for (const tag of imgTags) {
+      const tagStr = tag[0];
+      const src = tagStr.match(/\bsrc=["']([^"']+)["']/i)?.[1]
+              || tagStr.match(/\bdata-src=["']([^"']+)["']/i)?.[1]
+              || tagStr.match(/\bdata-lazy-src=["']([^"']+)["']/i)?.[1];
+      if (src) addCandidate(src, 5, "img-tag");
+      // srcset: pick the largest candidate (last entry, usually)
+      const srcset = tagStr.match(/\bsrcset=["']([^"']+)["']/i)?.[1];
+      if (srcset) {
+        const parts = srcset.split(",").map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+        const largest = parts[parts.length - 1];
+        if (largest) addCandidate(largest, 6, "srcset");
+      }
     }
-    console.log(`[products/scrape-url] Markdown images found: ${imageUrls.length - jinaImages.length}, html has ![: ${html.includes("![")}`);
-    // Parse HTML <img> tags if content contains them
-    const imgTagMatches = html.matchAll(/<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi);
-    for (const m of imgTagMatches) {
-      const resolved = resolveUrl(m[1]);
-      if (resolved && !seenUrls.has(resolved)) { seenUrls.add(resolved); imageUrls.push(resolved); }
+
+    // 5. Scoring adjustments on the collected candidates
+    for (const c of candidates.values()) {
+      const u = c.url.toLowerCase();
+      // Product-path signals: filenames matching URL slug tokens = almost
+      // certainly this specific product's photo
+      if (slugTokens.some(t => u.includes(t))) c.score += 30;
+      // Size hints in URL: larger dimensions → product hero photos
+      if (/\b(1200|1500|1600|1920|2000|2048|large|xl|zoom|full|hero|main|primary|pdp)\b/.test(u)) c.score += 8;
+      // Negative signals: thumbnails, nav chrome, marketing clutter
+      if (/\b(50|60|72|80|100)x\1\b/.test(u)) c.score -= 25;
+      if (/\bthumb\b|\bthumbnail\b|\bsmall\b|\bmini\b|\btiny\b/.test(u)) c.score -= 15;
+      if (/\blogo\b|\bheader\b|\bfooter\b|\bmenu\b|\bnav\b|\bicon-?\d*\b/.test(u)) c.score -= 20;
+      if (/\bavatar\b|\bbadge\b|\bflag\b|\bemoji\b|\bsprite\b/.test(u)) c.score -= 20;
+      if (/\bad[-_]|\bbanner\b|\bpromo\b|\bnewsletter\b|\bcoupon\b/.test(u)) c.score -= 15;
+      if (/\brelated\b|\brecommend|\byou[-_]?may|\balso[-_]?like/.test(u)) c.score -= 20;
     }
-    // Filter out logo/header/footer images
-    const productImages = imageUrls.filter(u => !/logo|header|footer|menu|nav|icon/i.test(u));
-    const finalImageUrls = (productImages.length >= 2 ? productImages : imageUrls).slice(0, 12);
-    console.log(`[products/scrape-url] Found ${finalImageUrls.length} images total`);
+
+    // Sort by score desc, drop anything scored below 0 (clearly not product),
+    // then dedupe variants (same base filename, different size query params).
+    const sorted = [...candidates.values()].filter(c => c.score > 0).sort((a, b) => b.score - a.score);
+    const seenBases = new Set<string>();
+    const finalImageUrls: string[] = [];
+    for (const c of sorted) {
+      // Base = pathname without query / size suffixes
+      const base = c.url.split("?")[0].replace(/[-_]\d{2,4}x\d{2,4}/i, "").replace(/[-_](thumb|small|large|xl|full|zoom|main)\b/gi, "");
+      if (seenBases.has(base)) continue;
+      seenBases.add(base);
+      finalImageUrls.push(c.url);
+      if (finalImageUrls.length >= 8) break;
+    }
+    console.log(`[products/scrape-url] Image candidates: ${candidates.size} total → ${finalImageUrls.length} kept after scoring (top scores: ${sorted.slice(0, 3).map(c => `${c.score}:${c.sources.join("+")}`).join(", ")})`);
 
     // Use AI to extract product info
     const key = Deno.env.get("APIPOD_API_KEY");
@@ -28873,7 +28962,7 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nPage content:\n${html}` },
+          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 8000)}` },
         ],
         max_tokens: 500,
         temperature: 0,
