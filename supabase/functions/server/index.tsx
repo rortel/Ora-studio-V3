@@ -18953,15 +18953,27 @@ app.post("/vault/voice/train", async (c) => {
 });
 
 app.get("/vault/voice/status", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    const togetherKey = Deno.env.get("TOGETHER_API_KEY");
-    // No Together AI key configured = feature unavailable, not an error.
-    // Returning 500 here threw up a red console error on every Vault page
-    // load even though this is an optional capability. Treat it as "no
-    // voice available" so the UI stays quiet.
-    if (!togetherKey) return c.json({ success: true, hasVoice: false, configured: false });
+  // The client calls this with a GET that carries only the Supabase anon
+  // key (vaultHeaders() doesn't propagate the user JWT for GET requests).
+  // requireAuth therefore always fails for this endpoint, hits the catch
+  // block, and returns 500 — which spammed every vault page load with a
+  // red console error. None of those branches actually need a 500: this is
+  // an optional capability check.
+  //
+  // Order: short-circuit on missing Together AI key first (no point doing
+  // anything else), then attempt auth in its own try/catch, then do the
+  // KV + Together poll inside the original try.
+  const togetherKey = Deno.env.get("TOGETHER_API_KEY");
+  if (!togetherKey) return c.json({ success: true, hasVoice: false, configured: false });
 
+  let user: AuthUser;
+  try {
+    user = await requireAuth(c);
+  } catch {
+    return c.json({ success: true, hasVoice: false, unauthenticated: true });
+  }
+
+  try {
     const vault = (await kv.get(`vault:${user.id}`)) || {};
     const oraVoice = vault.ora_voice;
     if (!oraVoice?.jobId) return c.json({ success: true, hasVoice: false });
