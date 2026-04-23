@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { Sparkles, FolderOpen, Wand2, Zap } from "lucide-react";
+import { Sparkles, FolderOpen, Wand2, BookOpen, Zap } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { COLORS } from "./ora/tokens";
 
@@ -8,12 +8,13 @@ const MUTED = COLORS.muted;
 const LINE  = COLORS.line;
 const BG    = COLORS.cream;
 
-type TabId = "surprise" | "library" | "edit";
+type TabId = "surprise" | "library" | "edit" | "vault";
 
 const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNode }> = [
   { id: "surprise", label: "Surprise Me", href: "/hub/surprise", icon: <Sparkles size={14} /> },
   { id: "library",  label: "Library",     href: "/hub/library",  icon: <FolderOpen size={14} /> },
   { id: "edit",     label: "Edit",        href: "/hub/editor",   icon: <Wand2 size={14} /> },
+  { id: "vault",    label: "Vault",       href: "/hub/vault",    icon: <BookOpen size={14} /> },
 ];
 
 /**
@@ -28,6 +29,7 @@ export function AppTabs({ active }: { active?: TabId }) {
   const activeId: TabId = active
     ?? (location.pathname.startsWith("/hub/library") ? "library"
       : location.pathname.startsWith("/hub/editor")  ? "edit"
+      : location.pathname.startsWith("/hub/vault")   ? "vault"
       : "surprise");
   const planLabel = (() => {
     const p = String(profile?.plan || "").toLowerCase();
