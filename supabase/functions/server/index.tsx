@@ -15540,22 +15540,23 @@ ${truncated}` },
     }
 
     const rawExisting = await kv.get(`vault:${user.id}`) || {};
-    // Fresh-URL detection: if the user is scanning a different brand than the
-    // one already in the vault, wipe ALL stale brand DNA so the new scan's
-    // outputs replace it instead of bleeding through the merge. Previously
-    // this only cleared logo/voice/platform, which left mission/vision/
-    // personality/values/brand_guidelines/tagline/usp from the old brand
-    // showing underneath the new company_name — exactly what the user hit
-    // scanning Lacoste on top of an ORA Studio vault.
-    const isFreshUrl = !!url && rawExisting.source_url && url !== rawExisting.source_url;
+    // A URL scan is a *replace*, not a merge. Any time the user hits Scan on
+    // a URL we start from a clean slate and write exactly what the crawl +
+    // LLM produced. This matches the mental model (scan = new brand identity)
+    // and kills the bug where old brand DNA bleeds through because the LLM
+    // didn't re-emit a field. Non-URL paths (PDF charter upload, manual
+    // edits via /vault POST) still merge as before.
+    //
+    // We keep only non-DNA user-scoped metadata (userId + `ora_voice` so an
+    // in-flight fine-tuning job isn't orphaned).
+    const isUrlScan = !!url;
     let existing: Record<string, any>;
-    if (isFreshUrl) {
-      console.log(`[vault/analyze] Fresh URL detected (was ${rawExisting.source_url}, now ${url}) — full reset of brand DNA`);
-      // Keep only non-DNA user-scoped fields (ids, fine-tune job state, etc.)
-      // so we don't orphan things like an in-flight ORA Voice training run.
+    if (isUrlScan) {
+      const prev = rawExisting.source_url || "(none)";
+      console.log(`[vault/analyze] URL scan — wiping existing DNA (prev source_url=${prev}, new=${url})`);
       existing = {
         userId: rawExisting.userId,
-        ora_voice: rawExisting.ora_voice, // fine-tuning job metadata
+        ora_voice: rawExisting.ora_voice,
       };
     } else {
       existing = rawExisting;
@@ -18925,7 +18926,11 @@ app.get("/vault/voice/status", async (c) => {
   try {
     const user = await requireAuth(c);
     const togetherKey = Deno.env.get("TOGETHER_API_KEY");
-    if (!togetherKey) return c.json({ success: false, error: "Together AI not configured" }, 500);
+    // No Together AI key configured = feature unavailable, not an error.
+    // Returning 500 here threw up a red console error on every Vault page
+    // load even though this is an optional capability. Treat it as "no
+    // voice available" so the UI stays quiet.
+    if (!togetherKey) return c.json({ success: true, hasVoice: false, configured: false });
 
     const vault = (await kv.get(`vault:${user.id}`)) || {};
     const oraVoice = vault.ora_voice;
