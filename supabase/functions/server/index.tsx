@@ -15539,20 +15539,28 @@ ${truncated}` },
       }
     }
 
-    const existing = await kv.get(`vault:${user.id}`) || {};
+    const rawExisting = await kv.get(`vault:${user.id}`) || {};
     // Fresh-URL detection: if the user is scanning a different brand than the
-    // one already in the vault, drop the stale logo / brand_platform / voice
-    // so the new scan's outputs replace them instead of being suppressed by
-    // the `hasPlatform`-style guards below.
-    const isFreshUrl = !!url && existing.source_url && url !== existing.source_url;
+    // one already in the vault, wipe ALL stale brand DNA so the new scan's
+    // outputs replace it instead of bleeding through the merge. Previously
+    // this only cleared logo/voice/platform, which left mission/vision/
+    // personality/values/brand_guidelines/tagline/usp from the old brand
+    // showing underneath the new company_name — exactly what the user hit
+    // scanning Lacoste on top of an ORA Studio vault.
+    const isFreshUrl = !!url && rawExisting.source_url && url !== rawExisting.source_url;
+    let existing: Record<string, any>;
     if (isFreshUrl) {
-      console.log(`[vault/analyze] Fresh URL detected (was ${existing.source_url}, now ${url}) — clearing stale logo/voice/platform`);
-      delete existing.logo_url;
-      delete existing.logo_path;
-      delete existing.voice_profile;
-      delete existing.brand_platform;
+      console.log(`[vault/analyze] Fresh URL detected (was ${rawExisting.source_url}, now ${url}) — full reset of brand DNA`);
+      // Keep only non-DNA user-scoped fields (ids, fine-tune job state, etc.)
+      // so we don't orphan things like an in-flight ORA Voice training run.
+      existing = {
+        userId: rawExisting.userId,
+        ora_voice: rawExisting.ora_voice, // fine-tuning job metadata
+      };
+    } else {
+      existing = rawExisting;
     }
-    const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
+    const merged = { ...existing, ...dna, source_url: url || rawExisting.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
     // Inject the scraped logo URL directly so the UI has something to render
     // immediately — the background job below will upgrade this to a signed
     // Supabase storage URL once the download completes. Raw CDN URL is the
