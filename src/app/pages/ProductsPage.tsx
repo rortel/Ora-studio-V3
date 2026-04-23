@@ -134,11 +134,21 @@ export function ProductsPage() {
   };
 
   const handleScrape = async () => {
-    if (!accessToken || !url.trim()) return;
+    if (!accessToken) {
+      console.log("[products/scrape] skipped — no accessToken");
+      return;
+    }
+    if (!url.trim()) {
+      console.log("[products/scrape] skipped — empty URL");
+      return;
+    }
+    console.log(`[products/scrape] POST /products/scrape-url ← ${url.trim()}`);
     setScraping(true);
     try {
       const res = await postJson("/products/scrape-url", accessToken, { url: url.trim() });
+      console.log(`[products/scrape] response status=${res.status}`);
       const data = await res.json();
+      console.log(`[products/scrape] response body:`, data);
       if (data.success && data.product) {
         const p = data.product;
         if (p.name) setName(p.name); if (p.description) setDescription(p.description);
@@ -146,8 +156,15 @@ export function ProductsPage() {
         if (p.category) setCategory(p.category); if (p.features?.length) setFeatures(p.features);
         if (p.imageUrls?.length) setScrapedImageUrls(p.imageUrls);
         toast.success(`${t("products.extractedInfo")}${p.imageUrls?.length ? ` + ${p.imageUrls.length} photo(s)` : ""}`);
-      } else toast.error(data.error || t("products.extractFailed"));
-    } catch { toast.error(t("products.extractError")); }
+      } else {
+        const errMsg = data.error || t("products.extractFailed");
+        console.error(`[products/scrape] server returned failure: ${errMsg}`);
+        toast.error(errMsg);
+      }
+    } catch (err) {
+      console.error(`[products/scrape] network/parse error:`, err);
+      toast.error(`${t("products.extractError")}: ${(err as Error)?.message || err}`);
+    }
     finally { setScraping(false); }
   };
 
@@ -162,12 +179,22 @@ export function ProductsPage() {
     // Only auto-fire on URLs that look complete enough to be worth scraping:
     // must start with http(s):// and include a path (not just the domain
     // placeholder). Also skip if we already auto-scraped this exact URL.
-    if (!/^https?:\/\/[^\s]+\/[^\s]+/i.test(trimmed)) return;
-    if (trimmed === lastAutoScrapedRef.current) return;
-    if (scraping) return;
+    if (!/^https?:\/\/[^\s]+\/[^\s]+/i.test(trimmed)) {
+      console.log(`[products/auto-scrape] URL doesn't match regex, skipping: ${trimmed}`);
+      return;
+    }
+    if (trimmed === lastAutoScrapedRef.current) {
+      console.log(`[products/auto-scrape] already scraped this URL, skipping`);
+      return;
+    }
+    if (scraping) {
+      console.log(`[products/auto-scrape] already scraping, skipping`);
+      return;
+    }
     // Skip auto-fire when editing an existing product — the form is already
     // populated and a background re-scrape would overwrite manual edits.
     if (editingProduct) return;
+    console.log(`[products/auto-scrape] queuing scrape in 600ms for: ${trimmed}`);
     const timer = setTimeout(() => {
       lastAutoScrapedRef.current = trimmed;
       handleScrape();

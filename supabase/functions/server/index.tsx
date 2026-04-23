@@ -28810,8 +28810,15 @@ app.post("/products/scrape-url", async (c) => {
         redirect: "follow",
         signal: AbortSignal.timeout(10_000),
       });
-      rawHtml = await pageRes.text();
-      console.log(`[products/scrape-url] Raw HTML: ${rawHtml.length} chars`);
+      // Only keep the body if the request actually succeeded — otherwise we'd
+      // be parsing Cloudflare/Akamai "Access Denied" pages as if they were
+      // the product page (Lacoste blocks datacenter IPs aggressively).
+      if (pageRes.ok) {
+        rawHtml = await pageRes.text();
+        console.log(`[products/scrape-url] Raw HTML: ${rawHtml.length} chars (status ${pageRes.status})`);
+      } else {
+        console.log(`[products/scrape-url] Raw HTML fetch blocked: status ${pageRes.status} — relying on Jina output only`);
+      }
     } catch (fetchErr) {
       console.log(`[products/scrape-url] Raw HTML fetch failed (non-fatal): ${fetchErr}`);
     }
@@ -28823,7 +28830,14 @@ app.post("/products/scrape-url", async (c) => {
       html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     }
 
-    if (!html && !rawHtml) return c.json({ success: false, error: "Could not fetch page" }, 422);
+    // Hard fail if both paths came back empty: Jina didn't return content AND
+    // direct fetch either errored or was bot-blocked. Returning `success:true`
+    // with empty fields here would look like the scrape worked, then silently
+    // ship an empty form — confusing the user into thinking autofill is broken.
+    if (!html || html.length < 200) {
+      console.log(`[products/scrape-url] Nothing usable to analyze (html=${html?.length || 0} chars, rawHtml=${rawHtml.length} chars) — returning error`);
+      return c.json({ success: false, error: "Couldn't read this page. The site may be blocking bots — try a different product URL or fill the fields manually." }, 422);
+    }
 
     // ── Image extraction with scoring ──
     // Collect candidates from: og:image / twitter:image (highest confidence),
