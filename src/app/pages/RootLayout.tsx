@@ -25,8 +25,7 @@ export function RootLayout() {
   const isVideoEditor = location.pathname === "/hub/video-editor";
   // The 4-tab app shell (Surprise Me / Library / Edit / Vault) renders its
   // own sticky <AppTabs> header, so we drop the left AppSidebar on those
-  // routes to avoid a duplicate brand + double nav. Vault sub-pages
-  // (/hub/vault/products) inherit the same shell.
+  // routes to avoid a duplicate brand + double nav.
   const isThreeTabApp =
     location.pathname === "/hub/surprise" ||
     location.pathname.startsWith("/hub/library") ||

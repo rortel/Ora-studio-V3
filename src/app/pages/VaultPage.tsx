@@ -1408,53 +1408,6 @@ function VaultPageContent() {
         </AnimatePresence>
       </motion.div>
 
-      {/* ── Products gateway ── */}
-      {/* Parallel to the brand scanner: same mental model (deep URL scrape
-       *  via Jina), but the catalog itself lives on its own page so the
-       *  per-product fields (SKU, variants, photos) stay tidy. Kept at the
-       *  top of Vault — above Brand Data — so it's the first thing users
-       *  see after scanning their brand URL. */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-        className="rounded-xl p-5 mb-10"
-        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, #FF5C39, #EC4899)" }}>
-              <ShoppingBag size={18} color="#FFFFFF" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span style={{ fontSize: "15px", fontWeight: 600, color: "var(--foreground)" }}>
-                  {t("vault.products")}
-                </span>
-                {vault.products_services.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full" style={{
-                    background: "rgba(26,23,20,0.06)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "var(--foreground)",
-                    fontVariantNumeric: "tabular-nums",
-                  }}>
-                    {vault.products_services.length}
-                  </span>
-                )}
-              </div>
-              <p style={{ fontSize: "12.5px", color: "var(--muted-foreground, #666)", marginTop: 2, lineHeight: 1.5 }}>
-                Deep-scrape product pages from any URL — same model as your brand vault.
-              </p>
-            </div>
-          </div>
-          <Link to="/hub/vault/products"
-            className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-full cursor-pointer transition-opacity hover:opacity-90"
-            style={{ background: "var(--foreground)", fontSize: "13px", fontWeight: 600, color: "var(--background, #FFFFFF)" }}>
-            {vault.products_services.length > 0 ? <ShoppingBag size={13} /> : <Plus size={13} />}
-            <span>{vault.products_services.length > 0 ? t("vault.manageProducts") : "Add your first product"}</span>
-            <ArrowRight size={13} />
-          </Link>
-        </div>
-      </motion.div>
-
       {/* ── Brand Data ── */}
       <AnimatePresence>
         {hasData && (
@@ -1619,35 +1572,24 @@ function VaultPageContent() {
                   </SectionCard>
                 </div>
 
-                {/* Products & Services */}
+                {/* Products & Services — tag list only. The dedicated
+                    product catalog page (/hub/vault/products) was removed:
+                    product photos live in Library and feed content
+                    generation directly, no second catalog needed. */}
                 <div className="md:col-span-2">
                   <SectionCard icon={ShoppingBag} title={t("vault.products")} count={vault.products_services.length}
                     open={isOpen("products")} onToggle={() => toggleSection("products")}>
                     {vault.products_services.length > 0 ? (
-                      <div>
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {vault.products_services.map((p, i) => (
-                            <span key={i} className="px-2.5 py-1 rounded-lg"
-                              style={{ fontSize: "12px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
-                              {p}
-                            </span>
-                          ))}
-                        </div>
-                        <Link to="/hub/vault/products"
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all hover:opacity-90"
-                          style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                          <ShoppingBag size={14} /> {t("vault.manageProducts")}
-                        </Link>
+                      <div className="flex flex-wrap gap-1.5">
+                        {vault.products_services.map((p, i) => (
+                          <span key={i} className="px-2.5 py-1 rounded-lg"
+                            style={{ fontSize: "12px", fontWeight: 500, background: "var(--secondary)", color: "var(--foreground)", border: "1px solid var(--border)" }}>
+                            {p}
+                          </span>
+                        ))}
                       </div>
                     ) : (
-                      <div className="text-center py-4">
-                        <EmptyState />
-                        <Link to="/hub/vault/products"
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl mt-3 transition-all hover:opacity-90"
-                          style={{ background: "var(--accent)", color: "#fff", fontSize: "13px", fontWeight: 500 }}>
-                          <Plus size={14} /> {t("vault.manageProducts")}
-                        </Link>
-                      </div>
+                      <EmptyState />
                     )}
                   </SectionCard>
                 </div>
