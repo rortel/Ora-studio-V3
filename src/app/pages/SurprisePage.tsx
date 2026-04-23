@@ -673,11 +673,14 @@ function SurpriseContent() {
                         whileHover={{ y: -4 }}
                         disabled={busy || uploadingProduct}
                         onClick={() => handleSurprise({
+                          // Angle card only contributes the creative brief —
+                          // platforms / creativity / assetCount stay whatever
+                          // the user set in the product input form. (Prior
+                          // version passed all four from the angle, which
+                          // silently overrode the slider: asking for 2 assets
+                          // would surface 6-8 because that's what the LLM
+                          // returned per angle.)
                           brief: a.brief,
-                          platforms: a.platforms,
-                          platformFormats: Object.fromEntries(a.platforms.map((p) => [p, p.includes("story") || p.includes("tiktok") ? "film" : "image"])),
-                          creativity: Math.max(1, Math.min(4, a.creativityLevel)) as 1 | 2 | 3 | 4,
-                          assetCount: a.assetCount,
                         })}
                         className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
@@ -695,12 +698,14 @@ function SurpriseContent() {
                             {a.subtitle}
                           </p>
                         )}
+                        {/* Show the user's actual settings on the card so
+                            they know what the angle will produce. */}
                         <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                          <span>{a.assetCount} assets</span>
+                          <span>{assetCount} asset{assetCount === 1 ? "" : "s"}</span>
                           <span>·</span>
-                          <span>{a.platforms.length} network{a.platforms.length > 1 ? "s" : ""}</span>
+                          <span>{platforms.length} network{platforms.length === 1 ? "" : "s"}</span>
                           <span>·</span>
-                          <span>level {a.creativityLevel}</span>
+                          <span>level {creativity}</span>
                         </div>
                       </motion.button>
                     ))}
