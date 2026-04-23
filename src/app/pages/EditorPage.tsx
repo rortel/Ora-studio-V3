@@ -6,13 +6,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router";
-// IMPORTANT: react-konva imports `konva/lib/Core.js` which does NOT include
-// the shape modules. Without a full `konva` import, Konva.Rect / Konva.Circle
-// / Konva.Text / Konva.Image / Konva.Transformer are undefined at runtime
-// and react-konva falls back to Group (loudly), which eventually surfaces as
-// React error #306 during the batch redraw. The full import below runs the
-// side-effect that registers every shape class on the Konva namespace.
-import Konva from "konva";
+import type Konva from "konva";
 import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Image as KonvaImage, Transformer } from "react-konva";
 import { toast } from "sonner";
 import {
@@ -68,15 +62,22 @@ const DEFAULT_SWATCHES = [
 ];
 
 /* ──────────────────────────────────────────────────────────────
-   Route entry
+   Route entry — MUST be exported as BOTH named and default.
+   routes.ts uses lazyRetry with pick="EditorPage" which reads
+   `m["EditorPage"]` off the module namespace; a default-only
+   export would resolve to undefined there and React would throw
+   the infamous #306 from createFiberFromTypeAndProps (case 16,
+   REACT_LAZY_TYPE) with args=[undefined, ""]. Every other lazy
+   page in routes.ts follows this same named-export convention.
    ────────────────────────────────────────────────────────────── */
-export default function EditorPage() {
+export function EditorPage() {
   return (
     <RouteGuard requireAuth>
       <EditorAgency />
     </RouteGuard>
   );
 }
+export default EditorPage;
 
 /* ──────────────────────────────────────────────────────────────
    Main shell — split in 3 zones: top toolbar, format rail,
