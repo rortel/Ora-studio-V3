@@ -758,23 +758,39 @@ function SurpriseContent() {
                   </label>
                 )}
 
-                {/* 2. Description + price */}
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-3 mb-6">
-                  <textarea
-                    value={productDescription}
-                    onChange={(e) => setProductDescription(e.target.value)}
-                    rows={2}
-                    placeholder="Short product description (optional — e.g. linen polo, relaxed fit, cream)"
-                    className="rounded-xl px-3 py-2.5 text-[14px] outline-none resize-none"
-                    style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
-                  />
-                  <input
-                    value={productPrice}
-                    onChange={(e) => setProductPrice(e.target.value)}
-                    placeholder="Price (optional)"
-                    className="rounded-xl px-3 h-10 text-[14px] outline-none"
-                    style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
-                  />
+                {/* 2. What is it? + price
+                    Required single line (not a textarea — textareas read as
+                    "write me a prompt"). The photo tells Ora WHAT shape +
+                    colour; this line tells us WHICH product specifically
+                    ("linen polo, relaxed fit, cream" vs "structured poplin
+                    shirt, cream"). Without it the angles default to generic
+                    fashion tropes. Price stays optional and feeds the
+                    caption only. */}
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
+                  <div>
+                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                      What is it?
+                    </label>
+                    <input
+                      value={productDescription}
+                      onChange={(e) => setProductDescription(e.target.value)}
+                      placeholder="Linen polo · relaxed fit · cream"
+                      className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                      Price <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional)</span>
+                    </label>
+                    <input
+                      value={productPrice}
+                      onChange={(e) => setProductPrice(e.target.value)}
+                      placeholder="€89"
+                      className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                    />
+                  </div>
                 </div>
 
                 {/* 3. Networks — chips with image/film toggle (reused from custom brief UI) */}
@@ -846,8 +862,9 @@ function SurpriseContent() {
                 <div className="flex flex-col items-center justify-center gap-3">
                   {(() => {
                     const noPhoto = !productPhoto;
+                    const noDesc = !productDescription.trim();
                     const noPlatform = platforms.length === 0;
-                    const disabled = busy || uploadingProduct || anglesLoading || noPhoto || noPlatform;
+                    const disabled = busy || uploadingProduct || anglesLoading || noPhoto || noDesc || noPlatform;
                     return (
                       <>
                         <Button
@@ -868,7 +885,12 @@ function SurpriseContent() {
                             Upload a product photo to continue.
                           </p>
                         )}
-                        {!noPhoto && noPlatform && (
+                        {!noPhoto && noDesc && (
+                          <p className="text-[12.5px]" style={{ color: MUTED }}>
+                            One line of "what is it?" — helps Ora stay specific.
+                          </p>
+                        )}
+                        {!noPhoto && !noDesc && noPlatform && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
                             Pick at least one network.
                           </p>
