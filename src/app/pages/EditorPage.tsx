@@ -6,8 +6,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router";
-import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Image as KonvaImage, Transformer } from "react-konva";
+// IMPORTANT: react-konva imports `konva/lib/Core.js` which does NOT include
+// the shape modules. Without a full `konva` import, Konva.Rect / Konva.Circle
+// / Konva.Text / Konva.Image / Konva.Transformer are undefined at runtime
+// and react-konva falls back to Group (loudly), which eventually surfaces as
+// React error #306 during the batch redraw. The full import below runs the
+// side-effect that registers every shape class on the Konva namespace.
 import Konva from "konva";
+import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Image as KonvaImage, Transformer } from "react-konva";
 import { toast } from "sonner";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
@@ -455,9 +461,11 @@ function EditorAgency() {
               style={{ cursor: "default" }}
             >
               <KonvaLayerGroup>
-                {/* Canvas background — solid fill + optional preloaded asset */}
+                {/* Canvas background */}
                 <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" listening={false} />
-                {backgroundImg && (
+                {/* Optional preloaded asset — ternary (not &&) so react-konva
+                 *  never sees a `false` child in its Layer tree. */}
+                {backgroundImg ? (
                   <KonvaImage
                     image={backgroundImg}
                     x={0}
@@ -466,7 +474,7 @@ function EditorAgency() {
                     height={p.project.height}
                     listening={false}
                   />
-                )}
+                ) : null}
 
                 {/* User layers — insertion order = z-index */}
                 {p.project.layers.filter((l) => l.visible).map((layer) => (
@@ -478,11 +486,14 @@ function EditorAgency() {
                     registerNode={(n) => { if (n) nodeRegistry.current.set(layer.id, n); else nodeRegistry.current.delete(layer.id); }}
                   />
                 ))}
-
-                {/* One shared Transformer — attaches dynamically to the
-                 *  selected layer's Konva node. Kept at Layer-level so we
-                 *  never render a fragment or conditional child, which some
-                 *  react-konva reconciler paths don't like (hello #306). */}
+              </KonvaLayerGroup>
+              {/* Transformer lives in its own Layer so the primary Layer's
+               *  child list stays stable (no conditional siblings) — avoids
+               *  the react-konva #306 seen in production. The Transformer
+               *  renders unconditionally and attaches by node reference via
+               *  the useEffect above; when nothing is selected it simply
+               *  transforms an empty node list and draws nothing. */}
+              <KonvaLayerGroup>
                 <Transformer
                   ref={transformerRef}
                   rotateEnabled
