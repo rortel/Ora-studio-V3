@@ -15188,6 +15188,36 @@ app.post("/vault/analyze", async (c) => {
           preExtracted = { colors: [], colorFrequency: {}, fonts: [], socialUrls: [], meta: {}, cssCustomProperties: {} };
         }
       }
+      // ── Logo fallback via public logo APIs ──
+      // The HTML regex misses heavy-SPA sites (Lacoste, Nike, etc.) that use
+      // inline <svg> for their logo instead of <img> — `extractFromHtml`
+      // flags hasHeaderSvgLogo=true for that case but doesn't produce a URL.
+      // It also misses sites we couldn't fetch HTML for at all (rawHtml
+      // shorter than 200 chars). Try Clearbit → Google favicon so every URL
+      // scan ends up with something renderable.
+      preExtracted.meta = preExtracted.meta || {};
+      if (!preExtracted.meta.logoUrl) {
+        try {
+          const host = new URL(url).hostname.replace(/^www\./, "");
+          const clearbitUrl = `https://logo.clearbit.com/${host}`;
+          const cbRes = await fetch(clearbitUrl, { method: "HEAD", signal: AbortSignal.timeout(5_000) }).catch(() => null);
+          if (cbRes && cbRes.ok) {
+            preExtracted.meta.logoUrl = clearbitUrl;
+            (preExtracted.meta.logoCandidates ||= []).push({ url: clearbitUrl, score: 3, source: "clearbit-fallback" });
+            console.log(`[vault/analyze] Logo fallback → Clearbit: ${clearbitUrl}`);
+          } else {
+            // Google s2 favicon always returns 200, even for missing icons —
+            // it's the safety net rather than a real signal.
+            const faviconUrl = `https://www.google.com/s2/favicons?sz=256&domain=${host}`;
+            preExtracted.meta.logoUrl = faviconUrl;
+            (preExtracted.meta.logoCandidates ||= []).push({ url: faviconUrl, score: 1, source: "google-favicon-fallback" });
+            console.log(`[vault/analyze] Logo fallback → Google favicon: ${faviconUrl}`);
+          }
+        } catch (logoFbErr) {
+          console.log(`[vault/analyze] Logo fallback error (non-fatal): ${logoFbErr}`);
+        }
+      }
+
       textToAnalyze = await fetchJinaText(url);
       if (!textToAnalyze && rawHtml) textToAnalyze = htmlToText(rawHtml);
       source = url;
