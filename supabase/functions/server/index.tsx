@@ -15540,7 +15540,27 @@ ${truncated}` },
     }
 
     const existing = await kv.get(`vault:${user.id}`) || {};
+    // Fresh-URL detection: if the user is scanning a different brand than the
+    // one already in the vault, drop the stale logo / brand_platform / voice
+    // so the new scan's outputs replace them instead of being suppressed by
+    // the `hasPlatform`-style guards below.
+    const isFreshUrl = !!url && existing.source_url && url !== existing.source_url;
+    if (isFreshUrl) {
+      console.log(`[vault/analyze] Fresh URL detected (was ${existing.source_url}, now ${url}) — clearing stale logo/voice/platform`);
+      delete existing.logo_url;
+      delete existing.logo_path;
+      delete existing.voice_profile;
+      delete existing.brand_platform;
+    }
     const merged = { ...existing, ...dna, source_url: url || existing.source_url, source_type: sourceType || "url", userId: user.id, updatedAt: new Date().toISOString(), analyzedAt: new Date().toISOString(), scanType: deep ? "deep" : "standard" };
+    // Inject the scraped logo URL directly so the UI has something to render
+    // immediately — the background job below will upgrade this to a signed
+    // Supabase storage URL once the download completes. Raw CDN URL is the
+    // graceful fallback when the download fails (CORS / 403 / timeout).
+    if (url && preExtracted.meta?.logoUrl && !merged.logo_url) {
+      merged.logo_url = preExtracted.meta.logoUrl;
+      console.log(`[vault/analyze] Logo URL injected into merged (pre-download): ${preExtracted.meta.logoUrl.slice(0, 100)}`);
+    }
     // CRITICAL: keep brandName and company_name in sync
     // AI returns company_name, frontend CampaignLab reads brandName — they MUST match
     await saveVaultToKV(user.id, merged);
@@ -15554,8 +15574,12 @@ ${truncated}` },
           const userId = user.id;
 
           // ── 1. LOGO: download best candidate and store in vault ──
+          // Gate: only skip if we ALREADY have a Supabase-hosted logo path
+          // (logo_path is only set after a successful prior download). A raw
+          // CDN logo URL in merged.logo_url is not enough — we still want to
+          // download it into our own storage for CORS safety + persistence.
           const logoUrl = preExtracted.meta.logoUrl;
-          if (logoUrl && !merged.logo_url) {
+          if (logoUrl && !merged.logo_path) {
             try {
               console.log(`[vault/analyze-bg] Downloading logo: ${logoUrl.slice(0, 80)}`);
               const logoRes = await fetch(logoUrl, {
@@ -15836,6 +15860,74 @@ IMPORTANT:
         }
       } catch (bpErr: any) {
         console.log(`[vault/analyze] Auto brand_platform failed (${Date.now() - bpT0}ms): ${bpErr?.message || bpErr}`);
+      }
+    }
+
+    // ── AUTO voice_profile generation from scraped corpus ──
+    // Mirrors /vault/learn-voice but sources the corpus from the Jina crawl
+    // instead of the user's library items — so a fresh URL scan pre-fills the
+    // Brand Voice section the same way it pre-fills Brand Platform. Client
+    // can re-train later via /vault/learn-voice once they have library text.
+    const hasVoice = merged.voice_profile && (merged.voice_profile.tone_markers || merged.voice_profile.summary);
+    if (!hasVoice && textToAnalyze && textToAnalyze.length > 500) {
+      const vpT0 = Date.now();
+      try {
+        const voiceCorpus = textToAnalyze.slice(0, 15000);
+        const voiceSysPrompt = `Tu es un expert en stylistique et analyse de discours — linguiste formé en sémiologie avec 10 ans d'expérience en branding éditorial. Tu profiles la voix d'une marque à partir du contenu scrapé de son site pour permettre à d'autres agents IA de REPRODUIRE cette voix fidèlement.
+
+Retourne UNIQUEMENT un JSON valide — pas de markdown, pas de backticks — avec cette structure exacte:
+{
+  "sentence_style": { "avg_length": "short|medium|long", "structure": "simple|complex|mixed", "rhythm": "staccato|legato|mixed", "preferred_openers": ["max 5 avec exemples entre guillemets"] },
+  "vocabulary": { "register": "casual|professional|academic|technical|luxe", "semantic_field": "string — champ sémantique dominant", "recurring_terms": ["max 10 mots-signatures"], "jargon": ["max 5 termes techniques"], "avoids": ["max 5 mots jamais utilisés"] },
+  "tone_markers": { "formality": 7, "confidence": 8, "warmth": 6, "humor": 3, "urgency": 4, "primary_tone": "ex: inspirant et raffiné", "adjectives": ["max 8 adjectifs"] },
+  "rhetorical_devices": ["max 5 procédés avec un exemple"],
+  "key_phrases": ["max 8 CITATIONS EXACTES du corpus"],
+  "do_patterns": ["max 5 patterns concrets à imiter"],
+  "dont_patterns": ["max 5 anti-patterns spécifiques"],
+  "punctuation_style": "string",
+  "language": "fr|en",
+  "summary": "3-4 phrases pour briefer un rédacteur"
+}
+
+ANTI-HALLUCINATION: chaque observation doit être soutenue par le corpus. key_phrases = citations exactes uniquement. Si le corpus est trop court pour une analyse fiable, dis-le dans le summary.
+RESPOND IN THE SAME LANGUAGE as the corpus.`;
+
+        const vpRes = await fetchWithTimeout(`${APIPOD_BASE}/chat/completions`, {
+          method: "POST",
+          headers: apipodHeaders(),
+          body: JSON.stringify({
+            model: "gpt-4o",
+            temperature: 0.3,
+            response_format: { type: "json_object" },
+            max_tokens: 2000,
+            messages: [
+              { role: "system", content: voiceSysPrompt },
+              { role: "user", content: voiceCorpus },
+            ],
+          }),
+        }, 45_000);
+
+        if (vpRes.ok) {
+          const vpData = await vpRes.json();
+          const vpRaw = vpData.choices?.[0]?.message?.content || "";
+          const vpCleaned = vpRaw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+          const voiceProfile = JSON.parse(vpCleaned);
+          if (voiceProfile && (voiceProfile.tone_markers || voiceProfile.summary)) {
+            voiceProfile.source = "scan";
+            voiceProfile.generated_at = new Date().toISOString();
+            merged.voice_profile = voiceProfile;
+            dna.voice_profile = voiceProfile;
+            await saveVaultToKV(user.id, merged);
+            console.log(`[vault/analyze] Auto voice_profile generated in ${Date.now() - vpT0}ms — tone: ${voiceProfile.tone_markers?.primary_tone || "n/a"}`);
+          } else {
+            console.log(`[vault/analyze] Auto voice_profile: AI returned invalid structure (${Date.now() - vpT0}ms)`);
+          }
+        } else {
+          const errText = await vpRes.text().catch(() => "");
+          console.log(`[vault/analyze] Auto voice_profile AI error (${vpRes.status}): ${errText.slice(0, 200)} — ${Date.now() - vpT0}ms`);
+        }
+      } catch (vpErr: any) {
+        console.log(`[vault/analyze] Auto voice_profile failed (${Date.now() - vpT0}ms): ${vpErr?.message || vpErr}`);
       }
     }
 
