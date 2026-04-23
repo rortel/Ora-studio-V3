@@ -9,6 +9,12 @@ import { createElement, lazy } from "react";
 /**
  * Retry wrapper for lazy imports — handles stale chunk hashes after deploy.
  * If a dynamic import fails (old hash), reload the page once to get fresh assets.
+ *
+ * Resolution order: named export `pick` first, then `default`. The fallback is
+ * the safety net — without it, a page exported only as default (instead of
+ * the named-export convention used here) resolves to undefined, and React
+ * throws #306 from createFiberFromTypeAndProps (REACT_LAZY_TYPE) with an
+ * impossible-to-decode args=[undefined, ""].
  */
 function lazyRetry<T extends Record<string, any>>(
   factory: () => Promise<T>,
@@ -16,7 +22,15 @@ function lazyRetry<T extends Record<string, any>>(
 ) {
   return lazy(() =>
     factory()
-      .then((m) => ({ default: m[pick] as React.ComponentType }))
+      .then((m) => {
+        const Component = (m[pick] ?? (m as any).default) as React.ComponentType;
+        if (!Component) {
+          throw new Error(
+            `lazyRetry: module has neither "${String(pick)}" nor default export`,
+          );
+        }
+        return { default: Component };
+      })
       .catch((err: Error) => {
         // Only auto-reload once to avoid infinite loops
         const key = "chunk-reload";
