@@ -9166,6 +9166,15 @@ app.post("/analyze/surprise-me", async (c) => {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const productRef = String(body?.productImageUrl || "").trim();
+    // Client-side product description + price. The description is critical
+    // for kontext-pro fidelity: when the scene composition drifts far from
+    // the reference photo (e.g. polo on a hanger over water instead of on
+    // a model), the model stops preserving subtle attributes like color
+    // and defaults to brand priors (pink Lacoste polo → generic green
+    // Lacoste polo). Naming the product explicitly in every prompt pins
+    // those attributes down.
+    const productDescription = String(body?.productDescription || "").trim().slice(0, 400);
+    const productPrice       = String(body?.productPrice || "").trim().slice(0, 40);
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
     const lang       = body?.lang === "en" ? "en" : "fr";
@@ -9230,7 +9239,7 @@ app.post("/analyze/surprise-me", async (c) => {
     // the scene, the mood, the twist — never the product itself. So the
     // product reference weight is held constant (high) for every level;
     // only the LLM system hint and temperature change.
-    const PRODUCT_REF_WEIGHT = 0.85; // tight fidelity on every level
+    const PRODUCT_REF_WEIGHT = 0.92; // tight fidelity — raised from 0.85 after reports of colour drift when the scene composition differs from the reference (polo on hanger vs polo on model).
     const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
       1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. The product itself stays exactly as provided." },
       2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. The product itself stays exactly as provided." },
@@ -9339,7 +9348,13 @@ CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — compose from brief alone."}
 ${brief ? `User brief: ${brief}` : ""}
 ${season ? `Season / moment: ${season}` : ""}
-${productRef ? "A product reference photo IS provided (image_ref will be attached on relevant shots)." : "No product photo provided — generation is text-to-image only."}
+${productRef ? "A product reference photo IS provided (image_ref will be attached on every shot)." : "No product photo provided — generation is text-to-image only."}
+${productDescription ? `Product identity (MUST be preserved verbatim in every promptText — name the colour, material, cut so the image-gen model can't drift): ${productDescription}` : ""}
+
+CRITICAL PRODUCT-FIDELITY RULES:
+- Every promptText MUST explicitly describe the product by colour, material and cut matching the reference photo. Example: if the reference is "lavender pink piqué polo, slim fit, tonal crocodile embroidery", those exact descriptors belong in every shot's promptText.
+- Do NOT invent variants, alternate colours or styling tweaks between shots. The product is identical across the pack; only the scene around it changes.
+- When a shot removes the product from the model (hangers, packshots, flat-lays), still describe the polo exactly as in the reference — the subject is the SAME garment.
 
 PLATFORM SHOT LIST (${totalShots} shots total):
 ${platformBrief}
@@ -9477,8 +9492,15 @@ OUTPUT JSON:
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
         try {
           if (productRef) {
+            // Belt-and-braces: if the LLM's promptText didn't already weave
+            // in the product description, prepend it so kontext-pro always
+            // sees the product's named attributes. Prevents colour drift
+            // when the scene composition strays from the reference photo.
+            const promptWithProduct = productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")
+              ? `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`
+              : job.promptText;
             const r = await runRemix({
-              finalPrompt: job.promptText, imageUrl: productRef,
+              finalPrompt: promptWithProduct, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
               refWeight: PRODUCT_REF_WEIGHT, // constant — product respect is non-negotiable
             });

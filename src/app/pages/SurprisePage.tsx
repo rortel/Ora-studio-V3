@@ -344,18 +344,18 @@ function SurpriseContent() {
   // "Images + Films" mode), render them as TWO cards — one for the image,
   // one for the motion version — so the user sees both in the grid. The
   // original pack.items stays intact for the ZIP / library save.
+  //
+  // 2026-04 UPDATE: the expansion confused users ("asked for 2 assets, saw
+  // 3 cards" when one of the two shots was film+firstframe). Now one shot
+  // = one card. When a shot has both image and video, we display it as
+  // the film card with the first-frame as its thumbnail, the user can
+  // still expand in the lightbox. Library save is unchanged — still saves
+  // both image and video files for the same shot.
   const groupedByPlatform: Record<string, PackItem[]> = {};
   if (pack) {
     for (const it of pack.items) {
-      const hasImage = it.status === "ok" && !!it.imageUrl;
-      const hasVideo = it.status === "ok" && !!it.videoUrl;
       const bucket = (groupedByPlatform[it.platform] ||= []);
-      if (hasImage && hasVideo) {
-        bucket.push({ ...it, videoUrl: undefined, videoFileName: undefined });
-        bucket.push({ ...it, imageUrl: undefined });
-      } else {
-        bucket.push(it);
-      }
+      bucket.push(it);
     }
   }
   // Flat order mirrors the rendered grid so ←/→ in the lightbox navigates
@@ -974,7 +974,7 @@ function SurpriseContent() {
                 <Badge tone={pack.savedCount > 0 ? "butter" : "coral"}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
                   {pack.savedCount > 0
-                    ? `${pack.savedCount} item${pack.savedCount > 1 ? "s" : ""} saved to your library`
+                    ? `${pack.items.length} asset${pack.items.length > 1 ? "s" : ""} saved to your library`
                     : "Not saved — open Library to retry"}
                 </Badge>
                 {pack.brandLockScore > 0 && (
