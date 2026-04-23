@@ -151,6 +151,31 @@ export function ProductsPage() {
     finally { setScraping(false); }
   };
 
+  // Auto-scrape when the user pastes / types a valid-looking URL — removes
+  // the need to press the "Auto-fill" button. Debounced to avoid firing on
+  // every keystroke, and we only trigger once per unique URL so editing
+  // other fields doesn't re-scrape. The button stays as a manual retry.
+  const lastAutoScrapedRef = useRef<string>("");
+  useEffect(() => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    // Only auto-fire on URLs that look complete enough to be worth scraping:
+    // must start with http(s):// and include a path (not just the domain
+    // placeholder). Also skip if we already auto-scraped this exact URL.
+    if (!/^https?:\/\/[^\s]+\/[^\s]+/i.test(trimmed)) return;
+    if (trimmed === lastAutoScrapedRef.current) return;
+    if (scraping) return;
+    // Skip auto-fire when editing an existing product — the form is already
+    // populated and a background re-scrape would overwrite manual edits.
+    if (editingProduct) return;
+    const timer = setTimeout(() => {
+      lastAutoScrapedRef.current = trimmed;
+      handleScrape();
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, editingProduct]);
+
   const hasAnyImage = scrapedImageUrls.length > 0 || newProductFiles.length > 0;
 
   const handleSave = async () => {
