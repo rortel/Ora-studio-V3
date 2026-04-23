@@ -8,6 +8,7 @@ import { Badge } from "../components/ora/Badge";
 import { Surface } from "../components/ora/Surface";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { API_BASE } from "../lib/supabase";
+import { BentoGallery, type BentoItem } from "../components/ui/bento-gallery";
 import heroVideo from "../../assets/hero-video.mp4";
 
 interface ShowcaseAsset {
@@ -317,110 +318,60 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ Gallery — campaigns stacked, not isolated tiles ═══
-       *   Each case = one real campaign pack admin starred in Library:
-       *   brand name + asset count + a 4-tile mosaic of the assets.
-       *   Falls back to the hardcoded template set when no campaigns
-       *   have been featured yet (bento-style single case). */}
-      <section id="gallery" className="px-5 md:px-10 pb-20 max-w-[1400px] mx-auto">
-        <div className="text-center mb-10">
-          <div className="text-[13px] mb-3" style={{ color: COLORS.subtle }}>Real packs, real brands</div>
-          <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
-            One click. <span style={{ color: COLORS.coral }}>Full pack.</span>
-          </h2>
-        </div>
-        {showcaseCampaigns.length > 0 ? (
-          <div className="flex flex-col gap-6 md:gap-8">
-            {showcaseCampaigns.slice(0, 3).map((c, i) => (
-              <motion.article
-                key={c.campaignSlug}
-                initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ duration: 0.6, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-                className="rounded-[32px] overflow-hidden"
-                style={{ background: "#FFFFFF", border: `1px solid ${COLORS.line}` }}
-              >
-                <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-0">
-                  {/* Case header */}
-                  <div className="p-6 md:p-8 flex flex-col justify-between gap-6" style={{ background: i === 0 ? COLORS.warm : "#FFFFFF" }}>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] mb-4" style={{ color: COLORS.coral, fontWeight: 700 }}>
-                        Case · {i + 1}
-                      </div>
-                      <h3 className="leading-[0.95] mb-3" style={{ ...bagel, fontSize: "clamp(32px, 3.5vw, 44px)" }}>
-                        {c.campaignName}
-                      </h3>
-                      <div className="flex items-center gap-2 flex-wrap text-[12px]" style={{ color: COLORS.muted }}>
-                        <span><b style={{ color: COLORS.ink, fontWeight: 700 }}>{c.assets.length}</b> assets</span>
-                        <span>·</span>
-                        <span>{[...new Set(c.assets.map((a) => a.platform).filter(Boolean))].length} networks</span>
-                        <span>·</span>
-                        <span>42s</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {[...new Set(c.assets.map((a) => platformLabel(a.platform)))].slice(0, 4).map((p) => (
-                        <Badge key={p} tone="cream">{p}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                  {/* Mosaic — 2×2 tiles, object-cover, autoplay videos */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 p-3">
-                    {c.assets.slice(0, 4).map((a, ai) => (
-                      <div
-                        key={ai}
-                        className="relative rounded-2xl overflow-hidden"
-                        style={{ aspectRatio: "1 / 1", background: COLORS.warm }}
-                      >
-                        {a.videoUrl ? (
-                          <video
-                            src={a.videoUrl}
-                            poster={a.imageUrl}
-                            autoPlay muted loop playsInline preload="metadata"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : a.imageUrl ? (
-                          <img
-                            src={a.imageUrl} alt=""
-                            loading="lazy" decoding="async"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.article>
-            ))}
-          </div>
-        ) : (
-          /* Fallback: keep the old bento visible when no real campaigns have been featured */
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 auto-rows-[200px] md:auto-rows-[260px]">
-            {gallery.slice(0, 6).map((item, i) => {
-              const span =
-                i === 0 ? "md:col-span-4 md:row-span-2"
-              : i === 1 ? "md:col-span-2"
-              : i === 2 ? "md:col-span-2"
-              : i === 3 ? "md:col-span-3 md:row-span-2"
-              : "md:col-span-3";
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }}
-                  viewport={{ once: true }} transition={{ delay: i * 0.05 }}
-                  className={`relative rounded-[28px] overflow-hidden bg-white group ${span}`}
-                >
-                  {item.videoSrc ? (
-                    <video src={item.videoSrc} poster={item.src} autoPlay muted loop playsInline preload="metadata" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
-                  ) : (
-                    <img src={item.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
-                  )}
-                  <div className="absolute top-3 left-3"><Badge tone="ink">42s · {item.label}</Badge></div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      {/* ═══ Gallery — draggable bento of real packs ═══
+       *   Each featured campaign contributes its top 4 assets to the bento.
+       *   Users drag horizontally through the pack (image OR video, auto-
+       *   detected from URL), click a tile to open a full-screen lightbox.
+       *   Falls back to the curated showcase Tile set when no starred
+       *   campaigns exist yet. */}
+      {(() => {
+        // Build the flat BentoItem list. Featured campaigns take priority;
+        // each contributes up to its first 4 assets. Falls back to the
+        // hardcoded tile set when no campaigns are featured.
+        const bentoItems: BentoItem[] = [];
+        if (showcaseCampaigns.length > 0) {
+          showcaseCampaigns.slice(0, 3).forEach((c, ci) => {
+            c.assets.slice(0, 4).forEach((a, ai) => {
+              // Give each campaign's first asset a bigger bento span so the
+              // grid reads as 3 hero tiles + supporting tiles around them.
+              const hero = ai === 0;
+              bentoItems.push({
+                id: `${c.campaignSlug}-${ai}`,
+                title: c.campaignName,
+                desc: platformLabel(a.platform),
+                url: a.videoUrl || a.imageUrl || "",
+                posterUrl: a.imageUrl,
+                badge: `Case · ${ci + 1}`,
+                span: hero ? "md:row-span-2" : "",
+              });
+            });
+          });
+        } else {
+          gallery.slice(0, 6).forEach((item, i) => {
+            const span =
+              i === 0 || i === 3 ? "md:row-span-2" : "";
+            bentoItems.push({
+              id: `fallback-${i}`,
+              title: item.label,
+              desc: item.platform || "",
+              url: item.videoSrc || item.src,
+              posterUrl: item.src,
+              badge: `42s · ${item.label}`,
+              span,
+            });
+          });
+        }
+        return (
+          <BentoGallery
+            id="gallery"
+            eyebrow="Real packs, real brands"
+            title="One click. Full pack."
+            description="Drag through the latest Ora campaigns. Click any tile to open it full-screen."
+            items={bentoItems}
+            className="max-w-[1400px] mx-auto"
+          />
+        );
+      })()}
 
       {/* ═══ Pillars (Locked / Bold / Unique) ═══ */}
       <section className="px-5 md:px-10 pb-20 max-w-[1400px] mx-auto">
