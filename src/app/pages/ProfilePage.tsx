@@ -22,7 +22,7 @@ import {
    ═══════════════════════════════════ */
 
 type PlanTier = "free" | "starter" | "pro" | "business";
-type ProfileTab = "overview" | "library" | "team" | "settings";
+type ProfileTab = "overview" | "library" | "settings";
 
 interface UserProfile {
   name: string;
@@ -40,14 +40,10 @@ interface PlanDetails {
   price: string;
   period: string;
   color: string;
-  agents: number;
-  maxAgents: number;
   contentUsed: number;
   contentMax: number;
   vaults: number;
   maxVaults: number;
-  campaigns: number;
-  maxCampaigns: number;
   storageUsed: number;
   storageMax: number;
   renewalDate: string;
@@ -70,14 +66,6 @@ interface ActivityItem {
   timestamp: string;
   icon: typeof Sparkles;
   iconColor: string;
-}
-
-interface TeamMember {
-  name: string;
-  email: string;
-  role: string;
-  initials: string;
-  status: "active" | "invited";
 }
 
 /* ═══════════════════════════════════
@@ -114,14 +102,10 @@ const planData: Record<PlanTier, PlanDetails> = {
     price: "0",
     period: "",
     color: "var(--muted-foreground)",
-    agents: 0,
-    maxAgents: 0,
     contentUsed: 0,
     contentMax: 10,
     vaults: 0,
     maxVaults: 1,
-    campaigns: 0,
-    maxCampaigns: 0,
     storageUsed: 0,
     storageMax: 0.1,
     renewalDate: "--",
@@ -133,14 +117,10 @@ const planData: Record<PlanTier, PlanDetails> = {
     price: "19",
     period: "/mo",
     color: "#FF5C39",
-    agents: 0,
-    maxAgents: 0,
     contentUsed: 0,
     contentMax: 60,
     vaults: 1,
     maxVaults: 1,
-    campaigns: 0,
-    maxCampaigns: -1,
     storageUsed: 0,
     storageMax: 5,
     renewalDate: "--",
@@ -152,14 +132,10 @@ const planData: Record<PlanTier, PlanDetails> = {
     price: "49",
     period: "/mo",
     color: "#FF5C39",
-    agents: 0,
-    maxAgents: 0,
     contentUsed: 0,
     contentMax: 200,
     vaults: 1,
     maxVaults: 1,
-    campaigns: 0,
-    maxCampaigns: -1,
     storageUsed: 0,
     storageMax: 20,
     renewalDate: "--",
@@ -171,14 +147,10 @@ const planData: Record<PlanTier, PlanDetails> = {
     price: "199",
     period: "/mo",
     color: "#FF5C39",
-    agents: 0,
-    maxAgents: 0,
     contentUsed: 0,
     contentMax: 1000,
     vaults: 1,
     maxVaults: 5,
-    campaigns: 0,
-    maxCampaigns: -1,
     storageUsed: 0,
     storageMax: 100,
     renewalDate: "--",
@@ -218,13 +190,6 @@ const mockActivityAgency: ActivityItem[] = [
   { id: "act5", action: "Generated visuals", detail: "4 variants via AI Hub (Flux Pro, DALL-E 3)", timestamp: "Yesterday", icon: ImageIcon, iconColor: "var(--ora-signal)" },
   { id: "act6", action: "Updated Brand Vault", detail: "Added 12 new approved terms", timestamp: "Yesterday", icon: BookOpen, iconColor: "#999999" },
   { id: "act7", action: "Team invite sent", detail: "sarah@acmecorp.com — Editor role", timestamp: "2 days ago", icon: Users, iconColor: "#4a5568" },
-];
-
-const mockTeam: TeamMember[] = [
-  { name: "Alex Martin", email: "alex@acmecorp.com", role: "Owner", initials: "AM", status: "active" },
-  { name: "Sarah Chen", email: "sarah@acmecorp.com", role: "Editor", initials: "SC", status: "active" },
-  { name: "Jules Moreau", email: "jules@acmecorp.com", role: "Viewer", initials: "JM", status: "active" },
-  { name: "Lena Park", email: "lena@acmecorp.com", role: "Editor", initials: "LP", status: "invited" },
 ];
 
 /* ═══════════════════════════════════
@@ -719,53 +684,6 @@ function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubs
             </motion.div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════
-   TEAM TAB
-   ═══════════════════════════════════ */
-
-function TeamTab() {
-  const { t } = useI18n();
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.02em", color: "var(--foreground)" }}>{t("profile.team")}</h2>
-          <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{mockTeam.length} {t("profile.members")}</p>
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer" style={{ background: "var(--ora-signal)", fontSize: "12px", fontWeight: 500 }}>
-          <Users size={13} /> {t("profile.inviteMember")}
-        </button>
-      </div>
-      <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "var(--border)" }}>
-        <div className="grid grid-cols-[1fr_1fr_120px_80px] gap-4 px-5 py-2.5 border-b bg-secondary/30" style={{ borderColor: "var(--border)" }}>
-          {[t("profile.memberCol"), t("profile.emailCol"), t("profile.roleCol"), t("profile.statusCol")].map((h) => (
-            <span key={h} style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{h}</span>
-          ))}
-        </div>
-        {mockTeam.map((member) => (
-          <div key={member.email} className="grid grid-cols-[1fr_1fr_120px_80px] gap-4 px-5 py-3 border-b last:border-b-0 hover:bg-secondary/20" style={{ borderColor: "var(--border)" }}>
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--primary-foreground)" }}>{member.initials}</span>
-              </div>
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--foreground)" }}>{member.name}</span>
-            </div>
-            <span className="flex items-center" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{member.email}</span>
-            <span className="flex items-center px-2 py-0.5 rounded bg-secondary self-center justify-self-start" style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)" }}>{member.role}</span>
-            <div className="flex items-center">
-              {member.status === "active" ? (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#666666" }}><span className="w-1.5 h-1.5 rounded-full bg-[var(--surface-4)]" /> {t("profile.statusActive")}</span>
-              ) : (
-                <span className="flex items-center gap-1" style={{ fontSize: "10px", fontWeight: 500, color: "#999999" }}><Clock size={9} /> {t("profile.statusInvited")}</span>
-              )}
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
