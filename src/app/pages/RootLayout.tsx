@@ -2,7 +2,7 @@ import { Outlet, useLocation } from "react-router";
 import { useEffect, Suspense } from "react";
 import { Toaster } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
-import { Navbar } from "../components/Navbar";
+import { AppTabs } from "../components/AppTabs";
 import { Footer } from "../components/Footer";
 import { AppSidebar } from "../components/AppSidebar";
 import { CookieBanner } from "../components/CookieBanner";
@@ -88,10 +88,12 @@ export function RootLayout() {
           </main>
         </>
       ) : (
-        /* -- Marketing view: top navbar + content + footer -- */
+        /* -- Marketing view: AppTabs header (same 4-pill segmented control
+              as the in-app surface, acting as a product teaser for
+              anonymous visitors) + content + shared Footer. -- */
         <>
-          <Navbar />
-          <main className="pt-16">
+          <AppTabs />
+          <main>
             <Suspense fallback={<PageLoader />}>
               <Outlet />
             </Suspense>

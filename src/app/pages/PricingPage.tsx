@@ -1,19 +1,16 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
-import { Badge } from "../components/ora/Badge";
-import { Surface } from "../components/ora/Surface";
-import { bagel, COLORS, type Tone } from "../components/ora/tokens";
+import { bagel, COLORS } from "../components/ora/tokens";
 
 type Billing = "monthly" | "yearly";
 
 interface PlanDef {
   code: "creator" | "studio" | "agency";
   name: string;
-  tone: Tone;
   priceMonthly: number;
   priceYearly: number;        // per-month when paid yearly
   assets: number;
@@ -26,8 +23,7 @@ const PLANS: PlanDef[] = [
   {
     code: "creator",
     name: "Creator",
-    tone: "warm",
-    priceMonthly: 19,
+priceMonthly: 19,
     priceYearly: 15,
     assets: 60,
     tagline: "Solo creators shipping brand content weekly.",
@@ -44,8 +40,7 @@ const PLANS: PlanDef[] = [
   {
     code: "studio",
     name: "Studio",
-    tone: "butter",
-    priceMonthly: 49,
+priceMonthly: 49,
     priceYearly: 39,
     assets: 200,
     tagline: "Brand-locked creative at real production volume.",
@@ -63,8 +58,7 @@ const PLANS: PlanDef[] = [
   {
     code: "agency",
     name: "Agency",
-    tone: "violet",
-    priceMonthly: 199,
+priceMonthly: 199,
     priceYearly: 159,
     assets: 1000,
     tagline: "Multi-brand studios and in-house creative teams.",
@@ -90,12 +84,11 @@ export function PricingPage() {
       <section className="max-w-[1200px] mx-auto px-5 md:px-10 pt-24 md:pt-32 pb-10 text-center">
         <motion.div
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="inline-flex mb-7"
+          className="mono-label mb-6 flex items-center justify-center gap-2"
+          style={{ color: COLORS.muted }}
         >
-          <Badge tone="cream">
-            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
-            one price per brand · all platforms included
-          </Badge>
+          <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
+          <span>One price per brand · all platforms included</span>
         </motion.div>
 
         <motion.h1
@@ -149,150 +142,130 @@ export function PricingPage() {
         </div>
       </section>
 
-      {/* ═══ Comparator — tiny, editorial, no checkmarks blob ═══ */}
-      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-24">
-        <div className="text-[13px] uppercase tracking-[0.18em] mb-6 text-center" style={{ color: COLORS.subtle, fontWeight: 600 }}>
+      {/* ═══ Comparator — 3 cols hairline-divided ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-24 border-t" style={{ borderColor: COLORS.line }}>
+        <div className="mono-label pt-16 mb-10 flex items-center gap-2" style={{ color: COLORS.muted }}>
+          <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
           What differs
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Comparator
-            title="Brand Vault"
-            body="Studio and Agency lock your palette, tone, photo style, voice and image bank into every shot. Creator works from a text brief."
-            tone="butter"
-          />
-          <Comparator
-            title="Volume"
-            body="60 / 200 / 1 000 assets a month. Each asset = one image + its paired 5s film when you pick the film pipeline."
-            tone="warm"
-          />
-          <Comparator
-            title="Team & API"
-            body="Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Every plan ships direct to Instagram, LinkedIn, Facebook and TikTok."
-            tone="violet"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3">
+          {[
+            { title: "Brand Vault", body: "Studio and Agency lock your palette, tone, photo style, voice and image bank into every shot. Creator works from a text brief." },
+            { title: "Volume",      body: "60 / 200 / 1 000 assets a month. Each asset = one image + its paired 5s film when you pick the film pipeline." },
+            { title: "Team & API",  body: "Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Every plan ships direct to Instagram, LinkedIn, Facebook and TikTok." },
+          ].map((c, i) => (
+            <div
+              key={c.title}
+              className={`py-8 md:py-10 ${i > 0 ? "md:pl-8 md:border-l" : ""} ${i < 2 ? "md:pr-8" : ""}`}
+              style={{ borderColor: COLORS.line }}
+            >
+              <h4 className="leading-none mb-4" style={{ ...bagel, fontSize: "clamp(28px, 3vw, 40px)" }}>
+                {c.title}
+              </h4>
+              <p className="body-tight text-[15px] leading-relaxed" style={{ color: COLORS.muted }}>
+                {c.body}
+              </p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ═══ Final CTA ═══ */}
-      <section className="max-w-[1200px] mx-auto px-5 md:px-10 pb-24">
-        <Surface tone="ink" pad="lg" radius="2xl" className="md:p-16 text-center">
-          <div className="text-[13px] mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>Ready?</div>
-          <h2 className="leading-[0.95] mb-6" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 104px)" }}>
-            Start with <span style={{ color: COLORS.butter }}>Studio.</span>
-          </h2>
-          <p className="text-[16px] md:text-[18px] max-w-xl mx-auto mb-8" style={{ color: "rgba(255,255,255,0.72)" }}>
-            If you're serious about your brand, Studio is the tier most teams
-            land on. Swap plans anytime.
-          </p>
+      {/* ═══ Final CTA — open, cream, aligned left (no ink box) ═══ */}
+      <section className="max-w-[1200px] mx-auto px-5 md:px-10 py-24 border-t" style={{ borderColor: COLORS.line }}>
+        <div className="mono-label mb-5 flex items-center gap-2" style={{ color: COLORS.muted }}>
+          <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
+          Ready?
+        </div>
+        <h2 className="leading-[0.92] max-w-[14ch] mb-8" style={{ ...bagel, fontSize: "clamp(56px, 9vw, 140px)" }}>
+          Start with <span style={{ color: COLORS.coral }}>Studio.</span>
+        </h2>
+        <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: COLORS.muted }}>
+          If you're serious about your brand, Studio is the tier most teams
+          land on. Swap plans anytime.
+        </p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <Link to={user ? "/subscribe?plan=studio" : "/login?next=/subscribe?plan=studio"}>
             <Button variant="accent" size="lg">
               Get Studio — €49/mo <ArrowRight size={16} />
             </Button>
           </Link>
-          <div className="text-[13px] mt-4" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Cancel anytime · No setup fees
-          </div>
-        </Surface>
+          <span className="mono-label" style={{ color: COLORS.subtle }}>
+            Cancel anytime · no setup fees
+          </span>
+        </div>
       </section>
     </div>
   );
 }
 
-/* ═══ Plan card — Surface-based, tone per tier ═══ */
+/* Plan card — white surface, hairline border, coral outline on the
+ * highlight tier. Mirrors the PricingPanel on the landing so visitors
+ * see the same design language whether they scroll on `/` or navigate
+ * to `/pricing`. */
 function PlanCard({ plan, billing, authed, index }: { plan: PlanDef; billing: Billing; authed: boolean; index: number }) {
   const price = billing === "monthly" ? plan.priceMonthly : plan.priceYearly;
   const href = authed
     ? `/subscribe?plan=${plan.code}&billing=${billing}`
     : `/login?next=/subscribe?plan=${plan.code}&billing=${billing}`;
-  const isLight = plan.tone === "warm" || plan.tone === "butter";
-  const mutedOnTone = isLight ? "rgba(17,17,17,0.65)" : "rgba(255,255,255,0.72)";
-  const checkBg = isLight ? COLORS.ink : "#FFFFFF";
-  const checkFg = isLight ? "#FFFFFF" : COLORS.ink;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: index * 0.08 }}
-      className="relative"
+      initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.6, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
+      className="relative rounded-2xl p-8 md:p-10 flex flex-col h-full"
+      style={{
+        background: "#FFFFFF",
+        border: plan.highlight ? `1px solid ${COLORS.coral}` : `1px solid ${COLORS.line}`,
+        boxShadow: plan.highlight ? "0 30px 80px -30px rgba(255,92,57,0.25)" : "0 1px 2px rgba(17,17,17,0.03)",
+      }}
     >
       {plan.highlight && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-          <Badge tone="coral">Most teams pick this</Badge>
+        <div className="absolute -top-3 left-8 mono-label px-3 py-1 rounded-full" style={{ background: COLORS.coral, color: "#FFFFFF" }}>
+          Most picked
         </div>
       )}
-      <Surface tone={plan.tone} pad="lg" radius="2xl" className="md:p-10 h-full flex flex-col">
-        {/* Head */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-2" style={{ opacity: 0.75 }}>
-              Plan
-            </div>
-            <h3 className="leading-none" style={{ ...bagel, fontSize: "clamp(36px, 4.2vw, 56px)" }}>
-              {plan.name}
-            </h3>
-          </div>
-          <div className="text-right">
-            <div className="flex items-baseline gap-1">
-              <span style={{ ...bagel, fontSize: "clamp(36px, 4.2vw, 56px)", lineHeight: 1 }}>€{price}</span>
-              <span className="text-[13px]" style={{ opacity: 0.7 }}>/mo</span>
-            </div>
-            {billing === "yearly" && (
-              <div className="text-[11.5px] mt-1" style={{ opacity: 0.7 }}>billed yearly</div>
-            )}
-          </div>
-        </div>
 
-        <p className="text-[15px] leading-relaxed mb-5" style={{ color: mutedOnTone }}>
-          {plan.tagline}
-        </p>
+      {/* Head */}
+      <div className="mono-label mb-3" style={{ color: plan.highlight ? COLORS.coral : COLORS.muted }}>
+        {plan.name}
+      </div>
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="tabular-nums" style={{ ...bagel, fontSize: "clamp(56px, 6vw, 84px)", lineHeight: 1, color: COLORS.ink }}>€{price}</span>
+        <span className="mono-label" style={{ color: COLORS.muted }}>/ month</span>
+      </div>
+      {billing === "yearly" && (
+        <div className="mono-label mb-2" style={{ color: COLORS.subtle }}>billed yearly</div>
+      )}
+      <p className="body-tight text-[14px] leading-relaxed mb-5" style={{ color: COLORS.muted }}>
+        {plan.tagline}
+      </p>
+      <div className="mono-label mb-6 flex items-center gap-2 tabular-nums" style={{ color: COLORS.ink }}>
+        <span className="text-[14px]" style={{ fontWeight: 700, letterSpacing: 0, textTransform: "none" }}>{plan.assets}</span>
+        <span style={{ color: COLORS.muted }}>assets / month</span>
+      </div>
 
-        <div className="flex items-baseline gap-1 mb-6">
-          <span style={{ ...bagel, fontSize: "clamp(28px, 3.2vw, 42px)", lineHeight: 1 }}>{plan.assets}</span>
-          <span className="text-[13.5px]" style={{ opacity: 0.7 }}>assets / month</span>
-        </div>
+      {/* Features */}
+      <ul className="body-tight text-[14px] space-y-2.5 mb-8 flex-1" style={{ color: COLORS.ink }}>
+        {plan.features.map((f, i) => (
+          <li key={i} className="flex items-start gap-2.5">
+            <span className="mono-data mt-0.5" style={{ color: COLORS.coral, fontSize: 12 }}>✓</span>
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
 
-        {/* Features */}
-        <ul className="flex flex-col gap-2.5 text-[14px] mb-8">
-          {plan.features.map((f, i) => (
-            <li key={i} className="flex items-start gap-2.5">
-              <span
-                className="shrink-0 w-4 h-4 rounded-full mt-[2px] flex items-center justify-center"
-                style={{ background: checkBg, color: checkFg }}
-              >
-                <Check size={10} strokeWidth={3} />
-              </span>
-              <span>{f}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* CTA */}
-        <div className="mt-auto">
-          <Link to={href}>
-            <Button
-              variant={plan.highlight ? "accent" : isLight ? "ink" : "cream"}
-              size="lg"
-              className="w-full justify-center"
-            >
-              Start {plan.name} <ArrowRight size={16} />
-            </Button>
-          </Link>
-        </div>
-      </Surface>
+      {/* CTA */}
+      <Link to={href}>
+        <Button
+          variant={plan.highlight ? "accent" : "ink"}
+          size="lg"
+          className="w-full justify-center"
+        >
+          Start {plan.name} <ArrowRight size={16} />
+        </Button>
+      </Link>
     </motion.div>
   );
 }
 
-/* ═══ Small differentiator block — NOT a card, just tinted surface with copy ═══ */
-function Comparator({ title, body, tone }: { title: string; body: string; tone: Tone }) {
-  return (
-    <Surface tone={tone} pad="lg" radius="2xl" className="md:p-8">
-      <h4 className="leading-none mb-3" style={{ ...bagel, fontSize: "clamp(26px, 3vw, 36px)" }}>
-        {title}
-      </h4>
-      <p className="text-[14.5px] leading-relaxed" style={{ opacity: 0.8 }}>
-        {body}
-      </p>
-    </Surface>
-  );
-}
