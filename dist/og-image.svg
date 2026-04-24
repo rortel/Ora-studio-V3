@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <!-- Ora OG card — cream bg, Bagel Fat One headline, coral accent.
+       Matches the landing page (Stop prompting / Surprise your brand).
+       Replace with a proper rendered PNG when a designer is available. -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Bagel+Fat+One&amp;family=Inter:wght@400;500;700&amp;display=swap');
+    .bagel { font-family: 'Bagel Fat One', 'Inter', system-ui, sans-serif; letter-spacing: -0.015em; }
+    .inter { font-family: 'Inter', system-ui, sans-serif; }
+  </style>
+  <rect width="1200" height="630" fill="#F4EFE6"/>
+  <!-- Pill badge, top-left -->
+  <g transform="translate(64, 64)">
+    <rect x="0" y="0" width="262" height="40" rx="20" fill="#FFFFFF" stroke="rgba(17,17,17,0.08)"/>
+    <circle cx="20" cy="20" r="4" fill="#FF5C39"/>
+    <text x="34" y="26" class="inter" font-size="13" font-weight="500" fill="#111111">ora — stop prompting, start shipping</text>
+  </g>
+  <!-- Wordmark top-right -->
+  <text x="1136" y="92" class="bagel" font-size="38" fill="#111111" text-anchor="end">Ora</text>
+  <!-- Headline -->
+  <text x="64" y="315" class="bagel" font-size="120" fill="#111111">Stop prompting.</text>
+  <text x="64" y="445" class="bagel" font-size="120" fill="#FF5C39">Surprise your brand.</text>
+  <!-- Supporting line -->
+  <text x="64" y="540" class="inter" font-size="22" font-weight="500" fill="#6C6C6C">
+    Full campaign packs for Instagram, LinkedIn, TikTok. One click. No prompt writing.
+  </text>
+  <!-- Footer row -->
+  <g transform="translate(64, 578)">
+    <text x="0" y="0" class="inter" font-size="15" font-weight="600" fill="#111111">ora-studio.app</text>
+    <text x="1072" y="0" class="inter" font-size="15" fill="#6C6C6C" text-anchor="end">From €19/mo · Cancel anytime</text>
+  </g>
+</svg>
