@@ -207,7 +207,7 @@ function MethodPanel({
       className="relative w-full overflow-hidden"
       style={{ minHeight: "100vh", background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.06)" }}
     >
-      <div className="max-w-[1600px] mx-auto px-6 md:px-16 h-full min-h-screen grid grid-cols-1 md:grid-cols-[minmax(0,420px)_1fr] gap-10 md:gap-16 items-center py-20 md:py-0">
+      <div className="max-w-[1800px] mx-auto px-6 md:px-12 lg:px-16 h-full min-h-screen grid grid-cols-1 md:grid-cols-[minmax(0,360px)_1fr] gap-8 md:gap-14 items-center py-20 md:py-0">
         {/* Text column */}
         <motion.div style={{ y: textY, opacity: textOpacity }} className="flex flex-col justify-center">
           <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.72)" }}>
@@ -357,46 +357,46 @@ function DropMockup() {
   const POP = { initial: { scale: 0, opacity: 0 }, animate: { scale: 1, opacity: 1 }, transition: { type: "spring" as const, stiffness: 320, damping: 18 } };
 
   return (
-    <MouseTilt className="w-full max-w-[620px]" maxTilt={5}>
+    <MouseTilt className="w-full max-w-[960px]" maxTilt={5}>
       <motion.div
         ref={ref}
         className="rounded-2xl overflow-hidden"
-        style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, boxShadow: "0 40px 120px -30px rgba(255,107,71,0.18)" }}
+        style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, boxShadow: "0 60px 140px -40px rgba(255,107,71,0.22)" }}
         initial={{ opacity: 0, y: 40 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
       >
         {/* Chrome bar — parallax layer 1 */}
-        <motion.div style={{ y: chromeY }} className="flex items-center gap-2 px-4 h-9" >
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F57" }} />
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FEBC2E" }} />
-          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#28C840" }} />
-          <span className="mono-label ml-auto" style={{ color: "rgba(250,250,250,0.45)", textTransform: "none", letterSpacing: "0.02em" }}>
+        <motion.div style={{ y: chromeY }} className="flex items-center gap-2.5 px-5 h-11" >
+          <span className="w-3 h-3 rounded-full" style={{ background: "#FF5F57" }} />
+          <span className="w-3 h-3 rounded-full" style={{ background: "#FEBC2E" }} />
+          <span className="w-3 h-3 rounded-full" style={{ background: "#28C840" }} />
+          <span className="mono-label ml-auto text-[11px]" style={{ color: "rgba(250,250,250,0.5)", textTransform: "none", letterSpacing: "0.02em" }}>
             ora-studio.app/hub/vault
           </span>
         </motion.div>
         <div style={{ borderTop: `1px solid ${MOCK_BORDER}` }} />
 
-        <motion.div style={{ y: contentY }} className="p-6 md:p-8 space-y-5">
+        <motion.div style={{ y: contentY }} className="p-8 md:p-12 space-y-7">
           {/* URL input with animated typing */}
           <div>
-            <div className="mono-label mb-2" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
-            <div className="flex gap-2">
-              <div className="flex-1 h-10 rounded-lg flex items-center px-3" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}` }}>
+            <div className="mono-label mb-3" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
+            <div className="flex gap-3">
+              <div className="flex-1 h-14 rounded-xl flex items-center px-4" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}` }}>
                 <TypedUrl target="https://mybrand.com/" active={active} />
               </div>
               <motion.div
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.97 }}
-                className="h-10 px-4 rounded-lg flex items-center gap-2 mono-label cursor-pointer"
-                style={{ background: "#FF6B47", color: "#FFFFFF", textTransform: "uppercase" }}
+                className="h-14 px-6 rounded-xl flex items-center gap-2.5 mono-label cursor-pointer"
+                style={{ background: "#FF6B47", color: "#FFFFFF", textTransform: "uppercase", fontSize: 13 }}
               >
                 {scanning ? (
                   <motion.span
                     animate={{ rotate: 360 }}
                     transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                    className="inline-block w-3.5 h-3.5 rounded-full"
+                    className="inline-block w-4 h-4 rounded-full"
                     style={{ border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#FFFFFF" }}
                   />
                 ) : step >= 4 ? "✓" : null}
@@ -406,19 +406,19 @@ function DropMockup() {
           </div>
 
           {/* Progress bar — scroll-tied */}
-          <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(250,250,250,0.06)" }}>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(250,250,250,0.06)" }}>
             <motion.div className="h-full" style={{ width: progress, background: "#FF6B47" }} />
           </div>
 
           {/* Extracted rows — pop in with bouncy springs */}
-          <div className="pt-2 space-y-3 min-h-[180px]">
+          <div className="pt-3 space-y-5 min-h-[260px]">
             <AnimatePresence>
               {step >= 1 && (
-                <motion.div {...POP} key="logo" className="flex items-center gap-4">
-                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
+                <motion.div {...POP} key="logo" className="flex items-center gap-6">
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
                   <motion.div
-                    className="w-10 h-10 rounded-md flex items-center justify-center"
-                    style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 18 }}
+                    className="w-14 h-14 rounded-lg flex items-center justify-center"
+                    style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 24 }}
                     whileHover={{ rotate: -4, scale: 1.05 }}
                   >
                     Ora
@@ -426,9 +426,9 @@ function DropMockup() {
                 </motion.div>
               )}
               {step >= 2 && (
-                <motion.div key="palette" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }} className="flex items-center gap-4">
-                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
-                  <div className="flex gap-1.5">
+                <motion.div key="palette" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }} className="flex items-center gap-6">
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
+                  <div className="flex gap-2">
                     {["#FF6B47", "#F4C542", "#111111", "#FAFAF7", "#6C6C6C"].map((c, i) => (
                       <motion.div
                         key={c}
@@ -436,7 +436,7 @@ function DropMockup() {
                         animate={{ scale: 1, rotate: 0 }}
                         transition={{ type: "spring", stiffness: 420, damping: 15, delay: i * 0.06 }}
                         whileHover={{ scale: 1.15, rotate: 6 }}
-                        className="w-8 h-8 rounded-md cursor-pointer"
+                        className="w-12 h-12 rounded-lg cursor-pointer"
                         style={{ background: c, border: c === "#FAFAF7" ? `1px solid ${MOCK_BORDER}` : "none" }}
                       />
                     ))}
@@ -444,25 +444,25 @@ function DropMockup() {
                 </motion.div>
               )}
               {step >= 3 && (
-                <motion.div {...POP} key="type" className="flex items-center gap-4">
-                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
-                  <div className="flex items-baseline gap-3 text-[#FAFAFA]">
-                    <span style={{ ...bagel, fontSize: 22 }}>Aa</span>
-                    <span className="body-tight text-[14px]" style={{ opacity: 0.65 }}>Bagel Fat One / Inter</span>
+                <motion.div {...POP} key="type" className="flex items-center gap-6">
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
+                  <div className="flex items-baseline gap-4 text-[#FAFAFA]">
+                    <span style={{ ...bagel, fontSize: 32 }}>Aa</span>
+                    <span className="body-tight text-[16px]" style={{ opacity: 0.7 }}>Bagel Fat One / Inter</span>
                   </div>
                 </motion.div>
               )}
               {step >= 4 && (
-                <motion.div key="tone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-4">
-                  <div className="mono-label w-16 shrink-0 pt-1" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
-                  <div className="flex flex-wrap gap-1.5">
+                <motion.div key="tone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-6">
+                  <div className="mono-label w-20 shrink-0 pt-1.5" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
+                  <div className="flex flex-wrap gap-2">
                     {["bold", "editorial", "warm", "confident"].map((t, i) => (
                       <motion.span
                         key={t}
                         initial={{ opacity: 0, y: 8, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         transition={{ type: "spring", stiffness: 380, damping: 18, delay: i * 0.07 }}
-                        className="mono-label px-2.5 py-1 rounded-full"
+                        className="mono-label px-3.5 py-1.5 rounded-full text-[12px]"
                         style={{ background: "rgba(250,250,250,0.06)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA", textTransform: "none", letterSpacing: "0.02em" }}
                       >
                         {t}
@@ -501,30 +501,30 @@ function PickMockup() {
   return (
     <motion.div
       ref={ref}
-      className="w-full max-w-[720px]"
+      className="w-full max-w-[1080px]"
       initial={{ opacity: 0, y: 40 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-100px" }}
       transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.5)" }}>
+      <div className="mono-label mb-5 flex items-center gap-2.5 text-[12px]" style={{ color: "rgba(250,250,250,0.55)" }}>
         <motion.span
           animate={{ scale: [1, 1.4, 1], opacity: [1, 0.7, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-          className="w-1.5 h-1.5 rounded-full"
+          className="w-2 h-2 rounded-full"
           style={{ background: "#FF6B47" }}
         />
         <span>Ora suggests · April</span>
       </div>
-      <h3 className="text-white mb-6" style={{ ...bagel, fontSize: "clamp(32px, 4vw, 52px)" }}>
+      <h3 className="text-white mb-10" style={{ ...bagel, fontSize: "clamp(40px, 5vw, 72px)" }}>
         Pick a direction.
       </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-5">
         {angles.map((a, i) => (
           <MouseTilt key={a.title} maxTilt={8}>
             <motion.div
-              className="relative p-5 rounded-2xl cursor-pointer h-full"
-              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}` }}
+              className="relative p-8 rounded-2xl cursor-pointer h-full flex flex-col"
+              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, minHeight: 280 }}
               initial={{ opacity: 0, y: 30, rotate: -2 }}
               whileInView={{ opacity: 1, y: 0, rotate: 0 }}
               viewport={{ once: true, margin: "-100px" }}
@@ -534,22 +534,22 @@ function PickMockup() {
               {/* Pulsing selection ring on card 2 — draws the eye after scroll */}
               {i === 1 && (
                 <motion.div
-                  style={{ opacity: selectOpacity, border: "2px solid #FF6B47", borderRadius: 16, boxShadow: "0 0 0 4px rgba(255,107,71,0.12)" }}
+                  style={{ opacity: selectOpacity, border: "2px solid #FF6B47", borderRadius: 16, boxShadow: "0 0 0 6px rgba(255,107,71,0.14)" }}
                   animate={{ scale: [1, 1.015, 1] }}
                   transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
                   className="absolute -inset-0.5 pointer-events-none"
                 />
               )}
               <motion.div
-                className="text-[28px] leading-none mb-4"
+                className="text-[44px] leading-none mb-6"
                 animate={i === 1 ? { rotate: [0, -4, 4, 0] } : {}}
                 transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
               >
                 {a.emoji}
               </motion.div>
-              <div className="text-white mb-1.5" style={{ ...bagel, fontSize: 22 }}>{a.title}</div>
-              <p className="body-tight text-[12.5px] mb-4" style={{ color: "rgba(250,250,250,0.6)" }}>{a.subtitle}</p>
-              <div className="mono-label" style={{ color: "rgba(250,250,250,0.4)" }}>
+              <div className="text-white mb-2.5" style={{ ...bagel, fontSize: 30 }}>{a.title}</div>
+              <p className="body-tight text-[14px] mb-6 flex-1" style={{ color: "rgba(250,250,250,0.65)" }}>{a.subtitle}</p>
+              <div className="mono-label text-[11px]" style={{ color: "rgba(250,250,250,0.45)" }}>
                 {a.count} assets · {a.networks}
               </div>
             </motion.div>
@@ -583,9 +583,9 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
   ];
 
   return (
-    <MouseTilt maxTilt={4}>
+    <MouseTilt maxTilt={4} className="w-full max-w-[1080px]">
       <motion.div
-        className="w-full max-w-[720px] grid grid-cols-3 gap-2"
+        className="w-full grid grid-cols-3 gap-3 md:gap-4"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true, margin: "-100px" }}
@@ -611,22 +611,22 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
                 <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : null)}
               <motion.div
-                className="absolute top-2 left-2 mono-label px-2 py-0.5 rounded-full"
+                className="absolute top-3 left-3 mono-label px-2.5 py-1 rounded-full"
                 initial={{ opacity: 0, y: -6 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ delay: 0.6 + i * 0.08, duration: 0.3 }}
-                style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 9 }}
+                style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 11 }}
               >
                 {PLATFORMS[i]}
               </motion.div>
               <motion.div
-                className="absolute bottom-2 right-2 mono-label tabular-nums"
+                className="absolute bottom-3 right-3 mono-label tabular-nums"
                 initial={{ opacity: 0, scale: 0.5 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.7 + i * 0.08 }}
-                style={{ color: "rgba(250,250,250,0.85)", background: "rgba(10,10,10,0.6)", padding: "2px 6px", borderRadius: 999, fontSize: 9 }}
+                style={{ color: "rgba(250,250,250,0.9)", background: "rgba(10,10,10,0.6)", padding: "3px 8px", borderRadius: 999, fontSize: 11 }}
               >
                 42s
               </motion.div>
