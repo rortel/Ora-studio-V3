@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion, useScroll, useTransform } from "motion/react";
-import { ArrowRight, Lock, Sparkles, Zap } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { bagel, COLORS } from "../components/ora/tokens";
@@ -29,12 +29,6 @@ interface ShowcaseCampaign {
 /* Fallback content when the public showcase endpoint returns nothing yet
  * (first deploy, admin hasn't featured anything). Once the admin marks
  * items from Library, these get overridden with real campaign output. */
-const FALLBACK_HERO_VIDEO = heroVideo;
-const FALLBACK_HERO = [
-  { kind: "video" as const, src: heroVideo,                              label: "hero film" },
-  { kind: "img"   as const, src: "/templates/figma-fashion-post-01.png", label: "fashion" },
-  { kind: "img"   as const, src: "/templates/figma-skincare-01.png",     label: "skincare" },
-];
 const FALLBACK_GALLERY = [
   { src: "/templates/figma-linkedin-01.png",     label: "linkedin",       platform: "linkedin",        ar: "16:9" },
   { src: "/templates/figma-igp-01.png",          label: "ig feed",        platform: "instagram-feed",  ar: "1:1"  },
@@ -55,131 +49,64 @@ function platformLabel(p: string): string {
 }
 
 /**
- * Hero — editorial full-bleed. Two vertical beats:
- *   1. Statement: mono eyebrow + kinetic Bagel headline + subtitle + CTAs
- *   2. Media: full-viewport-width video with a parallax translate on scroll
- * The cream canvas continues under both beats so Bagel stays legible in ink
- * without needing a dark overlay — the tech signal comes from the mono
- * label, the 95vw media frame, and the sharp motion easings.
+ * Dark cinematic canvas — the core landing primitive.
+ *
+ * Full-viewport (100vh on tall screens, min 640px) section whose
+ * background IS a video (or image fallback). The title, eyebrow and
+ * optional CTA sit as overlay content over a bottom-weighted gradient
+ * for legibility. Parallax translates the media at ~40% of the scroll
+ * speed so it feels anchored in space while the viewport moves.
+ *
+ * Used for the hero and every subsequent "moment" (Drop / Pick / Ship),
+ * so the landing reads as a continuous film rather than a stack of
+ * editorial blocks. Motion easings are cubic-bezier — sharp, engineered.
  */
-function HeroFullBleed({
-  primaryHref,
+function CinematicPanel({
   videoSrc,
   posterSrc,
-  videoLabel,
+  imageSrc,
+  eyebrow,
+  title,
+  subtitle,
+  cta,
+  tonality = "dark",
 }: {
-  primaryHref: string;
-  videoSrc: string;
+  videoSrc?: string;
   posterSrc?: string;
-  videoLabel: string;
+  imageSrc?: string;
+  eyebrow?: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  cta?: React.ReactNode;
+  /** "dark" (default) = white text over dark gradient, "hero" = same but slightly more prominent glow on title. */
+  tonality?: "dark" | "hero";
 }) {
-  const mediaRef = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const { scrollYProgress } = useScroll({
-    target: mediaRef,
+    target: ref,
     offset: ["start end", "end start"],
   });
-  // Gentle parallax — the media translates up slower than the viewport.
-  // ±8% max; anything bigger starts to feel gimmicky on a light canvas.
-  const mediaY = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
-  // Entry animation for the media: scales up slightly as it enters view.
-  const mediaScale = useTransform(scrollYProgress, [0, 0.3], [1.04, 1]);
+  // Parallax the media ~±10% across the section. Scale slightly to avoid
+  // edge reveals when y-translated.
+  const mediaY = useTransform(scrollYProgress, [0, 1], ["-10%", "10%"]);
+  // Title slides up and fades as the viewport moves past.
+  const textY = useTransform(scrollYProgress, [0, 0.5, 1], [60, 0, -60]);
+  const textOpacity = useTransform(scrollYProgress, [0, 0.18, 0.78, 1], [0, 1, 1, 0]);
+
+  const hasVideo = !!videoSrc;
 
   return (
-    <section className="relative pt-8 md:pt-12">
-      {/* Beat 1 — statement */}
-      <div className="max-w-[1400px] mx-auto px-5 md:px-10 pb-10 md:pb-14">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mono-label mb-5 flex items-center gap-2"
-          style={{ color: COLORS.muted }}
-        >
-          <span
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ background: COLORS.coral }}
-          />
-          <span>v2.4 · 2,847 brands · 127,493 assets shipped</span>
-        </motion.div>
-
-        <h1
-          className="mb-8"
-          style={{ ...bagel, fontSize: "clamp(64px, 12vw, 180px)" }}
-        >
-          <motion.span
-            className="block"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-          >
-            Stop prompting.
-          </motion.span>
-          <motion.span
-            className="block"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
-            Surprise{" "}
-            <motion.span
-              initial={{ color: COLORS.ink }}
-              animate={{ color: COLORS.coral }}
-              transition={{ duration: 0.45, delay: 0.85 }}
-              style={{ display: "inline-block" }}
-            >
-              your brand.
-            </motion.span>
-          </motion.span>
-        </h1>
-
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="body-tight text-[17px] md:text-[20px] max-w-2xl mb-10"
-          style={{ color: COLORS.muted }}
-        >
-          Drop your brand. Pick your platforms. Ora ships a full pack —
-          LinkedIn, Instagram, TikTok — in one click. No prompt writing.
-        </motion.p>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
-        >
-          <Link to={primaryHref}>
-            <Button variant="accent" size="lg">
-              Pick a plan · Start shipping <ArrowRight size={16} />
-            </Button>
-          </Link>
-          <span
-            className="mono-label"
-            style={{ color: COLORS.subtle, textTransform: "none", letterSpacing: "0.02em" }}
-          >
-            From €19/mo · cancel anytime
-          </span>
-        </motion.div>
-      </div>
-
-      {/* Beat 2 — full-bleed media with parallax.
-       *  Uses 95vw max-width so there's a thin cream margin on the sides —
-       *  avoids the edge-to-edge-tile feeling that reads more "saas demo"
-       *  than "editorial magazine". The 16px radius is deliberate: smaller
-       *  than the old 28-32px (less artisanal), bigger than 0 (not brutalist). */}
+    <section
+      ref={ref}
+      className="relative w-full overflow-hidden"
+      style={{ height: "100vh", minHeight: 640, background: "#0A0A0A" }}
+    >
+      {/* Media canvas — fills the section, parallax-translated. */}
       <motion.div
-        ref={mediaRef}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.4, duration: 0.8 }}
-        className="relative w-[95vw] max-w-[1400px] mx-auto aspect-[16/9] overflow-hidden rounded-2xl"
-        style={{ background: "#FFFFFF" }}
+        style={{ y: mediaY }}
+        className="absolute inset-0 scale-[1.12] will-change-transform"
       >
-        <motion.div
-          style={{ y: mediaY, scale: mediaScale }}
-          className="absolute inset-0 will-change-transform"
-        >
+        {hasVideo ? (
           <video
             src={videoSrc}
             poster={posterSrc}
@@ -188,17 +115,57 @@ function HeroFullBleed({
             loop
             playsInline
             preload="auto"
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover"
           />
-        </motion.div>
-        {/* Mono label floating top-left — reads as a technical caption,
-         *  not a marketing badge. Matches the eyebrow's typography system. */}
-        <div
-          className="mono-label absolute top-5 left-5 z-10 rounded-full px-3 py-1"
-          style={{ background: "rgba(17,17,17,0.88)", color: "#FFFFFF", backdropFilter: "blur(8px)" }}
+        ) : imageSrc ? (
+          <img src={imageSrc} alt="" className="h-full w-full object-cover" />
+        ) : null}
+      </motion.div>
+
+      {/* Bottom gradient for overlay legibility — heavier on hero than on
+       *  sub-moments so the title of the first panel punches. */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            tonality === "hero"
+              ? "linear-gradient(180deg, rgba(10,10,10,0.35) 0%, rgba(10,10,10,0.15) 45%, rgba(10,10,10,0.82) 100%)"
+              : "linear-gradient(180deg, rgba(10,10,10,0.28) 0%, rgba(10,10,10,0.12) 45%, rgba(10,10,10,0.72) 100%)",
+        }}
+      />
+
+      {/* Overlay content — bottom-left anchored so titles read like a film
+       *  poster caption, not a centered SaaS slide. */}
+      <motion.div
+        style={{ y: textY, opacity: textOpacity }}
+        className="relative z-10 flex h-full flex-col justify-end px-6 md:px-16 pb-[7vh] md:pb-[9vh] max-w-[1500px] mx-auto"
+      >
+        {eyebrow && (
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.72)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+            <span>{eyebrow}</span>
+          </div>
+        )}
+        <h1
+          className="max-w-[16ch] text-white"
+          style={{
+            ...bagel,
+            fontSize: tonality === "hero" ? "clamp(64px, 12vw, 200px)" : "clamp(56px, 10vw, 160px)",
+            lineHeight: 0.92,
+            letterSpacing: "-0.02em",
+          }}
         >
-          42s · {videoLabel}
-        </div>
+          {title}
+        </h1>
+        {subtitle && (
+          <p
+            className="body-tight mt-6 max-w-xl text-[16px] md:text-[18px]"
+            style={{ color: "rgba(250,250,250,0.8)" }}
+          >
+            {subtitle}
+          </p>
+        )}
+        {cta && <div className="mt-8 md:mt-10">{cta}</div>}
       </motion.div>
     </section>
   );
@@ -229,19 +196,6 @@ export function LandingPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Resolve hero tiles: 1 big (video if available) + 2 mediums.
-  const showcaseVideo = showcase.find((a) => a.videoUrl);
-  const showcaseImages = showcase.filter((a) => a.imageUrl);
-  const heroBig  = showcaseVideo
-    ? { kind: "video" as const, src: showcaseVideo.videoUrl, label: platformLabel(showcaseVideo.platform), poster: showcaseVideo.imageUrl }
-    : { kind: "video" as const, src: FALLBACK_HERO_VIDEO,    label: "hero film", poster: undefined };
-  const heroTile2 = showcaseImages[0]
-    ? { kind: "img" as const, src: showcaseImages[0].imageUrl, label: platformLabel(showcaseImages[0].platform) }
-    : FALLBACK_HERO[1];
-  const heroTile3 = showcaseImages[1]
-    ? { kind: "img" as const, src: showcaseImages[1].imageUrl, label: platformLabel(showcaseImages[1].platform) }
-    : FALLBACK_HERO[2];
-
   // Gallery: prefer featured assets slot-by-slot, pad remaining slots with the
   // hardcoded templates. Starring a single item in Library should immediately
   // replace the first gallery tile — not require exactly 6 items to take effect.
@@ -259,38 +213,48 @@ export function LandingPage() {
     }));
   const gallery: Tile[] = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
 
-  // Landing canvas — off-white premium. Palette narrowed to 3 colours +
-  // coral accent (butter/warm/violet are banned from this page to stop the
-  // "craft studio" read). Text colours come from COLORS (ink/muted) so the
-  // rest of the app design tokens stay consistent.
-  const LANDING_BG = "#FAFAF7";
+  // Pick the 4 dark-cinematic panel media from admin-featured assets in
+  // order: first = hero, then Drop / Pick / Ship. Any slot that isn't
+  // populated falls back to the bundled heroVideo so the page never
+  // renders a black hole.
+  const panelMedia = (idx: number) => {
+    const a = showcase[idx];
+    if (!a) return { videoSrc: heroVideo, posterSrc: undefined as string | undefined, imageSrc: undefined as string | undefined };
+    if (a.videoUrl) return { videoSrc: a.videoUrl, posterSrc: a.imageUrl, imageSrc: undefined };
+    return { videoSrc: undefined, posterSrc: undefined, imageSrc: a.imageUrl };
+  };
+  const mediaHero = panelMedia(0);
+  const mediaDrop = panelMedia(1);
+  const mediaPick = panelMedia(2);
+  const mediaShip = panelMedia(3);
 
   return (
-    <div style={{ background: LANDING_BG, color: COLORS.ink }}>
-      {/* ═══ Navbar — thin sticky, mono links ═══
-       *   Off-white blur background, mono nav items for the tech signal,
-       *   Ora wordmark in Bagel. Hairline at the bottom instead of a
-       *   shadow so the transition into the hero is crisp. */}
+    <div style={{ background: "#0A0A0A", color: "#FAFAFA" }}>
+      {/* ═══ Navbar — fixed, dark, mono ═══
+       *   Sits over the hero without pushing it down, blurs the video
+       *   underneath. Mono nav links for the tech signal. */}
       <header
-        className="sticky top-0 z-40 backdrop-blur-md hairline-b"
-        style={{ background: "rgba(250,250,247,0.85)" }}
+        className="fixed top-0 left-0 right-0 z-40 backdrop-blur-xl"
+        style={{ background: "rgba(10,10,10,0.55)", borderBottom: "1px solid rgba(250,250,250,0.08)" }}
       >
-        <nav className="px-5 md:px-10 h-14 flex items-center justify-between max-w-[1400px] mx-auto">
+        <nav className="px-5 md:px-10 h-14 flex items-center justify-between max-w-[1600px] mx-auto">
           <Link to="/" className="flex items-center" aria-label="Ora">
-            <span className="text-[24px] leading-none" style={bagel}>Ora</span>
+            <span className="text-[24px] leading-none text-white" style={bagel}>Ora</span>
           </Link>
           <div
             className="hidden md:flex items-center gap-7 mono-label"
-            style={{ color: COLORS.muted }}
+            style={{ color: "rgba(250,250,250,0.7)" }}
           >
-            <a href="#how" className="hover:text-black transition-colors">How it works</a>
-            <a href="#gallery" className="hover:text-black transition-colors">Gallery</a>
-            <Link to="/pricing" className="hover:text-black transition-colors">Pricing</Link>
+            <a href="#how" className="hover:text-white transition-colors">How it works</a>
+            <a href="#gallery" className="hover:text-white transition-colors">Gallery</a>
+            <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-2">
             {!user && (
               <Link to="/login">
-                <Button variant="ghost" size="sm">Sign in</Button>
+                <button className="mono-label px-3 h-8 rounded-full transition-colors hover:bg-white/10" style={{ color: "rgba(250,250,250,0.8)" }}>
+                  Sign in
+                </button>
               </Link>
             )}
             <Link to={primaryHref}>
@@ -302,135 +266,104 @@ export function LandingPage() {
         </nav>
       </header>
 
-      {/* ═══ Hero — full-bleed editorial ═══
-       *   Two beats: statement on top (mono eyebrow + massive Bagel + CTAs),
-       *   full-bleed video below with parallax scroll. Cream stays as the
-       *   canvas so Bagel reads warm-editorial; the tech signal comes from
-       *   the mono eyebrow, the full-bleed ratio, and the parallax motion
-       *   (cubic-bezier, not spring). */}
-      <HeroFullBleed
-        primaryHref={primaryHref}
-        videoSrc={heroBig.src}
-        posterSrc={heroBig.poster}
-        videoLabel={heroBig.label}
+      {/* ═══ Panel 1 — HERO ═══ */}
+      <CinematicPanel
+        tonality="hero"
+        videoSrc={mediaHero.videoSrc}
+        posterSrc={mediaHero.posterSrc}
+        imageSrc={mediaHero.imageSrc}
+        eyebrow="v2.4 · 2,847 brands · 127,493 assets shipped"
+        title={<>Stop prompting. <span style={{ color: "#FF6B47" }}>Surprise your brand.</span></>}
+        subtitle={<>Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn, Instagram, TikTok — in one click. No prompt writing.</>}
+        cta={
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <Link to={primaryHref}>
+              <Button variant="accent" size="lg">
+                Pick a plan · Start shipping <ArrowRight size={16} />
+              </Button>
+            </Link>
+            <span className="mono-label" style={{ color: "rgba(250,250,250,0.55)" }}>
+              From €19/mo · cancel anytime
+            </span>
+          </div>
+        }
       />
 
-      {/* Hairline divider — replaces the old colour-shift transitions.
-       *  One line of pure system signal between sections. */}
-      <div className="max-w-[1400px] mx-auto px-5 md:px-10">
-        <div className="hairline-t" />
-      </div>
+      {/* ═══ Panel 2 — DROP ═══ */}
+      <CinematicPanel
+        videoSrc={mediaDrop.videoSrc}
+        posterSrc={mediaDrop.posterSrc}
+        imageSrc={mediaDrop.imageSrc}
+        eyebrow="01 / 03 · your brand"
+        title={<>Drop.</>}
+        subtitle={<>Your URL. 30 seconds. Ora scans, locks your palette, tone, photo style into the Brand Vault. Once. Forever.</>}
+      />
 
-      {/* ═══ How it works — 3 steps editorial ═══
-       *   Remplace les Surface warm/butter/coral (qui lisaient craft) par
-       *   une grille 3 colonnes séparées de hairlines, mono eyebrow numéroté,
-       *   Bagel left-aligned. Tech signal = mono + hairlines + number-set,
-       *   pas couleur. */}
-      <section id="how" className="px-5 md:px-10 py-24 md:py-32 max-w-[1400px] mx-auto">
-        <div className="mb-16 md:mb-20">
-          <div className="mono-label mb-4" style={{ color: COLORS.muted }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: COLORS.coral }} />
-            How it works
-          </div>
-          <h2 className="leading-[0.95] max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(48px, 8vw, 120px)" }}>
-            Three moves. <span style={{ color: COLORS.coral }}>No typing.</span>
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3">
-          {[
-            {
-              n: "01",
-              tag: "Vault",
-              title: "Drop your URL.",
-              body: "Ora scans your site, locks palette, tone and photo style into your Brand Vault. 30 seconds, once.",
-            },
-            {
-              n: "02",
-              tag: "Surprise Me",
-              title: "Pick a direction.",
-              body: "Three editorial angles waiting — tuned to your month, your sector, your brand. Click one. That's the brief.",
-            },
-            {
-              n: "03",
-              tag: "Publish",
-              title: "Ship the pack.",
-              body: "Six assets, image + paired 5s film, framed for every network. Download the ZIP or publish in one click.",
-            },
-          ].map((step, i) => (
-            <motion.div
-              key={step.n}
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.5, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-              className={`pt-8 pb-8 md:py-10 ${i > 0 ? "md:pl-8 md:border-l" : ""} ${i < 2 ? "md:pr-8" : ""}`}
-              style={{ borderColor: COLORS.line }}
-            >
-              <div className="mono-label mb-6 flex items-center justify-between" style={{ color: COLORS.subtle }}>
-                <span className="tabular-nums">{step.n} / 03</span>
-                <span>{step.tag}</span>
-              </div>
-              <h3 className="leading-[0.98] mb-4" style={{ ...bagel, fontSize: "clamp(28px, 3vw, 40px)" }}>
-                {step.title}
-              </h3>
-              <p className="body-tight text-[15px] leading-relaxed" style={{ color: COLORS.muted }}>
-                {step.body}
-              </p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      {/* ═══ Panel 3 — PICK ═══ */}
+      <CinematicPanel
+        videoSrc={mediaPick.videoSrc}
+        posterSrc={mediaPick.posterSrc}
+        imageSrc={mediaPick.imageSrc}
+        eyebrow="02 / 03 · the direction"
+        title={<>Pick.</>}
+        subtitle={<>Three editorial angles, pre-tuned to your month, your sector, your brand. Click. That's the brief.</>}
+      />
 
-      {/* ═══ Before / After — split tech timers ═══
-       *   Deux colonnes 50/50 divisées par une hairline verticale. Gauche =
-       *   la douleur (4 heures), droite = la promesse (42 seconds). Pas de
-       *   Surface coloré, juste de la typo et du coral sur le côté "After". */}
-      <section className="border-t" style={{ borderColor: COLORS.line }}>
-        <div className="px-5 md:px-10 py-24 md:py-32 max-w-[1400px] mx-auto">
-          <div className="mb-16 md:mb-20">
-            <div className="mono-label mb-4" style={{ color: COLORS.muted }}>
-              <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: COLORS.coral }} />
-              The delta
-            </div>
-            <h2 className="leading-[0.95] max-w-[18ch]" style={{ ...bagel, fontSize: "clamp(48px, 8vw, 120px)" }}>
-              4 hours, or <span style={{ color: COLORS.coral }}>42 seconds.</span>
-            </h2>
+      {/* ═══ Panel 4 — SHIP ═══ */}
+      <CinematicPanel
+        videoSrc={mediaShip.videoSrc}
+        posterSrc={mediaShip.posterSrc}
+        imageSrc={mediaShip.imageSrc}
+        eyebrow="03 / 03 · the pack"
+        title={<>Ship.</>}
+        subtitle={<>Six assets, image + paired 5s film, framed for every network. Download the ZIP. Or publish, one click.</>}
+      />
+
+      {/* ═══ Panel 5 — DELTA (split timers on dark canvas) ═══
+       *   Full 100vh like the others but instead of a single media, two
+       *   halves side-by-side: the old workflow (pale grey, 4h) vs Ora
+       *   (coral, 42s). No media behind — pure typography on black reads
+       *   as "the cold hard number" which is exactly the point. */}
+      <section className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: "#0A0A0A" }}>
+        <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
+          <div className="mono-label mb-10" style={{ color: "rgba(250,250,250,0.6)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            The delta
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2">
-            <div className="pt-8 pb-8 md:py-12 md:pr-12">
-              <div className="mono-label mb-4" style={{ color: COLORS.subtle }}>Before Ora</div>
-              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 12vw, 160px)", color: COLORS.ink, lineHeight: 0.92 }}>
+            <div className="pb-8 md:py-12 md:pr-12">
+              <div className="mono-label mb-4" style={{ color: "rgba(250,250,250,0.5)" }}>Before Ora</div>
+              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "rgba(250,250,250,0.35)", lineHeight: 0.92 }}>
                 04:00:00
               </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: COLORS.muted }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-50">×</span> Design in Figma</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-50">×</span> Resize for 8 formats</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-50">×</span> Export manually</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-50">×</span> Rewrite prompts</li>
+              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "rgba(250,250,250,0.5)" }}>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Design in Figma</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Resize for 8 formats</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Export manually</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Rewrite prompts</li>
               </ul>
             </div>
-            <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: COLORS.line }}>
-              <div className="mono-label mb-4" style={{ color: COLORS.coral }}>With Ora</div>
-              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 12vw, 160px)", color: COLORS.coral, lineHeight: 0.92 }}>
+            <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: "rgba(250,250,250,0.12)" }}>
+              <div className="mono-label mb-4" style={{ color: "#FF6B47" }}>With Ora</div>
+              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "#FF6B47", lineHeight: 0.92 }}>
                 00:00:42
               </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: COLORS.ink }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: COLORS.coral }}>✓</span> One click</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: COLORS.coral }}>✓</span> 8 platform-ready assets</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: COLORS.coral }}>✓</span> Brand-locked consistency</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: COLORS.coral }}>✓</span> Zero prompting</li>
+              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "#FAFAFA" }}>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> One click</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> 8 platform-ready assets</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Brand-locked consistency</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Zero prompting</li>
               </ul>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ═══ Gallery — draggable bento of real packs ═══
-       *   Each featured campaign contributes its top 4 assets to the bento.
-       *   Users drag horizontally through the pack (image OR video, auto-
-       *   detected from URL), click a tile to open a full-screen lightbox.
-       *   Falls back to the curated showcase Tile set when no starred
-       *   campaigns exist yet. */}
+      {/* ═══ Panel 6 — GALLERY (draggable bento, dark) ═══
+       *   The existing BentoGallery component re-skinned by wrapping it in
+       *   a dark band. Its tiles keep their rounded borders but now sit on
+       *   the deep-black canvas so the imagery pops with the same cinema
+       *   feel as the preceding panels. */}
       {(() => {
         const bentoItems: BentoItem[] = [];
         if (showcaseCampaigns.length > 0) {
@@ -463,83 +396,50 @@ export function LandingPage() {
           });
         }
         return (
-          <div className="border-t" style={{ borderColor: COLORS.line }}>
+          <div
+            className="dark-gallery-band"
+            style={{
+              background: "#0A0A0A",
+              color: "#FAFAFA",
+              borderTop: "1px solid rgba(250,250,250,0.08)",
+              // Override the shadcn tokens the BentoGallery relies on so
+              // its tiles render dark without touching the component.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ...({
+                "--background": "#0A0A0A",
+                "--foreground": "#FAFAFA",
+                "--muted-foreground": "rgba(250,250,250,0.6)",
+                "--card": "#141414",
+                "--border": "rgba(250,250,250,0.08)",
+                "--ring": "rgba(250,250,250,0.2)",
+              } as React.CSSProperties),
+            }}
+          >
             <BentoGallery
               id="gallery"
               eyebrow="Real packs, real brands"
               title="One click. Full pack."
               description="Drag through the latest Ora campaigns. Click any tile to open it full-screen."
               items={bentoItems}
-              className="max-w-[1400px] mx-auto"
             />
           </div>
         );
       })()}
 
-      {/* ═══ Pillars — Locked / Bold / Unique ═══
-       *   Trois colonnes hairline-divisées. Chacune = icône mono, Bagel titre
-       *   court, body tight. Aucun Surface coloré. Les Surface warm/butter/
-       *   violet ont été retirés pour casser le feel "studio artisanal". */}
-      <section className="border-t" style={{ borderColor: COLORS.line }}>
-        <div className="px-5 md:px-10 py-24 md:py-32 max-w-[1400px] mx-auto">
-          <div className="mb-16 md:mb-20">
-            <div className="mono-label mb-4" style={{ color: COLORS.muted }}>
-              <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: COLORS.coral }} />
-              Why it works
-            </div>
-            <h2 className="leading-[0.95] max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(48px, 8vw, 120px)" }}>
-              Locked. Bold. <span style={{ color: COLORS.coral }}>Unique.</span>
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3">
-            {[
-              { n: "01", icon: Lock,     title: "Locked", body: "Your brand DNA never drifts. Palette, style and tone stay exact." },
-              { n: "02", icon: Sparkles, title: "Bold",   body: "Every batch carries a fresh creative twist — on-brand, always." },
-              { n: "03", icon: Zap,      title: "Unique", body: "Seed + scenes + variation. One-of-one packs every time." },
-            ].map((p, i) => {
-              const Icon = p.icon;
-              return (
-                <motion.div
-                  key={p.n}
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: "-60px" }}
-                  transition={{ duration: 0.5, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] }}
-                  className={`py-10 md:py-12 ${i > 0 ? "md:pl-10 md:border-l" : ""} ${i < 2 ? "md:pr-10" : ""}`}
-                  style={{ borderColor: COLORS.line }}
-                >
-                  <div className="mono-label mb-6 flex items-center justify-between" style={{ color: COLORS.subtle }}>
-                    <span className="tabular-nums">{p.n} / 03</span>
-                    <Icon size={14} style={{ color: COLORS.ink }} strokeWidth={1.75} />
-                  </div>
-                  <h3 className="leading-[0.98] mb-4" style={{ ...bagel, fontSize: "clamp(44px, 5vw, 72px)" }}>
-                    {p.title}
-                  </h3>
-                  <p className="body-tight text-[15px] leading-relaxed max-w-[28ch]" style={{ color: COLORS.muted }}>
-                    {p.body}
-                  </p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══ Pricing teaser — open full-bleed ═══
-       *   L'ancienne Surface ink centrée lisait "box promo". Ici on ouvre :
-       *   section blanche, typo géante aligned-left, CTA pill coral et
-       *   pricing indicator en mono. Pareil que Luma/Ideogram. */}
-      <section id="pricing" className="border-t" style={{ borderColor: COLORS.line }}>
-        <div className="px-5 md:px-10 py-24 md:py-32 max-w-[1400px] mx-auto">
-          <div className="mono-label mb-4" style={{ color: COLORS.muted }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: COLORS.coral }} />
+      {/* ═══ Panel 7 — PRICING CTA (full-viewport) ═══
+       *   One last cinematic beat. No media behind — just a huge Bagel
+       *   statement on black with the coral payoff, CTA + mono pricing. */}
+      <section id="pricing" className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.08)" }}>
+        <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
+          <div className="mono-label mb-6" style={{ color: "rgba(250,250,250,0.6)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
             Start creating
           </div>
-          <h2 className="leading-[0.92] max-w-[16ch] mb-10" style={{ ...bagel, fontSize: "clamp(56px, 10vw, 160px)" }}>
+          <h2 className="leading-[0.9] max-w-[18ch] mb-10 text-white" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 200px)" }}>
             Stop designing.<br />
-            <span style={{ color: COLORS.coral }}>Start surprising.</span>
+            <span style={{ color: "#FF6B47" }}>Start surprising.</span>
           </h2>
-          <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: COLORS.muted }}>
+          <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: "rgba(250,250,250,0.75)" }}>
             Join the brands who've stopped briefing Figma. Pick a plan, ship your first pack tonight.
           </p>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -548,26 +448,26 @@ export function LandingPage() {
                 Pick a plan <ArrowRight size={16} />
               </Button>
             </Link>
-            <span className="mono-label" style={{ color: COLORS.subtle }}>
+            <span className="mono-label" style={{ color: "rgba(250,250,250,0.5)" }}>
               From €19/mo · cancel anytime
             </span>
           </div>
         </div>
       </section>
 
-      {/* ═══ Footer — minimal, mono ═══ */}
-      <footer className="border-t" style={{ borderColor: COLORS.line }}>
-        <div className="px-5 md:px-10 py-10 max-w-[1400px] mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      {/* ═══ Footer — dark minimal, mono ═══ */}
+      <footer style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.08)" }}>
+        <div className="px-5 md:px-10 py-10 max-w-[1600px] mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center">
-            <span className="text-[22px] leading-none" style={bagel}>Ora</span>
+            <span className="text-[22px] leading-none text-white" style={bagel}>Ora</span>
           </div>
-          <div className="mono-label flex items-center gap-6" style={{ color: COLORS.muted }}>
-            <Link to="/pricing" className="hover:text-black transition-colors">Pricing</Link>
-            <a href="#gallery" className="hover:text-black transition-colors">Gallery</a>
-            <Link to="/terms" className="hover:text-black transition-colors">Terms</Link>
-            <Link to="/privacy" className="hover:text-black transition-colors">Privacy</Link>
+          <div className="mono-label flex items-center gap-6" style={{ color: "rgba(250,250,250,0.55)" }}>
+            <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
+            <a href="#gallery" className="hover:text-white transition-colors">Gallery</a>
+            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
           </div>
-          <div className="mono-label tabular-nums" style={{ color: COLORS.subtle }}>
+          <div className="mono-label tabular-nums" style={{ color: "rgba(250,250,250,0.4)" }}>
             © {new Date().getFullYear()} Ora · v2.4
           </div>
         </div>
