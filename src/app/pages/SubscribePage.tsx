@@ -100,11 +100,26 @@ export function SubscribePage() {
     if (searchParams.get("success") !== "true") setPlanCode(next);
   }, [searchParams]);
 
-  // Handle Stripe redirect outcomes.
+  // Handle Stripe redirect outcomes. The webhook that upgrades
+  // `profile.plan` from free → paid can race the browser redirect, so
+  // we poll refreshProfile a few times with backoff until the plan
+  // actually reflects the purchase (or we give up gracefully — the
+  // webhook will catch up eventually). Without this, users sometimes
+  // land on "You're Studio. 200 assets" while their profile still reads
+  // plan=free for a beat, which is both confusing and can gate the
+  // very next /hub action.
   useEffect(() => {
     if (searchParams.get("success") === "true") {
-      setSuccessPlan(normalizePlan(searchParams.get("plan")));
-      refreshProfile();
+      const wanted = normalizePlan(searchParams.get("plan"));
+      setSuccessPlan(wanted);
+      let tries = 0;
+      const MAX_TRIES = 6;
+      const poll = async () => {
+        tries += 1;
+        try { await refreshProfile(); } catch { /* silent */ }
+        if (tries < MAX_TRIES) setTimeout(poll, 1500 + tries * 500);
+      };
+      poll();
     } else if (searchParams.get("canceled") === "true") {
       setError("Payment cancelled. You can try again whenever you're ready.");
     }

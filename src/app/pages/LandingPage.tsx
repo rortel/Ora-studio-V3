@@ -779,13 +779,13 @@ export function LandingPage() {
         subtitle={<>Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn, Instagram, TikTok — in one click. No prompt writing.</>}
         cta={
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Link to={primaryHref}>
+            <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"}>
               <Button variant="accent" size="lg">
-                Pick a plan · Start shipping <ArrowRight size={16} />
+                {user ? "Open Ora" : "Start free · 10 credits"} <ArrowRight size={16} />
               </Button>
             </Link>
             <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
-              From €19/mo · cancel anytime
+              {user ? "No more CTAs, just ship." : "No card · 1 full pack on us"}
             </span>
           </div>
         }

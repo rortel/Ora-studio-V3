@@ -24,17 +24,27 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // If already authenticated, redirect based on role
+  // Respect `?next=` so pricing/signup CTAs survive the auth detour.
+  // Falls back to /hub/surprise (free-trial landing with 10 credits) so
+  // new signups taste the product immediately instead of being parked on
+  // /profile or /onboarding. Admins still go to /admin.
+  const nextParam = searchParams.get("next") || "";
+  const safeNext = nextParam && nextParam.startsWith("/") ? nextParam : "";
+  const postAuthTarget = (userEmail: string) => {
+    if (userEmail.toLowerCase() === ADMIN_EMAIL) return "/admin";
+    return safeNext || "/hub/surprise";
+  };
+
+  // If already authenticated, redirect based on role (respecting ?next).
   useEffect(() => {
     if (!authLoading && user) {
-      // Use profile.role if available, otherwise check email directly
       if (profile?.role === "admin" || user.email.toLowerCase() === ADMIN_EMAIL) {
         navigate("/admin");
       } else {
-        navigate("/profile");
+        navigate(safeNext || "/profile");
       }
     }
-  }, [authLoading, user, profile, navigate]);
+  }, [authLoading, user, profile, navigate, safeNext]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,13 +67,8 @@ export function LoginPage() {
         return;
       }
       console.log("Signed in:", data.session?.user?.id);
-      // Redirect based on email: admin -> /admin, others -> /profile
-      const userEmail = data.session?.user?.email?.toLowerCase() || "";
-      if (userEmail === ADMIN_EMAIL) {
-        navigate("/admin");
-      } else {
-        navigate("/profile");
-      }
+      const userEmail = data.session?.user?.email || "";
+      navigate(postAuthTarget(userEmail));
     } catch (err) {
       console.error("Sign in exception:", err);
       setError(t("login.errorUnexpected"));
@@ -117,8 +122,14 @@ export function LoginPage() {
       }
 
       console.log("Signed up and in:", signInData.session?.user?.id);
-      // After signup -> subscription page to choose plan
-      navigate("/onboarding");
+      // Post-signup landing: respect ?next if present (e.g. pricing CTA
+      // sent them here with next=/subscribe?plan=studio), otherwise drop
+      // them straight into /hub/surprise with their free trial credits
+      // so they can taste the product BEFORE being asked to pay. The
+      // forced /onboarding stop is gone — we let users hit the product
+      // first, onboarding surfaces as a nudge from the brand-lock panel.
+      const userEmail = signInData.session?.user?.email || email;
+      navigate(postAuthTarget(userEmail));
     } catch (err: any) {
       console.error("Signup exception:", err);
       if (err?.name === "AbortError") {
@@ -250,9 +261,20 @@ export function LoginPage() {
           >
             {titles[mode].heading}
           </h1>
-          <p className="text-center mb-7" style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
+          <p className="text-center mb-5" style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
             {titles[mode].sub}
           </p>
+          {mode === "signup" && (
+            <div
+              className="text-center mb-7 inline-flex items-center justify-center gap-2 py-1.5 px-3 rounded-full mx-auto w-fit"
+              style={{ background: "rgba(255,92,57,0.08)", border: "1px solid rgba(255,92,57,0.18)" }}
+            >
+              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF5C39" }} />
+              <span className="mono-label" style={{ color: "#FF5C39", fontSize: 10.5 }}>
+                10 free credits · 1 full pack on us · no card
+              </span>
+            </div>
+          )}
 
           {/* Error message */}
           {error && (
