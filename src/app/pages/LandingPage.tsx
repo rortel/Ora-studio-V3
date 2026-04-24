@@ -4,6 +4,7 @@ import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePres
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
+import { AppTabs } from "../components/AppTabs";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { API_BASE } from "../lib/supabase";
 import heroVideo from "../../assets/hero-video.mp4";
@@ -78,7 +79,7 @@ function CinematicPanel({
     <section
       ref={ref}
       className="relative w-full overflow-hidden"
-      style={{ height: "100vh", minHeight: 640, background: "#0A0A0A" }}
+      style={{ height: "100vh", minHeight: 640, background: COLORS.cream }}
     >
       {/* Media canvas — fills the section, parallax-translated. */}
       <motion.div
@@ -120,7 +121,7 @@ function CinematicPanel({
         className="relative z-10 flex h-full flex-col justify-end px-6 md:px-16 pb-[7vh] md:pb-[9vh] max-w-[1500px] mx-auto"
       >
         {eyebrow && (
-          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.72)" }}>
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(17,17,17,0.72)" }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
             <span>{eyebrow}</span>
           </div>
@@ -139,7 +140,7 @@ function CinematicPanel({
         {subtitle && (
           <p
             className="body-tight mt-6 max-w-xl text-[16px] md:text-[18px]"
-            style={{ color: "rgba(250,250,250,0.8)" }}
+            style={{ color: "rgba(17,17,17,0.8)" }}
           >
             {subtitle}
           </p>
@@ -184,19 +185,19 @@ function MethodPanel({
     <section
       ref={ref}
       className="relative w-full overflow-hidden"
-      style={{ minHeight: "100vh", background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.06)" }}
+      style={{ minHeight: "100vh", background: COLORS.cream, borderTop: `1px solid ${COLORS.line}` }}
     >
       <div className="max-w-[1800px] mx-auto px-6 md:px-12 lg:px-16 h-full min-h-screen grid grid-cols-1 md:grid-cols-[minmax(0,360px)_1fr] gap-8 md:gap-14 items-center py-20 md:py-0">
         {/* Text column */}
         <motion.div style={{ y: textY, opacity: textOpacity }} className="flex flex-col justify-center">
-          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.72)" }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: COLORS.muted }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
             <span>{eyebrow}</span>
           </div>
-          <h2 className="text-white max-w-[10ch] mb-6" style={{ ...bagel, fontSize: "clamp(56px, 8vw, 120px)" }}>
+          <h2 className="max-w-[10ch] mb-6" style={{ ...bagel, fontSize: "clamp(56px, 8vw, 120px)", color: COLORS.ink }}>
             {title}
           </h2>
-          <p className="body-tight text-[16px] md:text-[17px] max-w-md" style={{ color: "rgba(250,250,250,0.75)" }}>
+          <p className="body-tight text-[16px] md:text-[17px] max-w-md" style={{ color: COLORS.muted }}>
             {subtitle}
           </p>
         </motion.div>
@@ -209,11 +210,13 @@ function MethodPanel({
   );
 }
 
-/* Shared color for mockup surfaces — slightly lifted from the #0A0A0A
- * canvas so panels read as cards, not holes. */
-const MOCK_SURFACE = "#141414";
-const MOCK_BORDER = "rgba(250,250,250,0.08)";
-const MOCK_BORDER_STRONG = "rgba(250,250,250,0.14)";
+/* Shared mockup surface tokens — light theme matching the cream canvas.
+ * White card surface, ink hairline borders, shadow depth for elevation. */
+const MOCK_SURFACE = "#FFFFFF";
+const MOCK_BORDER = "rgba(17,17,17,0.08)";
+const MOCK_BORDER_STRONG = "rgba(17,17,17,0.14)";
+const MOCK_TEXT_MUTED = "rgba(17,17,17,0.55)";
+const MOCK_TEXT_SUBTLE = "rgba(17,17,17,0.4)";
 
 /**
  * MouseTilt — 3D-like pointer parallax wrapper.
@@ -291,7 +294,7 @@ function TypedUrl({ target, active }: { target: string; active: boolean }) {
     return () => clearInterval(id);
   }, [active, target]);
   return (
-    <span className="font-mono text-[13px]" style={{ color: "#FAFAFA" }}>
+    <span className="font-mono text-[13px]" style={{ color: COLORS.ink }}>
       {out}
       <motion.span
         animate={{ opacity: [1, 0, 1] }}
@@ -351,7 +354,7 @@ function DropMockup() {
           <span className="w-3 h-3 rounded-full" style={{ background: "#FF5F57" }} />
           <span className="w-3 h-3 rounded-full" style={{ background: "#FEBC2E" }} />
           <span className="w-3 h-3 rounded-full" style={{ background: "#28C840" }} />
-          <span className="mono-label ml-auto text-[11px]" style={{ color: "rgba(250,250,250,0.5)", textTransform: "none", letterSpacing: "0.02em" }}>
+          <span className="mono-label ml-auto text-[11px]" style={{ color: "rgba(17,17,17,0.5)", textTransform: "none", letterSpacing: "0.02em" }}>
             ora-studio.app/hub/vault
           </span>
         </motion.div>
@@ -360,9 +363,9 @@ function DropMockup() {
         <motion.div style={{ y: contentY }} className="p-8 md:p-12 space-y-7">
           {/* URL input with animated typing */}
           <div>
-            <div className="mono-label mb-3" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
+            <div className="mono-label mb-3" style={{ color: "rgba(17,17,17,0.5)" }}>Scan your URL</div>
             <div className="flex gap-3">
-              <div className="flex-1 h-14 rounded-xl flex items-center px-4" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}` }}>
+              <div className="flex-1 h-14 rounded-xl flex items-center px-4" style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${MOCK_BORDER}` }}>
                 <TypedUrl target="https://mybrand.com/" active={active} />
               </div>
               <motion.div
@@ -385,7 +388,7 @@ function DropMockup() {
           </div>
 
           {/* Progress bar — scroll-tied */}
-          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(250,250,250,0.06)" }}>
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(17,17,17,0.06)" }}>
             <motion.div className="h-full" style={{ width: progress, background: "#FF6B47" }} />
           </div>
 
@@ -394,10 +397,10 @@ function DropMockup() {
             <AnimatePresence>
               {step >= 1 && (
                 <motion.div {...POP} key="logo" className="flex items-center gap-6">
-                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(17,17,17,0.5)" }}>Logo</div>
                   <motion.div
                     className="w-14 h-14 rounded-lg flex items-center justify-center"
-                    style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 24 }}
+                    style={{ background: COLORS.ink, color: COLORS.butter, ...bagel, fontSize: 24 }}
                     whileHover={{ rotate: -4, scale: 1.05 }}
                   >
                     Ora
@@ -406,7 +409,7 @@ function DropMockup() {
               )}
               {step >= 2 && (
                 <motion.div key="palette" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }} className="flex items-center gap-6">
-                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(17,17,17,0.5)" }}>Palette</div>
                   <div className="flex gap-2">
                     {["#FF6B47", "#F4C542", "#111111", "#FAFAF7", "#6C6C6C"].map((c, i) => (
                       <motion.div
@@ -424,7 +427,7 @@ function DropMockup() {
               )}
               {step >= 3 && (
                 <motion.div {...POP} key="type" className="flex items-center gap-6">
-                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
+                  <div className="mono-label w-20 shrink-0" style={{ color: "rgba(17,17,17,0.5)" }}>Type</div>
                   <div className="flex items-baseline gap-4 text-[#FAFAFA]">
                     <span style={{ ...bagel, fontSize: 32 }}>Aa</span>
                     <span className="body-tight text-[16px]" style={{ opacity: 0.7 }}>Bagel Fat One / Inter</span>
@@ -433,7 +436,7 @@ function DropMockup() {
               )}
               {step >= 4 && (
                 <motion.div key="tone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-6">
-                  <div className="mono-label w-20 shrink-0 pt-1.5" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
+                  <div className="mono-label w-20 shrink-0 pt-1.5" style={{ color: "rgba(17,17,17,0.5)" }}>Tone</div>
                   <div className="flex flex-wrap gap-2">
                     {["bold", "editorial", "warm", "confident"].map((t, i) => (
                       <motion.span
@@ -442,7 +445,7 @@ function DropMockup() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         transition={{ type: "spring", stiffness: 380, damping: 18, delay: i * 0.07 }}
                         className="mono-label px-3.5 py-1.5 rounded-full text-[12px]"
-                        style={{ background: "rgba(250,250,250,0.06)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA", textTransform: "none", letterSpacing: "0.02em" }}
+                        style={{ background: "rgba(17,17,17,0.06)", border: `1px solid ${MOCK_BORDER}`, color: COLORS.ink, textTransform: "none", letterSpacing: "0.02em" }}
                       >
                         {t}
                       </motion.span>
@@ -486,7 +489,7 @@ function PickMockup() {
       viewport={{ once: true, margin: "-100px" }}
       transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="mono-label mb-5 flex items-center gap-2.5 text-[12px]" style={{ color: "rgba(250,250,250,0.55)" }}>
+      <div className="mono-label mb-5 flex items-center gap-2.5 text-[12px]" style={{ color: "rgba(17,17,17,0.55)" }}>
         <motion.span
           animate={{ scale: [1, 1.4, 1], opacity: [1, 0.7, 1] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
@@ -495,7 +498,7 @@ function PickMockup() {
         />
         <span>Ora suggests · April</span>
       </div>
-      <h3 className="text-white mb-10" style={{ ...bagel, fontSize: "clamp(40px, 5vw, 72px)" }}>
+      <h3 className="mb-10" style={{ ...bagel, fontSize: "clamp(40px, 5vw, 72px)", color: COLORS.ink }}>
         Pick a direction.
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-5">
@@ -526,9 +529,9 @@ function PickMockup() {
               >
                 {a.emoji}
               </motion.div>
-              <div className="text-white mb-2.5" style={{ ...bagel, fontSize: 30 }}>{a.title}</div>
-              <p className="body-tight text-[14px] mb-6 flex-1" style={{ color: "rgba(250,250,250,0.65)" }}>{a.subtitle}</p>
-              <div className="mono-label text-[11px]" style={{ color: "rgba(250,250,250,0.45)" }}>
+              <div className="mb-2.5" style={{ ...bagel, fontSize: 30, color: COLORS.ink }}>{a.title}</div>
+              <p className="body-tight text-[14px] mb-6 flex-1" style={{ color: "rgba(17,17,17,0.65)" }}>{a.subtitle}</p>
+              <div className="mono-label text-[11px]" style={{ color: "rgba(17,17,17,0.45)" }}>
                 {a.count} assets · {a.networks}
               </div>
             </motion.div>
@@ -595,7 +598,7 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ delay: 0.6 + i * 0.08, duration: 0.3 }}
-                style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 11 }}
+                style={{ background: "rgba(255,255,255,0.92)", color: COLORS.ink, backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 11, border: `1px solid ${MOCK_BORDER}` }}
               >
                 {PLATFORMS[i]}
               </motion.div>
@@ -605,7 +608,7 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.7 + i * 0.08 }}
-                style={{ color: "rgba(250,250,250,0.9)", background: "rgba(10,10,10,0.6)", padding: "3px 8px", borderRadius: 999, fontSize: 11 }}
+                style={{ color: "#FFFFFF", background: COLORS.coral, padding: "3px 8px", borderRadius: 999, fontSize: 11 }}
               >
                 42s
               </motion.div>
@@ -646,13 +649,13 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
     },
   ];
   return (
-    <section id="pricing-tiers" className="relative w-full" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.06)" }}>
+    <section id="pricing-tiers" className="relative w-full" style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.06)" }}>
       <div className="max-w-[1400px] mx-auto px-6 md:px-16 py-24 md:py-32">
-        <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.6)" }}>
+        <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(17,17,17,0.6)" }}>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
           <span>Pricing · one per brand</span>
         </div>
-        <h2 className="text-white mb-14 max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(56px, 9vw, 140px)" }}>
+        <h2 className="mb-14 max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(56px, 9vw, 140px)", color: COLORS.ink }}>
           Pick a plan. <span style={{ color: "#FF6B47" }}>Ship tonight.</span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
@@ -675,15 +678,15 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
                   Most picked
                 </div>
               )}
-              <div className="mono-label mb-2" style={{ color: t.highlight ? "#FF6B47" : "rgba(250,250,250,0.5)" }}>
+              <div className="mono-label mb-2" style={{ color: t.highlight ? "#FF6B47" : "rgba(17,17,17,0.5)" }}>
                 {t.name}
               </div>
-              <div className="mb-2 flex items-baseline gap-2 text-white">
+              <div className="mb-2 flex items-baseline gap-2" style={{ color: COLORS.ink }}>
                 <span className="tabular-nums" style={{ ...bagel, fontSize: "clamp(56px, 6vw, 84px)" }}>€{t.price}</span>
-                <span className="mono-label" style={{ color: "rgba(250,250,250,0.55)" }}>/ month</span>
+                <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>/ month</span>
               </div>
-              <p className="body-tight text-[13px] mb-6" style={{ color: "rgba(250,250,250,0.6)" }}>{t.tagline}</p>
-              <ul className="body-tight text-[13.5px] space-y-2.5 mb-8 flex-1" style={{ color: "rgba(250,250,250,0.85)" }}>
+              <p className="body-tight text-[13px] mb-6" style={{ color: "rgba(17,17,17,0.6)" }}>{t.tagline}</p>
+              <ul className="body-tight text-[13.5px] space-y-2.5 mb-8 flex-1" style={{ color: "rgba(17,17,17,0.85)" }}>
                 {t.features.map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
                     <span className="mono-data mt-0.5" style={{ color: "#FF6B47", fontSize: 12 }}>✓</span>
@@ -693,8 +696,8 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
               </ul>
               <Link to={primaryHref}>
                 <button className="w-full h-11 rounded-full mono-label transition-transform hover:scale-[1.02]" style={{
-                  background: t.highlight ? "#FF6B47" : "rgba(250,250,250,0.06)",
-                  color: t.highlight ? "#FFFFFF" : "#FAFAFA",
+                  background: t.highlight ? "#FF6B47" : "rgba(17,17,17,0.06)",
+                  color: t.highlight ? "#FFFFFF" : COLORS.ink,
                   border: t.highlight ? "none" : `1px solid ${MOCK_BORDER_STRONG}`,
                   textTransform: "none",
                   letterSpacing: "0.02em",
@@ -707,7 +710,7 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
             </motion.div>
           ))}
         </div>
-        <div className="mono-label mt-10 text-center" style={{ color: "rgba(250,250,250,0.45)" }}>
+        <div className="mono-label mt-10 text-center" style={{ color: "rgba(17,17,17,0.45)" }}>
           Yearly billing · 20% off · cancel anytime
         </div>
       </div>
@@ -757,41 +760,13 @@ export function LandingPage() {
   const mediaHero = panelMedia(0);
 
   return (
-    <div style={{ background: "#0A0A0A", color: "#FAFAFA" }}>
-      {/* ═══ Navbar — fixed, dark, mono ═══
-       *   Sits over the hero without pushing it down, blurs the video
-       *   underneath. Mono nav links for the tech signal. */}
-      <header
-        className="fixed top-0 left-0 right-0 z-40 backdrop-blur-xl"
-        style={{ background: "rgba(10,10,10,0.55)", borderBottom: "1px solid rgba(250,250,250,0.08)" }}
-      >
-        <nav className="px-5 md:px-10 h-14 flex items-center justify-between max-w-[1600px] mx-auto">
-          <Link to="/" className="flex items-center" aria-label="Ora">
-            <span className="text-[24px] leading-none text-white" style={bagel}>Ora</span>
-          </Link>
-          <div
-            className="hidden md:flex items-center gap-7 mono-label"
-            style={{ color: "rgba(250,250,250,0.7)" }}
-          >
-            <a href="#how" className="hover:text-white transition-colors">How it works</a>
-            <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-          </div>
-          <div className="flex items-center gap-2">
-            {!user && (
-              <Link to="/login">
-                <button className="mono-label px-3 h-8 rounded-full transition-colors hover:bg-white/10" style={{ color: "rgba(250,250,250,0.8)" }}>
-                  Sign in
-                </button>
-              </Link>
-            )}
-            <Link to={primaryHref}>
-              <Button variant="accent" size="md">
-                {user ? "Open" : "Get started"} <ArrowRight size={14} />
-              </Button>
-            </Link>
-          </div>
-        </nav>
-      </header>
+    <div style={{ background: COLORS.cream, color: COLORS.ink }}>
+      {/* ═══ Navbar — unified AppTabs pill segmented control ═══
+       *   Same navbar pattern used across Hub / Surprise / Library / Edit /
+       *   Vault. On the landing the 4 tabs act as a teaser of what the
+       *   visitor will use post-signup. "Surprise Me" stays visually active
+       *   by default since it's the primary flow users land on. */}
+      <AppTabs />
 
       {/* ═══ Panel 1 — HERO ═══ */}
       <CinematicPanel
@@ -809,7 +784,7 @@ export function LandingPage() {
                 Pick a plan · Start shipping <ArrowRight size={16} />
               </Button>
             </Link>
-            <span className="mono-label" style={{ color: "rgba(250,250,250,0.55)" }}>
+            <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
               From €19/mo · cancel anytime
             </span>
           </div>
@@ -848,31 +823,31 @@ export function LandingPage() {
        *   halves side-by-side: the old workflow (pale grey, 4h) vs Ora
        *   (coral, 42s). No media behind — pure typography on black reads
        *   as "the cold hard number" which is exactly the point. */}
-      <section className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: "#0A0A0A" }}>
+      <section className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: COLORS.cream }}>
         <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
-          <div className="mono-label mb-10" style={{ color: "rgba(250,250,250,0.6)" }}>
+          <div className="mono-label mb-10" style={{ color: "rgba(17,17,17,0.6)" }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
             The delta
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div className="pb-8 md:py-12 md:pr-12">
-              <div className="mono-label mb-4" style={{ color: "rgba(250,250,250,0.5)" }}>Before Ora</div>
-              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "rgba(250,250,250,0.35)", lineHeight: 0.92 }}>
+              <div className="mono-label mb-4" style={{ color: "rgba(17,17,17,0.5)" }}>Before Ora</div>
+              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "rgba(17,17,17,0.35)", lineHeight: 0.92 }}>
                 04:00:00
               </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "rgba(250,250,250,0.5)" }}>
+              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "rgba(17,17,17,0.5)" }}>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Design in Figma</li>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Resize for 8 formats</li>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Export manually</li>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Rewrite prompts</li>
               </ul>
             </div>
-            <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: "rgba(250,250,250,0.12)" }}>
+            <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: "rgba(17,17,17,0.12)" }}>
               <div className="mono-label mb-4" style={{ color: "#FF6B47" }}>With Ora</div>
               <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "#FF6B47", lineHeight: 0.92 }}>
                 00:00:42
               </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "#FAFAFA" }}>
+              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: COLORS.ink }}>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> One click</li>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> 8 platform-ready assets</li>
                 <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Brand-locked consistency</li>
@@ -899,17 +874,17 @@ export function LandingPage() {
       {/* ═══ Panel 8 — FINAL CTA (full-viewport) ═══
        *   One last cinematic beat. No media behind — just a huge Bagel
        *   statement on black with the coral payoff, CTA + mono pricing. */}
-      <section id="pricing" className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.08)" }}>
+      <section id="pricing" className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.08)" }}>
         <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
-          <div className="mono-label mb-6" style={{ color: "rgba(250,250,250,0.6)" }}>
+          <div className="mono-label mb-6" style={{ color: "rgba(17,17,17,0.6)" }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
             Start creating
           </div>
-          <h2 className="leading-[0.9] max-w-[18ch] mb-10 text-white" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 200px)" }}>
+          <h2 className="leading-[0.9] max-w-[18ch] mb-10" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 200px)", color: COLORS.ink }}>
             Stop designing.<br />
             <span style={{ color: "#FF6B47" }}>Start surprising.</span>
           </h2>
-          <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: "rgba(250,250,250,0.75)" }}>
+          <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: "rgba(17,17,17,0.75)" }}>
             Join the brands who've stopped briefing Figma. Pick a plan, ship your first pack tonight.
           </p>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -918,7 +893,7 @@ export function LandingPage() {
                 Pick a plan <ArrowRight size={16} />
               </Button>
             </Link>
-            <span className="mono-label" style={{ color: "rgba(250,250,250,0.5)" }}>
+            <span className="mono-label" style={{ color: "rgba(17,17,17,0.5)" }}>
               From €19/mo · cancel anytime
             </span>
           </div>
@@ -926,17 +901,17 @@ export function LandingPage() {
       </section>
 
       {/* ═══ Footer — dark minimal, mono ═══ */}
-      <footer style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.08)" }}>
+      <footer style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.08)" }}>
         <div className="px-5 md:px-10 py-10 max-w-[1600px] mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center">
-            <span className="text-[22px] leading-none text-white" style={bagel}>Ora</span>
+            <span className="text-[22px] leading-none" style={{ ...bagel, color: COLORS.ink }}>Ora</span>
           </div>
-          <div className="mono-label flex items-center gap-6" style={{ color: "rgba(250,250,250,0.55)" }}>
-            <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
-            <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+          <div className="mono-label flex items-center gap-6" style={{ color: "rgba(17,17,17,0.55)" }}>
+            <Link to="/pricing" className="hover:text-black transition-colors">Pricing</Link>
+            <Link to="/terms" className="hover:text-black transition-colors">Terms</Link>
+            <Link to="/privacy" className="hover:text-black transition-colors">Privacy</Link>
           </div>
-          <div className="mono-label tabular-nums" style={{ color: "rgba(250,250,250,0.4)" }}>
+          <div className="mono-label tabular-nums" style={{ color: "rgba(17,17,17,0.4)" }}>
             © {new Date().getFullYear()} Ora · v2.4
           </div>
         </div>
