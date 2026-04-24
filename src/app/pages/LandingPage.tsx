@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { motion } from "motion/react";
+import { motion, useScroll, useTransform } from "motion/react";
 import { ArrowRight, Lock, Sparkles, Zap } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
@@ -54,6 +54,156 @@ function platformLabel(p: string): string {
   if (s.includes("facebook"))         return "facebook";
   if (s.includes("tiktok"))           return "tiktok";
   return p || "asset";
+}
+
+/**
+ * Hero — editorial full-bleed. Two vertical beats:
+ *   1. Statement: mono eyebrow + kinetic Bagel headline + subtitle + CTAs
+ *   2. Media: full-viewport-width video with a parallax translate on scroll
+ * The cream canvas continues under both beats so Bagel stays legible in ink
+ * without needing a dark overlay — the tech signal comes from the mono
+ * label, the 95vw media frame, and the sharp motion easings.
+ */
+function HeroFullBleed({
+  primaryHref,
+  videoSrc,
+  posterSrc,
+  videoLabel,
+}: {
+  primaryHref: string;
+  videoSrc: string;
+  posterSrc?: string;
+  videoLabel: string;
+}) {
+  const mediaRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: mediaRef,
+    offset: ["start end", "end start"],
+  });
+  // Gentle parallax — the media translates up slower than the viewport.
+  // ±8% max; anything bigger starts to feel gimmicky on a light canvas.
+  const mediaY = useTransform(scrollYProgress, [0, 1], ["-8%", "8%"]);
+  // Entry animation for the media: scales up slightly as it enters view.
+  const mediaScale = useTransform(scrollYProgress, [0, 0.3], [1.04, 1]);
+
+  return (
+    <section className="relative pt-8 md:pt-12">
+      {/* Beat 1 — statement */}
+      <div className="max-w-[1400px] mx-auto px-5 md:px-10 pb-10 md:pb-14">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="mono-label mb-5 flex items-center gap-2"
+          style={{ color: COLORS.muted }}
+        >
+          <span
+            className="inline-block w-1.5 h-1.5 rounded-full"
+            style={{ background: COLORS.coral }}
+          />
+          <span>v2.4 · 2,847 brands · 127,493 assets shipped</span>
+        </motion.div>
+
+        <h1
+          className="mb-8"
+          style={{ ...bagel, fontSize: "clamp(64px, 12vw, 180px)" }}
+        >
+          <motion.span
+            className="block"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
+          >
+            Stop prompting.
+          </motion.span>
+          <motion.span
+            className="block"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.22, ease: [0.16, 1, 0.3, 1] }}
+          >
+            Surprise{" "}
+            <motion.span
+              initial={{ color: COLORS.ink }}
+              animate={{ color: COLORS.coral }}
+              transition={{ duration: 0.45, delay: 0.85 }}
+              style={{ display: "inline-block" }}
+            >
+              your brand.
+            </motion.span>
+          </motion.span>
+        </h1>
+
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="body-tight text-[17px] md:text-[20px] max-w-2xl mb-10"
+          style={{ color: COLORS.muted }}
+        >
+          Drop your brand. Pick your platforms. Ora ships a full pack —
+          LinkedIn, Instagram, TikTok — in one click. No prompt writing.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+        >
+          <Link to={primaryHref}>
+            <Button variant="accent" size="lg">
+              Pick a plan · Start shipping <ArrowRight size={16} />
+            </Button>
+          </Link>
+          <span
+            className="mono-label"
+            style={{ color: COLORS.subtle, textTransform: "none", letterSpacing: "0.02em" }}
+          >
+            From €19/mo · cancel anytime
+          </span>
+        </motion.div>
+      </div>
+
+      {/* Beat 2 — full-bleed media with parallax.
+       *  Uses 95vw max-width so there's a thin cream margin on the sides —
+       *  avoids the edge-to-edge-tile feeling that reads more "saas demo"
+       *  than "editorial magazine". The 16px radius is deliberate: smaller
+       *  than the old 28-32px (less artisanal), bigger than 0 (not brutalist). */}
+      <motion.div
+        ref={mediaRef}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.4, duration: 0.8 }}
+        className="relative w-[95vw] max-w-[1400px] mx-auto aspect-[16/9] overflow-hidden rounded-2xl"
+        style={{ background: "#FFFFFF" }}
+      >
+        <motion.div
+          style={{ y: mediaY, scale: mediaScale }}
+          className="absolute inset-0 will-change-transform"
+        >
+          <video
+            src={videoSrc}
+            poster={posterSrc}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            className="w-full h-full object-cover"
+          />
+        </motion.div>
+        {/* Mono label floating top-left — reads as a technical caption,
+         *  not a marketing badge. Matches the eyebrow's typography system. */}
+        <div
+          className="mono-label absolute top-5 left-5 z-10 rounded-full px-3 py-1"
+          style={{ background: "rgba(17,17,17,0.88)", color: "#FFFFFF", backdropFilter: "blur(8px)" }}
+        >
+          42s · {videoLabel}
+        </div>
+      </motion.div>
+    </section>
+  );
 }
 
 export function LandingPage() {
@@ -137,88 +287,24 @@ export function LandingPage() {
         </nav>
       </header>
 
-      {/* ═══ Hero ═══ */}
-      <section className="relative px-5 md:px-10 pt-10 pb-20 max-w-[1400px] mx-auto">
-        <div className="relative text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className="inline-flex mb-8"
-          >
-            <Badge tone="cream">
-              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
-              2,847 brands · 127,493 assets generated
-            </Badge>
-          </motion.div>
+      {/* ═══ Hero — full-bleed editorial ═══
+       *   Two beats: statement on top (mono eyebrow + massive Bagel + CTAs),
+       *   full-bleed video below with parallax scroll. Cream stays as the
+       *   canvas so Bagel reads warm-editorial; the tech signal comes from
+       *   the mono eyebrow, the full-bleed ratio, and the parallax motion
+       *   (cubic-bezier, not spring). */}
+      <HeroFullBleed
+        primaryHref={primaryHref}
+        videoSrc={heroBig.src}
+        posterSrc={heroBig.poster}
+        videoLabel={heroBig.label}
+      />
 
-          {/* Kinetic headline — each line reveals separately, and "your brand"
-           *  snaps from ink to coral after landing so the eye lands on the
-           *  product promise, not just reads the sentence. */}
-          <h1 className="leading-[0.88] mb-8" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 156px)" }}>
-            <motion.span
-              className="block"
-              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-            >
-              Stop prompting.
-            </motion.span>
-            <motion.span
-              className="block"
-              initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            >
-              Surprise{" "}
-              <motion.span
-                initial={{ color: COLORS.ink }}
-                animate={{ color: COLORS.coral }}
-                transition={{ duration: 0.45, delay: 0.9 }}
-                style={{ display: "inline-block" }}
-              >
-                your brand.
-              </motion.span>
-            </motion.span>
-          </h1>
-
-          <motion.p
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-            className="text-[17px] md:text-[20px] max-w-2xl mx-auto mb-10"
-            style={{ color: COLORS.muted }}
-          >
-            Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn,
-            Instagram, TikTok — in one click. No prompt writing.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3"
-          >
-            <Link to={primaryHref}>
-              <Button variant="accent" size="lg">
-                Pick a plan · Start shipping <ArrowRight size={16} />
-              </Button>
-            </Link>
-            <span className="text-[13px]" style={{ color: COLORS.subtle }}>
-              From €19/mo · Cancel anytime
-            </span>
-          </motion.div>
-        </div>
-
-        {/* Hero showcase — 1 big video + 2 medium */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-4"
-        >
-          <div className="md:col-span-2 md:row-span-2 rounded-[28px] overflow-hidden aspect-[4/3] md:aspect-auto bg-white relative">
-            <video src={heroBig.src} poster={heroBig.poster || undefined} autoPlay muted loop playsInline preload="auto" className="w-full h-full object-cover" />
-            <div className="absolute top-4 left-4"><Badge tone="ink">42s · {heroBig.label}</Badge></div>
-          </div>
-          {[heroTile2, heroTile3].map((t, i) => (
-            <div key={i} className="rounded-[28px] overflow-hidden aspect-[4/3] bg-white relative">
-              <img src={t.src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-              <div className="absolute top-3 left-3"><Badge tone="ink">42s · {t.label}</Badge></div>
-            </div>
-          ))}
-        </motion.div>
-      </section>
+      {/* Hairline divider — replaces the old colour-shift transitions.
+       *  One line of pure system signal between sections. */}
+      <div className="max-w-[1400px] mx-auto px-5 md:px-10">
+        <div className="hairline-t" />
+      </div>
 
       {/* ═══ How it works — three moves, no prompting ═══ */}
       <section id="how" className="px-5 md:px-10 pb-24 pt-6 max-w-[1400px] mx-auto">
