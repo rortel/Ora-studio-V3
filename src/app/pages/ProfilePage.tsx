@@ -374,7 +374,6 @@ function ProfilePageContent() {
   const tabs: { id: ProfileTab; label: string; icon: typeof User }[] = [
     { id: "overview", label: t("profile.tabOverview"), icon: BarChart3 },
     { id: "library", label: t("profile.tabLibrary"), icon: FolderOpen },
-    { id: "team", label: t("profile.tabTeam"), icon: Users },
     { id: "settings", label: t("profile.tabSettings"), icon: Settings },
   ];
 
@@ -477,27 +476,19 @@ function ProfilePageContent() {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
-            const isLocked = !isSubscriber && (tab.id === "team");
             return (
               <button
                 key={tab.id}
-                onClick={() => !isLocked && setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 border-b-2 transition-all cursor-pointer -mb-px ${
                   isActive
                     ? "border-ora-signal text-foreground"
-                    : isLocked
-                    ? "border-transparent text-muted-foreground/40 cursor-not-allowed"
                     : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
                 }`}
                 style={{ fontSize: "13px", fontWeight: isActive ? 500 : 400 }}
               >
-                {isLocked ? <Lock size={12} /> : <Icon size={13} />}
+                <Icon size={13} />
                 {tab.label}
-                {isLocked && (
-                  <span className="px-1.5 py-0.5 rounded bg-secondary ml-1" style={{ fontSize: "8px", fontWeight: 600, color: "var(--muted-foreground)" }}>
-                    PRO
-                  </span>
-                )}
               </button>
             );
           })}
@@ -513,11 +504,6 @@ function ProfilePageContent() {
           {activeTab === "library" && (
             <motion.div key="library" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
               <LibraryTab library={library} isSubscriber={isSubscriber} />
-            </motion.div>
-          )}
-          {activeTab === "team" && isSubscriber && (
-            <motion.div key="team" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              <TeamTab />
             </motion.div>
           )}
           {activeTab === "settings" && (
@@ -539,7 +525,7 @@ function PlanBadge({ plan }: { plan: PlanTier }) {
   const { t } = useI18n();
   const config = {
     free: { label: t("profile.planFree"), bg: "var(--secondary)", color: "var(--muted-foreground)", icon: null },
-    starter: { label: "Starter", bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
+    starter: { label: t("profile.planStarter"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
     pro: { label: t("profile.planPro"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: null },
     business: { label: t("profile.planBusiness"), bg: "var(--ora-signal-light)", color: "var(--ora-signal)", icon: Crown },
   }[plan];
@@ -586,9 +572,8 @@ function OverviewTab({ user, plan, activity, library, isSubscriber }: { user: Us
                 </Link>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <UsageMeter label={t("profile.contentPieces")} used={plan.contentUsed} max={plan.contentMax} icon={FileText} unit="" />
-              <UsageMeter label={t("profile.activeAgents")} used={plan.agents} max={plan.maxAgents} icon={Sparkles} unit="" />
               <UsageMeter label={t("profile.brandVaults")} used={plan.vaults} max={plan.maxVaults} icon={BookOpen} unit="" />
               <UsageMeter label={t("profile.storage")} used={plan.storageUsed} max={plan.storageMax} icon={FolderOpen} unit=" GB" />
             </div>
@@ -668,15 +653,15 @@ function UsageMeter({ label, used, max, icon: Icon, unit }: { label: string; use
 function QuickAccess({ isSubscriber }: { isSubscriber: boolean }) {
   const { t } = useI18n();
   const items = [
-    { label: t("profile.aiHub"), desc: t("profile.aiHubDesc"), href: "/hub", icon: Sparkles, locked: false },
+    { label: t("profile.aiHub"), desc: t("profile.aiHubDesc"), href: "/hub/surprise", icon: Sparkles, locked: false },
     { label: t("profile.libraryLabel"), desc: t("profile.libraryDesc"), href: "/hub/library", icon: BookOpen, locked: false },
-    { label: t("profile.brandVault"), desc: t("profile.brandVaultDesc"), href: "/hub/vault", icon: BookOpen, locked: !isSubscriber },
-    { label: t("profile.analyticsLabel"), desc: t("profile.analyticsDesc"), href: "/hub/analytics", icon: GitBranch, locked: !isSubscriber },
+    { label: t("profile.brandVault"), desc: t("profile.brandVaultDesc"), href: "/hub/vault", icon: BookOpen, locked: false },
+    { label: t("profile.analyticsLabel"), desc: t("profile.analyticsDesc"), href: "/hub/editor", icon: PenTool, locked: false },
   ];
   return (
     <div>
       <span style={{ fontSize: "10px", fontWeight: 500, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>{t("profile.quickAccess")}</span>
-      <div className="grid grid-cols-3 gap-2 mt-3">
+      <div className="grid grid-cols-2 gap-2 mt-3">
         {items.map((item) => {
           const Icon = item.icon;
           const content = (
