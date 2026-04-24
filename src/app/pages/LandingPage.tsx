@@ -551,21 +551,23 @@ function PickMockup() {
  * the panel never renders empty on first paint.
  */
 function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: string; platform: string }> }) {
-  const PLATFORMS = ["IG · Feed", "IG · Story", "LinkedIn", "TikTok", "Facebook", "IG · Feed"];
-  const ratios = ["1/1", "9/16", "16/9", "9/16", "1.91/1", "4/5"];
-  // Tiles fly in from mixed directions so the grid "assembles" rather than
-  // fades in monotonously. Deterministic (indexed) so re-renders stay stable.
-  const ORIGINS = [
-    { x: -60, y: -40, r: -10 },
-    { x:  50, y: -60, r:   8 },
-    { x:  70, y:  20, r:  -6 },
-    { x: -70, y:  40, r:  12 },
-    { x: -30, y:  80, r:  -4 },
-    { x:  60, y:  70, r:   6 },
+  // All tiles square (1:1) for a clean 3×2 bento that reads "pack ready
+  // to ship" at a glance. Previous pass used mixed aspect ratios
+  // (9:16, 16:9, 4:5…) in a uniform grid which produced uneven column
+  // heights + looked disorganized. Square tiles resolve this because
+  // every platform has a 1:1 variant, and the eye reads the grid as
+  // one coherent sheet.
+  const TILES = [
+    { platform: "IG · Feed",   dim: "1080×1080", gradient: "linear-gradient(135deg, #FFB088 0%, #FF5C39 100%)" },
+    { platform: "IG · Story",  dim: "1080×1920", gradient: "linear-gradient(160deg, #F4C542 0%, #EC8926 100%)" },
+    { platform: "LinkedIn",    dim: "1200×1200", gradient: "linear-gradient(140deg, #1D4ED8 0%, #111111 100%)" },
+    { platform: "TikTok",      dim: "1080×1920", gradient: "linear-gradient(145deg, #111111 0%, #FF5C39 100%)" },
+    { platform: "Facebook",    dim: "1200×1200", gradient: "linear-gradient(135deg, #7C5CE0 0%, #1D4ED8 100%)" },
+    { platform: "IG · Reel",   dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
   ];
 
   return (
-    <MouseTilt maxTilt={4} className="w-full max-w-[1080px]">
+    <MouseTilt maxTilt={3} className="w-full max-w-[1080px]">
       <motion.div
         className="w-full grid grid-cols-3 gap-3 md:gap-4"
         initial={{ opacity: 0 }}
@@ -573,41 +575,62 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
         viewport={{ once: true, margin: "-100px" }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
       >
-        {Array.from({ length: 6 }).map((_, i) => {
+        {TILES.map((t, i) => {
           const a = assets[i];
-          const o = ORIGINS[i];
           return (
             <motion.div
               key={i}
               className="relative rounded-xl overflow-hidden cursor-pointer"
-              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, aspectRatio: ratios[i] }}
-              initial={{ opacity: 0, x: o.x, y: o.y, rotate: o.r, scale: 0.85 }}
-              whileInView={{ opacity: 1, x: 0, y: 0, rotate: 0, scale: 1 }}
+              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, aspectRatio: "1/1" }}
+              initial={{ opacity: 0, y: 24, scale: 0.94 }}
+              whileInView={{ opacity: 1, y: 0, scale: 1 }}
               viewport={{ once: true, margin: "-100px" }}
-              transition={{ type: "spring", stiffness: 180, damping: 22, delay: i * 0.08 }}
-              whileHover={{ scale: 1.03, y: -4, transition: { type: "spring", stiffness: 300, damping: 22 } }}
+              transition={{ type: "spring", stiffness: 220, damping: 24, delay: i * 0.07 }}
+              whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 22 } }}
             >
+              {/* Real admin-featured asset if available, otherwise a branded
+               *  coral/ink gradient placeholder so the grid never looks
+                empty when the showcase has fewer than 6 items. */}
               {a && (a.videoUrl ? (
                 <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" />
               ) : a.imageUrl ? (
                 <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
               ) : null)}
+              {!a?.imageUrl && !a?.videoUrl && (
+                <div className="absolute inset-0" style={{ background: t.gradient }} />
+              )}
+
+              {/* Platform badge — top-left, mono pill */}
               <motion.div
                 className="absolute top-3 left-3 mono-label px-2.5 py-1 rounded-full"
                 initial={{ opacity: 0, y: -6 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
-                transition={{ delay: 0.6 + i * 0.08, duration: 0.3 }}
-                style={{ background: "rgba(255,255,255,0.92)", color: COLORS.ink, backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 11, border: `1px solid ${MOCK_BORDER}` }}
+                transition={{ delay: 0.45 + i * 0.07, duration: 0.3 }}
+                style={{ background: "rgba(255,255,255,0.94)", color: COLORS.ink, backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 11, border: `1px solid ${MOCK_BORDER}` }}
               >
-                {PLATFORMS[i]}
+                {t.platform}
               </motion.div>
+
+              {/* Dimensions label — top-right, less prominent, tech-signal */}
+              <motion.div
+                className="absolute top-3 right-3 mono-label tabular-nums"
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ delay: 0.55 + i * 0.07, duration: 0.3 }}
+                style={{ color: "rgba(255,255,255,0.85)", background: "rgba(17,17,17,0.6)", padding: "2px 7px", borderRadius: 999, fontSize: 10, backdropFilter: "blur(4px)" }}
+              >
+                {t.dim}
+              </motion.div>
+
+              {/* 42s timer — bottom-right, coral */}
               <motion.div
                 className="absolute bottom-3 right-3 mono-label tabular-nums"
                 initial={{ opacity: 0, scale: 0.5 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
-                transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.7 + i * 0.08 }}
+                transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.6 + i * 0.07 }}
                 style={{ color: "#FFFFFF", background: COLORS.coral, padding: "3px 8px", borderRadius: 999, fontSize: 11 }}
               >
                 42s
