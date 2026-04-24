@@ -1,12 +1,31 @@
 /* Ora design tokens — shared palette + display font style. Import from
- * anywhere with `import { bagel, tones } from "../components/ora/tokens"`. */
+ * anywhere with `import { bagel, mono, COLORS } from "../components/ora/tokens"`. */
 
 export const DISPLAY = `"Bagel Fat One", "Inter", system-ui, sans-serif`;
+export const MONO    = `"JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace`;
 
 /** Inline style helper for headlines: wraps font-family + letter-spacing. */
 export const bagel: React.CSSProperties = {
   fontFamily: DISPLAY,
-  letterSpacing: "-0.01em",
+  letterSpacing: "-0.02em",
+  lineHeight: 0.95,
+};
+
+/** Inline style helper for technical labels (version, timing, data rows).
+ *  Paired with uppercase + tracking for the "tech signal" without leaving
+ *  the warm palette — keeps Bagel on display, mono on the metadata. */
+export const mono: React.CSSProperties = {
+  fontFamily: MONO,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  fontFeatureSettings: '"tnum" 1, "zero" 1',
+};
+
+/** Inline style helper for tight modern body copy — reduces the Inter
+ *  default tracking for a more contemporary grotesque feel. */
+export const bodyTight: React.CSSProperties = {
+  letterSpacing: "-0.005em",
+  fontWeight: 500,
 };
 
 /** Brand colour tokens. Stick to these six across the app. */
