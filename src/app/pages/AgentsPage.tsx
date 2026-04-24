@@ -268,7 +268,7 @@ export function AgentsPage() {
                 fontWeight: 500,
                 letterSpacing: "-0.035em",
                 lineHeight: 1.1,
-                color: "#FFFFFF",
+                color: "#111111",
               }}
             >
               Brand Vault in.

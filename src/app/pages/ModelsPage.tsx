@@ -118,11 +118,11 @@ export function ModelsPage() {
   }, [active, query]);
 
   return (
-    <div style={{ background: "#F5F5F5" }}>
-      {/* Hero — dark */}
+    <div style={{ background: "#F4EFE6" }}>
+      {/* Hero — cream editorial to align with site palette */}
       <section
         className="relative overflow-hidden pt-24 pb-20 px-6"
-        style={{ background: "#111111" }}
+        style={{ background: "#F4EFE6", borderBottom: "1px solid rgba(17,17,17,0.08)" }}
       >
         <div className="max-w-[900px] mx-auto text-center relative z-10">
           <motion.div
@@ -132,10 +132,10 @@ export function ModelsPage() {
           >
             <div
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-8"
-              style={{ border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)" }}
+              style={{ border: "1px solid rgba(17,17,17,0.12)", background: "rgba(17,17,17,0.04)" }}
             >
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#7C3AED" }} />
-              <span style={{ fontSize: "13px", fontWeight: 400, color: "rgba(255,255,255,0.75)", fontFamily: "'Inter', sans-serif" }}>
+              <span style={{ fontSize: "13px", fontWeight: 400, color: "rgba(17,17,17,0.75)", fontFamily: "'Inter', sans-serif" }}>
                 {isFr ? `${MODELS.length} modèles IA · Un abonnement` : `${MODELS.length} AI models · One subscription`}
               </span>
             </div>
@@ -144,7 +144,7 @@ export function ModelsPage() {
                 fontSize: "clamp(32px, 6vw, 56px)",
                 fontWeight: 700,
                 fontFamily: "'Inter', sans-serif",
-                color: "#FFFFFF",
+                color: "#111111",
                 letterSpacing: "-0.035em",
                 lineHeight: 1.1,
               }}
@@ -157,7 +157,7 @@ export function ModelsPage() {
                 fontSize: "clamp(20px, 4vw, 32px)",
                 fontWeight: 500,
                 fontFamily: "'Inter', sans-serif",
-                color: "rgba(255,255,255,0.4)",
+                color: "rgba(17,17,17,0.4)",
                 letterSpacing: "-0.02em",
                 lineHeight: 1.3,
               }}
@@ -174,7 +174,7 @@ export function ModelsPage() {
             style={{
               fontSize: "16px",
               fontFamily: "'Inter', sans-serif",
-              color: "rgba(255,255,255,0.5)",
+              color: "rgba(17,17,17,0.5)",
               lineHeight: 1.7,
               maxWidth: 560,
             }}
@@ -194,7 +194,7 @@ export function ModelsPage() {
               to="/login?mode=signup"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-opacity hover:opacity-90"
               style={{
-                background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                background: "linear-gradient(135deg, #FF5C39, #F85025)",
                 color: "#FFFFFF",
                 fontSize: "14px",
                 fontWeight: 500,
@@ -208,8 +208,8 @@ export function ModelsPage() {
               to="/pricing"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-colors hover:bg-white/5"
               style={{
-                border: "1px solid rgba(255,255,255,0.15)",
-                color: "#FFFFFF",
+                border: "1px solid rgba(17,17,17,0.15)",
+                color: "#111111",
                 fontSize: "14px",
                 fontWeight: 500,
                 fontFamily: "'Inter', sans-serif",
@@ -412,7 +412,7 @@ export function ModelsPage() {
               to="/login?mode=signup"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-full transition-opacity hover:opacity-90"
               style={{
-                background: "linear-gradient(135deg, #7C3AED, #EC4899)",
+                background: "linear-gradient(135deg, #FF5C39, #F85025)",
                 color: "#FFFFFF",
                 fontSize: "14px",
                 fontWeight: 500,

@@ -4,13 +4,13 @@ import { Shield, Palette, Sparkles, ArrowRight, Mail } from "lucide-react";
 import { OraLogo } from "../components/OraLogo";
 import { useI18n } from "../lib/i18n";
 import { useAuth } from "../lib/auth-context";
+import { bagel, COLORS } from "../components/ora/tokens";
 
 /* ═══════════════════════════════════════════════════════════
-   ABOUT — Positioning, honest scope, team/contact
+   ABOUT — Positioning, honest scope, team/contact.
+   Palette aligned with landing (cream / ink / coral). Legacy
+   blue + red accents dropped.
    ═══════════════════════════════════════════════════════════ */
-
-const BLUE = "#1D4ED8";
-const BLACK = "#0A0A0A";
 
 export function AboutPage() {
   const { locale } = useI18n();
@@ -18,7 +18,7 @@ export function AboutPage() {
   const isFr = locale === "fr";
 
   return (
-    <div style={{ background: "#FFFFFF", color: BLACK }}>
+    <div style={{ background: COLORS.cream, color: COLORS.ink }}>
       {/* HERO */}
       <section className="max-w-3xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-10 text-center">
         <motion.div
@@ -26,7 +26,7 @@ export function AboutPage() {
           animate={{ opacity: 1, scale: 1 }}
           className="flex justify-center mb-8"
         >
-          <OraLogo size={88} variant="mascot" animate={true} color={BLACK} />
+          <OraLogo size={88} variant="mascot" animate={true} color={COLORS.ink} />
         </motion.div>
         <motion.h1
           initial={{ opacity: 0, y: 10 }}
@@ -56,7 +56,7 @@ export function AboutPage() {
               ? "Les seuls outils qui auditent les créations existent — mais sont réservés aux gros annonceurs à $50k/an. Le freelance, la PME, l'agence indé n'ont rien."
               : "Tools that audit creative work exist — but are reserved for big advertisers at $50k/year. Freelancers, SMBs, and indie agencies have nothing."}
           </p>
-          <p className="font-semibold" style={{ color: BLACK }}>
+          <p className="font-semibold" style={{ color: COLORS.ink}}>
             {isFr
               ? "Ora comble ce vide : un audit de qualité, accessible, rapide, honnête."
               : "Ora fills that gap: a quality audit — accessible, fast, honest."}
@@ -65,7 +65,7 @@ export function AboutPage() {
       </section>
 
       {/* APPROACH */}
-      <section className="border-t" style={{ borderColor: "#E4E4E7", background: "#FAFAFA" }}>
+      <section className="border-t" style={{ borderColor: COLORS.line, background: "#FFFFFF" }}>
         <div className="max-w-5xl mx-auto px-5 md:px-8 py-20">
           <h2
             className="text-center mb-14"
@@ -84,7 +84,7 @@ export function AboutPage() {
                   : "Heuristic red-flag detection: visible trademarks, celebrity likenesses, regulated claims, bias.",
               },
               {
-                icon: Palette, color: BLUE, bg: "#EFF6FF",
+                icon: Palette, color: COLORS.coral, bg: "#EFF6FF",
                 title: isFr ? "Cohérence marque" : "Brand fit",
                 body: isFr
                   ? "Score d'alignement avec ta marque : palette, ton, style photo, messages clés, audience cible."
@@ -171,7 +171,7 @@ export function AboutPage() {
         <a
           href="mailto:hello@ora.studio"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold transition-opacity hover:opacity-90"
-          style={{ background: BLACK, color: "#FFFFFF" }}
+          style={{ background: COLORS.ink, color: "#FFFFFF" }}
         >
           <Mail size={15} /> hello@ora.studio
         </a>
@@ -195,7 +195,7 @@ export function AboutPage() {
           <Link
             to={user ? "/hub/analyze" : "/login"}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-opacity hover:opacity-90"
-            style={{ background: BLUE, color: "#FFFFFF" }}
+            style={{ background: COLORS.coral, color: "#FFFFFF" }}
           >
             {isFr ? "Scanner maintenant" : "Scan now"} <ArrowRight size={16} />
           </Link>
