@@ -6,7 +6,6 @@ import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { API_BASE } from "../lib/supabase";
-import { BentoGallery, type BentoItem } from "../components/ui/bento-gallery";
 import heroVideo from "../../assets/hero-video.mp4";
 
 interface ShowcaseAsset {
@@ -17,26 +16,6 @@ interface ShowcaseAsset {
   caption: string; twistElement: string;
   fileName: string; videoFileName: string;
 }
-
-
-interface ShowcaseCampaign {
-  campaignSlug: string;
-  campaignName: string;
-  featuredAt: string;
-  assets: ShowcaseAsset[];
-}
-
-/* Fallback content when the public showcase endpoint returns nothing yet
- * (first deploy, admin hasn't featured anything). Once the admin marks
- * items from Library, these get overridden with real campaign output. */
-const FALLBACK_GALLERY = [
-  { src: "/templates/figma-linkedin-01.png",     label: "linkedin",       platform: "linkedin",        ar: "16:9" },
-  { src: "/templates/figma-igp-01.png",          label: "ig feed",        platform: "instagram-feed",  ar: "1:1"  },
-  { src: "/templates/figma-story-01.png",        label: "ig story",       platform: "instagram-story", ar: "9:16" },
-  { src: "/templates/figma-b2b-01.png",          label: "linkedin · b2b", platform: "linkedin",        ar: "16:9" },
-  { src: "/templates/figma-fashion-post-02.png", label: "fashion",        platform: "instagram-feed",  ar: "1:1"  },
-  { src: "/templates/figma-skincare-02.png",     label: "skincare",       platform: "instagram-feed",  ar: "1:1"  },
-];
 
 function platformLabel(p: string): string {
   const s = (p || "").toLowerCase();
@@ -743,10 +722,10 @@ export function LandingPage() {
   // screen. There's no "Try free" escape hatch anymore.
   const primaryHref = user ? "/hub/surprise" : "/pricing";
 
-  // Pull admin-curated showcase items. Falls back silently to templates
-  // when the endpoint is empty or unreachable.
+  // Pull admin-curated showcase items. The landing now uses this flat
+  // list exclusively (campaigns were only needed by the removed Gallery
+  // panel, which the Ship mockup already covers).
   const [showcase, setShowcase] = useState<ShowcaseAsset[]>([]);
-  const [showcaseCampaigns, setShowcaseCampaigns] = useState<ShowcaseCampaign[]>([]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -755,28 +734,10 @@ export function LandingPage() {
         const d = await r.json().catch(() => ({}));
         if (cancelled) return;
         if (d?.success && Array.isArray(d.items)) setShowcase(d.items);
-        if (d?.success && Array.isArray(d.campaigns)) setShowcaseCampaigns(d.campaigns);
       } catch { /* ignore — fallbacks cover us */ }
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Gallery: prefer featured assets slot-by-slot, pad remaining slots with the
-  // hardcoded templates. Starring a single item in Library should immediately
-  // replace the first gallery tile — not require exactly 6 items to take effect.
-  // Carry video + aspectRatio through so each tile can self-frame and autoplay.
-  type Tile = { src: string; videoSrc?: string; label: string; ar?: string; platform?: string };
-  const galleryFeatured: Tile[] = showcase.slice(2, 10)
-    .filter((a) => a.imageUrl || a.videoUrl)
-    .slice(0, 6)
-    .map((a) => ({
-      src: a.imageUrl || a.videoUrl,
-      videoSrc: a.videoUrl || undefined,
-      label: platformLabel(a.platform),
-      ar: a.aspectRatio,
-      platform: a.platform,
-    }));
-  const gallery: Tile[] = Array.from({ length: 6 }, (_, i) => galleryFeatured[i] || FALLBACK_GALLERY[i]);
 
   // Pick the 4 dark-cinematic panel media from admin-featured assets in
   // order: first = hero, then Drop / Pick / Ship. Any slot that isn't
@@ -813,7 +774,6 @@ export function LandingPage() {
             style={{ color: "rgba(250,250,250,0.7)" }}
           >
             <a href="#how" className="hover:text-white transition-colors">How it works</a>
-            <a href="#gallery" className="hover:text-white transition-colors">Gallery</a>
             <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
           </div>
           <div className="flex items-center gap-2">
@@ -923,74 +883,13 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ═══ Panel 6 — GALLERY (draggable bento, dark) ═══
-       *   The existing BentoGallery component re-skinned by wrapping it in
-       *   a dark band. Its tiles keep their rounded borders but now sit on
-       *   the deep-black canvas so the imagery pops with the same cinema
-       *   feel as the preceding panels. */}
-      {(() => {
-        const bentoItems: BentoItem[] = [];
-        if (showcaseCampaigns.length > 0) {
-          showcaseCampaigns.slice(0, 3).forEach((c, ci) => {
-            c.assets.slice(0, 4).forEach((a, ai) => {
-              const hero = ai === 0;
-              bentoItems.push({
-                id: `${c.campaignSlug}-${ai}`,
-                title: c.campaignName,
-                desc: platformLabel(a.platform),
-                url: a.videoUrl || a.imageUrl || "",
-                posterUrl: a.imageUrl,
-                badge: `Case · ${ci + 1}`,
-                span: hero ? "md:row-span-2" : "",
-              });
-            });
-          });
-        } else {
-          gallery.slice(0, 6).forEach((item, i) => {
-            const span = i === 0 || i === 3 ? "md:row-span-2" : "";
-            bentoItems.push({
-              id: `fallback-${i}`,
-              title: item.label,
-              desc: item.platform || "",
-              url: item.videoSrc || item.src,
-              posterUrl: item.src,
-              badge: `42s · ${item.label}`,
-              span,
-            });
-          });
-        }
-        return (
-          <div
-            className="dark-gallery-band"
-            style={{
-              background: "#0A0A0A",
-              color: "#FAFAFA",
-              borderTop: "1px solid rgba(250,250,250,0.08)",
-              // Override the shadcn tokens the BentoGallery relies on so
-              // its tiles render dark without touching the component.
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              ...({
-                "--background": "#0A0A0A",
-                "--foreground": "#FAFAFA",
-                "--muted-foreground": "rgba(250,250,250,0.6)",
-                "--card": "#141414",
-                "--border": "rgba(250,250,250,0.08)",
-                "--ring": "rgba(250,250,250,0.2)",
-              } as React.CSSProperties),
-            }}
-          >
-            <BentoGallery
-              id="gallery"
-              eyebrow="Real packs, real brands"
-              title="One click. Full pack."
-              description="Drag through the latest Ora campaigns. Click any tile to open it full-screen."
-              items={bentoItems}
-            />
-          </div>
-        );
-      })()}
+      {/* Gallery section removed — the SHIP panel above already shows a
+       *  6-asset pack grid fed by the same showcase data, so a second
+       *  "here's a gallery" scroll beat was pure repetition. If we need
+       *  dedicated case-study surfacing later, it belongs on its own
+       *  /cases subpage rather than stacked on the main narrative. */}
 
-      {/* ═══ Panel 7 — PRICING TIERS (3 cards) ═══
+      {/* ═══ Panel 6 — PRICING TIERS (3 cards) ═══
        *   The actual tiers from /pricing, surfaced on the landing so
        *   visitors don't have to leave to know what they're paying.
        *   Studio is highlighted with a coral outline (it's the
@@ -1034,7 +933,6 @@ export function LandingPage() {
           </div>
           <div className="mono-label flex items-center gap-6" style={{ color: "rgba(250,250,250,0.55)" }}>
             <Link to="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-            <a href="#gallery" className="hover:text-white transition-colors">Gallery</a>
             <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
           </div>
