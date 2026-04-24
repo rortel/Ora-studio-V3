@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { motion, useScroll, useTransform } from "motion/react";
+import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "motion/react";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
@@ -237,6 +237,94 @@ const MOCK_BORDER = "rgba(250,250,250,0.08)";
 const MOCK_BORDER_STRONG = "rgba(250,250,250,0.14)";
 
 /**
+ * MouseTilt — 3D-like pointer parallax wrapper.
+ *
+ * Tracks the mouse position relative to its bounding box and applies a
+ * subtle rotateX / rotateY transform spring-smoothed. Makes every
+ * mockup frame feel responsive and tactile instead of flat. Max tilt
+ * capped at ±6deg so it reads "alive" without reading "gimmicky".
+ */
+function MouseTilt({
+  children,
+  maxTilt = 6,
+  className,
+  style,
+}: {
+  children: React.ReactNode;
+  maxTilt?: number;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const rX = useSpring(useTransform(my, [-0.5, 0.5], [maxTilt, -maxTilt]), { stiffness: 140, damping: 18 });
+  const rY = useSpring(useTransform(mx, [-0.5, 0.5], [-maxTilt, maxTilt]), { stiffness: 140, damping: 18 });
+
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    mx.set((e.clientX - r.left) / r.width - 0.5);
+    my.set((e.clientY - r.top) / r.height - 0.5);
+  };
+  const onLeave = () => { mx.set(0); my.set(0); };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      className={className}
+      style={{
+        ...style,
+        rotateX: rX,
+        rotateY: rY,
+        transformStyle: "preserve-3d",
+        transformPerspective: 1200,
+      }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/**
+ * TypedUrl — letter-by-letter URL typing in a fake input.
+ *
+ * Mimics the real "paste your URL" moment on /hub/vault so the visitor
+ * sees *exactly* what they'll do when they sign up. Uses a local
+ * interval so each letter lands on a predictable rhythm — no spring,
+ * no bounce, just a clean mechanical type. Starts when the parent
+ * calls in via the `active` prop (typically: once the scroll has put
+ * the panel in view).
+ */
+function TypedUrl({ target, active }: { target: string; active: boolean }) {
+  const [out, setOut] = useState("");
+  useEffect(() => {
+    if (!active) return;
+    let i = 0;
+    setOut("");
+    const id = setInterval(() => {
+      i++;
+      setOut(target.slice(0, i));
+      if (i >= target.length) clearInterval(id);
+    }, 55);
+    return () => clearInterval(id);
+  }, [active, target]);
+  return (
+    <span className="font-mono text-[13px]" style={{ color: "#FAFAFA" }}>
+      {out}
+      <motion.span
+        animate={{ opacity: [1, 0, 1] }}
+        transition={{ duration: 0.9, repeat: Infinity, ease: "linear" }}
+        className="inline-block w-[2px] h-[15px] align-[-2px] ml-[1px]"
+        style={{ background: "#FF6B47" }}
+      />
+    </span>
+  );
+}
+
+/**
  * DropMockup — animated Brand Vault panel.
  *
  * Shows a fake "scan this URL" flow: URL input, progress, then the
@@ -247,89 +335,147 @@ const MOCK_BORDER_STRONG = "rgba(250,250,250,0.14)";
 function DropMockup() {
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start 80%", "end 20%"] });
-  const progress = useTransform(scrollYProgress, [0.1, 0.35], ["0%", "100%"]);
-  const step1 = useTransform(scrollYProgress, [0.12, 0.22], [0, 1]);
-  const step2 = useTransform(scrollYProgress, [0.22, 0.32], [0, 1]);
-  const step3 = useTransform(scrollYProgress, [0.32, 0.42], [0, 1]);
-  const step4 = useTransform(scrollYProgress, [0.42, 0.52], [0, 1]);
+  // Scroll-driven scan progress (0 → 100% as the panel crosses the fold)
+  const progress = useTransform(scrollYProgress, [0.12, 0.38], ["0%", "100%"]);
+  // Multi-layer scroll parallax: chrome bar moves slower than the content,
+  // creating a subtle depth when the user scrolls through the section.
+  const chromeY = useTransform(scrollYProgress, [0, 1], ["-2%", "2%"]);
+  const contentY = useTransform(scrollYProgress, [0, 1], ["4%", "-4%"]);
+  // Activation gates — each row reveals when the scan bar reaches its mark.
+  const [active, setActive] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [step, setStep] = useState(0); // 0 idle, 1..4 rows visible, 5 done
+  useEffect(() => {
+    const un = scrollYProgress.on("change", (v) => {
+      if (v > 0.1 && !active) setActive(true);
+      setScanning(v > 0.12 && v < 0.4);
+      setStep(v < 0.22 ? 0 : v < 0.3 ? 1 : v < 0.36 ? 2 : v < 0.42 ? 3 : 4);
+    });
+    return un;
+  }, [scrollYProgress, active]);
+
+  const POP = { initial: { scale: 0, opacity: 0 }, animate: { scale: 1, opacity: 1 }, transition: { type: "spring" as const, stiffness: 320, damping: 18 } };
 
   return (
-    <motion.div
-      ref={ref}
-      className="w-full max-w-[620px] rounded-2xl overflow-hidden"
-      style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, boxShadow: "0 40px 120px -30px rgba(255,107,71,0.15)" }}
-      initial={{ opacity: 0, y: 40 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-100px" }}
-      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {/* Chrome bar */}
-      <div className="flex items-center gap-2 px-4 h-9" style={{ borderBottom: `1px solid ${MOCK_BORDER}` }}>
-        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F57" }} />
-        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FEBC2E" }} />
-        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#28C840" }} />
-        <span className="mono-label ml-auto" style={{ color: "rgba(250,250,250,0.45)", textTransform: "none", letterSpacing: "0.02em" }}>
-          ora-studio.app/hub/vault
-        </span>
-      </div>
+    <MouseTilt className="w-full max-w-[620px]" maxTilt={5}>
+      <motion.div
+        ref={ref}
+        className="rounded-2xl overflow-hidden"
+        style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, boxShadow: "0 40px 120px -30px rgba(255,107,71,0.18)" }}
+        initial={{ opacity: 0, y: 40 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {/* Chrome bar — parallax layer 1 */}
+        <motion.div style={{ y: chromeY }} className="flex items-center gap-2 px-4 h-9" >
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F57" }} />
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FEBC2E" }} />
+          <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#28C840" }} />
+          <span className="mono-label ml-auto" style={{ color: "rgba(250,250,250,0.45)", textTransform: "none", letterSpacing: "0.02em" }}>
+            ora-studio.app/hub/vault
+          </span>
+        </motion.div>
+        <div style={{ borderTop: `1px solid ${MOCK_BORDER}` }} />
 
-      <div className="p-6 md:p-8 space-y-5">
-        {/* URL input */}
-        <div>
-          <div className="mono-label mb-2" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
-          <div className="flex gap-2">
-            <div className="flex-1 h-10 rounded-lg flex items-center px-3 font-mono text-[13px]" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA" }}>
-              https://mybrand.com
-            </div>
-            <div className="h-10 px-4 rounded-lg flex items-center mono-label" style={{ background: "#FF6B47", color: "#FFFFFF", textTransform: "uppercase" }}>
-              Scan →
+        <motion.div style={{ y: contentY }} className="p-6 md:p-8 space-y-5">
+          {/* URL input with animated typing */}
+          <div>
+            <div className="mono-label mb-2" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
+            <div className="flex gap-2">
+              <div className="flex-1 h-10 rounded-lg flex items-center px-3" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}` }}>
+                <TypedUrl target="https://mybrand.com/" active={active} />
+              </div>
+              <motion.div
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                className="h-10 px-4 rounded-lg flex items-center gap-2 mono-label cursor-pointer"
+                style={{ background: "#FF6B47", color: "#FFFFFF", textTransform: "uppercase" }}
+              >
+                {scanning ? (
+                  <motion.span
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
+                    className="inline-block w-3.5 h-3.5 rounded-full"
+                    style={{ border: "2px solid rgba(255,255,255,0.35)", borderTopColor: "#FFFFFF" }}
+                  />
+                ) : step >= 4 ? "✓" : null}
+                Scan
+              </motion.div>
             </div>
           </div>
-        </div>
 
-        {/* Progress bar */}
-        <div>
+          {/* Progress bar — scroll-tied */}
           <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(250,250,250,0.06)" }}>
             <motion.div className="h-full" style={{ width: progress, background: "#FF6B47" }} />
           </div>
-        </div>
 
-        {/* Extracted rows */}
-        <div className="pt-2 space-y-3">
-          <motion.div style={{ opacity: step1 }} className="flex items-center gap-4">
-            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
-            <div className="w-10 h-10 rounded-md flex items-center justify-center" style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 18 }}>
-              Ora
-            </div>
-          </motion.div>
-          <motion.div style={{ opacity: step2 }} className="flex items-center gap-4">
-            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
-            <div className="flex gap-1.5">
-              {["#FF6B47", "#F4C542", "#111111", "#FAFAF7", "#6C6C6C"].map((c) => (
-                <div key={c} className="w-8 h-8 rounded-md" style={{ background: c, border: c === "#FAFAF7" ? `1px solid ${MOCK_BORDER}` : "none" }} />
-              ))}
-            </div>
-          </motion.div>
-          <motion.div style={{ opacity: step3 }} className="flex items-center gap-4">
-            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
-            <div className="flex items-baseline gap-3 text-[#FAFAFA]">
-              <span style={{ ...bagel, fontSize: 22 }}>Aa</span>
-              <span className="body-tight text-[14px]" style={{ opacity: 0.65 }}>Bagel Fat One / Inter</span>
-            </div>
-          </motion.div>
-          <motion.div style={{ opacity: step4 }} className="flex items-center gap-4">
-            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
-            <div className="flex flex-wrap gap-1.5">
-              {["bold", "editorial", "warm", "confident"].map((t) => (
-                <span key={t} className="mono-label px-2.5 py-1 rounded-full" style={{ background: "rgba(250,250,250,0.06)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA", textTransform: "none", letterSpacing: "0.02em" }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </div>
-    </motion.div>
+          {/* Extracted rows — pop in with bouncy springs */}
+          <div className="pt-2 space-y-3 min-h-[180px]">
+            <AnimatePresence>
+              {step >= 1 && (
+                <motion.div {...POP} key="logo" className="flex items-center gap-4">
+                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
+                  <motion.div
+                    className="w-10 h-10 rounded-md flex items-center justify-center"
+                    style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 18 }}
+                    whileHover={{ rotate: -4, scale: 1.05 }}
+                  >
+                    Ora
+                  </motion.div>
+                </motion.div>
+              )}
+              {step >= 2 && (
+                <motion.div key="palette" initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }} className="flex items-center gap-4">
+                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
+                  <div className="flex gap-1.5">
+                    {["#FF6B47", "#F4C542", "#111111", "#FAFAF7", "#6C6C6C"].map((c, i) => (
+                      <motion.div
+                        key={c}
+                        initial={{ scale: 0, rotate: -90 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 420, damping: 15, delay: i * 0.06 }}
+                        whileHover={{ scale: 1.15, rotate: 6 }}
+                        className="w-8 h-8 rounded-md cursor-pointer"
+                        style={{ background: c, border: c === "#FAFAF7" ? `1px solid ${MOCK_BORDER}` : "none" }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+              {step >= 3 && (
+                <motion.div {...POP} key="type" className="flex items-center gap-4">
+                  <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
+                  <div className="flex items-baseline gap-3 text-[#FAFAFA]">
+                    <span style={{ ...bagel, fontSize: 22 }}>Aa</span>
+                    <span className="body-tight text-[14px]" style={{ opacity: 0.65 }}>Bagel Fat One / Inter</span>
+                  </div>
+                </motion.div>
+              )}
+              {step >= 4 && (
+                <motion.div key="tone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-start gap-4">
+                  <div className="mono-label w-16 shrink-0 pt-1" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {["bold", "editorial", "warm", "confident"].map((t, i) => (
+                      <motion.span
+                        key={t}
+                        initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: "spring", stiffness: 380, damping: 18, delay: i * 0.07 }}
+                        className="mono-label px-2.5 py-1 rounded-full"
+                        style={{ background: "rgba(250,250,250,0.06)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA", textTransform: "none", letterSpacing: "0.02em" }}
+                      >
+                        {t}
+                      </motion.span>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+      </motion.div>
+    </MouseTilt>
   );
 }
 
@@ -347,9 +493,9 @@ function PickMockup() {
   const selectOpacity = useTransform(scrollYProgress, [0.25, 0.45], [0, 1]);
 
   const angles = [
-    { emoji: "🌱", title: "Spring Renewal", subtitle: "Fresh starts, natural tones.", count: 6 },
-    { emoji: "🌸", title: "Motherly Motivation", subtitle: "Soft, nurturing, celebratory.", count: 6 },
-    { emoji: "🚀", title: "Brand on the Rise", subtitle: "Bold, confident, movement.", count: 8 },
+    { emoji: "🌱", title: "Spring Renewal", subtitle: "Fresh starts, natural tones.", count: 6, networks: "IG · LI" },
+    { emoji: "🌸", title: "Motherly Motivation", subtitle: "Soft, nurturing, celebratory.", count: 6, networks: "IG · TT" },
+    { emoji: "🚀", title: "Brand on the Rise", subtitle: "Bold, confident, movement.", count: 8, networks: "IG · LI · TT" },
   ];
 
   return (
@@ -362,7 +508,12 @@ function PickMockup() {
       transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
     >
       <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.5)" }}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+        <motion.span
+          animate={{ scale: [1, 1.4, 1], opacity: [1, 0.7, 1] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: "#FF6B47" }}
+        />
         <span>Ora suggests · April</span>
       </div>
       <h3 className="text-white mb-6" style={{ ...bagel, fontSize: "clamp(32px, 4vw, 52px)" }}>
@@ -370,30 +521,39 @@ function PickMockup() {
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {angles.map((a, i) => (
-          <motion.div
-            key={a.title}
-            className="relative p-5 rounded-2xl transition-transform"
-            style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}` }}
-            whileHover={{ y: -4 }}
-            transition={{ type: "spring", stiffness: 300, damping: 22 }}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-          >
-            {/* Selection ring — animates in on card 2 as user scrolls */}
-            {i === 1 && (
+          <MouseTilt key={a.title} maxTilt={8}>
+            <motion.div
+              className="relative p-5 rounded-2xl cursor-pointer h-full"
+              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}` }}
+              initial={{ opacity: 0, y: 30, rotate: -2 }}
+              whileInView={{ opacity: 1, y: 0, rotate: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.55, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ y: -6, scale: 1.02 }}
+            >
+              {/* Pulsing selection ring on card 2 — draws the eye after scroll */}
+              {i === 1 && (
+                <motion.div
+                  style={{ opacity: selectOpacity, border: "2px solid #FF6B47", borderRadius: 16, boxShadow: "0 0 0 4px rgba(255,107,71,0.12)" }}
+                  animate={{ scale: [1, 1.015, 1] }}
+                  transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -inset-0.5 pointer-events-none"
+                />
+              )}
               <motion.div
-                style={{ opacity: selectOpacity, border: "2px solid #FF6B47", borderRadius: 16 }}
-                className="absolute -inset-0.5 pointer-events-none"
-              />
-            )}
-            <div className="text-[28px] leading-none mb-4">{a.emoji}</div>
-            <div className="text-white mb-1.5" style={{ ...bagel, fontSize: 22 }}>{a.title}</div>
-            <p className="body-tight text-[12.5px] mb-4" style={{ color: "rgba(250,250,250,0.6)" }}>{a.subtitle}</p>
-            <div className="mono-label" style={{ color: "rgba(250,250,250,0.4)" }}>
-              {a.count} assets · {i === 0 ? "IG · LI" : i === 1 ? "IG · TT" : "IG · LI · TT"}
-            </div>
-          </motion.div>
+                className="text-[28px] leading-none mb-4"
+                animate={i === 1 ? { rotate: [0, -4, 4, 0] } : {}}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              >
+                {a.emoji}
+              </motion.div>
+              <div className="text-white mb-1.5" style={{ ...bagel, fontSize: 22 }}>{a.title}</div>
+              <p className="body-tight text-[12.5px] mb-4" style={{ color: "rgba(250,250,250,0.6)" }}>{a.subtitle}</p>
+              <div className="mono-label" style={{ color: "rgba(250,250,250,0.4)" }}>
+                {a.count} assets · {a.networks}
+              </div>
+            </motion.div>
+          </MouseTilt>
         ))}
       </div>
     </motion.div>
@@ -411,41 +571,70 @@ function PickMockup() {
 function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: string; platform: string }> }) {
   const PLATFORMS = ["IG · Feed", "IG · Story", "LinkedIn", "TikTok", "Facebook", "IG · Feed"];
   const ratios = ["1/1", "9/16", "16/9", "9/16", "1.91/1", "4/5"];
+  // Tiles fly in from mixed directions so the grid "assembles" rather than
+  // fades in monotonously. Deterministic (indexed) so re-renders stay stable.
+  const ORIGINS = [
+    { x: -60, y: -40, r: -10 },
+    { x:  50, y: -60, r:   8 },
+    { x:  70, y:  20, r:  -6 },
+    { x: -70, y:  40, r:  12 },
+    { x: -30, y:  80, r:  -4 },
+    { x:  60, y:  70, r:   6 },
+  ];
+
   return (
-    <motion.div
-      className="w-full max-w-[720px] grid grid-cols-3 gap-2"
-      initial={{ opacity: 0, y: 40 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-100px" }}
-      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {Array.from({ length: 6 }).map((_, i) => {
-        const a = assets[i];
-        return (
-          <motion.div
-            key={i}
-            className="relative rounded-xl overflow-hidden"
-            style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, aspectRatio: ratios[i] }}
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.5, delay: i * 0.12, ease: [0.16, 1, 0.3, 1] }}
-          >
-            {a && (a.videoUrl ? (
-              <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" />
-            ) : a.imageUrl ? (
-              <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-            ) : null)}
-            <div className="absolute top-2 left-2 mono-label px-2 py-0.5 rounded-full" style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 9 }}>
-              {PLATFORMS[i]}
-            </div>
-            <div className="absolute bottom-2 right-2 mono-label" style={{ color: "rgba(250,250,250,0.8)", background: "rgba(10,10,10,0.6)", padding: "2px 6px", borderRadius: 999, fontSize: 9 }}>
-              42s
-            </div>
-          </motion.div>
-        );
-      })}
-    </motion.div>
+    <MouseTilt maxTilt={4}>
+      <motion.div
+        className="w-full max-w-[720px] grid grid-cols-3 gap-2"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true, margin: "-100px" }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {Array.from({ length: 6 }).map((_, i) => {
+          const a = assets[i];
+          const o = ORIGINS[i];
+          return (
+            <motion.div
+              key={i}
+              className="relative rounded-xl overflow-hidden cursor-pointer"
+              style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, aspectRatio: ratios[i] }}
+              initial={{ opacity: 0, x: o.x, y: o.y, rotate: o.r, scale: 0.85 }}
+              whileInView={{ opacity: 1, x: 0, y: 0, rotate: 0, scale: 1 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ type: "spring", stiffness: 180, damping: 22, delay: i * 0.08 }}
+              whileHover={{ scale: 1.03, y: -4, transition: { type: "spring", stiffness: 300, damping: 22 } }}
+            >
+              {a && (a.videoUrl ? (
+                <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" />
+              ) : a.imageUrl ? (
+                <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              ) : null)}
+              <motion.div
+                className="absolute top-2 left-2 mono-label px-2 py-0.5 rounded-full"
+                initial={{ opacity: 0, y: -6 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ delay: 0.6 + i * 0.08, duration: 0.3 }}
+                style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 9 }}
+              >
+                {PLATFORMS[i]}
+              </motion.div>
+              <motion.div
+                className="absolute bottom-2 right-2 mono-label tabular-nums"
+                initial={{ opacity: 0, scale: 0.5 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ type: "spring", stiffness: 400, damping: 18, delay: 0.7 + i * 0.08 }}
+                style={{ color: "rgba(250,250,250,0.85)", background: "rgba(10,10,10,0.6)", padding: "2px 6px", borderRadius: 999, fontSize: 9 }}
+              >
+                42s
+              </motion.div>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+    </MouseTilt>
   );
 }
 
