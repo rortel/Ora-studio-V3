@@ -171,6 +171,382 @@ function CinematicPanel({
   );
 }
 
+/**
+ * MethodPanel — the "show how it works" primitive.
+ *
+ * Where CinematicPanel puts media underneath and overlays text (hero
+ * feel), MethodPanel splits the viewport: text on the left (title,
+ * eyebrow, body), UI mockup on the right. 100vh, dark canvas, hairline
+ * between the two columns on desktop. Children render the mockup.
+ *
+ * The user's feedback on the first cinematic pass was "on ne comprend
+ * pas la méthode" — pretty videos without context. MethodPanel solves
+ * that by making the UI itself the hero of each step: users see the
+ * actual Brand Vault, actual angle cards, actual asset grid as scroll
+ * animates them into view.
+ */
+function MethodPanel({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+}: {
+  eyebrow: string;
+  title: React.ReactNode;
+  subtitle: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "end start"] });
+  const textY = useTransform(scrollYProgress, [0, 0.45, 0.75, 1], [40, 0, 0, -40]);
+  const textOpacity = useTransform(scrollYProgress, [0, 0.2, 0.78, 1], [0, 1, 1, 0]);
+
+  return (
+    <section
+      ref={ref}
+      className="relative w-full overflow-hidden"
+      style={{ minHeight: "100vh", background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.06)" }}
+    >
+      <div className="max-w-[1600px] mx-auto px-6 md:px-16 h-full min-h-screen grid grid-cols-1 md:grid-cols-[minmax(0,420px)_1fr] gap-10 md:gap-16 items-center py-20 md:py-0">
+        {/* Text column */}
+        <motion.div style={{ y: textY, opacity: textOpacity }} className="flex flex-col justify-center">
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.72)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+            <span>{eyebrow}</span>
+          </div>
+          <h2 className="text-white max-w-[10ch] mb-6" style={{ ...bagel, fontSize: "clamp(56px, 8vw, 120px)" }}>
+            {title}
+          </h2>
+          <p className="body-tight text-[16px] md:text-[17px] max-w-md" style={{ color: "rgba(250,250,250,0.75)" }}>
+            {subtitle}
+          </p>
+        </motion.div>
+        {/* Mockup column */}
+        <div className="flex items-center justify-center w-full">
+          {children}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Shared color for mockup surfaces — slightly lifted from the #0A0A0A
+ * canvas so panels read as cards, not holes. */
+const MOCK_SURFACE = "#141414";
+const MOCK_BORDER = "rgba(250,250,250,0.08)";
+const MOCK_BORDER_STRONG = "rgba(250,250,250,0.14)";
+
+/**
+ * DropMockup — animated Brand Vault panel.
+ *
+ * Shows a fake "scan this URL" flow: URL input, progress, then the
+ * extracted brand DNA materialising (logo, palette chips, font sample,
+ * tone keywords). Each row fades in on scroll using useInView so the
+ * user reads the steps in order as the panel crosses the viewport.
+ */
+function DropMockup() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 80%", "end 20%"] });
+  const progress = useTransform(scrollYProgress, [0.1, 0.35], ["0%", "100%"]);
+  const step1 = useTransform(scrollYProgress, [0.12, 0.22], [0, 1]);
+  const step2 = useTransform(scrollYProgress, [0.22, 0.32], [0, 1]);
+  const step3 = useTransform(scrollYProgress, [0.32, 0.42], [0, 1]);
+  const step4 = useTransform(scrollYProgress, [0.42, 0.52], [0, 1]);
+
+  return (
+    <motion.div
+      ref={ref}
+      className="w-full max-w-[620px] rounded-2xl overflow-hidden"
+      style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, boxShadow: "0 40px 120px -30px rgba(255,107,71,0.15)" }}
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {/* Chrome bar */}
+      <div className="flex items-center gap-2 px-4 h-9" style={{ borderBottom: `1px solid ${MOCK_BORDER}` }}>
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F57" }} />
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FEBC2E" }} />
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#28C840" }} />
+        <span className="mono-label ml-auto" style={{ color: "rgba(250,250,250,0.45)", textTransform: "none", letterSpacing: "0.02em" }}>
+          ora-studio.app/hub/vault
+        </span>
+      </div>
+
+      <div className="p-6 md:p-8 space-y-5">
+        {/* URL input */}
+        <div>
+          <div className="mono-label mb-2" style={{ color: "rgba(250,250,250,0.5)" }}>Scan your URL</div>
+          <div className="flex gap-2">
+            <div className="flex-1 h-10 rounded-lg flex items-center px-3 font-mono text-[13px]" style={{ background: "rgba(250,250,250,0.04)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA" }}>
+              https://mybrand.com
+            </div>
+            <div className="h-10 px-4 rounded-lg flex items-center mono-label" style={{ background: "#FF6B47", color: "#FFFFFF", textTransform: "uppercase" }}>
+              Scan →
+            </div>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div>
+          <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(250,250,250,0.06)" }}>
+            <motion.div className="h-full" style={{ width: progress, background: "#FF6B47" }} />
+          </div>
+        </div>
+
+        {/* Extracted rows */}
+        <div className="pt-2 space-y-3">
+          <motion.div style={{ opacity: step1 }} className="flex items-center gap-4">
+            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Logo</div>
+            <div className="w-10 h-10 rounded-md flex items-center justify-center" style={{ background: "#FFFFFF", color: "#0A0A0A", ...bagel, fontSize: 18 }}>
+              Ora
+            </div>
+          </motion.div>
+          <motion.div style={{ opacity: step2 }} className="flex items-center gap-4">
+            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Palette</div>
+            <div className="flex gap-1.5">
+              {["#FF6B47", "#F4C542", "#111111", "#FAFAF7", "#6C6C6C"].map((c) => (
+                <div key={c} className="w-8 h-8 rounded-md" style={{ background: c, border: c === "#FAFAF7" ? `1px solid ${MOCK_BORDER}` : "none" }} />
+              ))}
+            </div>
+          </motion.div>
+          <motion.div style={{ opacity: step3 }} className="flex items-center gap-4">
+            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Type</div>
+            <div className="flex items-baseline gap-3 text-[#FAFAFA]">
+              <span style={{ ...bagel, fontSize: 22 }}>Aa</span>
+              <span className="body-tight text-[14px]" style={{ opacity: 0.65 }}>Bagel Fat One / Inter</span>
+            </div>
+          </motion.div>
+          <motion.div style={{ opacity: step4 }} className="flex items-center gap-4">
+            <div className="mono-label w-16 shrink-0" style={{ color: "rgba(250,250,250,0.5)" }}>Tone</div>
+            <div className="flex flex-wrap gap-1.5">
+              {["bold", "editorial", "warm", "confident"].map((t) => (
+                <span key={t} className="mono-label px-2.5 py-1 rounded-full" style={{ background: "rgba(250,250,250,0.06)", border: `1px solid ${MOCK_BORDER}`, color: "#FAFAFA", textTransform: "none", letterSpacing: "0.02em" }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * PickMockup — three angle cards, one highlighted.
+ *
+ * Mirrors the actual Surprise Me "Ora suggests" card layout so the user
+ * sees the real interaction they'll meet on the product. A subtle scroll-
+ * triggered selection ring animates onto card 2 to communicate "pick
+ * one, we take it from there."
+ */
+function PickMockup() {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start 80%", "end 20%"] });
+  const selectOpacity = useTransform(scrollYProgress, [0.25, 0.45], [0, 1]);
+
+  const angles = [
+    { emoji: "🌱", title: "Spring Renewal", subtitle: "Fresh starts, natural tones.", count: 6 },
+    { emoji: "🌸", title: "Motherly Motivation", subtitle: "Soft, nurturing, celebratory.", count: 6 },
+    { emoji: "🚀", title: "Brand on the Rise", subtitle: "Bold, confident, movement.", count: 8 },
+  ];
+
+  return (
+    <motion.div
+      ref={ref}
+      className="w-full max-w-[720px]"
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.5)" }}>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+        <span>Ora suggests · April</span>
+      </div>
+      <h3 className="text-white mb-6" style={{ ...bagel, fontSize: "clamp(32px, 4vw, 52px)" }}>
+        Pick a direction.
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {angles.map((a, i) => (
+          <motion.div
+            key={a.title}
+            className="relative p-5 rounded-2xl transition-transform"
+            style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}` }}
+            whileHover={{ y: -4 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+          >
+            {/* Selection ring — animates in on card 2 as user scrolls */}
+            {i === 1 && (
+              <motion.div
+                style={{ opacity: selectOpacity, border: "2px solid #FF6B47", borderRadius: 16 }}
+                className="absolute -inset-0.5 pointer-events-none"
+              />
+            )}
+            <div className="text-[28px] leading-none mb-4">{a.emoji}</div>
+            <div className="text-white mb-1.5" style={{ ...bagel, fontSize: 22 }}>{a.title}</div>
+            <p className="body-tight text-[12.5px] mb-4" style={{ color: "rgba(250,250,250,0.6)" }}>{a.subtitle}</p>
+            <div className="mono-label" style={{ color: "rgba(250,250,250,0.4)" }}>
+              {a.count} assets · {i === 0 ? "IG · LI" : i === 1 ? "IG · TT" : "IG · LI · TT"}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/**
+ * ShipMockup — 6-asset grid assembling into a campaign pack.
+ *
+ * Simulates the end of a Surprise Me run: six platform-framed shots
+ * appearing one by one with their mono badges. Uses the Library asset
+ * URLs when provided (showcase), otherwise solid coral/ink tiles so
+ * the panel never renders empty on first paint.
+ */
+function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: string; platform: string }> }) {
+  const PLATFORMS = ["IG · Feed", "IG · Story", "LinkedIn", "TikTok", "Facebook", "IG · Feed"];
+  const ratios = ["1/1", "9/16", "16/9", "9/16", "1.91/1", "4/5"];
+  return (
+    <motion.div
+      className="w-full max-w-[720px] grid grid-cols-3 gap-2"
+      initial={{ opacity: 0, y: 40 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {Array.from({ length: 6 }).map((_, i) => {
+        const a = assets[i];
+        return (
+          <motion.div
+            key={i}
+            className="relative rounded-xl overflow-hidden"
+            style={{ background: MOCK_SURFACE, border: `1px solid ${MOCK_BORDER}`, aspectRatio: ratios[i] }}
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.5, delay: i * 0.12, ease: [0.16, 1, 0.3, 1] }}
+          >
+            {a && (a.videoUrl ? (
+              <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" />
+            ) : a.imageUrl ? (
+              <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            ) : null)}
+            <div className="absolute top-2 left-2 mono-label px-2 py-0.5 rounded-full" style={{ background: "rgba(10,10,10,0.78)", color: "#FAFAFA", backdropFilter: "blur(6px)", textTransform: "none", letterSpacing: "0.02em", fontSize: 9 }}>
+              {PLATFORMS[i]}
+            </div>
+            <div className="absolute bottom-2 right-2 mono-label" style={{ color: "rgba(250,250,250,0.8)", background: "rgba(10,10,10,0.6)", padding: "2px 6px", borderRadius: 999, fontSize: 9 }}>
+              42s
+            </div>
+          </motion.div>
+        );
+      })}
+    </motion.div>
+  );
+}
+
+/**
+ * PricingPanel — three tier cards, dark anthracite.
+ *
+ * User asked for the pricing to be on the landing, not just a teaser.
+ * Mirrors the /pricing page's three tiers (Creator / Studio / Agency).
+ * Studio highlighted with a coral outline to steer conversion.
+ */
+function PricingPanel({ primaryHref }: { primaryHref: string }) {
+  const tiers = [
+    {
+      code: "creator", name: "Creator", price: 19, assets: 60,
+      tagline: "Solo creators shipping brand content weekly.",
+      features: ["60 assets / month", "Images + 5s films", "AI-written captions", "IG · LI · FB · TikTok", "1-click publish", "Editor (logo, text, overlays)"],
+      highlight: false,
+    },
+    {
+      code: "studio", name: "Studio", price: 49, assets: 200,
+      tagline: "Brand-locked creative at production volume.",
+      features: ["200 assets / month", "Brand Vault (palette, tone, voice)", "Deep-scan your URL", "Logo baked into every shot", "Priority generation queue", "Everything in Creator"],
+      highlight: true,
+    },
+    {
+      code: "agency", name: "Agency", price: 199, assets: 1000,
+      tagline: "Multi-brand studios and in-house teams.",
+      features: ["1 000 assets / month", "Multi-brand Vault (up to 5)", "3 team seats", "API access", "White-label ZIP delivery", "Everything in Studio"],
+      highlight: false,
+    },
+  ];
+  return (
+    <section id="pricing-tiers" className="relative w-full" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.06)" }}>
+      <div className="max-w-[1400px] mx-auto px-6 md:px-16 py-24 md:py-32">
+        <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(250,250,250,0.6)" }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
+          <span>Pricing · one per brand</span>
+        </div>
+        <h2 className="text-white mb-14 max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(56px, 9vw, 140px)" }}>
+          Pick a plan. <span style={{ color: "#FF6B47" }}>Ship tonight.</span>
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          {tiers.map((t) => (
+            <motion.div
+              key={t.code}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              className="relative rounded-2xl p-8 flex flex-col"
+              style={{
+                background: MOCK_SURFACE,
+                border: t.highlight ? `1px solid #FF6B47` : `1px solid ${MOCK_BORDER}`,
+                boxShadow: t.highlight ? "0 30px 80px -30px rgba(255,107,71,0.25)" : "none",
+              }}
+            >
+              {t.highlight && (
+                <div className="absolute -top-3 left-8 mono-label px-3 py-1 rounded-full" style={{ background: "#FF6B47", color: "#FFFFFF" }}>
+                  Most picked
+                </div>
+              )}
+              <div className="mono-label mb-2" style={{ color: t.highlight ? "#FF6B47" : "rgba(250,250,250,0.5)" }}>
+                {t.name}
+              </div>
+              <div className="mb-2 flex items-baseline gap-2 text-white">
+                <span className="tabular-nums" style={{ ...bagel, fontSize: "clamp(56px, 6vw, 84px)" }}>€{t.price}</span>
+                <span className="mono-label" style={{ color: "rgba(250,250,250,0.55)" }}>/ month</span>
+              </div>
+              <p className="body-tight text-[13px] mb-6" style={{ color: "rgba(250,250,250,0.6)" }}>{t.tagline}</p>
+              <ul className="body-tight text-[13.5px] space-y-2.5 mb-8 flex-1" style={{ color: "rgba(250,250,250,0.85)" }}>
+                {t.features.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5">
+                    <span className="mono-data mt-0.5" style={{ color: "#FF6B47", fontSize: 12 }}>✓</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link to={primaryHref}>
+                <button className="w-full h-11 rounded-full mono-label transition-transform hover:scale-[1.02]" style={{
+                  background: t.highlight ? "#FF6B47" : "rgba(250,250,250,0.06)",
+                  color: t.highlight ? "#FFFFFF" : "#FAFAFA",
+                  border: t.highlight ? "none" : `1px solid ${MOCK_BORDER_STRONG}`,
+                  textTransform: "none",
+                  letterSpacing: "0.02em",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}>
+                  Start {t.name} →
+                </button>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+        <div className="mono-label mt-10 text-center" style={{ color: "rgba(250,250,250,0.45)" }}>
+          Yearly billing · 20% off · cancel anytime
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function LandingPage() {
   const { user } = useAuth();
   // No self-serve free plan: anonymous visitors land on /pricing (pick a tier
@@ -223,10 +599,12 @@ export function LandingPage() {
     if (a.videoUrl) return { videoSrc: a.videoUrl, posterSrc: a.imageUrl, imageSrc: undefined };
     return { videoSrc: undefined, posterSrc: undefined, imageSrc: a.imageUrl };
   };
+  // Hero uses the first admin-featured asset (or heroVideo fallback) —
+  // the Drop/Pick/Ship panels don't consume showcase[1..3] anymore
+  // since they render mocked UI instead of brand-output videos. The
+  // showcase tail still feeds the bento gallery + the ShipMockup's
+  // 6-tile stack.
   const mediaHero = panelMedia(0);
-  const mediaDrop = panelMedia(1);
-  const mediaPick = panelMedia(2);
-  const mediaShip = panelMedia(3);
 
   return (
     <div style={{ background: "#0A0A0A", color: "#FAFAFA" }}>
@@ -289,35 +667,32 @@ export function LandingPage() {
         }
       />
 
-      {/* ═══ Panel 2 — DROP ═══ */}
-      <CinematicPanel
-        videoSrc={mediaDrop.videoSrc}
-        posterSrc={mediaDrop.posterSrc}
-        imageSrc={mediaDrop.imageSrc}
+      {/* ═══ Panel 2 — DROP (UI mockup) ═══ */}
+      <MethodPanel
         eyebrow="01 / 03 · your brand"
         title={<>Drop.</>}
-        subtitle={<>Your URL. 30 seconds. Ora scans, locks your palette, tone, photo style into the Brand Vault. Once. Forever.</>}
-      />
+        subtitle={<>Paste your URL. 30 seconds. Ora reads your homepage, locks your palette, typography, tone and voice into the Brand Vault. Once. Forever.</>}
+      >
+        <DropMockup />
+      </MethodPanel>
 
-      {/* ═══ Panel 3 — PICK ═══ */}
-      <CinematicPanel
-        videoSrc={mediaPick.videoSrc}
-        posterSrc={mediaPick.posterSrc}
-        imageSrc={mediaPick.imageSrc}
+      {/* ═══ Panel 3 — PICK (UI mockup) ═══ */}
+      <MethodPanel
         eyebrow="02 / 03 · the direction"
         title={<>Pick.</>}
-        subtitle={<>Three editorial angles, pre-tuned to your month, your sector, your brand. Click. That's the brief.</>}
-      />
+        subtitle={<>Three editorial angles, pre-tuned to your month, your sector, your brand. Click one. That's the brief. No typing.</>}
+      >
+        <PickMockup />
+      </MethodPanel>
 
-      {/* ═══ Panel 4 — SHIP ═══ */}
-      <CinematicPanel
-        videoSrc={mediaShip.videoSrc}
-        posterSrc={mediaShip.posterSrc}
-        imageSrc={mediaShip.imageSrc}
+      {/* ═══ Panel 4 — SHIP (UI mockup using featured assets) ═══ */}
+      <MethodPanel
         eyebrow="03 / 03 · the pack"
         title={<>Ship.</>}
-        subtitle={<>Six assets, image + paired 5s film, framed for every network. Download the ZIP. Or publish, one click.</>}
-      />
+        subtitle={<>Six assets, image + paired 5s film, framed for every network. Download the ZIP or publish, one click.</>}
+      >
+        <ShipMockup assets={showcase.slice(0, 6).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
+      </MethodPanel>
 
       {/* ═══ Panel 5 — DELTA (split timers on dark canvas) ═══
        *   Full 100vh like the others but instead of a single media, two
@@ -426,7 +801,14 @@ export function LandingPage() {
         );
       })()}
 
-      {/* ═══ Panel 7 — PRICING CTA (full-viewport) ═══
+      {/* ═══ Panel 7 — PRICING TIERS (3 cards) ═══
+       *   The actual tiers from /pricing, surfaced on the landing so
+       *   visitors don't have to leave to know what they're paying.
+       *   Studio is highlighted with a coral outline (it's the
+       *   most-picked tier). */}
+      <PricingPanel primaryHref={primaryHref} />
+
+      {/* ═══ Panel 8 — FINAL CTA (full-viewport) ═══
        *   One last cinematic beat. No media behind — just a huge Bagel
        *   statement on black with the coral payoff, CTA + mono pricing. */}
       <section id="pricing" className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: "#0A0A0A", borderTop: "1px solid rgba(250,250,250,0.08)" }}>
