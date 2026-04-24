@@ -26,15 +26,21 @@ export function RootLayout() {
   // The 4-tab app shell (Surprise Me / Library / Edit / Vault) renders its
   // own sticky <AppTabs> header, so we drop the left AppSidebar on those
   // routes to avoid a duplicate brand + double nav.
+  // Routes that host their own <AppTabs /> at the top of the page body and
+  // therefore MUST drop the left AppSidebar (would duplicate the brand
+  // lockup + double the nav). Profile joined the list so /profile stops
+  // looking like an older legacy surface — it now wears the same shell as
+  // Surprise / Library / Edit / Vault.
   const isThreeTabApp =
     location.pathname === "/hub/surprise" ||
     location.pathname.startsWith("/hub/library") ||
     location.pathname.startsWith("/hub/editor") ||
-    location.pathname.startsWith("/hub/vault");
+    location.pathname.startsWith("/hub/vault") ||
+    location.pathname.startsWith("/profile");
   // The marketing landing (`/`) owns its own header + footer, so we skip the
   // shared Navbar/Footer for that path.
   const isLanding = location.pathname === "/";
-  const isAppView = (isHub && !isThreeTabApp) || isProfile || isAdmin || isSubscribe;
+  const isAppView = (isHub && !isThreeTabApp) || isAdmin || isSubscribe;
 
   // Only scroll to top on actual page navigation (pathname change), not on search param changes
   // Skip scroll-to-top for /hub paths to avoid disrupting Campaign Lab and other stateful views

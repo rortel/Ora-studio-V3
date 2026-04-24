@@ -40,10 +40,14 @@
   /* ── Legacy compatibility — mapped to the Ora violet token so the legacy
    *    bg-ora-signal-light / text-ora-signal Tailwind utilities used across
    *    older pages render in the current brand palette. ── */
-  --ora-signal: #7C5CE0;
-  --ora-signal-light: rgba(124, 92, 224, 0.06);
-  --ora-signal-medium: rgba(124, 92, 224, 0.10);
-  --ora-signal-ring: rgba(124, 92, 224, 0.14);
+  /* Remapped from legacy purple (#7C5CE0) → Ora coral so every page
+   * using text-ora-signal / bg-ora-signal / border-ora-signal (Profile,
+   * Admin, Agents, Library helpers, etc.) adopts the brand accent
+   * without per-page edits. */
+  --ora-signal: #FF5C39;
+  --ora-signal-light: rgba(255, 92, 57, 0.08);
+  --ora-signal-medium: rgba(255, 92, 57, 0.14);
+  --ora-signal-ring: rgba(255, 92, 57, 0.20);
 
   --destructive: #DC2626;
   --destructive-foreground: #FFFFFF;

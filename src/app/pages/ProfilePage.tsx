@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
@@ -103,35 +104,39 @@ const agencyUser: UserProfile = {
   joinedDate: "Nov 2025",
 };
 
+/* Plan metadata — aligned with /pricing and the server's PLAN_CREDITS.
+ * The codenames free / starter / pro / business are the legacy auth keys
+ * used by the server; the display names below are the public tiers users
+ * see everywhere else (Free trial, Creator, Studio, Agency). */
 const planData: Record<PlanTier, PlanDetails> = {
   free: {
-    name: "Free",
+    name: "Free trial",
     price: "0",
     period: "",
     color: "var(--muted-foreground)",
-    agents: 3,
-    maxAgents: 3,
+    agents: 0,
+    maxAgents: 0,
     contentUsed: 0,
     contentMax: 10,
     vaults: 0,
-    maxVaults: 0,
+    maxVaults: 1,
     campaigns: 0,
     maxCampaigns: 0,
     storageUsed: 0,
     storageMax: 0.1,
     renewalDate: "--",
-    features: ["10 AI credits", "3 AI models", "Text and image generation"],
-    lockedFeatures: ["Brand Vault", "Campaign Lab", "Calendar", "Analytics", "Credit packs"],
+    features: ["10 free credits (one full pack)", "One Brand Vault", "All 4 social formats", "No card required"],
+    lockedFeatures: ["Ongoing monthly credits", "Publish + schedule", "Library HD downloads", "Editor overlays"],
   },
   starter: {
-    name: "Starter",
-    price: "29",
+    name: "Creator",
+    price: "19",
     period: "/mo",
-    color: "var(--ora-signal)",
-    agents: 10,
-    maxAgents: 10,
+    color: "#FF5C39",
+    agents: 0,
+    maxAgents: 0,
     contentUsed: 0,
-    contentMax: 100,
+    contentMax: 60,
     vaults: 1,
     maxVaults: 1,
     campaigns: 0,
@@ -139,45 +144,45 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 5,
     renewalDate: "--",
-    features: ["100 AI credits/mo", "15 publications/mo", "10 AI models", "1 product", "All features included"],
-    lockedFeatures: [],
+    features: ["60 assets / month", "Images + 5s films", "IG · LinkedIn · Facebook · TikTok", "1-click publish + schedule", "Library HD downloads", "Editor (logo, text, overlays)"],
+    lockedFeatures: ["Brand Vault deep-scan", "Multi-brand", "Team seats", "API access"],
   },
   pro: {
-    name: "Pro",
-    price: "79",
+    name: "Studio",
+    price: "49",
     period: "/mo",
-    color: "var(--ora-signal)",
-    agents: 25,
-    maxAgents: 25,
+    color: "#FF5C39",
+    agents: 0,
+    maxAgents: 0,
     contentUsed: 0,
-    contentMax: 500,
+    contentMax: 200,
     vaults: 1,
-    maxVaults: 5,
+    maxVaults: 1,
     campaigns: 0,
     maxCampaigns: -1,
     storageUsed: 0,
     storageMax: 20,
     renewalDate: "--",
-    features: ["500 AI credits/mo", "60 publications/mo", "25 AI models", "5 products", "3 team members", "All features included"],
-    lockedFeatures: [],
+    features: ["200 assets / month", "Brand Vault — palette, tone, voice, photo style", "Paste your site URL, Ora extracts your brand", "Logo baked into every shot", "Priority generation queue", "Everything in Creator"],
+    lockedFeatures: ["Multi-brand (×5)", "Team seats", "API access", "White-label ZIP"],
   },
   business: {
-    name: "Business",
-    price: "149",
+    name: "Agency",
+    price: "199",
     period: "/mo",
-    color: "var(--ora-signal)",
-    agents: 38,
-    maxAgents: 38,
+    color: "#FF5C39",
+    agents: 0,
+    maxAgents: 0,
     contentUsed: 0,
-    contentMax: 2000,
+    contentMax: 1000,
     vaults: 1,
-    maxVaults: 20,
+    maxVaults: 5,
     campaigns: 0,
     maxCampaigns: -1,
     storageUsed: 0,
-    storageMax: 50,
+    storageMax: 100,
     renewalDate: "--",
-    features: ["2,000 AI credits/mo", "200 publications/mo", "All AI models", "20 products", "10 team members", "Priority support", "All features included"],
+    features: ["1,000 assets / month", "Multi-brand Vault (up to 5 brands)", "3 team seats", "API access", "White-label ZIP delivery", "Priority support", "Everything in Studio"],
     lockedFeatures: [],
   },
 };
@@ -375,6 +380,7 @@ function ProfilePageContent() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AppTabs />
       <div className="max-w-[1200px] mx-auto px-6 py-8">
 
         {/* Auth status + Credits */}
