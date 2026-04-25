@@ -763,18 +763,20 @@ function SurpriseContent() {
                   )}
                 </h1>
 
-                {/* 1. Photo — mandatory in product mode, optional mood ref in event mode */}
+                {/* 1. Photo — mandatory in product mode (the SKU is the subject),
+                    strongly preferred in event mode (the venue is the subject;
+                    without it Ora composes a generic place from the description). */}
                 {productPhoto ? (
                   <div className="mb-6 flex items-start gap-4 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                     <img src={productPhoto} alt="" className="w-24 h-24 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
                       <div>
                         <div className="text-[13px] font-semibold" style={{ color: TEXT }}>
-                          {mode === "event" ? "Mood reference set" : "Product photo locked"}
+                          {mode === "event" ? "Venue locked" : "Product photo locked"}
                         </div>
                         <p className="text-[12px]" style={{ color: MUTED }}>
                           {mode === "event"
-                            ? "Ora will use this as a vibe cue, not reproduce it shot-for-shot."
+                            ? "Ora keeps this venue as the subject and layers event mood on top — same room, different moment."
                             : "Ora will build every asset on top of this shot."}
                         </p>
                       </div>
@@ -790,10 +792,10 @@ function SurpriseContent() {
                     <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
                       {uploadingProduct
                         ? "Uploading…"
-                        : mode === "event" ? "Drop a mood photo (optional)" : "Drop your product photo"}
+                        : mode === "event" ? "Drop a photo of the venue" : "Drop your product photo"}
                     </span>
                     <span className="text-[12px]" style={{ color: MUTED }}>
-                      {mode === "event" ? "Venue, poster, mood — anything sets the tone" : "PNG, JPG, WebP · required"}
+                      {mode === "event" ? "Strongly recommended — the venue is the hero of every shot" : "PNG, JPG, WebP · required"}
                     </span>
                     <input type="file" accept="image/*" className="hidden"
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />

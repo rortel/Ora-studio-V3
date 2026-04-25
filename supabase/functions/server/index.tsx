@@ -9261,10 +9261,12 @@ app.post("/analyze/surprise-me", async (c) => {
     // the scene, the mood, the twist — never the product itself. So the
     // product reference weight is held constant (high) for every level;
     // only the LLM system hint and temperature change.
-    // Product mode keeps tight fidelity (0.92) — the SKU is sacred. Event
-    // mode treats the photo as a mood cue (0.55) so the model can recompose
-    // venue / atmosphere freely instead of reproducing the reference shot.
-    const PRODUCT_REF_WEIGHT = mode === "event" ? 0.55 : 0.92;
+    // Product mode: tight fidelity — the SKU is sacred (0.92).
+    // Event mode: the VENUE is the subject — also preserved tightly (0.85).
+    // We just slightly relax vs product to leave room for the event-mood
+    // layer (lighting, time-of-day, ambient atmosphere) without losing
+    // the venue's recognisable architecture / interior.
+    const PRODUCT_REF_WEIGHT = mode === "event" ? 0.85 : 0.92;
     const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
       1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. The product itself stays exactly as provided." },
       2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. The product itself stays exactly as provided." },
@@ -9372,9 +9374,10 @@ CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 
 HARD RULES:
 ${isEvent
-  ? `- The pack promotes an EVENT (date + venue), not a product. Every shot evokes ATMOSPHERE — the venue, the crowd, the lighting, the anticipation — not a SKU close-up.
-- Across the pack rotate event-promo beats: save-the-date, lineup tease, venue ambiance, countdown, behind-the-scenes prep, FOMO/invite-only feel. No two shots repeat the same beat.
-- The reference photo (if any) is a MOOD CUE only — recompose freely, don't reproduce it shot-for-shot.`
+  ? `- The pack promotes an EVENT held at a SPECIFIC VENUE on a SPECIFIC DATE. The VENUE is the hero of every shot — its architecture, interior, signature elements must remain photo-real and recognisable. Never morph it, never stylise it into paint/illustration.
+- The reference photo IS the venue. Treat it like a product reference: preserve composition, materials, geometry. The creative twist is the EVENT ATMOSPHERE we LAYER on top — golden-hour lighting, evening glow, candles lit, table set, neon signage glow, crowd silhouettes outside, anticipation light leaks, time-of-day shifts, dressed-for-the-occasion staging. The venue stays the same room; only the moment changes.
+- Across the pack rotate event-promo beats: empty-but-set (the calm before), arrival glow, lineup tease, prep behind-the-scenes, golden-hour wide shot, intimate detail (table dressing, doorway light), countdown anticipation. No two shots repeat the same beat.
+- ABSOLUTELY NO RENDERED TEXT IN THE IMAGE — no clocks displaying numbers, no signage with venue names, no invitation cards with readable text, no save-the-date plates, no countdown digits. Image-gen models cannot reliably render text and produce typos. Date and venue live in the CAPTION ONLY. If a sign or screen appears in the scene, leave it intentionally blank, blurred, or off-frame.`
   : `- The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.`}
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
 - EVERY shot MUST carry a concrete graphic/scene twist fitting the creativity level (a prop, a light move, an overlay, a scale play, a material swap, a composition dare). Randomize the twists so no two shots are identical moves.
@@ -9388,7 +9391,7 @@ ${brief ? `User brief: ${brief}` : ""}
 ${season ? `Season / moment: ${season}` : ""}
 ${isEvent && eventDetails ? `Event details:\n- ${eventDetails}` : ""}
 ${productRef ? (isEvent
-  ? "A reference photo IS provided — treat it as a mood cue (vibe, lighting, palette inspiration), do NOT reproduce it literally."
+  ? "A photo of the VENUE IS provided (image_ref will be attached on every shot). Preserve the venue's architecture / interior / signature elements. Compose every shot INSIDE this same venue from a different angle / moment / lighting. Never invent a different place."
   : "A product reference photo IS provided (image_ref will be attached on every shot).") : "No reference photo provided — generation is text-to-image only."}
 ${!isEvent && productDescription ? `Product identity (MUST be preserved verbatim in every promptText — name the colour, material, cut so the image-gen model can't drift): ${productDescription}` : ""}
 
@@ -9540,19 +9543,12 @@ OUTPUT JSON:
           if (productRef) {
             // Belt-and-braces. In product mode: prepend the SKU description so
             // kontext-pro always sees the product's named attributes (prevents
-            // colour drift). In event mode: prepend the event details so the
-            // model anchors the scene on date / venue / atmosphere instead of
-            // trying to preserve a literal subject from the reference photo.
+            // colour drift). In event mode: pin the VENUE as the subject (the
+            // reference photo IS the venue) and layer event atmosphere on top
+            // — same room, different moment.
             let promptWithProduct = job.promptText;
             if (mode === "event") {
-              const eventLine = [
-                eventDate  && `date: ${eventDate}`,
-                eventVenue && `venue: ${eventVenue}`,
-                eventCTA   && `CTA: ${eventCTA}`,
-              ].filter(Boolean).join(" · ");
-              if (eventLine || productDescription) {
-                promptWithProduct = `EVENT CONTEXT (use the reference photo as a mood cue, not a literal subject — recompose freely): ${productDescription || ""}${eventLine ? ` — ${eventLine}` : ""}.\n\n${job.promptText}`;
-              }
+              promptWithProduct = `VENUE (preserve from reference photo — same room, same architecture, same materials): ${productDescription || eventVenue || "the venue shown"}. Only the MOMENT changes (lighting, time-of-day, dressed for the event, atmospheric layer). NO RENDERED TEXT anywhere in the image — no signs, no clocks, no invitation cards with writing.\n\n${job.promptText}`;
             } else if (productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")) {
               promptWithProduct = `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`;
             }
