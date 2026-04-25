@@ -9570,9 +9570,20 @@ OUTPUT JSON:
     };
 
     // ── Generate all jobs in parallel (concurrency 3) ──
-    // When a product reference photo is provided, we use kontext-pro with image_ref.
-    // Otherwise, text-to-image via Luma Photon.
+    // PRIMARY path when a product reference photo is provided: pixel-perfect
+    // compositing — Photoroom Studio AI bg (or FAL Bria / IC-Light fallback).
+    // The product is NEVER regenerated; only the scene around it is. This
+    // is the only way to deliver true 0% drift on signature-strong products
+    // (luxury bags, watches, sneakers). kontext-pro stays as a final fallback
+    // when all compositing strategies fail (rare).
+    //
+    // When no product photo: text-to-image via Luma Photon.
     const CONCURRENCY = 3;
+    // Cutout cache — first composite that extracts a cutout updates this;
+    // subsequent shots in the same run skip Photoroom's Stage 1 (saves ~3-5s
+    // per fallback shot). First-batch races are acceptable: a few duplicate
+    // cutouts in storage, only one reused.
+    let cachedCutoutUrl: string | null = null;
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
       videoFileName?: string;
@@ -9585,17 +9596,30 @@ OUTPUT JSON:
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
         try {
           if (productRef) {
-            // Belt-and-braces: if the LLM's promptText didn't already weave
-            // in the product description, prepend it so kontext-pro always
-            // sees the product's named attributes. Prevents colour drift
-            // when the scene composition strays from the reference photo.
+            // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated)
+            const composite = await runPixelPerfectComposite({
+              productImageUrl: productRef,
+              prompt: job.promptText,
+              aspectRatio: job.aspectRatio,
+              userId: user.id,
+              cachedCutoutUrl,
+            });
+            if (composite?.cutoutUrl && !cachedCutoutUrl) cachedCutoutUrl = composite.cutoutUrl;
+            if (composite) {
+              const persisted = await persistOne(composite.imageUrl, job.fileName, job.platform);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || composite.imageUrl, provider: composite.provider };
+            }
+
+            // Stage 2: kontext-pro fallback (compositing failed — usually
+            // means Photoroom + FAL keys missing or all three providers down)
+            console.log(`[surprise-me] composite failed for ${job.label}, falling back to kontext-pro`);
             const promptWithProduct = productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")
               ? `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`
               : job.promptText;
             const r = await runRemix({
               finalPrompt: promptWithProduct, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
-              refWeight: PRODUCT_REF_WEIGHT, // constant — product respect is non-negotiable
+              refWeight: PRODUCT_REF_WEIGHT,
             });
             if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
@@ -9959,6 +9983,155 @@ async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string 
   return signedData.signedUrl;
 }
 
+// Reusable pixel-perfect compositing — used by both /compare/pixel-perfect-product
+// (as the canonical endpoint) and /analyze/surprise-me (as primary path per shot).
+//
+// Three-strategy fallback (returns on first success):
+//   A) Photoroom v2/edit Studio AI bg — one-shot cutout + AI background
+//   B) FAL Bria background/replace — purpose-built for product photography
+//   C) FAL IC-Light v2 — relight cutout into prompt-described environment
+//
+// Cutout caching: pass `cachedCutoutUrl` to skip Stage 1 (Photoroom extract).
+// surprise-me uses this to extract the cutout ONCE per run and reuse across all shots.
+async function runPixelPerfectComposite(opts: {
+  productImageUrl: string;
+  prompt: string;
+  aspectRatio?: string;
+  userId: string | null;
+  cachedCutoutUrl?: string | null;
+}): Promise<{ imageUrl: string; provider: string; cutoutUrl: string | null } | null> {
+  const t0 = Date.now();
+  const { productImageUrl, prompt, userId } = opts;
+  const aspectRatio = opts.aspectRatio || "1:1";
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  const falKey = Deno.env.get("FAL_API_KEY");
+
+  // ── STAGE 1: Subject cutout (skip if cached) ──
+  let cutoutSignedUrl: string | null = opts.cachedCutoutUrl || null;
+  if (!cutoutSignedUrl && photoroomKey) {
+    try {
+      const { pngBlob } = await photoroomExtractCutout(productImageUrl, photoroomKey);
+      cutoutSignedUrl = await uploadPngToStorage(pngBlob, "cutout", userId);
+    } catch (err) {
+      console.log(`[composite] cutout failed: ${err}`);
+    }
+  }
+
+  // ── STAGE 2A: Photoroom Studio AI bg (preferred — cutout + bg + relight in 1 call) ──
+  if (photoroomKey) {
+    try {
+      const arSizeMap: Record<string, string> = {
+        "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+        "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+        "2:3": "800x1200", "3:2": "1200x800",
+      };
+      const outputSize = arSizeMap[aspectRatio] || "1080x1080";
+      const params = new URLSearchParams();
+      params.set("imageUrl", productImageUrl);
+      params.set("removeBackground", "true");
+      params.set("background.prompt", String(prompt).slice(0, 400));
+      params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+      params.set("outputSize", outputSize);
+      params.set("padding", "0.08");
+      params.set("ignorePaddingAndSnapOnCroppedSides", "false");
+      params.set("export.format", "webp");
+
+      const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+        headers: {
+          "x-api-key": photoroomKey,
+          "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
+        },
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (res.ok) {
+        const imageBuffer = await res.arrayBuffer();
+        const fileName = `pixel-perfect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+        const storagePath = `generated/${userId || "anon"}/${fileName}`;
+        const sb = supabaseAdmin();
+        const { error: uploadError } = await sb.storage
+          .from("make-cad57f79-media")
+          .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
+        if (!uploadError) {
+          const { data: signedData } = await sb.storage
+            .from("make-cad57f79-media")
+            .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+          if (signedData?.signedUrl) {
+            console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
+            return { imageUrl: signedData.signedUrl, provider: "photoroom-studio", cutoutUrl: cutoutSignedUrl };
+          }
+        }
+      } else {
+        const b = await res.text();
+        console.log(`[composite] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
+      }
+    } catch (err) {
+      console.log(`[composite] Photoroom Studio error: ${err}`);
+    }
+  }
+
+  // ── STAGE 2B: FAL Bria background/replace (needs cutout) ──
+  if (falKey && cutoutSignedUrl) {
+    try {
+      const res = await fetch("https://fal.run/fal-ai/bria/background/replace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({
+          image_url: cutoutSignedUrl,
+          bg_prompt: String(prompt).slice(0, 400),
+          refine_prompt: true,
+          num_results: 1,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.result?.[0] || data.images?.[0]?.url;
+        if (imageUrl) {
+          console.log(`[composite] FAL Bria OK in ${Date.now() - t0}ms`);
+          return { imageUrl, provider: "fal-bria-bg-replace", cutoutUrl: cutoutSignedUrl };
+        }
+      } else {
+        const b = await res.text();
+        console.log(`[composite] FAL Bria ${res.status}: ${b.slice(0, 200)}`);
+      }
+    } catch (err) {
+      console.log(`[composite] FAL Bria error: ${err}`);
+    }
+  }
+
+  // ── STAGE 2C: FAL IC-Light v2 relight (needs cutout) ──
+  if (falKey && cutoutSignedUrl) {
+    try {
+      const res = await fetch("https://fal.run/fal-ai/iclight-v2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
+        body: JSON.stringify({
+          image_url: cutoutSignedUrl,
+          prompt: String(prompt).slice(0, 400),
+          num_images: 1,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.images?.[0]?.url;
+        if (imageUrl) {
+          console.log(`[composite] FAL IC-Light OK in ${Date.now() - t0}ms`);
+          return { imageUrl, provider: "fal-iclight-v2", cutoutUrl: cutoutSignedUrl };
+        }
+      } else {
+        const b = await res.text();
+        console.log(`[composite] FAL IC-Light ${res.status}: ${b.slice(0, 200)}`);
+      }
+    } catch (err) {
+      console.log(`[composite] FAL IC-Light error: ${err}`);
+    }
+  }
+
+  console.log(`[composite] all strategies failed in ${Date.now() - t0}ms`);
+  return null;
+}
+
 app.post("/compare/pixel-perfect-product", async (c) => {
   const t0 = Date.now();
   try {
@@ -9977,169 +10150,26 @@ app.post("/compare/pixel-perfect-product", async (c) => {
     }
 
     console.log(`[pixel-perfect] start — user=${user?.id?.slice(0, 8) || "anon"}, ar=${aspectRatio}, ref=${String(productImageUrl).slice(0, 80)}`);
-
-    const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
-    const falKey = Deno.env.get("FAL_API_KEY");
-
-    // ═══ STAGE 1: Extract subject cutout (non-generative → pixel-perfect) ═══
-    let cutoutSignedUrl: string | null = null;
-    if (photoroomKey) {
-      try {
-        console.log(`[pixel-perfect] Stage 1: Photoroom cutout...`);
-        const { pngBlob } = await photoroomExtractCutout(productImageUrl, photoroomKey);
-        cutoutSignedUrl = await uploadPngToStorage(pngBlob, "cutout", user?.id || null);
-        console.log(`[pixel-perfect] Cutout OK — ${cutoutSignedUrl.slice(0, 80)}`);
-      } catch (err) {
-        console.log(`[pixel-perfect] Photoroom cutout failed: ${err}`);
-      }
+    const result = await runPixelPerfectComposite({
+      productImageUrl,
+      prompt: String(prompt),
+      aspectRatio: String(aspectRatio),
+      userId: user?.id || null,
+    });
+    if (result) {
+      if (user) logEvent("generation", { userId: user.id, type: "image", model: "pixel-perfect", provider: result.provider }).catch(() => {});
+      return c.json({
+        success: true,
+        imageUrl: result.imageUrl,
+        provider: result.provider,
+        pixelPerfect: true,
+        cutoutUrl: result.cutoutUrl,
+        tookMs: Date.now() - t0,
+      });
     }
-
-    // ═══ STAGE 2: Generate scene around preserved cutout ═══
-
-    // Strategy A: Photoroom v2/edit direct — does cutout + AI bg in ONE call (guaranteed pixel-perfect)
-    // This is the PRIMARY path since Photoroom's segmentation is non-generative.
-    if (photoroomKey) {
-      try {
-        console.log(`[pixel-perfect] Stage 2A: Photoroom Studio AI bg with preserved subject...`);
-        const arSizeMap: Record<string, string> = {
-          "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
-          "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
-          "2:3": "800x1200", "3:2": "1200x800",
-        };
-        const outputSize = arSizeMap[aspectRatio] || "1080x1080";
-
-        const params = new URLSearchParams();
-        params.set("imageUrl", productImageUrl);
-        params.set("removeBackground", "true");
-        params.set("background.prompt", String(prompt).slice(0, 400));
-        params.set("lighting.mode", "ai.preserve-hue-and-saturation"); // critical: keep original product colors
-        params.set("outputSize", outputSize);
-        params.set("padding", "0.08");
-        params.set("ignorePaddingAndSnapOnCroppedSides", "false");
-        params.set("export.format", "webp");
-
-        const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
-          headers: {
-            "x-api-key": photoroomKey,
-            "pr-ai-background-model-version": "background-studio-beta-2025-03-17", // Studio model = best photorealism
-          },
-        });
-
-        if (res.ok) {
-          const imageBuffer = await res.arrayBuffer();
-          const fileName = `pixel-perfect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
-          const storagePath = `generated/${user?.id || "anon"}/${fileName}`;
-          const sb = supabaseAdmin();
-          const { error: uploadError } = await sb.storage
-            .from("make-cad57f79-media")
-            .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
-          if (!uploadError) {
-            const { data: signedData } = await sb.storage
-              .from("make-cad57f79-media")
-              .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
-            if (signedData?.signedUrl) {
-              console.log(`[pixel-perfect] Photoroom Studio OK in ${Date.now() - t0}ms`);
-              if (user) logEvent("generation", { userId: user.id, type: "image", model: "pixel-perfect", provider: "photoroom-studio" }).catch(() => {});
-              return c.json({
-                success: true,
-                imageUrl: signedData.signedUrl,
-                provider: "photoroom-studio",
-                pixelPerfect: true,
-                cutoutUrl: cutoutSignedUrl,
-                tookMs: Date.now() - t0,
-              });
-            }
-          }
-        } else {
-          const b = await res.text();
-          console.log(`[pixel-perfect] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
-        }
-      } catch (err) {
-        console.log(`[pixel-perfect] Photoroom Studio error: ${err}`);
-      }
-    }
-
-    // Strategy B: FAL Bria background replace (if we have the cutout)
-    // Bria is purpose-built for commercial product photography — pixel-perfect subject preservation.
-    if (falKey && cutoutSignedUrl) {
-      try {
-        console.log(`[pixel-perfect] Stage 2B: FAL Bria background replace with cutout...`);
-        const res = await fetch("https://fal.run/fal-ai/bria/background/replace", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-          body: JSON.stringify({
-            image_url: cutoutSignedUrl,
-            bg_prompt: String(prompt).slice(0, 400),
-            refine_prompt: true,
-            num_results: 1,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const imageUrl = data.result?.[0] || data.images?.[0]?.url;
-          if (imageUrl) {
-            console.log(`[pixel-perfect] FAL Bria OK in ${Date.now() - t0}ms`);
-            return c.json({
-              success: true,
-              imageUrl,
-              provider: "fal-bria-bg-replace",
-              pixelPerfect: true,
-              cutoutUrl: cutoutSignedUrl,
-              tookMs: Date.now() - t0,
-            });
-          }
-        } else {
-          const b = await res.text();
-          console.log(`[pixel-perfect] FAL Bria ${res.status}: ${b.slice(0, 200)}`);
-        }
-      } catch (err) {
-        console.log(`[pixel-perfect] FAL Bria error: ${err}`);
-      }
-    }
-
-    // Strategy C: FAL IC-Light v2 relight (if we have the cutout)
-    // IC-Light relights the subject into a new environment described by the prompt.
-    if (falKey && cutoutSignedUrl) {
-      try {
-        console.log(`[pixel-perfect] Stage 2C: FAL IC-Light v2 with cutout...`);
-        const res = await fetch("https://fal.run/fal-ai/iclight-v2", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-          body: JSON.stringify({
-            image_url: cutoutSignedUrl,
-            prompt: String(prompt).slice(0, 400),
-            num_images: 1,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const imageUrl = data.images?.[0]?.url;
-          if (imageUrl) {
-            console.log(`[pixel-perfect] FAL IC-Light OK in ${Date.now() - t0}ms`);
-            return c.json({
-              success: true,
-              imageUrl,
-              provider: "fal-iclight-v2",
-              pixelPerfect: true,
-              cutoutUrl: cutoutSignedUrl,
-              tookMs: Date.now() - t0,
-            });
-          }
-        } else {
-          const b = await res.text();
-          console.log(`[pixel-perfect] FAL IC-Light ${res.status}: ${b.slice(0, 200)}`);
-        }
-      } catch (err) {
-        console.log(`[pixel-perfect] FAL IC-Light error: ${err}`);
-      }
-    }
-
-    // All strategies failed
-    console.log(`[pixel-perfect] ALL STRATEGIES FAILED in ${Date.now() - t0}ms`);
     return c.json({
       success: false,
       error: "Pixel-perfect pipeline failed — no strategy produced an image",
-      cutoutUrl: cutoutSignedUrl,
     }, 500);
   } catch (err: any) {
     console.log(`[pixel-perfect] FATAL: ${err?.message || err}`);
