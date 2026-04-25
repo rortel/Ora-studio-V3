@@ -8982,6 +8982,81 @@ app.post("/analyze/series", async (c) => {
 // (Instagram Feed/Story, LinkedIn, Facebook, TikTok). A creativityLevel 1-4
 // controls how bold the concept/scenes are (temperature + system-prompt hints).
 // ── POST /analyze/suggest-angles — Kill the prompt ──
+// Multi-photo product description — when the user uploads 2-5 angles of the
+// same product, GPT-4o vision reads them together and writes one rich
+// descriptor (color, material, cut, distinctive details) that downstream
+// prompts inject verbatim. Solves the single-photo drift problem ("pink polo
+// → green Lacoste polo") by giving the image-gen model a textual ground truth
+// it can't hallucinate around.
+//
+// No credits charged: vision pre-pass is part of upload UX, not generation.
+app.post("/analyze/product-multi", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const imageUrls: string[] = Array.isArray(body?.imageUrls)
+      ? body.imageUrls.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 5)
+      : [];
+    const userHint = String(body?.userDescription || "").trim().slice(0, 200);
+    if (imageUrls.length < 2) {
+      return c.json({ success: false, error: "At least 2 photos required" }, 400);
+    }
+
+    const key = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("APIPOD_KEY");
+    if (!key) return c.json({ success: false, error: "Vision LLM not configured" }, 500);
+    const apipod = !!Deno.env.get("APIPOD_KEY");
+    const endpoint = apipod ? "https://api.apipod.co/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
+
+    const systemPrompt = `You are an expert product photographer's assistant. Multiple photos of the SAME product follow. Write ONE precise descriptor capturing every visual detail an image-generation model would need to render this product faithfully from any new angle.
+
+INCLUDE:
+- exact colour (named, not just "blue" — e.g. "soft lavender pink with cool undertones")
+- material / texture (linen, piqué cotton, brushed steel, matte ceramic…)
+- cut / silhouette / proportions
+- distinctive details (logo placement, embroidery, stitching, hardware, prints, labels)
+- branding marks if visible (wordmark, monogram, tonal embroidery)
+
+OUTPUT: ONE paragraph, 80-160 words, factual. NO bullets, NO marketing copy, NO "this elegant…". Pure descriptive prose. ${userHint ? `User-provided hint (use to disambiguate, do not override what you SEE): "${userHint}"` : ""}`;
+
+    const visionContent: any[] = [{ type: "text", text: "Describe this product." }];
+    for (const url of imageUrls) {
+      visionContent.push({ type: "image_url", image_url: { url } });
+    }
+
+    const llmRes = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0.2,
+        max_tokens: 400,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: visionContent },
+        ],
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!llmRes.ok) {
+      const t = await llmRes.text();
+      console.log(`[product-multi] LLM ${llmRes.status}: ${t.slice(0, 200)}`);
+      return c.json({ success: false, error: `Vision call failed (${llmRes.status})` }, 502);
+    }
+    const payload = await llmRes.json();
+    const description = String(payload?.choices?.[0]?.message?.content || "").trim().slice(0, 1200);
+    if (!description) {
+      return c.json({ success: false, error: "Empty vision response" }, 502);
+    }
+
+    console.log(`[product-multi] ${imageUrls.length} photos → ${description.length} chars in ${Date.now() - t0}ms user=${user.id.slice(0, 8)}`);
+    return c.json({ success: true, description, photoCount: imageUrls.length, tookMs: Date.now() - t0 });
+  } catch (err: any) {
+    console.log(`[product-multi] FATAL: ${err?.message || err}`);
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 // Returns 3 ready-to-run campaign angles derived from the user's Brand Vault
 // + current month + industry. The user never types a brief: they pick a card
 // and /analyze/surprise-me fires with the angle's params pre-filled. This is
@@ -9000,8 +9075,19 @@ app.post("/analyze/suggest-angles", async (c) => {
     // required client-side, description and price are optional. Angles
     // returned should be specific to THIS product, not a generic brand
     // sweep, so the LLM gets a dedicated Product block in its prompt.
-    const productImageUrl = typeof body?.productImageUrl === "string" ? body.productImageUrl.trim() : "";
-    const productDescription = typeof body?.productDescription === "string" ? body.productDescription.trim().slice(0, 400) : "";
+    // Accept either single productImageUrl (legacy) or productImageUrls array.
+    // First photo is what kontext-pro uses as image_ref; the rest informs the
+    // enriched description. enrichedDescription comes from /analyze/product-multi
+    // and trumps the user-typed description when present.
+    const imageUrlsRaw: string[] = Array.isArray(body?.productImageUrls)
+      ? body.productImageUrls.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 5)
+      : [];
+    const singleUrl = typeof body?.productImageUrl === "string" ? body.productImageUrl.trim() : "";
+    const imageUrls: string[] = imageUrlsRaw.length > 0 ? imageUrlsRaw : (singleUrl ? [singleUrl] : []);
+    const productImageUrl = imageUrls[0] || "";
+    const userDescription = typeof body?.productDescription === "string" ? body.productDescription.trim().slice(0, 400) : "";
+    const enrichedDescription = typeof body?.enrichedDescription === "string" ? body.enrichedDescription.trim().slice(0, 1200) : "";
+    const productDescription = enrichedDescription || userDescription;
     const productPrice = typeof body?.productPrice === "string" ? body.productPrice.trim().slice(0, 40) : "";
 
     // Load vault — angles lean hard on it. If missing, we still return three
@@ -9165,15 +9251,22 @@ app.post("/analyze/surprise-me", async (c) => {
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
-    const productRef = String(body?.productImageUrl || "").trim();
-    // Client-side product description + price. The description is critical
-    // for kontext-pro fidelity: when the scene composition drifts far from
-    // the reference photo (e.g. polo on a hanger over water instead of on
-    // a model), the model stops preserving subtle attributes like color
-    // and defaults to brand priors (pink Lacoste polo → generic green
-    // Lacoste polo). Naming the product explicitly in every prompt pins
-    // those attributes down.
-    const productDescription = String(body?.productDescription || "").trim().slice(0, 400);
+    // Accept productImageUrls (array, max 5) or productImageUrl (legacy single).
+    // kontext-pro takes a single image_ref, so we use [0]. Additional angles
+    // are processed upstream by /analyze/product-multi which produces a rich
+    // enrichedDescription that pins the product's true identity (colour,
+    // material, cut, distinctive details) — solves the single-photo drift
+    // problem (pink polo → green Lacoste polo) by giving the image-gen model
+    // a textual ground truth derived from multiple angles.
+    const imageUrlsRaw: string[] = Array.isArray(body?.productImageUrls)
+      ? body.productImageUrls.map((x: any) => String(x || "").trim()).filter(Boolean).slice(0, 5)
+      : [];
+    const legacyUrl = String(body?.productImageUrl || "").trim();
+    const imageUrls: string[] = imageUrlsRaw.length > 0 ? imageUrlsRaw : (legacyUrl ? [legacyUrl] : []);
+    const productRef = imageUrls[0] || "";
+    const userDescription = String(body?.productDescription || "").trim().slice(0, 400);
+    const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
+    const productDescription = enrichedDescription || userDescription;
     const productPrice       = String(body?.productPrice || "").trim().slice(0, 40);
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));

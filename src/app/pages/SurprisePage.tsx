@@ -111,7 +111,14 @@ function SurpriseContent() {
   const [videoDuration, setVideoDuration] = useState<"3s" | "5s" | "8s">("5s");
   const [withCaption, setWithCaption] = useState<boolean>(true);
   const [ctxWhy, setCtxWhy] = useState("");
-  const [productPhoto, setProductPhoto] = useState<string | null>(null);
+  const [productPhotos, setProductPhotos] = useState<string[]>([]);
+  // First photo is the kontext-pro image_ref; angles 2-5 are read by GPT-4o
+  // vision in a one-shot pre-pass that produces enrichedDescription — a rich
+  // textual ground truth that downstream prompts inject verbatim. Solves
+  // single-photo drift (pink polo → green Lacoste polo).
+  const productPhoto = productPhotos[0] ?? null;
+  const [enrichedDescription, setEnrichedDescription] = useState<string>("");
+  const [analyzingPhotos, setAnalyzingPhotos] = useState(false);
   // Product-first inputs — the new default flow is "upload your product,
   // we propose brand-compliant angles." Photo is required; description and
   // price are optional and get forwarded to the caption generator.
@@ -200,8 +207,10 @@ function SurpriseContent() {
           _token: token,
           // Forward product context so the angles the LLM proposes are
           // specific to THIS product, not a generic brand-level sweep.
-          productImageUrl: productPhoto || undefined,
+          productImageUrl: productPhotos[0] || undefined,
+          productImageUrls: productPhotos.length > 0 ? productPhotos : undefined,
           productDescription: productDescription.trim() || undefined,
+          enrichedDescription: enrichedDescription || undefined,
           productPrice: productPrice.trim() || undefined,
         }),
         signal: AbortSignal.timeout(35_000),
@@ -218,7 +227,7 @@ function SurpriseContent() {
     } finally {
       setAnglesLoading(false);
     }
-  }, [anglesLoading, getAuthHeader, productPhoto, productDescription, productPrice]);
+  }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -232,6 +241,35 @@ function SurpriseContent() {
     try { return JSON.parse(text); }
     catch { return { success: false, error: `Server error (${r.status})` }; }
   }, [getAuthHeader]);
+
+  // Re-runs vision pre-pass on the current photo set. Triggered after each
+  // upload/remove when we have 2+ photos. Cached on the client as
+  // enrichedDescription and forwarded to /analyze/suggest-angles + surprise-me.
+  const refreshEnrichedDescription = useCallback(async (urls: string[]) => {
+    if (urls.length < 2) {
+      setEnrichedDescription("");
+      return;
+    }
+    setAnalyzingPhotos(true);
+    try {
+      const res = await serverPost(
+        "/analyze/product-multi",
+        { imageUrls: urls, userDescription: productDescription.trim() || undefined },
+        60_000,
+      );
+      if (res?.success && typeof res.description === "string") {
+        setEnrichedDescription(res.description);
+      } else {
+        // Vision-pass failure isn't fatal — pipeline still works with the
+        // user-typed description. Just surface a soft warning.
+        console.warn("[product-multi]", res?.error || "no description");
+      }
+    } catch (err) {
+      console.warn("[product-multi]", err);
+    } finally {
+      setAnalyzingPhotos(false);
+    }
+  }, [serverPost, productDescription]);
 
   const uploadProductPhoto = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) { toast.error("Image required."); return; }
@@ -249,8 +287,13 @@ function SurpriseContent() {
       });
       const res = await serverPost("/analyze/reverse-prompt", { imageBase64: b64.base64, mimeType: b64.mimeType }, 60_000);
       if (res?.success && res.sourceUrl) {
-        setProductPhoto(res.sourceUrl);
-        toast.success("Visual ready");
+        let nextUrls: string[] = [];
+        setProductPhotos((prev) => {
+          nextUrls = prev.length >= 5 ? prev : [...prev, res.sourceUrl];
+          return nextUrls;
+        });
+        toast.success(nextUrls.length > 1 ? `${nextUrls.length} angles locked` : "Visual ready");
+        if (nextUrls.length >= 2) refreshEnrichedDescription(nextUrls);
       } else {
         toast.error(res?.error || "Upload failed");
       }
@@ -259,7 +302,17 @@ function SurpriseContent() {
     } finally {
       setUploadingProduct(false);
     }
-  }, [serverPost]);
+  }, [serverPost, refreshEnrichedDescription]);
+
+  const removeProductPhoto = useCallback((idx: number) => {
+    let nextUrls: string[] = [];
+    setProductPhotos((prev) => {
+      nextUrls = prev.filter((_, i) => i !== idx);
+      return nextUrls;
+    });
+    if (nextUrls.length < 2) setEnrichedDescription("");
+    else refreshEnrichedDescription(nextUrls);
+  }, [refreshEnrichedDescription]);
 
   // Run a full surprise-me campaign. When called without arguments, every
   // parameter comes from the user's brief + picks. An `override` lets the
@@ -285,8 +338,10 @@ function SurpriseContent() {
       const effCreativity = override?.creativity ?? creativity;
       const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
-        productImageUrl: productPhoto || undefined,
+        productImageUrl: productPhotos[0] || undefined,
+        productImageUrls: productPhotos.length > 0 ? productPhotos : undefined,
         productDescription: productDescription.trim() || undefined,
+        enrichedDescription: enrichedDescription || undefined,
         productPrice: productPrice.trim() || undefined,
         creativityLevel: effCreativity,
         assetCount: effAssetCount,
@@ -338,7 +393,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, productDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -463,7 +518,7 @@ function SurpriseContent() {
                 <div className="inline-flex items-center gap-2 pl-1 pr-3 h-10 rounded-full" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                   <img src={productPhoto} alt="" className="w-8 h-8 rounded-full object-cover" />
                   <span className="text-[12.5px]" style={{ color: MUTED }}>Visual locked</span>
-                  <button onClick={() => setProductPhoto(null)} className="ml-1 text-black/40 hover:text-black"><X size={14} /></button>
+                  <button onClick={() => { setProductPhotos([]); setEnrichedDescription(""); }} className="ml-1 text-black/40 hover:text-black"><X size={14} /></button>
                 </div>
               ) : (
                 <label className="inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full cursor-pointer text-[13px] hover:bg-black/5"
@@ -731,31 +786,77 @@ function SurpriseContent() {
                   <span style={{ color: COLORS.coral }}>We compose the rest.</span>
                 </h1>
 
-                {/* 1. Product photo — mandatory */}
-                {productPhoto ? (
-                  <div className="mb-6 flex items-start gap-4 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
-                    <img src={productPhoto} alt="" className="w-24 h-24 rounded-xl object-cover" />
-                    <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[13px] font-semibold" style={{ color: TEXT }}>Product photo locked</div>
-                        <p className="text-[12px]" style={{ color: MUTED }}>Ora will build every asset on top of this shot.</p>
-                      </div>
-                      <button onClick={() => setProductPhoto(null)} className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1" style={{ color: MUTED }}>
-                        <X size={14} /> Replace
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <label className="mb-6 flex flex-col items-center justify-center gap-2 py-12 rounded-2xl cursor-pointer transition hover:bg-black/[0.02]"
+                {/* 1. Product photos — first one mandatory, up to 5 angles for
+                    studio-grade fidelity. When 2+ uploaded, a vision pre-pass
+                    extracts a rich descriptor (colour, material, cut, details)
+                    that feeds every shot, killing single-photo drift. */}
+                {productPhotos.length === 0 ? (
+                  <label className="mb-3 flex flex-col items-center justify-center gap-2 py-12 rounded-2xl cursor-pointer transition hover:bg-black/[0.02]"
                          style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
                     {uploadingProduct ? <Loader2 size={22} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={22} style={{ color: COLORS.coral }} />}
                     <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
                       {uploadingProduct ? "Uploading…" : "Drop your product photo"}
                     </span>
-                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · required</span>
+                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · 1 required, up to 5 angles for studio-grade fidelity</span>
                     <input type="file" accept="image/*" className="hidden"
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
                   </label>
+                ) : (
+                  <div className="mb-3 flex flex-wrap items-center gap-3">
+                    {productPhotos.map((url, i) => (
+                      <div key={url + i} className="relative w-24 h-24 rounded-xl overflow-hidden" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        {i === 0 && (
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase tracking-wider" style={{ background: INK, color: INK_TEXT }}>
+                            Primary
+                          </span>
+                        )}
+                        <button
+                          onClick={() => removeProductPhoto(i)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center"
+                          style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}
+                          title="Remove"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {productPhotos.length < 5 && (
+                      <label className="w-24 h-24 rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 transition hover:bg-black/[0.04]"
+                             style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
+                        {uploadingProduct ? <Loader2 size={16} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={16} style={{ color: COLORS.coral }} />}
+                        <span className="text-[10.5px] font-semibold" style={{ color: TEXT }}>
+                          + angle
+                        </span>
+                        <span className="text-[9px]" style={{ color: MUTED }}>{productPhotos.length}/5</span>
+                        <input type="file" accept="image/*" className="hidden"
+                               onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
+                      </label>
+                    )}
+                  </div>
+                )}
+                {productPhotos.length >= 2 && (
+                  <div className="mb-6 px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: "rgba(255,92,57,0.06)", border: `1px solid rgba(255,92,57,0.18)` }}>
+                    {analyzingPhotos ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" style={{ color: COLORS.coral }} />
+                        <span className="text-[11.5px]" style={{ color: TEXT }}>Reading {productPhotos.length} angles…</span>
+                      </>
+                    ) : enrichedDescription ? (
+                      <>
+                        <Sparkles size={12} style={{ color: COLORS.coral }} />
+                        <span className="text-[11.5px]" style={{ color: TEXT }}>
+                          Studio-grade fidelity locked
+                          <span className="ml-1.5" style={{ color: MUTED }}>· {enrichedDescription.length} chars of ground truth</span>
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                )}
+                {productPhotos.length === 1 && (
+                  <p className="mb-6 text-[11.5px]" style={{ color: MUTED }}>
+                    Tip: add a 2nd or 3rd angle (back, detail, on model) for noticeably tighter fidelity across the pack.
+                  </p>
                 )}
 
                 {/* 2. What is it? + price
