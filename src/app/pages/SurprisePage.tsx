@@ -117,6 +117,12 @@ function SurpriseContent() {
   // price are optional and get forwarded to the caption generator.
   const [productDescription, setProductDescription] = useState("");
   const [productPrice, setProductPrice] = useState("");
+  // Mode toggle: "product" promotes a SKU (photo fidelity = sacred), "event"
+  // promotes a date+venue (photo is mood reference, fidelity relaxed).
+  const [mode, setMode] = useState<"product" | "event">("product");
+  const [eventDate, setEventDate] = useState("");
+  const [eventVenue, setEventVenue] = useState("");
+  const [eventCTA, setEventCTA] = useState("");
   // idle sub-view: "input" = product form, "angles" = the 3 suggestions
   // we show after the user clicks "Propose angles". Custom-brief mode is
   // a separate flag below that short-circuits straight to generation.
@@ -198,11 +204,15 @@ function SurpriseContent() {
         body: JSON.stringify({
           lang: "en",
           _token: token,
+          mode,
           // Forward product context so the angles the LLM proposes are
           // specific to THIS product, not a generic brand-level sweep.
           productImageUrl: productPhoto || undefined,
           productDescription: productDescription.trim() || undefined,
-          productPrice: productPrice.trim() || undefined,
+          productPrice: mode === "product" ? (productPrice.trim() || undefined) : undefined,
+          eventDate: mode === "event" ? (eventDate.trim() || undefined) : undefined,
+          eventVenue: mode === "event" ? (eventVenue.trim() || undefined) : undefined,
+          eventCTA: mode === "event" ? (eventCTA.trim() || undefined) : undefined,
         }),
         signal: AbortSignal.timeout(35_000),
       });
@@ -218,7 +228,7 @@ function SurpriseContent() {
     } finally {
       setAnglesLoading(false);
     }
-  }, [anglesLoading, getAuthHeader, productPhoto, productDescription, productPrice]);
+  }, [anglesLoading, getAuthHeader, mode, productPhoto, productDescription, productPrice, eventDate, eventVenue, eventCTA]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -285,9 +295,13 @@ function SurpriseContent() {
       const effCreativity = override?.creativity ?? creativity;
       const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
+        mode,
         productImageUrl: productPhoto || undefined,
         productDescription: productDescription.trim() || undefined,
-        productPrice: productPrice.trim() || undefined,
+        productPrice: mode === "product" ? (productPrice.trim() || undefined) : undefined,
+        eventDate: mode === "event" ? (eventDate.trim() || undefined) : undefined,
+        eventVenue: mode === "event" ? (eventVenue.trim() || undefined) : undefined,
+        eventCTA: mode === "event" ? (eventCTA.trim() || undefined) : undefined,
         creativityLevel: effCreativity,
         assetCount: effAssetCount,
         platforms: effPlatforms,
@@ -338,7 +352,7 @@ function SurpriseContent() {
     } finally {
       setBusy(false);
     }
-  }, [busy, productPhoto, productDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
+  }, [busy, mode, productPhoto, productDescription, productPrice, eventDate, eventVenue, eventCTA, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -724,21 +738,45 @@ function SurpriseContent() {
               >
                 <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
-                  Your product · your moment
+                  {mode === "event" ? "Your event · your moment" : "Your product · your moment"}
                 </div>
+
+                {/* Mode toggle — Product (SKU launch) vs Event (date+venue promo) */}
+                <div className="inline-flex items-stretch h-9 rounded-full overflow-hidden mb-6" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+                  {(["product", "event"] as const).map((m) => {
+                    const on = mode === m;
+                    return (
+                      <button key={m} onClick={() => setMode(m)} type="button"
+                              className="px-4 inline-flex items-center justify-center text-[12.5px] transition"
+                              style={{ background: on ? INK : "transparent", color: on ? INK_TEXT : TEXT, fontWeight: 600 }}>
+                        {m === "product" ? "Product" : "Event"}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(40px, 7vw, 88px)" }}>
-                  Drop the photo.<br />
-                  <span style={{ color: COLORS.coral }}>We compose the rest.</span>
+                  {mode === "event" ? (
+                    <>Save the date.<br /><span style={{ color: COLORS.coral }}>We build the buzz.</span></>
+                  ) : (
+                    <>Drop the photo.<br /><span style={{ color: COLORS.coral }}>We compose the rest.</span></>
+                  )}
                 </h1>
 
-                {/* 1. Product photo — mandatory */}
+                {/* 1. Photo — mandatory in product mode, optional mood ref in event mode */}
                 {productPhoto ? (
                   <div className="mb-6 flex items-start gap-4 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                     <img src={productPhoto} alt="" className="w-24 h-24 rounded-xl object-cover" />
                     <div className="flex-1 min-w-0 flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-[13px] font-semibold" style={{ color: TEXT }}>Product photo locked</div>
-                        <p className="text-[12px]" style={{ color: MUTED }}>Ora will build every asset on top of this shot.</p>
+                        <div className="text-[13px] font-semibold" style={{ color: TEXT }}>
+                          {mode === "event" ? "Mood reference set" : "Product photo locked"}
+                        </div>
+                        <p className="text-[12px]" style={{ color: MUTED }}>
+                          {mode === "event"
+                            ? "Ora will use this as a vibe cue, not reproduce it shot-for-shot."
+                            : "Ora will build every asset on top of this shot."}
+                        </p>
                       </div>
                       <button onClick={() => setProductPhoto(null)} className="text-[12.5px] hover:text-black transition inline-flex items-center gap-1" style={{ color: MUTED }}>
                         <X size={14} /> Replace
@@ -750,35 +788,68 @@ function SurpriseContent() {
                          style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
                     {uploadingProduct ? <Loader2 size={22} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={22} style={{ color: COLORS.coral }} />}
                     <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
-                      {uploadingProduct ? "Uploading…" : "Drop your product photo"}
+                      {uploadingProduct
+                        ? "Uploading…"
+                        : mode === "event" ? "Drop a mood photo (optional)" : "Drop your product photo"}
                     </span>
-                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · required</span>
+                    <span className="text-[12px]" style={{ color: MUTED }}>
+                      {mode === "event" ? "Venue, poster, mood — anything sets the tone" : "PNG, JPG, WebP · required"}
+                    </span>
                     <input type="file" accept="image/*" className="hidden"
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
                   </label>
                 )}
 
-                {/* 2. What is it? + price
+                {/* 2. What is it? + price (product) OR Pitch + date/venue/CTA (event)
                     Required single line (not a textarea — textareas read as
                     "write me a prompt"). The photo tells Ora WHAT shape +
-                    colour; this line tells us WHICH product specifically
-                    ("linen polo, relaxed fit, cream" vs "structured poplin
-                    shirt, cream"). Without it the angles default to generic
-                    fashion tropes. Price stays optional and feeds the
-                    caption only. */}
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
+                    colour; this line tells us WHICH product/event specifically.
+                    Without it the angles default to generic tropes. */}
+                <div className={mode === "event"
+                  ? "grid grid-cols-1 md:grid-cols-[1fr_160px_180px] gap-3 mb-3"
+                  : "grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6"}>
                   <div>
                     <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
-                      What is it?
+                      {mode === "event" ? "What's the event?" : "What is it?"}
                     </label>
                     <input
                       value={productDescription}
                       onChange={(e) => setProductDescription(e.target.value)}
-                      placeholder="Linen polo · relaxed fit · cream"
+                      placeholder={mode === "event"
+                        ? "Rooftop launch · jazz quartet · 200 guests"
+                        : "Linen polo · relaxed fit · cream"}
                       className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
                       style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
                     />
                   </div>
+                  {mode === "event" ? (
+                    <>
+                      <div>
+                        <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                          Date
+                        </label>
+                        <input
+                          value={eventDate}
+                          onChange={(e) => setEventDate(e.target.value)}
+                          placeholder="May 12, 8 PM"
+                          className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                          style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                          Venue
+                        </label>
+                        <input
+                          value={eventVenue}
+                          onChange={(e) => setEventVenue(e.target.value)}
+                          placeholder="Hôtel Grand Paris"
+                          className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                          style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                        />
+                      </div>
+                    </>
+                  ) : (
                   <div>
                     <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
                       Price <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional)</span>
@@ -791,7 +862,23 @@ function SurpriseContent() {
                       style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
                     />
                   </div>
+                  )}
                 </div>
+
+                {mode === "event" && (
+                  <div className="mb-6">
+                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                      CTA <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional)</span>
+                    </label>
+                    <input
+                      value={eventCTA}
+                      onChange={(e) => setEventCTA(e.target.value)}
+                      placeholder="Reserve at hotel-grand.com/may12"
+                      className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                    />
+                  </div>
+                )}
 
                 {/* 3. Networks — chips with image/film toggle (reused from custom brief UI) */}
                 <div className="flex flex-wrap items-center gap-2 mb-6">
@@ -858,13 +945,20 @@ function SurpriseContent() {
                   </div>
                 </div>
 
-                {/* 5. CTA "Propose angles" — disabled without a product photo */}
+                {/* 5. CTA "Propose angles" — gating differs per mode:
+                    Product: needs photo + description + platforms.
+                    Event: needs description + date + venue + platforms (photo optional). */}
                 <div className="flex flex-col items-center justify-center gap-3">
                   {(() => {
+                    const isEvent = mode === "event";
                     const noPhoto = !productPhoto;
                     const noDesc = !productDescription.trim();
+                    const noDate = !eventDate.trim();
+                    const noVenue = !eventVenue.trim();
                     const noPlatform = platforms.length === 0;
-                    const disabled = busy || uploadingProduct || anglesLoading || noPhoto || noDesc || noPlatform;
+                    const disabled = busy || uploadingProduct || anglesLoading
+                      || noDesc || noPlatform
+                      || (isEvent ? (noDate || noVenue) : noPhoto);
                     return (
                       <>
                         <Button
@@ -877,20 +971,32 @@ function SurpriseContent() {
                           style={{ boxShadow: disabled ? "none" : "0 20px 44px -14px rgba(255,92,57,0.55)" }}
                         >
                           {anglesLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                          {anglesLoading ? "Reading brand + product…" : "Propose me angles"}
+                          {anglesLoading
+                            ? (isEvent ? "Reading brand + event…" : "Reading brand + product…")
+                            : "Propose me angles"}
                           <ArrowRight size={16} />
                         </Button>
-                        {noPhoto && (
+                        {!isEvent && noPhoto && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
                             Upload a product photo to continue.
                           </p>
                         )}
-                        {!noPhoto && noDesc && (
+                        {isEvent && noDate && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
-                            One line of "what is it?" — helps Ora stay specific.
+                            Add the event date to continue.
                           </p>
                         )}
-                        {!noPhoto && !noDesc && noPlatform && (
+                        {isEvent && !noDate && noVenue && (
+                          <p className="text-[12.5px]" style={{ color: MUTED }}>
+                            Add the venue so Ora can ground the visuals.
+                          </p>
+                        )}
+                        {((isEvent ? (!noDate && !noVenue) : !noPhoto)) && noDesc && (
+                          <p className="text-[12.5px]" style={{ color: MUTED }}>
+                            One line — helps Ora stay specific.
+                          </p>
+                        )}
+                        {((isEvent ? (!noDate && !noVenue) : !noPhoto)) && !noDesc && noPlatform && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
                             Pick at least one network.
                           </p>

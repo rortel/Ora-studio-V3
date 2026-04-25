@@ -9003,6 +9003,13 @@ app.post("/analyze/suggest-angles", async (c) => {
     const productImageUrl = typeof body?.productImageUrl === "string" ? body.productImageUrl.trim() : "";
     const productDescription = typeof body?.productDescription === "string" ? body.productDescription.trim().slice(0, 400) : "";
     const productPrice = typeof body?.productPrice === "string" ? body.productPrice.trim().slice(0, 40) : "";
+    // Event mode — promotes a date+venue rather than a SKU. The photo (if
+    // any) is a mood reference; angles lean on countdown / save-the-date /
+    // FOMO / venue ambiance rather than product fidelity.
+    const mode: "product" | "event" = body?.mode === "event" ? "event" : "product";
+    const eventDate = typeof body?.eventDate === "string" ? body.eventDate.trim().slice(0, 80) : "";
+    const eventVenue = typeof body?.eventVenue === "string" ? body.eventVenue.trim().slice(0, 120) : "";
+    const eventCTA = typeof body?.eventCTA === "string" ? body.eventCTA.trim().slice(0, 200) : "";
 
     // Load vault — angles lean hard on it. If missing, we still return three
     // generic angles from the current month so the UI stays functional.
@@ -9060,6 +9067,13 @@ app.post("/analyze/suggest-angles", async (c) => {
     }
     const brandSummary = parts.join(" · ");
 
+    const eventBlock = mode === "event" && (eventDate || eventVenue || productDescription)
+      ? `EVENT the user is promoting (this is NOT a product launch — angles must drive RSVPs / attendance):${productDescription ? `\n- pitch: ${productDescription}` : ""}${eventDate ? `\n- date/time: ${eventDate}` : ""}${eventVenue ? `\n- venue: ${eventVenue}` : ""}${eventCTA ? `\n- CTA / link: ${eventCTA}` : ""}${productImageUrl ? `\n- mood photo provided: yes (use as vibe cue, do NOT reproduce the photo literally)` : ""}\n→ Every angle MUST drive event awareness or attendance. Lean on save-the-date, countdown, lineup tease, venue ambiance, FOMO, or invite-only feel. Pick three DIFFERENT beats from that list. Brief for each angle should describe an atmospheric scene that evokes the event (NOT a product close-up).`
+      : "";
+    const productBlock = mode === "product" && (productDescription || productPrice || productImageUrl)
+      ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST be anchored on this product. The photo is the hero in every asset the pipeline will generate.`
+      : "";
+
     const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, editorial campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
 
 The user should NEVER have to write a brief. Each angle must be self-contained and ready to turn into a full social campaign pack without any further input.
@@ -9073,7 +9087,8 @@ RULES:
 
 CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — use tasteful generic editorial angles for the season."}
-${productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST be anchored on this product. The photo is the hero in every asset the pipeline will generate.` : ""}
+${eventBlock}
+${productBlock}
 ${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days to consider (pick at most one to theme one angle — don't force all three):\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
 
 OUTPUT SHAPE (strict):
@@ -9175,6 +9190,13 @@ app.post("/analyze/surprise-me", async (c) => {
     // those attributes down.
     const productDescription = String(body?.productDescription || "").trim().slice(0, 400);
     const productPrice       = String(body?.productPrice || "").trim().slice(0, 40);
+    // Event mode shifts the pipeline: photo (if any) is mood reference not
+    // exact preserve, fidelity weight drops, prompts swap product anchor
+    // for event awareness (date, venue, RSVP CTA).
+    const mode: "product" | "event" = body?.mode === "event" ? "event" : "product";
+    const eventDate  = String(body?.eventDate || "").trim().slice(0, 80);
+    const eventVenue = String(body?.eventVenue || "").trim().slice(0, 120);
+    const eventCTA   = String(body?.eventCTA || "").trim().slice(0, 200);
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
     const lang       = body?.lang === "en" ? "en" : "fr";
@@ -9239,7 +9261,10 @@ app.post("/analyze/surprise-me", async (c) => {
     // the scene, the mood, the twist — never the product itself. So the
     // product reference weight is held constant (high) for every level;
     // only the LLM system hint and temperature change.
-    const PRODUCT_REF_WEIGHT = 0.92; // tight fidelity — raised from 0.85 after reports of colour drift when the scene composition differs from the reference (polo on hanger vs polo on model).
+    // Product mode keeps tight fidelity (0.92) — the SKU is sacred. Event
+    // mode treats the photo as a mood cue (0.55) so the model can recompose
+    // venue / atmosphere freely instead of reproducing the reference shot.
+    const PRODUCT_REF_WEIGHT = mode === "event" ? 0.55 : 0.92;
     const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
       1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. The product itself stays exactly as provided." },
       2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. The product itself stays exactly as provided." },
@@ -9332,12 +9357,25 @@ app.post("/analyze/surprise-me", async (c) => {
 
     // ── Concept + shot list via LLM ──
     const platformBrief = PLATFORMS.map((p) => `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`).join("\n");
-    const conceptSystem = `You are Ora — a senior creative director composing a full social-media campaign pack. Brand, product and tone matter; respect them but push the concept.
+    const isEvent = mode === "event";
+    const eventDetails = isEvent
+      ? [
+          eventDate  && `date/time: ${eventDate}`,
+          eventVenue && `venue: ${eventVenue}`,
+          eventCTA   && `CTA / link: ${eventCTA}`,
+          productDescription && `event pitch: ${productDescription}`,
+        ].filter(Boolean).join("\n- ")
+      : "";
+    const conceptSystem = `You are Ora — a senior creative director composing a full social-media campaign pack. Brand${isEvent ? "" : ", product"} and tone matter; respect them but push the concept.
 
 CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 
 HARD RULES:
-- The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
+${isEvent
+  ? `- The pack promotes an EVENT (date + venue), not a product. Every shot evokes ATMOSPHERE — the venue, the crowd, the lighting, the anticipation — not a SKU close-up.
+- Across the pack rotate event-promo beats: save-the-date, lineup tease, venue ambiance, countdown, behind-the-scenes prep, FOMO/invite-only feel. No two shots repeat the same beat.
+- The reference photo (if any) is a MOOD CUE only — recompose freely, don't reproduce it shot-for-shot.`
+  : `- The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.`}
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
 - EVERY shot MUST carry a concrete graphic/scene twist fitting the creativity level (a prop, a light move, an overlay, a scale play, a material swap, a composition dare). Randomize the twists so no two shots are identical moves.
 ${ctx?.brandName || ctx?.logoStyle ? `- Weave a subtle brand mark into most shots: a discreet "${ctx?.brandName || "brand"}" wordmark or logo placed naturally in the scene (corner watermark, product packaging, signage, tote bag, glass, garment tag, shop window…). Keep it small, legible, on-brand. Not every shot needs it — pick the 60-70% that feel natural. Style hint: ${ctx?.logoStyle || "clean, single-color, unobtrusive"}.` : ""}
@@ -9348,13 +9386,21 @@ CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — compose from brief alone."}
 ${brief ? `User brief: ${brief}` : ""}
 ${season ? `Season / moment: ${season}` : ""}
-${productRef ? "A product reference photo IS provided (image_ref will be attached on every shot)." : "No product photo provided — generation is text-to-image only."}
-${productDescription ? `Product identity (MUST be preserved verbatim in every promptText — name the colour, material, cut so the image-gen model can't drift): ${productDescription}` : ""}
+${isEvent && eventDetails ? `Event details:\n- ${eventDetails}` : ""}
+${productRef ? (isEvent
+  ? "A reference photo IS provided — treat it as a mood cue (vibe, lighting, palette inspiration), do NOT reproduce it literally."
+  : "A product reference photo IS provided (image_ref will be attached on every shot).") : "No reference photo provided — generation is text-to-image only."}
+${!isEvent && productDescription ? `Product identity (MUST be preserved verbatim in every promptText — name the colour, material, cut so the image-gen model can't drift): ${productDescription}` : ""}
 
-CRITICAL PRODUCT-FIDELITY RULES:
+${isEvent
+  ? `EVENT-PROMO RULES:
+- Every promptText MUST evoke the event mood (atmosphere, anticipation, the venue or a stylised version of it) — NOT a product shot.
+- Bake the event date and venue into the SCENE narrative when natural (a clock face, a marquee, an invitation card, a save-the-date sign, a luminous "${eventVenue || "venue"}" mention on signage). Do NOT hard-render the date as a plain caption — let it live as a scenic detail.
+- The pack should feel like film stills from an upcoming event, not a product catalogue.`
+  : `CRITICAL PRODUCT-FIDELITY RULES:
 - Every promptText MUST explicitly describe the product by colour, material and cut matching the reference photo. Example: if the reference is "lavender pink piqué polo, slim fit, tonal crocodile embroidery", those exact descriptors belong in every shot's promptText.
 - Do NOT invent variants, alternate colours or styling tweaks between shots. The product is identical across the pack; only the scene around it changes.
-- When a shot removes the product from the model (hangers, packshots, flat-lays), still describe the polo exactly as in the reference — the subject is the SAME garment.
+- When a shot removes the product from the model (hangers, packshots, flat-lays), still describe the polo exactly as in the reference — the subject is the SAME garment.`}
 
 PLATFORM SHOT LIST (${totalShots} shots total):
 ${platformBrief}
@@ -9492,13 +9538,24 @@ OUTPUT JSON:
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
         try {
           if (productRef) {
-            // Belt-and-braces: if the LLM's promptText didn't already weave
-            // in the product description, prepend it so kontext-pro always
-            // sees the product's named attributes. Prevents colour drift
-            // when the scene composition strays from the reference photo.
-            const promptWithProduct = productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")
-              ? `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`
-              : job.promptText;
+            // Belt-and-braces. In product mode: prepend the SKU description so
+            // kontext-pro always sees the product's named attributes (prevents
+            // colour drift). In event mode: prepend the event details so the
+            // model anchors the scene on date / venue / atmosphere instead of
+            // trying to preserve a literal subject from the reference photo.
+            let promptWithProduct = job.promptText;
+            if (mode === "event") {
+              const eventLine = [
+                eventDate  && `date: ${eventDate}`,
+                eventVenue && `venue: ${eventVenue}`,
+                eventCTA   && `CTA: ${eventCTA}`,
+              ].filter(Boolean).join(" · ");
+              if (eventLine || productDescription) {
+                promptWithProduct = `EVENT CONTEXT (use the reference photo as a mood cue, not a literal subject — recompose freely): ${productDescription || ""}${eventLine ? ` — ${eventLine}` : ""}.\n\n${job.promptText}`;
+              }
+            } else if (productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")) {
+              promptWithProduct = `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`;
+            }
             const r = await runRemix({
               finalPrompt: promptWithProduct, imageUrl: productRef,
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
