@@ -437,9 +437,9 @@ function OverviewTab({ overview }: { overview: AdminOverview }) {
         <div className="grid grid-cols-4 gap-4">
           {[
             { plan: "Free (legacy)", count: overview.planCounts.free, color: "var(--muted-foreground)" },
-            { plan: "Starter", count: overview.planCounts.starter || 0, color: "#999999" },
-            { plan: "Pro", count: overview.planCounts.generate, color: "var(--ora-signal)" },
-            { plan: "Business", count: overview.planCounts.studio, color: "#666666" },
+            { plan: "Creator", count: overview.planCounts.starter || 0, color: "#999999" },
+            { plan: "Studio", count: overview.planCounts.generate, color: "var(--ora-signal)" },
+            { plan: "Agency", count: overview.planCounts.studio, color: "#666666" },
           ].map((p) => (
             <div key={p.plan} className="text-center">
               <span style={{ fontSize: "32px", fontWeight: 500, color: p.color }}>{p.count}</span>
@@ -512,9 +512,9 @@ function UsersTab({ users, search, setSearch, editingUser, setEditingUser, editP
                       <div className="flex items-center gap-1">
                         <select value={editPlan} onChange={(e) => setEditPlan(e.target.value)} className="bg-input-background border border-border rounded px-2 py-1 text-foreground" style={{ fontSize: "12px" }}>
                           <option value="free">Free (legacy)</option>
-                          <option value="starter">Starter</option>
-                          <option value="generate">Pro</option>
-                          <option value="studio">Business</option>
+                          <option value="starter">Creator</option>
+                          <option value="generate">Studio</option>
+                          <option value="studio">Agency</option>
                         </select>
                         <button onClick={() => onPlanChange(u.userId)} className="text-ora-signal hover:opacity-80 cursor-pointer"><Check size={14} /></button>
                         <button onClick={() => setEditingUser(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={14} /></button>
@@ -588,15 +588,15 @@ function FinancialTab({ overview, users }: { overview: AdminOverview; users: Adm
         <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", marginBottom: "16px" }}>Revenue Breakdown</h3>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#999999" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Starter (EUR 29/mo)</span></div>
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#999999" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Creator (EUR 19/mo)</span></div>
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{(overview.planCounts as any).starter || 0} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {(overview as any).starterRevenue || 0}</span></div>
           </div>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "var(--ora-signal)" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Pro (EUR 79/mo)</span></div>
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "var(--ora-signal)" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Studio (EUR 49/mo)</span></div>
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{overview.planCounts.generate} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {overview.generateRevenue}</span></div>
           </div>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#666666" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Business (EUR 149/mo)</span></div>
+            <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-sm" style={{ background: "#666666" }} /><span style={{ fontSize: "13px", color: "var(--foreground)" }}>Agency (EUR 199/mo)</span></div>
             <div className="flex items-center gap-4"><span style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>{overview.planCounts.studio} users</span><span style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>EUR {overview.studioRevenue}</span></div>
           </div>
           <div className="border-t border-border pt-3 flex items-center justify-between">

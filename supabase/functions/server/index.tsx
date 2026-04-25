@@ -561,6 +561,7 @@ const EMAIL_FROM = "ORA Studio <hello@ora-studio.app>";
 
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   if (!RESEND_API_KEY) { console.log("[email] RESEND_API_KEY not set — skipping"); return false; }
+  const tEmail = Date.now();
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -569,8 +570,13 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
       signal: AbortSignal.timeout(10_000),
     });
     const data = await res.json();
-    if (res.ok) { console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`); return true; }
+    if (res.ok) {
+      console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`);
+      logCost({ type: "text", model: "resend-email", provider: "resend/email", costUsd: getProviderCost("resend/email", "text"), revenueEur: 0, latencyMs: Date.now() - tEmail, userId: "system", success: true }).catch(() => {});
+      return true;
+    }
     console.log(`[email] Failed "${subject}" to ${to}: ${JSON.stringify(data)}`);
+    logCost({ type: "text", model: "resend-email", provider: "resend/email", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tEmail, userId: "system", success: false }).catch(() => {});
     return false;
   } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return false; }
 }
@@ -578,6 +584,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
 // sendEmailWithId — like sendEmail but returns { ok, emailId } for tracking
 async function sendEmailWithId(to: string, subject: string, html: string): Promise<{ ok: boolean; emailId?: string }> {
   if (!RESEND_API_KEY) { console.log("[email] RESEND_API_KEY not set — skipping"); return { ok: false }; }
+  const tEmail = Date.now();
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -586,8 +593,13 @@ async function sendEmailWithId(to: string, subject: string, html: string): Promi
       signal: AbortSignal.timeout(10_000),
     });
     const data = await res.json();
-    if (res.ok) { console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`); return { ok: true, emailId: data.id }; }
+    if (res.ok) {
+      console.log(`[email] Sent "${subject}" to ${to}: ${data.id}`);
+      logCost({ type: "text", model: "resend-email", provider: "resend/email", costUsd: getProviderCost("resend/email", "text"), revenueEur: 0, latencyMs: Date.now() - tEmail, userId: "system", success: true }).catch(() => {});
+      return { ok: true, emailId: data.id };
+    }
     console.log(`[email] Failed "${subject}" to ${to}: ${JSON.stringify(data)}`);
+    logCost({ type: "text", model: "resend-email", provider: "resend/email", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tEmail, userId: "system", success: false }).catch(() => {});
     return { ok: false };
   } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return { ok: false }; }
 }
@@ -1046,17 +1058,24 @@ function buildBrandBlock(ctx: BrandContext): string {
 // ══════════════════════════════════════════════════════════════
 
 const PROVIDER_COSTS: Record<string, number> = {
-  // Text (APIPod) — USD per call
+  // Text (APIPod) — USD per call (legacy fallback rates; LLM_TOKEN_RATES gives accurate per-token)
   "apipod/gpt-4o": 0.015, "apipod/gpt-5": 0.025, "apipod/gpt-5.2": 0.030,
   "apipod/claude-4-5-sonnet": 0.018, "apipod/claude-sonnet-4-20250514": 0.018,
   "apipod/claude-4-5-haiku": 0.005, "apipod/claude-haiku-4-20250514": 0.005,
   "apipod/claude-4-5-opus": 0.075, "apipod/claude-opus-4-20250514": 0.075,
   "apipod/gemini-2.5-flash-preview-05-20": 0.005,
   "apipod/gemini-2.0-flash": 0.003, "apipod/gemini-3": 0.008,
+  // Text — direct OpenAI / Google / Mistral (LLM_TOKEN_RATES preferred when token counts available)
+  "openai/gpt-4o": 0.015, "openai/gpt-4o-vision": 0.020,
+  "google/gemini-2.0-flash": 0.003,
+  "mistral/pixtral": 0.008, "mistral/pixtral-12b-2409": 0.008,
   // Image — Runware
   "runware/image-std": 0.003, "runware/image": 0.003,
-  // Image — FAL
+  // Image — FAL (legacy + active composite paths)
   "fal/flux-schnell": 0.003, "fal/flux-pro-v1.1": 0.035, "fal/flux-dev": 0.025,
+  "fal/kontext-pro": 0.040, "fal/flux-kontext-pro": 0.040,
+  "fal-bria-bg-replace": 0.040, "fal/bria-bg-replace": 0.040,
+  "fal-iclight-v2": 0.025, "fal/iclight-v2": 0.025,
   // Image — Replicate
   "replicate/flux-schnell": 0.005,
   // Image — Luma Photon
@@ -1065,6 +1084,9 @@ const PROVIDER_COSTS: Record<string, number> = {
   "ideogram/v3": 0.080, "ideogram/v3-turbo": 0.040,
   // Image — Higgsfield
   "higgsfield/seedream-v4": 0.030,
+  // Image — Photoroom (primary compositing path)
+  "photoroom-studio": 0.020, "photoroom/studio": 0.020,
+  "photoroom-cutout": 0.005, "photoroom/cutout": 0.005,
   // Video — FAL
   "fal/ltx-video": 0.080, "fal/minimax-video": 0.100, "fal/luma-dream-machine": 0.120,
   // Video — Replicate
@@ -1081,7 +1103,43 @@ const PROVIDER_COSTS: Record<string, number> = {
   "higgsfield/dop-standard": 0.100,
   // Audio — Replicate
   "replicate/meta/musicgen": 0.050,
+  // Scrape / email
+  "jina/reader": 0.001,
+  "resend/email": 0.0004,
 };
+
+// LLM token-based rates — USD per 1M tokens [input, output].
+// Used by computeLLMCost() to derive accurate cost from response.usage.
+// Falls back to PROVIDER_COSTS flat per-call rate when token counts missing.
+const LLM_TOKEN_RATES: Record<string, [number, number]> = {
+  "gpt-4o":                       [2.50, 10.00],
+  "gpt-4o-mini":                  [0.15,  0.60],
+  "gpt-4o-vision":                [2.50, 10.00],
+  "gpt-5":                        [5.00, 15.00],
+  "claude-4-5-sonnet":            [3.00, 15.00],
+  "claude-sonnet-4-20250514":     [3.00, 15.00],
+  "claude-4-5-haiku":             [0.80,  4.00],
+  "claude-haiku-4-20250514":      [0.80,  4.00],
+  "claude-4-5-opus":              [15.00,75.00],
+  "claude-opus-4-20250514":       [15.00,75.00],
+  "gemini-2.0-flash":             [0.10,  0.40],
+  "gemini-2.5-flash-preview-05-20":[0.30, 2.50],
+  "pixtral-12b-2409":             [0.15,  0.15],
+};
+
+// Compute LLM USD cost from token counts (if available). Returns 0 if model
+// not in table or tokens missing — caller can fall back to flat rate.
+function computeLLMCost(model: string, promptTokens?: number, completionTokens?: number): number {
+  const key = (model || "").toLowerCase().replace(/^.*\//, "");
+  for (const [k, [inRate, outRate]] of Object.entries(LLM_TOKEN_RATES)) {
+    if (key === k.toLowerCase() || key.includes(k.toLowerCase())) {
+      const inCost  = (promptTokens || 0)     * inRate  / 1_000_000;
+      const outCost = (completionTokens || 0) * outRate / 1_000_000;
+      return inCost + outCost;
+    }
+  }
+  return 0;
+}
 
 const CREDIT_VALUE_EUR = 0.10;
 // Legacy flat revenue — use getModelRevenue(type, model) for accurate per-model tracking
@@ -8121,9 +8179,12 @@ Rules:
 
     // ── Primary: OpenAI GPT-4o vision via APIPOD ──
     const tryOpenAI = async (): Promise<any | null> => {
+      const tCall = Date.now();
       const key = Deno.env.get("APIPOD_API_KEY") || Deno.env.get("OPENAI_API_KEY");
       if (!key) return null;
-      const base = Deno.env.get("APIPOD_API_KEY") ? APIPOD_BASE : "https://api.openai.com/v1";
+      const isApipod = !!Deno.env.get("APIPOD_API_KEY");
+      const base = isApipod ? APIPOD_BASE : "https://api.openai.com/v1";
+      const provider = isApipod ? "apipod/gpt-4o" : "openai/gpt-4o-vision";
       const imagePayload = imageUrl
         ? { url: imageUrl, detail: "high" as const }
         : { url: `data:${mimeType || "image/png"};base64,${imageBase64}`, detail: "high" as const };
@@ -8151,9 +8212,14 @@ Rules:
         });
         if (!res.ok) {
           console.log(`[reverse-prompt] OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+          logCost({ type: "text", model: "gpt-4o-vision", provider, costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tCall, userId: "anon", success: false }).catch(() => {});
           return null;
         }
         const data = await res.json();
+        const promptTok = data?.usage?.prompt_tokens || 0;
+        const completionTok = data?.usage?.completion_tokens || 0;
+        const cUsd = computeLLMCost("gpt-4o-vision", promptTok, completionTok) || getProviderCost(provider, "text");
+        logCost({ type: "text", model: "gpt-4o-vision", provider, costUsd: cUsd, revenueEur: 0, latencyMs: Date.now() - tCall, userId: "anon", success: true }).catch(() => {});
         const raw = (data.choices?.[0]?.message?.content || "").trim();
         try {
           return JSON.parse(raw);
@@ -8171,6 +8237,7 @@ Rules:
 
     // ── Fallback: Gemini 2.0 Flash vision ──
     const tryGemini = async (): Promise<any | null> => {
+      const tCall = Date.now();
       const key = Deno.env.get("GEMINI_API_KEY");
       if (!key) return null;
       try {
@@ -8202,9 +8269,14 @@ Rules:
         });
         if (!res.ok) {
           console.log(`[reverse-prompt] Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+          logCost({ type: "text", model: "gemini-2.0-flash", provider: "google/gemini-2.0-flash", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tCall, userId: "anon", success: false }).catch(() => {});
           return null;
         }
         const data = await res.json();
+        const promptTok = data?.usageMetadata?.promptTokenCount || 0;
+        const completionTok = data?.usageMetadata?.candidatesTokenCount || 0;
+        const cUsd = computeLLMCost("gemini-2.0-flash", promptTok, completionTok) || getProviderCost("google/gemini-2.0-flash", "text");
+        logCost({ type: "text", model: "gemini-2.0-flash", provider: "google/gemini-2.0-flash", costUsd: cUsd, revenueEur: 0, latencyMs: Date.now() - tCall, userId: "anon", success: true }).catch(() => {});
         const raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").trim();
         const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
         try {
@@ -9041,9 +9113,14 @@ OUTPUT: ONE paragraph, 80-160 words, factual. NO bullets, NO marketing copy, NO 
     if (!llmRes.ok) {
       const t = await llmRes.text();
       console.log(`[product-multi] LLM ${llmRes.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "text", model: "gpt-4o-vision", provider: apipod ? "apipod/gpt-4o" : "openai/gpt-4o-vision", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false }).catch(() => {});
       return c.json({ success: false, error: `Vision call failed (${llmRes.status})` }, 502);
     }
     const payload = await llmRes.json();
+    const promptTok = payload?.usage?.prompt_tokens || 0;
+    const completionTok = payload?.usage?.completion_tokens || 0;
+    const visionCostUsd = computeLLMCost("gpt-4o-vision", promptTok, completionTok) || getProviderCost(apipod ? "apipod/gpt-4o" : "openai/gpt-4o-vision", "text");
+    logCost({ type: "text", model: "gpt-4o-vision", provider: apipod ? "apipod/gpt-4o" : "openai/gpt-4o-vision", costUsd: visionCostUsd, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
     const description = String(payload?.choices?.[0]?.message?.content || "").trim().slice(0, 1200);
     if (!description) {
       return c.json({ success: false, error: "Empty vision response" }, 502);
@@ -9203,9 +9280,14 @@ Pick varied creativityLevels across the three (e.g. 2 / 3 / 4). Pick varied plat
     if (!llmRes.ok) {
       const t = await llmRes.text();
       console.log(`[suggest-angles] LLM ${llmRes.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "text", model: "gpt-4o", provider: apipod ? "apipod/gpt-4o" : "openai/gpt-4o", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false }).catch(() => {});
       return c.json({ success: false, error: `Concept generation failed (${llmRes.status})` }, 502);
     }
     const payload = await llmRes.json();
+    const promptTok = payload?.usage?.prompt_tokens || 0;
+    const completionTok = payload?.usage?.completion_tokens || 0;
+    const llmCostUsd = computeLLMCost("gpt-4o", promptTok, completionTok) || getProviderCost(apipod ? "apipod/gpt-4o" : "openai/gpt-4o", "text");
+    logCost({ type: "text", model: "gpt-4o", provider: apipod ? "apipod/gpt-4o" : "openai/gpt-4o", costUsd: llmCostUsd, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
     const raw = payload?.choices?.[0]?.message?.content || "{}";
     let angles: any[] = [];
     try {
@@ -9481,9 +9563,12 @@ OUTPUT JSON:
       : "Compose the campaign now.";
 
     const callConcept = async (): Promise<any | null> => {
+      const tConcept = Date.now();
       const key = Deno.env.get("APIPOD_API_KEY") || Deno.env.get("OPENAI_API_KEY");
       if (!key) return null;
-      const base = Deno.env.get("APIPOD_API_KEY") ? APIPOD_BASE : "https://api.openai.com/v1";
+      const isApipod = !!Deno.env.get("APIPOD_API_KEY");
+      const base = isApipod ? APIPOD_BASE : "https://api.openai.com/v1";
+      const provider = isApipod ? "apipod/gpt-4o" : "openai/gpt-4o";
       try {
         const res = await fetch(`${base}/chat/completions`, {
           method: "POST",
@@ -9496,8 +9581,16 @@ OUTPUT JSON:
           }),
           signal: AbortSignal.timeout(60_000),
         });
-        if (!res.ok) { console.log(`[surprise-me] concept OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`); return null; }
+        if (!res.ok) {
+          console.log(`[surprise-me] concept OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+          logCost({ type: "text", model: "gpt-4o", provider, costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tConcept, userId: user.id, success: false }).catch(() => {});
+          return null;
+        }
         const data = await res.json();
+        const promptTok = data?.usage?.prompt_tokens || 0;
+        const completionTok = data?.usage?.completion_tokens || 0;
+        const conceptCostUsd = computeLLMCost("gpt-4o", promptTok, completionTok) || getProviderCost(provider, "text");
+        logCost({ type: "text", model: "gpt-4o", provider, costUsd: conceptCostUsd, revenueEur: 0, latencyMs: Date.now() - tConcept, userId: user.id, success: true }).catch(() => {});
         const raw = (data.choices?.[0]?.message?.content || "").trim();
         try { return JSON.parse(raw); }
         catch { const m = raw.match(/\{[\s\S]*\}/); if (m) { try { return JSON.parse(m[0]); } catch {} } return null; }
@@ -9621,17 +9714,25 @@ OUTPUT JSON:
               model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
               refWeight: PRODUCT_REF_WEIGHT,
             });
-            if (!r.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
+            if (!r.ok) {
+              logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false }).catch(() => {});
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
+            }
+            logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: getProviderCost("fal/kontext-pro", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
           }
           // Text-to-image via Luma Photon
+          const tLuma = Date.now();
           const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
           const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
             method: "POST", headers: lumaHeaders(),
             body: JSON.stringify({ prompt: job.promptText, model: "photon-1", aspect_ratio: arLumaMap[job.aspectRatio] || "1:1", seed }),
           });
-          if (!startRes.ok) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: `Luma ${startRes.status}` };
+          if (!startRes.ok) {
+            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false }).catch(() => {});
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: `Luma ${startRes.status}` };
+          }
           const g = await startRes.json();
           if (!g.id) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma: no gen id" };
           // Poll
@@ -9648,7 +9749,11 @@ OUTPUT JSON:
             } catch {}
             await new Promise((r) => setTimeout(r, 2_000));
           }
-          if (!finalUrl) return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma timed out" };
+          if (!finalUrl) {
+            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false }).catch(() => {});
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma timed out" };
+          }
+          logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: getProviderCost("luma/photon-1", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - tLuma, userId: user.id, success: true }).catch(() => {});
           const persisted = await persistOne(finalUrl, job.fileName, job.platform);
           return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
         } catch (err: any) {
@@ -9685,6 +9790,7 @@ OUTPUT JSON:
 
       const runRayVideo = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string })
         : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
+        const tRay = Date.now();
         try {
           const motion = opts.motion || "slow cinematic push-in, subtle parallax, gentle light breathing";
           const prompt = `${motion}. The subject stays photo-real and identical to the first frame; only the surrounding world moves. Scene: ${opts.scene.slice(0, 240)}.`;
@@ -9702,6 +9808,7 @@ OUTPUT JSON:
           });
           if (!startRes.ok) {
             const errText = await startRes.text();
+            logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
             return { ok: false, error: `Luma Ray ${startRes.status}: ${errText.slice(0, 180)}` };
           }
           const g = await startRes.json();
@@ -9712,12 +9819,19 @@ OUTPUT JSON:
               const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
               if (pr.ok) {
                 const d = await pr.json();
-                if (d.state === "completed") return { ok: true, url: d.assets?.video || "", provider: "luma/ray-flash-2" };
-                if (d.state === "failed") return { ok: false, error: d.failure_reason || "Ray failed" };
+                if (d.state === "completed") {
+                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: getProviderCost("luma/ray-flash-2", "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tRay, userId: user.id, success: true }).catch(() => {});
+                  return { ok: true, url: d.assets?.video || "", provider: "luma/ray-flash-2" };
+                }
+                if (d.state === "failed") {
+                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
+                  return { ok: false, error: d.failure_reason || "Ray failed" };
+                }
               }
             } catch {}
             await new Promise((r) => setTimeout(r, 3_000));
           }
+          logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
           return { ok: false, error: "Luma Ray timed out (>4 min)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
@@ -10057,6 +10171,7 @@ async function runPixelPerfectComposite(opts: {
             .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
           if (signedData?.signedUrl) {
             console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
+            logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
             return { imageUrl: signedData.signedUrl, provider: "photoroom-studio", cutoutUrl: cutoutSignedUrl };
           }
         }
@@ -10088,6 +10203,7 @@ async function runPixelPerfectComposite(opts: {
         const imageUrl = data.result?.[0] || data.images?.[0]?.url;
         if (imageUrl) {
           console.log(`[composite] FAL Bria OK in ${Date.now() - t0}ms`);
+          logCost({ type: "image", model: "fal-bria-bg-replace", provider: "fal-bria-bg-replace", costUsd: getProviderCost("fal-bria-bg-replace", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
           return { imageUrl, provider: "fal-bria-bg-replace", cutoutUrl: cutoutSignedUrl };
         }
       } else {
@@ -10117,6 +10233,7 @@ async function runPixelPerfectComposite(opts: {
         const imageUrl = data.images?.[0]?.url;
         if (imageUrl) {
           console.log(`[composite] FAL IC-Light OK in ${Date.now() - t0}ms`);
+          logCost({ type: "image", model: "fal-iclight-v2", provider: "fal-iclight-v2", costUsd: getProviderCost("fal-iclight-v2", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
           return { imageUrl, provider: "fal-iclight-v2", cutoutUrl: cutoutSignedUrl };
         }
       } else {
@@ -15306,12 +15423,20 @@ app.post("/vault/analyze", async (c) => {
     async function fetchJinaText(pageUrl: string): Promise<string> {
       const jinaKey = Deno.env.get("JINA_API_KEY");
       if (!jinaKey) return "";
+      const tJina = Date.now();
       try {
         const res = await fetch(`https://r.jina.ai/${pageUrl}`, {
           headers: { Authorization: `Bearer ${jinaKey}`, Accept: "application/json", "X-No-Cache": "true", "X-Proxy": "auto", "X-Target-Selector": "body" },
         });
-        if (res.ok) { const d = await res.json(); return d.data?.content || d.data?.text || d.content || ""; }
-      } catch (e) { console.log(`[vault] Jina text fail ${pageUrl}: ${e}`); }
+        if (res.ok) {
+          logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: getProviderCost("jina/reader", "text"), revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: true }).catch(() => {});
+          const d = await res.json(); return d.data?.content || d.data?.text || d.content || "";
+        }
+        logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
+      } catch (e) {
+        console.log(`[vault] Jina text fail ${pageUrl}: ${e}`);
+        logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
+      }
       return "";
     }
 
