@@ -151,7 +151,7 @@ function AdminPageContent() {
     }
   }, [isLoading, isAdminUser, user, profile, navigate]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (range?: { from?: string; to?: string }) => {
     if (!accessToken) {
       console.log("[Admin] No accessToken yet, skipping fetch");
       return;
@@ -190,7 +190,7 @@ function AdminPageContent() {
     try {
       // Single POST request — no CORS preflight, all admin data at once
       console.log("[Admin] Fetching all admin data via POST /admin/data...");
-      const data = await adminPost("/admin/data");
+      const data = await adminPost("/admin/data", range || {});
 
       if (data.overview) setOverview(data.overview);
       else setOverview(emptyOverview);
@@ -642,14 +642,74 @@ const FIXED_COSTS = [
 ];
 const TOTAL_FIXED = FIXED_COSTS.reduce((s, c) => s + c.cost, 0);
 
-function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: AdminOverview; users: AdminUser[]; preloadedCosts?: any; onRefresh?: () => void }) {
+function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: AdminOverview; users: AdminUser[]; preloadedCosts?: any; onRefresh?: (range?: { from?: string; to?: string }) => void }) {
   const costsData = preloadedCosts;
+
+  // Date range selector — drives the /admin/data filter window. "30d" by
+  // default; "today"/"7d"/"mtd" cover the common ad-hoc questions.
+  type RangeId = "today" | "7d" | "30d" | "mtd";
+  const [rangeId, setRangeId] = useState<RangeId>("30d");
+  const computeRange = (id: RangeId): { from: string; to: string } => {
+    const now = new Date();
+    const to = now.toISOString();
+    let from: Date;
+    if (id === "today") {
+      from = new Date(now); from.setHours(0, 0, 0, 0);
+    } else if (id === "7d") {
+      from = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+    } else if (id === "mtd") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      from = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+    }
+    return { from: from.toISOString(), to };
+  };
+  const handleRange = (id: RangeId) => {
+    setRangeId(id);
+    if (onRefresh) onRefresh(computeRange(id));
+  };
+
+  // Recent transactions filters — provider / type / success
+  const [filterProvider, setFilterProvider] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterSuccess, setFilterSuccess] = useState<string>("all");
 
   const total = costsData?.total || { count: 0, costEur: 0, revenueEur: 0, marginEur: 0 };
   const byProvider = costsData?.byProvider || {};
   const byType = costsData?.byType || {};
   const byDay = costsData?.byDay || {};
+  const byPack = costsData?.byPack || {};
+  const byUser = costsData?.byUser || {};
+  const alerts: any[] = costsData?.alerts || [];
   const recentEntries = costsData?.recentEntries || [];
+
+  // Per-pack rollup → array, sorted by recency
+  const packsList = Object.entries(byPack)
+    .map(([slug, d]: [string, any]) => ({ slug, ...d }))
+    .sort((a, b) => new Date(b.lastTs).getTime() - new Date(a.lastTs).getTime());
+  const avgCostPerPack = packsList.length > 0
+    ? packsList.reduce((s, p) => s + (p.costEur || 0), 0) / packsList.length
+    : 0;
+  const avgMarginPerPack = packsList.length > 0
+    ? packsList.reduce((s, p) => s + (p.marginEur || 0), 0) / packsList.length
+    : 0;
+
+  // Top users by cost (descending)
+  const userById: Record<string, any> = {};
+  for (const u of users) userById[u.userId] = u;
+  const topUsers = Object.entries(byUser)
+    .map(([uid, d]: [string, any]) => ({ uid, ...d, email: userById[uid]?.email || uid.slice(0, 8), plan: userById[uid]?.plan || "?" }))
+    .sort((a, b) => (b.costEur || 0) - (a.costEur || 0))
+    .slice(0, 10);
+
+  // Filtered recent entries
+  const filteredRecent = recentEntries.filter((e: any) => {
+    if (filterProvider !== "all" && (e.provider || "").split("/")[0] !== filterProvider) return false;
+    if (filterType !== "all" && e.type !== filterType) return false;
+    if (filterSuccess === "ok" && !e.success) return false;
+    if (filterSuccess === "fail" && e.success) return false;
+    return true;
+  });
   const marginPct = total.revenueEur > 0 ? ((total.marginEur / total.revenueEur) * 100).toFixed(1) : "0";
   const totalMonthlyBurn = TOTAL_FIXED + total.costEur;
   const netAfterFixed = overview.mrr - totalMonthlyBurn;
@@ -681,14 +741,56 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
         </div>
       )}
 
+      {/* Active budget alerts — auto-clear at midnight when day key rolls */}
+      {alerts.length > 0 && (
+        <div className="p-4 rounded-xl border space-y-2" style={{ borderColor: "rgba(239,68,68,0.35)", background: "rgba(239,68,68,0.06)" }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} style={{ color: "var(--destructive)" }} />
+            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--destructive)" }}>
+              {alerts.length} budget threshold{alerts.length > 1 ? "s" : ""} crossed today
+            </span>
+          </div>
+          {alerts.map((a: any) => (
+            <p key={a.provider} style={{ fontSize: "12px", color: "var(--destructive)" }}>
+              <span style={{ fontFamily: "monospace", textTransform: "uppercase" }}>{a.provider}</span> spent EUR {a.spent?.toFixed(2)} (threshold EUR {a.threshold})
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Date range selector */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: "var(--secondary)" }}>
+          {(["today", "7d", "30d", "mtd"] as RangeId[]).map((id) => {
+            const labels: Record<RangeId, string> = { today: "Today", "7d": "7 days", "30d": "30 days", mtd: "Month-to-date" };
+            const on = rangeId === id;
+            return (
+              <button
+                key={id}
+                onClick={() => handleRange(id)}
+                className="px-3 h-8 rounded-md transition-colors cursor-pointer"
+                style={{ background: on ? "var(--card)" : "transparent", color: on ? "var(--foreground)" : "var(--muted-foreground)", fontSize: "12px", fontWeight: on ? 500 : 400, boxShadow: on ? "0 1px 2px rgba(0,0,0,0.04)" : "none" }}
+              >
+                {labels[id]}
+              </button>
+            );
+          })}
+        </div>
+        {costsData?.range && (
+          <span style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
+            {new Date(costsData.range.from).toLocaleDateString()} → {new Date(costsData.range.to).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
           { label: "Total Cost", value: `EUR ${total.costEur.toFixed(2)}`, sub: "API provider spend", color: "var(--destructive)" },
           { label: "Total Revenue", value: `EUR ${total.revenueEur.toFixed(2)}`, sub: "Credits consumed", color: "#666666" },
           { label: "Net Margin", value: `EUR ${total.marginEur.toFixed(2)}`, sub: `${marginPct}% margin`, color: total.marginEur >= 0 ? "#666666" : "var(--destructive)" },
-          { label: "Generations", value: `${total.count}`, sub: "Total API calls", color: "var(--ora-signal)" },
-          { label: "Avg Cost/Gen", value: `EUR ${total.count > 0 ? (total.costEur / total.count).toFixed(4) : "0"}`, sub: "Per generation", color: "var(--accent)" },
+          { label: "Packs Shipped", value: `${packsList.length}`, sub: "Surprise Me runs", color: "var(--ora-signal)" },
+          { label: "Avg Cost / Pack", value: `EUR ${avgCostPerPack.toFixed(2)}`, sub: `${avgMarginPerPack >= 0 ? "+" : ""}EUR ${avgMarginPerPack.toFixed(2)} margin`, color: "var(--accent)" },
         ].map((kpi, i) => (
           <motion.div key={kpi.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="bg-card border border-border rounded-xl p-5" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
@@ -958,15 +1060,102 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
         )}
       </div>
 
-      {/* Recent Cost Entries (log) */}
+      {/* Cost per Pack — only Surprise Me runs (entries tagged with campaignSlug) */}
       <div className="bg-card border border-border rounded-xl p-6" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Recent Generations ({recentEntries.length})</h3>
-          <button onClick={onRefresh}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            style={{ fontSize: "11px", fontWeight: 500 }}>
-            <RefreshCw size={12} /> Refresh Costs
-          </button>
+        <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", marginBottom: "16px" }}>
+          Cost per Pack ({packsList.length})
+        </h3>
+        {packsList.length > 0 ? (
+          <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-card">
+                <tr className="border-b border-border">
+                  {["Campaign", "Calls", "Cost", "Revenue", "Margin", "Last activity"].map((h) => (
+                    <th key={h} className="text-left px-3 py-2" style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted-foreground)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {packsList.slice(0, 30).map((p) => (
+                  <tr key={p.slug} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                    <td className="px-3 py-2" style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--foreground)" }}>{p.slug}</td>
+                    <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{p.count}</td>
+                    <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--destructive)" }}>EUR {(p.costEur || 0).toFixed(2)}</td>
+                    <td className="px-3 py-2" style={{ fontSize: "11px", color: "#666666" }}>EUR {(p.revenueEur || 0).toFixed(2)}</td>
+                    <td className="px-3 py-2" style={{ fontSize: "11px", fontWeight: 500, color: (p.marginEur || 0) >= 0 ? "#666666" : "var(--destructive)" }}>EUR {(p.marginEur || 0).toFixed(2)}</td>
+                    <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{p.lastTs ? new Date(p.lastTs).toLocaleString() : "--"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>No packs in this period yet.</p>
+        )}
+      </div>
+
+      {/* Top Users by Cost */}
+      <div className="bg-card border border-border rounded-xl p-6" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+        <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", marginBottom: "16px" }}>
+          Top users by cost (top 10)
+        </h3>
+        {topUsers.length > 0 ? (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                {["User", "Plan", "Calls", "Cost", "Revenue", "Margin", "Last activity"].map((h) => (
+                  <th key={h} className="text-left px-3 py-2" style={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted-foreground)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topUsers.map((u) => (
+                <tr key={u.uid} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--foreground)" }}>{u.email}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "10px", fontWeight: 500, color: "var(--muted-foreground)", textTransform: "uppercase" }}>{u.plan}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{u.count}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--destructive)" }}>EUR {(u.costEur || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "#666666" }}>EUR {(u.revenueEur || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", fontWeight: 500, color: (u.marginEur || 0) >= 0 ? "#666666" : "var(--destructive)" }}>EUR {(u.marginEur || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{u.lastTs ? new Date(u.lastTs).toLocaleString() : "--"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>No user-attributed cost in this period.</p>
+        )}
+      </div>
+
+      {/* Recent Cost Entries (log) — filterable */}
+      <div className="bg-card border border-border rounded-xl p-6" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Recent Generations ({filteredRecent.length}/{recentEntries.length})</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={filterProvider} onChange={(e) => setFilterProvider(e.target.value)}
+              className="px-2 py-1 rounded-md border border-border bg-card" style={{ fontSize: "11px", color: "var(--foreground)" }}>
+              <option value="all">All providers</option>
+              {Object.keys(byProvider).sort().map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+              className="px-2 py-1 rounded-md border border-border bg-card" style={{ fontSize: "11px", color: "var(--foreground)" }}>
+              <option value="all">All types</option>
+              <option value="text">text</option>
+              <option value="image">image</option>
+              <option value="video">video</option>
+            </select>
+            <select value={filterSuccess} onChange={(e) => setFilterSuccess(e.target.value)}
+              className="px-2 py-1 rounded-md border border-border bg-card" style={{ fontSize: "11px", color: "var(--foreground)" }}>
+              <option value="all">Any status</option>
+              <option value="ok">Success only</option>
+              <option value="fail">Fail only</option>
+            </select>
+            <button onClick={() => onRefresh && onRefresh(computeRange(rangeId))}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+              style={{ fontSize: "11px", fontWeight: 500 }}>
+              <RefreshCw size={12} /> Refresh
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
           <table className="w-full">
@@ -978,7 +1167,7 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
               </tr>
             </thead>
             <tbody>
-              {recentEntries.slice(0, 50).map((entry: any) => (
+              {filteredRecent.slice(0, 100).map((entry: any) => (
                 <tr key={entry.id} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
                   <td className="px-3 py-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "--"}</td>
                   <td className="px-3 py-2">
@@ -995,12 +1184,13 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                   </td>
                 </tr>
               ))}
-              {recentEntries.length === 0 && (
+              {filteredRecent.length === 0 && (
                 <tr>
                   <td colSpan={9} className="text-center py-8">
                     <DollarSign size={24} className="mx-auto mb-3 text-muted-foreground/30" />
-                    <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>No generation costs logged yet</p>
-                    <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "4px" }}>Generate content from the Hub to see costs here</p>
+                    <p style={{ fontSize: "13px", color: "var(--muted-foreground)" }}>
+                      {recentEntries.length === 0 ? "No generation costs logged in this period" : "No entries match the current filter"}
+                    </p>
                   </td>
                 </tr>
               )}

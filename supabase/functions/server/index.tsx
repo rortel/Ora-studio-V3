@@ -1153,7 +1153,23 @@ interface CostEntry {
   id: string; timestamp: string; type: "text" | "image" | "video" | "audio";
   model: string; provider: string; costUsd: number; costEur: number;
   revenueEur: number; marginEur: number; latencyMs: number; userId: string; success: boolean;
+  campaignSlug?: string;
 }
+
+// Per-provider daily budget thresholds (EUR). When the rolling 24h cost for
+// a provider crosses one of these, a flag is set in KV (alert:provider:date)
+// and surfaced in the admin Costs tab. Tweak as your spend profile grows.
+const BUDGET_THRESHOLDS_EUR: Record<string, number> = {
+  "openai":    20,
+  "apipod":    20,
+  "photoroom": 30,
+  "fal":       30,
+  "luma":      30,
+  "google":    10,
+  "mistral":   10,
+  "jina":      5,
+  "_total":    100,
+};
 
 async function logCost(entry: Omit<CostEntry, "id" | "timestamp" | "costEur" | "marginEur">) {
   try {
@@ -1164,6 +1180,26 @@ async function logCost(entry: Omit<CostEntry, "id" | "timestamp" | "costEur" | "
       costEur: Math.round(costEur * 10000) / 10000, marginEur: Math.round(marginEur * 10000) / 10000 };
     await kv.set(id, full);
     console.log(`[cost] ${entry.type}/${entry.provider}: cost=$${entry.costUsd} rev=EUR${entry.revenueEur} margin=EUR${full.marginEur}`);
+
+    // Budget threshold check — runs async, never blocks the cost log itself
+    if (costEur > 0) {
+      const day = new Date().toISOString().slice(0, 10);
+      const providerKey = entry.provider.split("/")[0];
+      const threshold = BUDGET_THRESHOLDS_EUR[providerKey];
+      if (threshold) {
+        const counterKey = `daily-spend:${providerKey}:${day}`;
+        try {
+          const prev = (await kv.get(counterKey)) as number || 0;
+          const next = prev + costEur;
+          await kv.set(counterKey, next);
+          if (prev < threshold && next >= threshold) {
+            const alertKey = `alert:${providerKey}:${day}`;
+            await kv.set(alertKey, { provider: providerKey, day, threshold, spent: next, raisedAt: new Date().toISOString() });
+            console.log(`[budget-alert] ${providerKey} crossed EUR${threshold}/day (now EUR${next.toFixed(2)})`);
+          }
+        } catch {}
+      }
+    }
   } catch (e) { console.log("[logCost] failed:", e); }
 }
 
@@ -9696,6 +9732,7 @@ OUTPUT JSON:
               aspectRatio: job.aspectRatio,
               userId: user.id,
               cachedCutoutUrl,
+              campaignSlug,
             });
             if (composite?.cutoutUrl && !cachedCutoutUrl) cachedCutoutUrl = composite.cutoutUrl;
             if (composite) {
@@ -9715,10 +9752,10 @@ OUTPUT JSON:
               refWeight: PRODUCT_REF_WEIGHT,
             });
             if (!r.ok) {
-              logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false }).catch(() => {});
+              logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false, campaignSlug }).catch(() => {});
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
             }
-            logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: getProviderCost("fal/kontext-pro", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: user.id, success: true }).catch(() => {});
+            logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: getProviderCost("fal/kontext-pro", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: user.id, success: true, campaignSlug }).catch(() => {});
             const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
           }
@@ -9730,7 +9767,7 @@ OUTPUT JSON:
             body: JSON.stringify({ prompt: job.promptText, model: "photon-1", aspect_ratio: arLumaMap[job.aspectRatio] || "1:1", seed }),
           });
           if (!startRes.ok) {
-            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false }).catch(() => {});
+            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: `Luma ${startRes.status}` };
           }
           const g = await startRes.json();
@@ -9750,10 +9787,10 @@ OUTPUT JSON:
             await new Promise((r) => setTimeout(r, 2_000));
           }
           if (!finalUrl) {
-            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false }).catch(() => {});
+            logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tLuma, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Luma timed out" };
           }
-          logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: getProviderCost("luma/photon-1", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - tLuma, userId: user.id, success: true }).catch(() => {});
+          logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: getProviderCost("luma/photon-1", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - tLuma, userId: user.id, success: true, campaignSlug }).catch(() => {});
           const persisted = await persistOne(finalUrl, job.fileName, job.platform);
           return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
         } catch (err: any) {
@@ -9808,7 +9845,7 @@ OUTPUT JSON:
           });
           if (!startRes.ok) {
             const errText = await startRes.text();
-            logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
+            logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: `Luma Ray ${startRes.status}: ${errText.slice(0, 180)}` };
           }
           const g = await startRes.json();
@@ -9820,18 +9857,18 @@ OUTPUT JSON:
               if (pr.ok) {
                 const d = await pr.json();
                 if (d.state === "completed") {
-                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: getProviderCost("luma/ray-flash-2", "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tRay, userId: user.id, success: true }).catch(() => {});
+                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: getProviderCost("luma/ray-flash-2", "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tRay, userId: user.id, success: true, campaignSlug }).catch(() => {});
                   return { ok: true, url: d.assets?.video || "", provider: "luma/ray-flash-2" };
                 }
                 if (d.state === "failed") {
-                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
+                  logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
                   return { ok: false, error: d.failure_reason || "Ray failed" };
                 }
               }
             } catch {}
             await new Promise((r) => setTimeout(r, 3_000));
           }
-          logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false }).catch(() => {});
+          logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
           return { ok: false, error: "Luma Ray timed out (>4 min)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
@@ -10113,9 +10150,10 @@ async function runPixelPerfectComposite(opts: {
   aspectRatio?: string;
   userId: string | null;
   cachedCutoutUrl?: string | null;
+  campaignSlug?: string;
 }): Promise<{ imageUrl: string; provider: string; cutoutUrl: string | null } | null> {
   const t0 = Date.now();
-  const { productImageUrl, prompt, userId } = opts;
+  const { productImageUrl, prompt, userId, campaignSlug } = opts;
   const aspectRatio = opts.aspectRatio || "1:1";
   const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
   const falKey = Deno.env.get("FAL_API_KEY");
@@ -10171,7 +10209,7 @@ async function runPixelPerfectComposite(opts: {
             .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
           if (signedData?.signedUrl) {
             console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
-            logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
+            logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
             return { imageUrl: signedData.signedUrl, provider: "photoroom-studio", cutoutUrl: cutoutSignedUrl };
           }
         }
@@ -10203,7 +10241,7 @@ async function runPixelPerfectComposite(opts: {
         const imageUrl = data.result?.[0] || data.images?.[0]?.url;
         if (imageUrl) {
           console.log(`[composite] FAL Bria OK in ${Date.now() - t0}ms`);
-          logCost({ type: "image", model: "fal-bria-bg-replace", provider: "fal-bria-bg-replace", costUsd: getProviderCost("fal-bria-bg-replace", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
+          logCost({ type: "image", model: "fal-bria-bg-replace", provider: "fal-bria-bg-replace", costUsd: getProviderCost("fal-bria-bg-replace", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
           return { imageUrl, provider: "fal-bria-bg-replace", cutoutUrl: cutoutSignedUrl };
         }
       } else {
@@ -10233,7 +10271,7 @@ async function runPixelPerfectComposite(opts: {
         const imageUrl = data.images?.[0]?.url;
         if (imageUrl) {
           console.log(`[composite] FAL IC-Light OK in ${Date.now() - t0}ms`);
-          logCost({ type: "image", model: "fal-iclight-v2", provider: "fal-iclight-v2", costUsd: getProviderCost("fal-iclight-v2", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true }).catch(() => {});
+          logCost({ type: "image", model: "fal-iclight-v2", provider: "fal-iclight-v2", costUsd: getProviderCost("fal-iclight-v2", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
           return { imageUrl, provider: "fal-iclight-v2", cutoutUrl: cutoutSignedUrl };
         }
       } else {
@@ -23396,10 +23434,17 @@ app.post("/brand-score", async (c) => {
 // ══════════════════════════════════════════════════════════════
 
 // Combined admin data — POST avoids CORS preflight (Content-Type: text/plain = simple request)
+// Date range: client passes { from, to } ISO strings in body. If absent,
+// defaults to last 30 days. All cost aggregations honor this window.
 app.post("/admin/data", async (c) => {
   try {
     console.log("[admin/data] request received, userToken:", !!c.get?.("userToken"), "parsedBody:", !!c.get?.("parsedBody"), "authHeader:", c.req.header("Authorization")?.slice(0, 30) || "NONE");
     await requireAdmin(c);
+
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const now = Date.now();
+    const fromTs = body?.from ? new Date(body.from).getTime() : (now - 30 * 24 * 3600 * 1000);
+    const toTs   = body?.to   ? new Date(body.to).getTime()   : now;
 
     const allUsers = await kv.getByPrefix("user:");
     const users = allUsers.filter((u: any) => u.userId);
@@ -23410,16 +23455,27 @@ app.post("/admin/data", async (c) => {
       totalCreditsUsed += u.creditsUsed || 0;
       totalCreditsAllocated += u.credits || 0;
     }
-    const mrr = planCounts.starter * 29 + planCounts.generate * 79 + planCounts.studio * 149;
+    // Live plan prices — Creator 19 / Studio 49 / Agency 199 (was 29/79/149).
+    // The internal plan keys still spell "starter"/"generate"/"studio" for
+    // historical reasons; their displayed names map to Creator/Studio/Agency.
+    const PRICE_CREATOR = 19, PRICE_STUDIO = 49, PRICE_AGENCY = 199;
+    const mrr = planCounts.starter * PRICE_CREATOR + planCounts.generate * PRICE_STUDIO + planCounts.studio * PRICE_AGENCY;
 
     const allLogs = await kv.getByPrefix("log:");
     const sortedLogs = allLogs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     const allCosts = await kv.getByPrefix("cost:");
-    const sortedCosts = allCosts.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Filter to the requested date range BEFORE aggregating
+    const windowedCosts = allCosts.filter((it: any) => {
+      const ts = new Date(it.timestamp || 0).getTime();
+      return ts >= fromTs && ts <= toTs;
+    });
+    const sortedCosts = windowedCosts.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     const byProvider: Record<string, any> = {};
     const byType: Record<string, any> = {};
     const byDay: Record<string, any> = {};
+    const byPack: Record<string, any> = {};
+    const byUser: Record<string, any> = {};
     let totalCostEur = 0, totalRevenue = 0, totalMargin = 0, totalCount = 0;
 
     for (const item of sortedCosts) {
@@ -23440,20 +23496,54 @@ app.post("/admin/data", async (c) => {
       const day = entry.timestamp?.slice(0, 10) || "unknown";
       if (!byDay[day]) byDay[day] = { costEur: 0, revenueEur: 0, marginEur: 0, count: 0 };
       byDay[day].costEur += entry.costEur || 0; byDay[day].revenueEur += entry.revenueEur || 0; byDay[day].marginEur += entry.marginEur || 0; byDay[day].count++;
+      // Per-pack rollup — only entries tagged with campaignSlug count.
+      // Lets us compute "what does an average Surprise Me pack cost?".
+      if (entry.campaignSlug) {
+        const slug = entry.campaignSlug;
+        if (!byPack[slug]) byPack[slug] = { count: 0, costEur: 0, revenueEur: 0, marginEur: 0, userId: entry.userId, lastTs: entry.timestamp };
+        const bk = byPack[slug];
+        bk.count++; bk.costEur += entry.costEur || 0; bk.revenueEur += entry.revenueEur || 0; bk.marginEur += entry.marginEur || 0;
+        if (entry.timestamp && new Date(entry.timestamp).getTime() > new Date(bk.lastTs).getTime()) bk.lastTs = entry.timestamp;
+      }
+      // Per-user rollup — who burns the most credit. Helps spot unit-economic
+      // outliers (one user costing more than they pay) for pricing decisions.
+      if (entry.userId && entry.userId !== "system" && entry.userId !== "anon" && entry.userId !== "guest") {
+        if (!byUser[entry.userId]) byUser[entry.userId] = { count: 0, costEur: 0, revenueEur: 0, marginEur: 0, lastTs: entry.timestamp };
+        const bu = byUser[entry.userId];
+        bu.count++; bu.costEur += entry.costEur || 0; bu.revenueEur += entry.revenueEur || 0; bu.marginEur += entry.marginEur || 0;
+        if (entry.timestamp && new Date(entry.timestamp).getTime() > new Date(bu.lastTs).getTime()) bu.lastTs = entry.timestamp;
+      }
     }
     for (const k of Object.keys(byProvider)) {
       const p = byProvider[k]; p.totalCostUsd = Math.round(p.totalCostUsd * 10000) / 10000; p.totalCostEur = Math.round(p.totalCostEur * 10000) / 10000;
       p.totalRevenue = Math.round(p.totalRevenue * 10000) / 10000; p.totalMargin = Math.round(p.totalMargin * 10000) / 10000; p.avgLatency = Math.round(p.avgLatency);
     }
 
+    // Active budget alerts (today only — auto-clear at midnight when the
+    // counter resets to a fresh day key).
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const allAlerts = await kv.getByPrefix(`alert:`);
+    const activeAlerts = allAlerts.filter((a: any) => a?.day === todayStr);
+
     return c.json({
       success: true,
-      overview: { totalUsers: users.length, planCounts, totalCreditsUsed, totalCreditsAllocated, mrr, starterRevenue: planCounts.starter * 29, generateRevenue: planCounts.generate * 79, studioRevenue: planCounts.studio * 149, recentLogs: sortedLogs.slice(0, 20), serverTime: new Date().toISOString() },
+      range: { from: new Date(fromTs).toISOString(), to: new Date(toTs).toISOString() },
+      overview: {
+        totalUsers: users.length, planCounts, totalCreditsUsed, totalCreditsAllocated,
+        mrr,
+        starterRevenue: planCounts.starter * PRICE_CREATOR,
+        generateRevenue: planCounts.generate * PRICE_STUDIO,
+        studioRevenue: planCounts.studio * PRICE_AGENCY,
+        recentLogs: sortedLogs.slice(0, 20),
+        serverTime: new Date().toISOString(),
+      },
       users,
       logs: sortedLogs.slice(0, 100),
       costs: {
         total: { count: totalCount, costEur: Math.round(totalCostEur * 10000) / 10000, revenueEur: Math.round(totalRevenue * 10000) / 10000, marginEur: Math.round(totalMargin * 10000) / 10000 },
-        byProvider, byType, byDay, recentEntries: sortedCosts.slice(0, 100), providerCostTable: PROVIDER_COSTS, revenueTable: REVENUE_PER_TYPE,
+        byProvider, byType, byDay, byPack, byUser,
+        recentEntries: sortedCosts.slice(0, 100), providerCostTable: PROVIDER_COSTS, revenueTable: REVENUE_PER_TYPE,
+        alerts: activeAlerts,
       },
     });
   } catch (err) {
@@ -23477,12 +23567,12 @@ app.get("/admin/overview", async (c) => {
       totalCreditsUsed += u.creditsUsed || 0;
       totalCreditsAllocated += u.credits || 0;
     }
-    const mrr = planCounts.starter * 29 + planCounts.generate * 79 + planCounts.studio * 149;
+    const mrr = planCounts.starter * 19 + planCounts.generate * 49 + planCounts.studio * 199;
     const allLogs = await kv.getByPrefix("log:");
     const recentLogs = allLogs.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 20);
     return c.json({
       success: true,
-      overview: { totalUsers: users.length, planCounts, totalCreditsUsed, totalCreditsAllocated, mrr, starterRevenue: planCounts.starter * 29, generateRevenue: planCounts.generate * 79, studioRevenue: planCounts.studio * 149, recentLogs, serverTime: new Date().toISOString() },
+      overview: { totalUsers: users.length, planCounts, totalCreditsUsed, totalCreditsAllocated, mrr, starterRevenue: planCounts.starter * 19, generateRevenue: planCounts.generate * 49, studioRevenue: planCounts.studio * 199, recentLogs, serverTime: new Date().toISOString() },
     });
   } catch (err) {
     if (String(err).includes("Forbidden")) return c.json({ error: "Access denied" }, 403);
