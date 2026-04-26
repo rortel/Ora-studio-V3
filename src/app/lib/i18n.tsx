@@ -1098,7 +1098,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
   },
   profile: {
     signedInAs: "Signed in as",
-    creditsRemaining: "credits remaining",
+    creditsRemaining: "posts left",
     adminUnlimited: "Admin -- unlimited",
     adminDashboard: "Admin Dashboard",
     signOut: "Sign out",
@@ -1111,7 +1111,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
     upgrade: "Upgrade",
     manageSubscription: "Manage subscription",
     renews: "Renews",
-    contentPieces: "Content pieces",
+    contentPieces: "Posts",
     activeAgents: "Active agents",
     brandVaults: "Brand Vaults",
     storage: "Storage",
@@ -1179,7 +1179,7 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
     studio: "Studio",
     untitled: "Untitled",
     refresh: "Refresh",
-    businessFeatures: "Brand Vault deep-scan, Editor overlays, publish + schedule, priority generation.",
+    businessFeatures: "Brand Vault, auto-publish, logo on every post, priority queue.",
   },
   music: {
     title: "Music Studio",
@@ -2740,7 +2740,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
   },
   profile: {
     signedInAs: "Connecté en tant que",
-    creditsRemaining: "crédits restants",
+    creditsRemaining: "posts restants",
     adminUnlimited: "Admin -- illimité",
     adminDashboard: "Tableau de bord admin",
     signOut: "Se déconnecter",
@@ -2753,7 +2753,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
     upgrade: "Passer au supérieur",
     manageSubscription: "Gérer l'abonnement",
     renews: "Renouvellement",
-    contentPieces: "Contenus générés",
+    contentPieces: "Posts",
     activeAgents: "Agents actifs",
     brandVaults: "Brand Vaults",
     storage: "Stockage",
@@ -2821,7 +2821,7 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
     studio: "Studio",
     untitled: "Sans titre",
     refresh: "Actualiser",
-    businessFeatures: "Deep-scan Brand Vault, overlays éditeur, publish + schedule, génération prioritaire.",
+    businessFeatures: "Brand Vault, publication automatique, logo sur chaque post, file prioritaire.",
   },
   music: {
     title: "Studio Musique",

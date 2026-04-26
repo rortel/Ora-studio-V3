@@ -26,15 +26,15 @@ const PLANS: PlanDef[] = [
 priceMonthly: 19,
     priceYearly: 15,
     assets: 60,
-    tagline: "Solo creators shipping brand content weekly.",
+    tagline: "You sell things on the side. We post for you.",
     features: [
-      "60 assets / month",
-      "Images + 5s films",
-      "AI-written captions per platform",
+      "10 products / month",
+      "60 posts ready to publish",
+      "Images + 5s videos",
+      "Captions written for you",
       "Instagram · LinkedIn · Facebook · TikTok",
-      "Publish + schedule — one click to every network",
-      "Library + HD downloads (ZIP)",
-      "Editor to add logo, text, overlays",
+      "Auto-publish, one click",
+      "Logo + text overlay editor",
     ],
   },
   {
@@ -43,16 +43,16 @@ priceMonthly: 19,
 priceMonthly: 49,
     priceYearly: 39,
     assets: 200,
-    tagline: "Brand-locked creative at real production volume.",
+    tagline: "You sell things every day. We keep up.",
     highlight: true,
     features: [
-      "200 assets / month",
-      "Brand Vault — palette, tone, photo style, audience, voice",
-      "Paste your site URL, Ora extracts your brand",
-      "Logo + image bank baked into every shot",
-      "Every film + image, every platform",
-      "Publish + schedule — one click to every network",
-      "Priority generation queue",
+      "33 products / month",
+      "200 posts ready to publish",
+      "Brand Vault — palette, tone, voice, photo style",
+      "Paste your URL, we read your brand",
+      "Logo baked into every post",
+      "Auto-publish, one click",
+      "Priority queue",
     ],
   },
   {
@@ -61,14 +61,14 @@ priceMonthly: 49,
 priceMonthly: 199,
     priceYearly: 159,
     assets: 1000,
-    tagline: "Multi-brand studios and in-house creative teams.",
+    tagline: "You sell things for other people. We scale.",
     features: [
-      "1 000 assets / month",
-      "Multi-brand Brand Vault (up to 5 brands)",
+      "166 products / month",
+      "1 000 posts ready to publish",
+      "Up to 5 brands in one account",
       "3 team seats",
-      "Publish + schedule — one click to every network",
+      "Auto-publish, one click",
       "API access",
-      "White-label ZIP delivery",
       "Priority support",
     ],
   },
@@ -150,9 +150,9 @@ export function PricingPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3">
           {[
-            { title: "Brand Vault", body: "Studio and Agency lock your palette, tone, photo style, voice and image bank into every shot. Creator works from a text brief." },
-            { title: "Volume",      body: "60 / 200 / 1 000 assets a month. Each asset = one image + its paired 5s film when you pick the film pipeline." },
-            { title: "Team & API",  body: "Agency unlocks 3 seats, multi-brand vaults (×5) and API access for automation. Every plan ships direct to Instagram, LinkedIn, Facebook and TikTok." },
+            { title: "Brand Vault", body: "Studio and Agency learn your colours, your tone, your voice. Every post comes back on-brand. Creator works from a one-line brief." },
+            { title: "What you get", body: "10 / 33 / 166 products a month. Each product = 6 posts ready for every platform (image + 5s video where it fits)." },
+            { title: "Team & API",  body: "Agency unlocks 3 seats, up to 5 brands in one account, and API access. Every plan posts straight to Instagram, LinkedIn, Facebook, TikTok." },
           ].map((c, i) => (
             <div
               key={c.title}
@@ -242,7 +242,7 @@ function PlanCard({ plan, billing, authed, index }: { plan: PlanDef; billing: Bi
       </p>
       <div className="mono-label mb-6 flex items-center gap-2 tabular-nums" style={{ color: COLORS.ink }}>
         <span className="text-[14px]" style={{ fontWeight: 700, letterSpacing: 0, textTransform: "none" }}>{plan.assets}</span>
-        <span style={{ color: COLORS.muted }}>assets / month</span>
+        <span style={{ color: COLORS.muted }}>posts / month</span>
       </div>
 
       {/* Features */}

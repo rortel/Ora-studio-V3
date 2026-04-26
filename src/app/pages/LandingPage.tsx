@@ -654,20 +654,20 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
   const tiers = [
     {
       code: "creator", name: "Creator", price: 19, assets: 60,
-      tagline: "Solo creators shipping brand content weekly.",
-      features: ["60 assets / month", "Images + 5s films", "AI-written captions", "IG · LI · FB · TikTok", "1-click publish", "Editor (logo, text, overlays)"],
+      tagline: "You sell things on the side. We post for you.",
+      features: ["10 products / month", "60 posts ready to publish", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
       highlight: false,
     },
     {
       code: "studio", name: "Studio", price: 49, assets: 200,
-      tagline: "Brand-locked creative at production volume.",
-      features: ["200 assets / month", "Brand Vault (palette, tone, voice)", "Deep-scan your URL", "Logo baked into every shot", "Priority generation queue", "Everything in Creator"],
+      tagline: "You sell things every day. We keep up.",
+      features: ["33 products / month", "200 posts ready to publish", "Brand Vault — palette, tone, voice", "Paste your URL, we read your brand", "Logo baked into every post", "Everything in Creator"],
       highlight: true,
     },
     {
       code: "agency", name: "Agency", price: 199, assets: 1000,
-      tagline: "Multi-brand studios and in-house teams.",
-      features: ["1 000 assets / month", "Multi-brand Vault (up to 5)", "3 team seats", "API access", "White-label ZIP delivery", "Everything in Studio"],
+      tagline: "You sell things for other people. We scale.",
+      features: ["166 products / month", "1 000 posts ready to publish", "Up to 5 brands in one account", "3 team seats", "API access", "Everything in Studio"],
       highlight: false,
     },
   ];
@@ -676,10 +676,10 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
       <div className="max-w-[1400px] mx-auto px-6 md:px-16 py-24 md:py-32">
         <div className="mono-label mb-4 flex items-center gap-2" style={{ color: "rgba(17,17,17,0.6)" }}>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
-          <span>Pricing · one per brand</span>
+          <span>Pricing · pick a plan, post tonight</span>
         </div>
         <h2 className="mb-14 max-w-[14ch]" style={{ ...bagel, fontSize: "clamp(56px, 9vw, 140px)", color: COLORS.ink }}>
-          Pick a plan. <span style={{ color: "#FF6B47" }}>Ship tonight.</span>
+          Pick a plan. <span style={{ color: "#FF6B47" }}>Post tonight.</span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
           {tiers.map((t) => (
@@ -797,18 +797,18 @@ export function LandingPage() {
         videoSrc={mediaHero.videoSrc}
         posterSrc={mediaHero.posterSrc}
         imageSrc={mediaHero.imageSrc}
-        eyebrow="v2.4 · 2,847 brands · 127,493 assets shipped"
-        title={<>Stop prompting. <span style={{ color: "#FF6B47" }}>Surprise your brand.</span></>}
-        subtitle={<>Drop your brand. Pick your platforms. Ora ships a full pack — LinkedIn, Instagram, TikTok — in one click. No prompt writing.</>}
+        eyebrow="v2.4 · 2,847 brands · 127,493 posts published"
+        title={<>Drop your product.<br/><span style={{ color: "#FF6B47" }}>We post for you.</span></>}
+        subtitle={<>6 posts ready for Instagram, LinkedIn, Facebook, TikTok. We make them. We publish them. You do something else.</>}
         cta={
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"}>
               <Button variant="accent" size="lg">
-                {user ? "Open Ora" : "Start free · 10 credits"} <ArrowRight size={16} />
+                {user ? "Open Ora" : "Try it. No card."} <ArrowRight size={16} />
               </Button>
             </Link>
             <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
-              {user ? "No more CTAs, just ship." : "No card · 1 full pack on us"}
+              {user ? "Drop a photo. We post." : "1 product on the house. No card."}
             </span>
           </div>
         }
@@ -818,25 +818,25 @@ export function LandingPage() {
       <MethodPanel
         eyebrow="01 / 03 · your brand"
         title={<>Drop.</>}
-        subtitle={<>Paste your URL. 30 seconds. Ora reads your homepage, locks your palette, typography, tone and voice into the Brand Vault. Once. Forever.</>}
+        subtitle={<>Paste your website URL. 30 seconds later, Ora knows your colours, your fonts, your voice — your whole vibe. You only do this once.</>}
       >
         <DropMockup />
       </MethodPanel>
 
       {/* ═══ Panel 3 — PICK (UI mockup) ═══ */}
       <MethodPanel
-        eyebrow="02 / 03 · the direction"
+        eyebrow="02 / 03 · we suggest"
         title={<>Pick.</>}
-        subtitle={<>Three editorial angles, pre-tuned to your month, your sector, your brand. Click one. That's the brief. No typing.</>}
+        subtitle={<>We suggest three ways to show your product this month — based on your brand, your industry, the season. You click one. That's it. No typing.</>}
       >
         <PickMockup />
       </MethodPanel>
 
-      {/* ═══ Panel 4 — SHIP (UI mockup using featured assets) ═══ */}
+      {/* ═══ Panel 4 — SHIP (UI mockup using featured posts) ═══ */}
       <MethodPanel
-        eyebrow="03 / 03 · the pack"
-        title={<>Ship.</>}
-        subtitle={<>Six assets, image + paired 5s film, framed for every network. Download the ZIP or publish, one click.</>}
+        eyebrow="03 / 03 · we publish"
+        title={<>Done.</>}
+        subtitle={<>Six posts, image + 5s film, sized for every platform. One click and they're live on Instagram, LinkedIn, Facebook, TikTok.</>}
       >
         <ShipMockup assets={showcase.slice(0, 6).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
       </MethodPanel>
@@ -859,10 +859,10 @@ export function LandingPage() {
                 04:00:00
               </div>
               <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "rgba(17,17,17,0.5)" }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Design in Figma</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Resize for 8 formats</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Export manually</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Rewrite prompts</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Open Canva again</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Resize for every platform</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Write the captions yourself</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Schedule on each app, one by one</li>
               </ul>
             </div>
             <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: "rgba(17,17,17,0.12)" }}>
@@ -871,10 +871,10 @@ export function LandingPage() {
                 00:00:42
               </div>
               <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: COLORS.ink }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> One click</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> 8 platform-ready assets</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Brand-locked consistency</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Zero prompting</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> One photo</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Six posts ready</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Captions written for you</li>
+                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Posted on every platform</li>
               </ul>
             </div>
           </div>

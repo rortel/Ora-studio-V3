@@ -641,14 +641,14 @@ function SurpriseContent() {
                       </div>
                     </TuneBlock>
 
-                    <TuneBlock label={`Assets · ${assetCount}`}>
+                    <TuneBlock label={`Posts · ${assetCount}`}>
                       <input type="range" min={1} max={16} value={assetCount}
                              onChange={(e) => setAssetCount(parseInt(e.target.value, 10))}
                              className="w-full" style={{ accentColor: INK }} />
                     </TuneBlock>
 
-                    {/* Film duration applies to any platform that gets motion (IG Story, TikTok, …) */}
-                    <TuneBlock label="Film duration">
+                    {/* Video length applies to any platform that gets motion (IG Story, TikTok, …) */}
+                    <TuneBlock label="Video length">
                       <div className="flex gap-2">
                         {(["3s", "5s", "8s"] as const).map((d) => {
                           const on = videoDuration === d;
@@ -663,7 +663,7 @@ function SurpriseContent() {
                       </div>
                     </TuneBlock>
 
-                    <TuneBlock label="Caption with each asset">
+                    <TuneBlock label="Caption with each post">
                       <div className="flex gap-2">
                         {[{ v: true, l: "Yes" }, { v: false, l: "No" }].map((opt) => {
                           const on = withCaption === opt.v;
@@ -756,9 +756,9 @@ function SurpriseContent() {
                         {/* Show the user's actual settings on the card so
                             they know what the angle will produce. */}
                         <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                          <span>{assetCount} asset{assetCount === 1 ? "" : "s"}</span>
+                          <span>{assetCount} post{assetCount === 1 ? "" : "s"}</span>
                           <span>·</span>
-                          <span>{platforms.length} network{platforms.length === 1 ? "" : "s"}</span>
+                          <span>{platforms.length} platform{platforms.length === 1 ? "" : "s"}</span>
                           <span>·</span>
                           <span>level {creativity}</span>
                         </div>
@@ -779,11 +779,11 @@ function SurpriseContent() {
               >
                 <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
-                  Your product · your moment
+                  One product · six posts · every platform
                 </div>
                 <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(40px, 7vw, 88px)" }}>
-                  Drop the photo.<br />
-                  <span style={{ color: COLORS.coral }}>We compose the rest.</span>
+                  Drop your product.<br />
+                  <span style={{ color: COLORS.coral }}>We post for you.</span>
                 </h1>
 
                 {/* 1. Product photos — first one mandatory, up to 5 angles for
@@ -922,7 +922,7 @@ function SurpriseContent() {
                 {/* 4. Settings row — assets, creativity, caption */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 p-4 rounded-2xl" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                   <div>
-                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>Assets · {assetCount}</div>
+                    <div className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>Posts · {assetCount}</div>
                     <input type="range" min={1} max={16} value={assetCount}
                            onChange={(e) => setAssetCount(parseInt(e.target.value, 10))}
                            className="w-full" style={{ accentColor: INK }} />
@@ -978,22 +978,22 @@ function SurpriseContent() {
                           style={{ boxShadow: disabled ? "none" : "0 20px 44px -14px rgba(255,92,57,0.55)" }}
                         >
                           {anglesLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                          {anglesLoading ? "Reading brand + product…" : "Propose me angles"}
+                          {anglesLoading ? "Reading your brand…" : "Show me ideas"}
                           <ArrowRight size={16} />
                         </Button>
                         {noPhoto && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
-                            Upload a product photo to continue.
+                            Add a photo of your product to continue.
                           </p>
                         )}
                         {!noPhoto && noDesc && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
-                            One line of "what is it?" — helps Ora stay specific.
+                            One line — what is it? (e.g. "linen polo, cream"). Keeps Ora on point.
                           </p>
                         )}
                         {!noPhoto && !noDesc && noPlatform && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
-                            Pick at least one network.
+                            Pick at least one platform.
                           </p>
                         )}
                       </>
@@ -1075,7 +1075,7 @@ function SurpriseContent() {
                 <Badge tone={pack.savedCount > 0 ? "butter" : "coral"}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
                   {pack.savedCount > 0
-                    ? `${pack.items.length} asset${pack.items.length > 1 ? "s" : ""} saved to your library`
+                    ? `${pack.items.length} post${pack.items.length > 1 ? "s" : ""} saved to your library`
                     : "Not saved — open Library to retry"}
                 </Badge>
                 {pack.brandLockScore > 0 && (
@@ -1257,17 +1257,17 @@ function SurpriseContent() {
             >
               <Badge tone="coral">
                 <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FFFFFF" }} />
-                Out of credits
+                You're out of posts
               </Badge>
               <h3 className="mt-5 leading-[0.95]" style={{ ...bagel, fontSize: "clamp(32px, 5vw, 48px)" }}>
                 {outOfCredits.remaining === 0
-                  ? <>That's the last shot for this month.</>
+                  ? <>That's it for this month.</>
                   : <>Almost.</>}
               </h3>
               <p className="mt-4 text-[15px] leading-relaxed" style={{ color: COLORS.muted }}>
                 {outOfCredits.remaining === 0
-                  ? <>You're at zero. Upgrade your plan or wait until next month — your credits refresh automatically.</>
-                  : <>You've got {outOfCredits.remaining} left and this run needs {outOfCredits.required}. Drop the asset count, or unlock more below.</>}
+                  ? <>You've used all your posts. Bump your plan or wait — fresh posts come in next month.</>
+                  : <>You've got {outOfCredits.remaining} left and this run needs {outOfCredits.required}. Drop the count below, or grab more.</>}
               </p>
               <div className="mt-6 flex items-center gap-2">
                 <Button variant="accent" size="md" onClick={() => { setOutOfCredits(null); navigate("/pricing"); }}>
