@@ -779,7 +779,7 @@ function SurpriseContent() {
               >
                 <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4" style={{ color: MUTED }}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
-                  One product · six posts · every platform
+                  Six posts · every platform · ready to publish
                 </div>
                 <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(40px, 7vw, 88px)" }}>
                   Drop your product.<br />

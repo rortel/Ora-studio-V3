@@ -525,7 +525,7 @@ function LibraryPageContent() {
   // Download all campaign assets as ZIP
   const handleDownloadCampaign = useCallback(async (item: LibraryItem) => {
     const { assets, brief } = getCampaignData(item);
-    if (assets.length === 0) { toast.error("No assets to download"); return; }
+    if (assets.length === 0) { toast.error("Nothing to download here."); return; }
     setDownloadingCampaign(item.id);
     const title = (item as any).title || getItemName(item);
     const safeTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50);

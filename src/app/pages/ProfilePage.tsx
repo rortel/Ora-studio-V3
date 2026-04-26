@@ -109,8 +109,8 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 0.1,
     renewalDate: "--",
-    features: ["1 product on the house (6 posts)", "Every platform covered", "No card required"],
-    lockedFeatures: ["More products every month", "Auto-publish", "Library downloads", "Editor overlays"],
+    features: ["6 posts on the house", "Every platform covered", "No card required"],
+    lockedFeatures: ["More posts every month", "Auto-publish", "Library downloads", "Editor overlays"],
   },
   starter: {
     name: "Creator",
@@ -124,7 +124,7 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 5,
     renewalDate: "--",
-    features: ["10 products / month", "60 posts ready to publish", "Images + 5s videos", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
+    features: ["60 posts / month", "Images + 5s videos", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
     lockedFeatures: ["Brand Vault — read your site", "Multi-brand", "Team seats", "API access"],
   },
   pro: {
@@ -139,7 +139,7 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 20,
     renewalDate: "--",
-    features: ["33 products / month", "200 posts ready to publish", "Brand Vault — colours, tone, voice, photo style", "Paste your URL, we read your brand", "Logo on every post", "Priority queue", "Everything in Creator"],
+    features: ["200 posts / month", "Brand Vault — colours, tone, voice, photo style", "Paste your URL, we read your brand", "Logo on every post", "Priority queue", "Everything in Creator"],
     lockedFeatures: ["Multi-brand (×5)", "Team seats", "API access"],
   },
   business: {
@@ -154,7 +154,7 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 100,
     renewalDate: "--",
-    features: ["166 products / month", "1 000 posts ready to publish", "Up to 5 brands in one account", "3 team seats", "API access", "Priority support", "Everything in Studio"],
+    features: ["1 000 posts / month", "Up to 5 brands in one account", "3 team seats", "API access", "Priority support", "Everything in Studio"],
     lockedFeatures: [],
   },
 };

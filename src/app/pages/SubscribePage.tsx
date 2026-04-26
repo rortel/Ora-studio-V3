@@ -30,43 +30,41 @@ const PLANS: Record<PublicPlan, PlanDef> = {
     code: "creator", serverCode: "starter",
     name: "Creator", tone: "warm",
     priceMonthly: 19, priceYearly: 15, assets: 60,
-    tagline: "Solo creators shipping brand content weekly.",
+    tagline: "You sell things on the side. We post for you.",
     features: [
-      "60 assets / month",
-      "Images + 5s films + captions",
+      "60 posts / month",
+      "Images + 5s videos + captions",
       "Instagram · LinkedIn · Facebook · TikTok",
-      "Publish + schedule — one click to every network",
-      "Library + HD downloads (ZIP)",
-      "Editor to add logo, text, overlays",
+      "Auto-publish, one click",
+      "Library downloads (ZIP)",
+      "Logo + text overlay editor",
     ],
   },
   studio: {
     code: "studio", serverCode: "pro",
     name: "Studio", tone: "butter",
     priceMonthly: 49, priceYearly: 39, assets: 200,
-    tagline: "Brand-locked creative at real production volume.",
+    tagline: "You sell things every day. We keep up.",
     features: [
-      "200 assets / month",
-      "Brand Vault — palette, tone, photo style, voice",
-      "Paste your site URL, Ora extracts your brand",
-      "Logo + image bank on every shot",
-      "Images, films and captions — every platform",
-      "Publish + schedule — one click",
-      "Priority generation queue",
+      "200 posts / month",
+      "Brand Vault — colours, tone, voice, photo style",
+      "Paste your URL, we read your brand",
+      "Logo on every post",
+      "Auto-publish, one click",
+      "Priority queue",
     ],
   },
   agency: {
     code: "agency", serverCode: "business",
     name: "Agency", tone: "violet",
     priceMonthly: 199, priceYearly: 159, assets: 1000,
-    tagline: "Multi-brand studios and in-house creative teams.",
+    tagline: "You sell things for other people. We scale.",
     features: [
-      "1 000 assets / month",
-      "Multi-brand Brand Vault (up to 5 brands)",
+      "1 000 posts / month",
+      "Up to 5 brands in one account",
       "3 team seats",
-      "Publish + schedule — one click",
+      "Auto-publish, one click",
       "API access",
-      "White-label ZIP delivery",
       "Priority support",
     ],
   },
@@ -199,7 +197,7 @@ export function SubscribePage() {
             You're <span style={{ color: COLORS.coral }}>{p.name}.</span>
           </motion.h1>
           <p className="mt-5 text-[17px] md:text-[19px]" style={{ color: COLORS.muted, maxWidth: 540, margin: "0 auto" }}>
-            {p.assets} assets land in your library every month. Go make your first pack.
+            {p.assets} posts land in your library every month. Go make your first.
           </p>
           <div className="mt-10 flex items-center justify-center gap-3">
             <Link to="/hub/surprise"><Button variant="accent" size="lg"><Sparkles size={18} /> Open Ora <ArrowRight size={16} /></Button></Link>
@@ -248,7 +246,7 @@ export function SubscribePage() {
                 {plan.name}
               </h2>
               <p className="mt-3 text-[14.5px]" style={{ opacity: 0.75, maxWidth: 440 }}>
-                {plan.assets} assets / month · brand DA locked
+                {plan.assets} posts / month · on brand, every time
               </p>
             </div>
             <div className="text-right">

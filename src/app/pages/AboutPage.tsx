@@ -34,12 +34,12 @@ export function AboutPage() {
           style={{ fontSize: "clamp(2rem, 4vw, 3.25rem)", fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1.05 }}
           className="mb-5"
         >
-          {isFr ? "Le copilote qualité\npour tes visuels IA." : "The quality copilot\nfor AI visuals."}
+          {isFr ? "Pour les gens qui vendent.\nPas les gens qui postent." : "For people who sell things.\nNot people who post things."}
         </motion.h1>
         <p className="text-lg leading-relaxed" style={{ color: "#52525B" }}>
           {isFr
-            ? "Ora aide les créateurs, marques et agences à publier des visuels IA sans stress : on-brand, sans risque, et vraiment bons."
-            : "Ora helps creators, brands, and agencies publish AI visuals with confidence: on-brand, risk-free, and genuinely good."}
+            ? "Ora prend une photo de ce que tu vends, fait 6 posts pour toutes tes plateformes, et les publie. Tu fais autre chose."
+            : "Ora takes a photo of what you sell, makes 6 posts for every platform, and publishes them. You do something else."}
         </p>
       </section>
 
@@ -48,18 +48,18 @@ export function AboutPage() {
         <div className="space-y-6 text-lg leading-relaxed" style={{ color: "#27272A" }}>
           <p>
             {isFr
-              ? "Depuis l'explosion des modèles génératifs, tout le monde peut produire un visuel en 30 secondes. Mais publier un visuel IA reste risqué : logos qui traînent, célébrités reconnaissables, artefacts grossiers, ambiance à côté de la marque."
-              : "Since generative models exploded, anyone can produce a visual in 30 seconds. But publishing AI visuals stays risky: stray logos, recognizable celebrities, clumsy artefacts, off-brand mood."}
+              ? "Tout le monde dit que tu dois être sur les réseaux. Personne ne te dit comment tu trouves le temps. Tu vends des bijoux, des bougies, du linge, des cours de yoga — pas des contenus."
+              : "Everyone tells you you should be on social. Nobody tells you when you're supposed to find the time. You sell jewellery, candles, soap, yoga classes — not content."}
           </p>
           <p>
             {isFr
-              ? "Les seuls outils qui auditent les créations existent — mais sont réservés aux gros annonceurs à $50k/an. Le freelance, la PME, l'agence indé n'ont rien."
-              : "Tools that audit creative work exist — but are reserved for big advertisers at $50k/year. Freelancers, SMBs, and indie agencies have nothing."}
+              ? "Les outils existants demandent que tu sois designer (Canva), copywriter (ChatGPT), planificateur (Buffer). Trois métiers en plus du tien. Pour la plupart des marques, c'est juste pas tenable."
+              : "The tools out there assume you're a designer (Canva), a copywriter (ChatGPT), and a scheduler (Buffer). That's three extra jobs on top of yours. For most brands, that's just not sustainable."}
           </p>
           <p className="font-semibold" style={{ color: COLORS.ink}}>
             {isFr
-              ? "Ora comble ce vide : un audit de qualité, accessible, rapide, honnête."
-              : "Ora fills that gap: a quality audit — accessible, fast, honest."}
+              ? "Ora fait les trois pour toi. Tu envoies ta photo. Tu publies en un clic. Voilà."
+              : "Ora does all three for you. You upload a photo. You publish in one click. That's it."}
           </p>
         </div>
       </section>
@@ -77,25 +77,25 @@ export function AboutPage() {
           <div className="grid md:grid-cols-3 gap-5">
             {[
               {
-                icon: Shield, color: "#B91C1C", bg: "#FEF2F2",
-                title: isFr ? "Risques" : "Legal flags",
+                icon: Palette, color: COLORS.coral, bg: "#FFF1ED",
+                title: isFr ? "On lit ta marque" : "We read your brand",
                 body: isFr
-                  ? "Détection heuristique des drapeaux rouges : logos déposés, ressemblances célébrités, allégations régulées, biais."
-                  : "Heuristic red-flag detection: visible trademarks, celebrity likenesses, regulated claims, bias.",
+                  ? "Tu colles l'adresse de ton site. En 30 secondes, on apprend tes couleurs, ta typo, ton ton, ton style photo. Tu ne fais ça qu'une fois."
+                  : "You paste your website URL. In 30 seconds, we learn your colours, your fonts, your tone, your photo style. You only do this once.",
               },
               {
-                icon: Palette, color: COLORS.coral, bg: "#EFF6FF",
-                title: isFr ? "Cohérence marque" : "Brand fit",
+                icon: Sparkles, color: "#0F766E", bg: "#F0FDFA",
+                title: isFr ? "On garde ton produit" : "We keep your product",
                 body: isFr
-                  ? "Score d'alignement avec ta marque : palette, ton, style photo, messages clés, audience cible."
-                  : "Alignment score with your brand: palette, tone, photo style, key messages, target audience.",
+                  ? "Ton produit, c'est tes pixels. On ne le régénère pas, on ne l'invente pas, on ne le déforme pas. On compose la scène autour."
+                  : "Your product is your pixels. We don't regenerate it, we don't reinvent it, we don't drift. We build the scene around it.",
               },
               {
-                icon: Sparkles, color: "#15803D", bg: "#F0FDF4",
-                title: isFr ? "Créatif" : "Creative",
+                icon: Shield, color: "#1D4ED8", bg: "#EEF2FF",
+                title: isFr ? "On poste pour toi" : "We post for you",
                 body: isFr
-                  ? "Qualité artistique et technique : composition, impact, artefacts IA, originalité, potentiel campagne."
-                  : "Artistic and technical quality: composition, impact, AI artefacts, originality, campaign potential.",
+                  ? "Instagram, LinkedIn, Facebook, TikTok — un clic et c'est en ligne. Pas de copier-coller, pas d'app à ouvrir l'une après l'autre."
+                  : "Instagram, LinkedIn, Facebook, TikTok — one click and it's live. No copy-paste, no flipping between apps.",
               },
             ].map(({ icon: Icon, color, bg, title, body }) => (
               <div
@@ -129,27 +129,27 @@ export function AboutPage() {
           <ul className="space-y-3 text-sm md:text-base" style={{ color: "#D4D4D8" }}>
             <li>
               <span className="font-semibold" style={{ color: "#FFFFFF" }}>
-                {isFr ? "Pas un avis juridique." : "Not legal advice."}
+                {isFr ? "Pas un Canva." : "Not a Canva."}
               </span>{" "}
               {isFr
-                ? "Notre score « Risques » est une détection heuristique. Pour les campagnes à fort enjeu, consulte un conseil."
-                : "Our \"Risks\" score is heuristic detection. For high-stakes campaigns, consult counsel."}
+                ? "On ne te donne pas un outil pour designer. On fait le design pour toi. Tu ne touches à rien."
+                : "We don't give you a tool to design with. We do the design for you. You don't touch anything."}
             </li>
             <li>
               <span className="font-semibold" style={{ color: "#FFFFFF" }}>
-                {isFr ? "Pas un générateur." : "Not a generator."}
+                {isFr ? "Pas un ChatGPT pour images." : "Not a ChatGPT for images."}
               </span>{" "}
               {isFr
-                ? "On audite ce que tu produis ailleurs (MidJourney, Flux, DALL-E…). On peut régénérer une version améliorée avec ton contexte."
-                : "We audit what you produce elsewhere (MidJourney, Flux, DALL-E…). We can regenerate an improved version with your context."}
+                ? "Tu n'écris rien. Tu uploads une photo. C'est tout. Aucun talent technique requis."
+                : "You don't write anything. You upload a photo. That's it. No tech skills required."}
             </li>
             <li>
               <span className="font-semibold" style={{ color: "#FFFFFF" }}>
-                {isFr ? "Pas une oracle." : "Not an oracle."}
+                {isFr ? "Pas une agence." : "Not an agency."}
               </span>{" "}
               {isFr
-                ? "Les scores sont des opinions de modèles vision qualifiés. Ton jugement humain reste la dernière étape."
-                : "Scores are opinions from qualified vision models. Your human judgement is the final step."}
+                ? "À €19/mois, on n'a pas le luxe d'un account manager. On a le luxe d'un produit qui marche tout seul."
+                : "At €19/month, we don't have the luxury of an account manager. We have the luxury of a product that works on its own."}
             </li>
           </ul>
         </div>
@@ -187,17 +187,17 @@ export function AboutPage() {
             style={{ fontSize: "clamp(1.5rem, 3vw, 2.25rem)", fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.1 }}
             className="mb-3"
           >
-            {isFr ? "Essaie Ora sur un visuel." : "Try Ora on a visual."}
+            {isFr ? "Drop ta photo. On poste." : "Drop your photo. We post."}
           </h2>
           <p className="mb-6" style={{ color: "#52525B" }}>
-            {isFr ? "5 scans gratuits par mois. Sans carte." : "5 free scans per month. No card."}
+            {isFr ? "6 posts offerts pour essayer. Sans carte." : "6 free posts to try. No card."}
           </p>
           <Link
-            to={user ? "/hub/analyze" : "/login"}
+            to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-opacity hover:opacity-90"
             style={{ background: COLORS.coral, color: "#FFFFFF" }}
           >
-            {isFr ? "Scanner maintenant" : "Scan now"} <ArrowRight size={16} />
+            {isFr ? "Essayer maintenant" : "Try it now"} <ArrowRight size={16} />
           </Link>
         </div>
       </section>

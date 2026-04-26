@@ -273,7 +273,7 @@ const en = {
     ctaSecondary: "View pricing",
   },
   footer: {
-    tagline: "The AI aggregator that scores every model on 8 dimensions.",
+    tagline: "Ora is for people who sell things. Not people who post things.",
     product: "Product",
     legal: "Legal",
     models: "Models",
@@ -1915,7 +1915,7 @@ const fr = {
     ctaSecondary: "Voir les tarifs",
   },
   footer: {
-    tagline: "L'agrégateur IA qui note chaque modèle sur 8 dimensions.",
+    tagline: "Ora, c'est pour les gens qui vendent. Pas les gens qui postent.",
     product: "Produit",
     legal: "Légal",
     models: "Modèles",

@@ -655,19 +655,19 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
     {
       code: "creator", name: "Creator", price: 19, assets: 60,
       tagline: "You sell things on the side. We post for you.",
-      features: ["10 products / month", "60 posts ready to publish", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
+      features: ["60 posts / month", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
       highlight: false,
     },
     {
       code: "studio", name: "Studio", price: 49, assets: 200,
       tagline: "You sell things every day. We keep up.",
-      features: ["33 products / month", "200 posts ready to publish", "Brand Vault — palette, tone, voice", "Paste your URL, we read your brand", "Logo baked into every post", "Everything in Creator"],
+      features: ["200 posts / month", "Brand Vault — palette, tone, voice", "Paste your URL, we read your brand", "Logo baked into every post", "Everything in Creator"],
       highlight: true,
     },
     {
       code: "agency", name: "Agency", price: 199, assets: 1000,
       tagline: "You sell things for other people. We scale.",
-      features: ["166 products / month", "1 000 posts ready to publish", "Up to 5 brands in one account", "3 team seats", "API access", "Everything in Studio"],
+      features: ["1 000 posts / month", "Up to 5 brands in one account", "3 team seats", "API access", "Everything in Studio"],
       highlight: false,
     },
   ];
@@ -808,7 +808,7 @@ export function LandingPage() {
               </Button>
             </Link>
             <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
-              {user ? "Drop a photo. We post." : "1 product on the house. No card."}
+              {user ? "Drop a photo. We post." : "6 posts on the house. No card."}
             </span>
           </div>
         }

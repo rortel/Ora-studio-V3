@@ -271,7 +271,7 @@ export function LoginPage() {
             >
               <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF5C39" }} />
               <span className="mono-label" style={{ color: "#FF5C39", fontSize: 10.5 }}>
-                10 free credits · 1 full pack on us · no card
+                6 posts on the house · no card
               </span>
             </div>
           )}

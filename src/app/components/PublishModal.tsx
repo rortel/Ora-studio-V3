@@ -201,7 +201,7 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
         return next;
       });
     } else {
-      alert(res?.error || (isFr ? "Échec de la génération IA" : "AI generation failed"));
+      alert(res?.error || (isFr ? "Échec de la création. On retente ?" : "Couldn't make that. Try again?"));
     }
     setGeneratingCaptions(false);
   }, [selectedPlatforms, asset, sharedCaption, isFr, serverPost]);

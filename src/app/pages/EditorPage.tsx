@@ -171,7 +171,7 @@ function EditorAgency() {
       const match = FORMATS.find((f) => Math.abs(f.w / f.h - ar) < 0.02);
       if (match) setActiveFormat(match.id);
     };
-    img.onerror = () => { toast.error("Couldn't load that asset."); };
+    img.onerror = () => { toast.error("Couldn't load that post."); };
     img.src = preloadUrl;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preloadUrl]);

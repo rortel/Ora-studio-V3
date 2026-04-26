@@ -28,8 +28,7 @@ priceMonthly: 19,
     assets: 60,
     tagline: "You sell things on the side. We post for you.",
     features: [
-      "10 products / month",
-      "60 posts ready to publish",
+      "60 posts / month",
       "Images + 5s videos",
       "Captions written for you",
       "Instagram · LinkedIn · Facebook · TikTok",
@@ -46,8 +45,7 @@ priceMonthly: 49,
     tagline: "You sell things every day. We keep up.",
     highlight: true,
     features: [
-      "33 products / month",
-      "200 posts ready to publish",
+      "200 posts / month",
       "Brand Vault — palette, tone, voice, photo style",
       "Paste your URL, we read your brand",
       "Logo baked into every post",
@@ -63,8 +61,7 @@ priceMonthly: 199,
     assets: 1000,
     tagline: "You sell things for other people. We scale.",
     features: [
-      "166 products / month",
-      "1 000 posts ready to publish",
+      "1 000 posts / month",
       "Up to 5 brands in one account",
       "3 team seats",
       "Auto-publish, one click",
@@ -151,7 +148,7 @@ export function PricingPage() {
         <div className="grid grid-cols-1 md:grid-cols-3">
           {[
             { title: "Brand Vault", body: "Studio and Agency learn your colours, your tone, your voice. Every post comes back on-brand. Creator works from a one-line brief." },
-            { title: "What you get", body: "10 / 33 / 166 products a month. Each product = 6 posts ready for every platform (image + 5s video where it fits)." },
+            { title: "What you get", body: "60 / 200 / 1 000 posts a month, ready to publish. Image or 5s video, captions written, sized for every platform." },
             { title: "Team & API",  body: "Agency unlocks 3 seats, up to 5 brands in one account, and API access. Every plan posts straight to Instagram, LinkedIn, Facebook, TikTok." },
           ].map((c, i) => (
             <div
