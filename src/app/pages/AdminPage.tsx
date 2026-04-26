@@ -905,7 +905,7 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
         </div>
       )}
 
-      {/* Provider Cost per Call (Reference Table) */}
+      {/* Provider Cost per Call (Reference Table) — filtered to active APIs only */}
       <div className="bg-card border border-border rounded-xl p-6" style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
         <h3 style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)", marginBottom: "16px" }}>Provider Cost Reference (per call)</h3>
         {costsData?.providerCostTable ? (
@@ -919,7 +919,20 @@ function CostsTab({ overview, users, preloadedCosts, onRefresh }: { overview: Ad
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(costsData.providerCostTable).sort(([a], [b]) => a.localeCompare(b)).map(([key, costUsd]: [string, any]) => {
+                {Object.entries(costsData.providerCostTable)
+                  .filter(([key]) => {
+                    const k = key.toLowerCase();
+                    // Active providers only — anything else is legacy code
+                    // not invoked by the 4-tab shell.
+                    return k.startsWith("apipod/") || k.startsWith("openai/")
+                      || k.startsWith("google/") || k.startsWith("mistral/")
+                      || k.startsWith("photoroom") || k === "fal/kontext-pro"
+                      || k.startsWith("fal-bria") || k.startsWith("fal-iclight")
+                      || k === "luma/photon-1" || k === "luma/photon-flash-1"
+                      || k === "luma/ray-2" || k === "luma/ray-flash-2"
+                      || k.startsWith("jina/") || k.startsWith("resend/");
+                  })
+                  .sort(([a], [b]) => a.localeCompare(b)).map(([key, costUsd]: [string, any]) => {
                   const prefix = key.split("/")[0];
                   const k = key.toLowerCase();
                   const type = prefix === "apipod" ? "text"
@@ -1064,12 +1077,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   llm: "LLM / Vision",
   image: "Image",
   video: "Video",
-  audio: "Audio / Music",
   scraping: "Web Scraping",
-  multi: "Multi-modal",
+  email: "Email",
 };
 
-const CATEGORY_ORDER = ["llm", "image", "video", "audio", "scraping", "multi"];
+const CATEGORY_ORDER = ["llm", "image", "video", "scraping", "email"];
 
 function ApiCreditsTab({ adminPost }: { adminPost: (path: string, body?: any, timeout?: number) => Promise<any> }) {
   const [providers, setProviders] = useState<any[]>([]);
