@@ -9740,7 +9740,11 @@ OUTPUT JSON:
     // when all compositing strategies fail (rare).
     //
     // When no product photo: text-to-image via Luma Photon.
-    const CONCURRENCY = 3;
+    // Concurrency 5 (was 3): with Ideogram Remix TURBO at ~10-20s per call,
+    // 5 parallel finishes a 4-5 shot pack in one batch — comfortably under
+    // the Edge gateway timeout. 504s appeared when concurrency 3 forced a
+    // 4-shot pack into 2 batches × 60s.
+    const CONCURRENCY = 5;
     // Cutout cache — first composite that extracts a cutout updates this;
     // subsequent shots in the same run skip Photoroom's Stage 1 (saves ~3-5s
     // per fallback shot). First-batch races are acceptable: a few duplicate
@@ -10647,10 +10651,10 @@ async function runIdeogramRemixOnRef(opts: {
     fd.append("aspect_ratio", ideogramAspect);
     fd.append("style_type", "REALISTIC");
     fd.append("magic_prompt", "ON");
-    fd.append("rendering_speed", "DEFAULT");
+    fd.append("rendering_speed", "TURBO");
     const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
       method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
       const t = await res.text();
