@@ -297,9 +297,6 @@ interface CompareRegenContext {
   campaignVisualStyle: string;
   productRefUrls: string[];
   imageOnlyFormats: { format: string; platform: string; aspectRatio: string; promptHint: string }[];
-  routeMode?: "auto" | "photoroom-product" | "ideogram-scene";
-  productCategory?: string;
-  productName?: string;
 }
 
 interface GeneratedResult {
@@ -431,13 +428,6 @@ export function StudioPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  // Photoroom (pixel-perfect product) vs Ideogram (scene + text). "auto" lets the server decide.
-  const [routeMode, setRouteMode] = useState<"auto" | "photoroom-product" | "ideogram-scene">("auto");
-  const buildRoutePayload = useCallback((prod?: any) => ({
-    routeMode,
-    productCategory: prod?.category || "",
-    productName: prod?.name || "",
-  }), [routeMode]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -669,7 +659,6 @@ export function StudioPage() {
               try {
                 const startRes = await serverPost("/generate/image-start", {
                   prompt: scene.prompt, model: "photon-1", aspectRatio, imageRefUrl: refUrl, refSource: "upload",
-                  ...buildRoutePayload(targetProduct),
                 }, 60_000);
                 if (startRes.success && startRes.directResult && startRes.imageUrl) {
                   console.log(`[studio] Photoroom scene OK [${scene.label}]`);
@@ -1124,7 +1113,6 @@ export function StudioPage() {
                   const r = await serverPost("/generate/image-start", {
                     prompt: scenePrompt.slice(0, 500), model: "photon-1", aspectRatio: compareAspectRatio,
                     imageRefUrl: refUrl, refSource: "upload",
-                    ...buildRoutePayload(targetProduct),
                   }, 60_000);
                   const latencyMs = Date.now() - t0;
                   const url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null;
@@ -1209,7 +1197,6 @@ export function StudioPage() {
                 const r = await serverPost("/generate/image-start", {
                   prompt: scenePrompt.slice(0, 500), model: "photon-1", aspectRatio,
                   imageRefUrl: refUrl, refSource: "upload",
-                  ...buildRoutePayload(targetProduct),
                 }, 45_000);
                 const url = r.success && (r.imageUrl || r.results?.[0]?.result?.imageUrl) ? (r.imageUrl || r.results[0].result.imageUrl) : null;
                 if (url) fmt.imageUrl = url;
@@ -1287,9 +1274,6 @@ export function StudioPage() {
                   brandVisualSuffix,
                   campaignVisualStyle: campaignVisualStyle || "",
                   productRefUrls,
-                  routeMode,
-                  productCategory: targetProduct?.category || "",
-                  productName: targetProduct?.name || "",
                   imageOnlyFormats: imageOnlyFormats.slice(0, 4).map((fmt) => {
                     const copyEntry = (primaryText.copyMap as any)?.[fmt.format];
                     const basePrompt = copyEntry?.imagePrompt || `${brief}, ${fmt.platform} ${fmt.format}, professional`;
@@ -1572,7 +1556,6 @@ export function StudioPage() {
               const startRes = await serverPost("/generate/image-start", {
                 prompt: scene.prompt, model: "photon-1", aspectRatio: "1:1",
                 imageRefUrl: refUrl, refSource: "upload",
-                ...buildRoutePayload(products[0]),
               }, 60_000);
               if (startRes.success && startRes.directResult && startRes.imageUrl) {
                 return { url: startRes.imageUrl, model: scene.label, latencyMs: 0 };
@@ -1667,7 +1650,6 @@ export function StudioPage() {
             serverPost("/generate/image-start", {
               prompt, model: "photon-1", aspectRatio,
               imageRefUrl: refImageUrl, refSource: "upload",
-              ...buildRoutePayload(products[0]),
             }, 60_000)
               .then(res => res.success && (res.imageUrl || res.results?.[0]?.result?.imageUrl) ? (res.imageUrl || res.results[0].result.imageUrl) : null)
               .catch(() => null)
@@ -1923,33 +1905,6 @@ export function StudioPage() {
               )}
               <input type="file" ref={fileInputRef} accept="image/*" className="hidden"
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleAttachImage(f); e.target.value = ""; }} />
-              {/* Route mode chip — Photoroom (pixel-perfect) vs Ideogram (scene + text) */}
-              <div className="mb-2 px-1 flex items-center gap-1.5 flex-wrap" style={{ fontSize: "11px" }}>
-                <span style={{ color: "var(--muted-foreground)" }}>
-                  {locale === "fr" ? "Mode visuel" : "Visual mode"}
-                </span>
-                {([
-                  { id: "auto", label: locale === "fr" ? "Auto" : "Auto", title: locale === "fr" ? "Détection automatique" : "Auto-detect" },
-                  { id: "photoroom-product", label: locale === "fr" ? "Produit identique" : "Pixel-perfect", title: locale === "fr" ? "Photoroom — produit identique au pixel près (bouteille, packaging)" : "Photoroom — pixel-perfect product (bottle, packaging)" },
-                  { id: "ideogram-scene", label: locale === "fr" ? "Scène + texte" : "Scene + text", title: locale === "fr" ? "Ideogram — scène complète avec personne, texte, pancartes (vêtement, promo)" : "Ideogram — full scene with person, text, signs (apparel, promo)" },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setRouteMode(opt.id)}
-                    title={opt.title}
-                    className="px-2 py-0.5 rounded-md cursor-pointer transition-all"
-                    style={{
-                      background: routeMode === opt.id ? "var(--foreground)" : "var(--secondary)",
-                      color: routeMode === opt.id ? "var(--background)" : "var(--muted-foreground)",
-                      border: "1px solid var(--border)",
-                      fontSize: "11px",
-                      fontWeight: routeMode === opt.id ? 600 : 400,
-                    }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
               <div className="flex items-center gap-3 rounded-2xl px-4 py-3"
                 style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
                 <button onClick={() => fileInputRef.current?.click()}
@@ -2861,9 +2816,6 @@ function CompareResultViewWrapper({ compareResults, posts, regenContext }: {
                 aspectRatio,
                 imageRefUrl: refUrl,
                 refSource: "upload",
-                routeMode: regenContext.routeMode || "auto",
-                productCategory: regenContext.productCategory || "",
-                productName: regenContext.productName || "",
                 _token: authToken,
               }),
               signal: AbortSignal.timeout(60_000),
