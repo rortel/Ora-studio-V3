@@ -12509,6 +12509,121 @@ app.post("/generate/image-start", async (c) => {
       console.log(`[image-start-POST] AI PROVIDER failed, falling back to Photoroom...`);
     }
 
+    // ═══ ROUTE DETECTOR: Photoroom (pixel-perfect product) vs Ideogram (scene + text) ═══
+    // Photoroom can't render text or generate a person wearing apparel — it only cuts out
+    // a rigid product and pastes it on an AI background. For apparel/wearables and for
+    // promo visuals with in-image text ("20% OFF" signs), Ideogram Remix is the right tool.
+    //
+    // Inputs:
+    //   - routeMode (body): "auto" | "ideogram-scene" | "photoroom-product"  ← user override
+    //   - productCategory (body): catalog category (e.g. "fashion", "apparel", "cosmetics")
+    //   - productName (body): product name (fallback signal)
+    //   - prompt: scene description (keyword signals)
+    //
+    // Output: "ideogram-scene" or "photoroom-product"
+    const routeMode = (body.routeMode || c.req.query("routeMode") || "auto").toLowerCase();
+    const productCategory = (body.productCategory || "").toLowerCase();
+    const productName = (body.productName || "").toLowerCase();
+    const sceneRoute = (() => {
+      if (routeMode === "ideogram-scene" || routeMode === "photoroom-product") return routeMode;
+      const promptLower = (rawPrompt || "").toLowerCase();
+      // Apparel / wearable categories — Photoroom can't generate the wearer
+      const apparelCats = /\b(fashion|apparel|clothing|vetement|vêtement|mode|wear|tenue|streetwear|sport|sportswear|footwear|shoes|chaussures|accessory|accessoire|bag|sac|jewelry|bijou|watch|montre|hat|chapeau|swim|maillot|lingerie|underwear)\b/;
+      const apparelNames = /\b(t-?shirt|hoodie|jacket|veste|coat|manteau|dress|robe|pants|pantalon|jeans|shorts|sneakers|baskets|sweater|pull|tracksuit|survêt|polo|shirt|chemise|skirt|jupe)\b/;
+      // Text/promo cues — Ideogram is the only one that can render legible text in-image
+      const textCues = /(\b\d{1,3}\s?%|\bpromo\b|\boff\b|\bsale\b|\bsoldes?\b|\bdiscount\b|\bremise\b|\bréduction\b|\bcoupon\b|\bsign\b|\bpancarte\b|\baffiche\b|\bposter\b|\bbanner\b|\bbanner\b|\bbillboard\b|\bpanneau\b|\bvitrine\b|\btext\b|\btexte\b|\blabel\b|\bétiquette\b|\bétiquette\b|"[^"]{2,40}")/i;
+      // Person/wearing cues — strongly imply Ideogram (Photoroom can't generate people)
+      const personCues = /\b(model|mannequin|person|personne|man|homme|woman|femme|girl|fille|boy|garçon|wearing|porte|portant|holding|tient|tenant|smiling|souriant|posing|pose|posant)\b/;
+      if (apparelCats.test(productCategory) || apparelCats.test(productName) || apparelNames.test(productName) || apparelNames.test(promptLower)) {
+        return "ideogram-scene";
+      }
+      if (textCues.test(promptLower) || personCues.test(promptLower)) {
+        return "ideogram-scene";
+      }
+      return "photoroom-product";
+    })();
+    console.log(`[image-start-POST] ROUTE: ${sceneRoute} (mode=${routeMode}, cat="${productCategory.slice(0, 30)}", name="${productName.slice(0, 30)}")`);
+
+    // ═══ IDEOGRAM-DIRECT PATH: scene generation with text + apparel support ═══
+    // Skip Photoroom (which can't render text or generate a wearer) and call Ideogram V3
+    // Remix directly on the product reference. image_weight=70 keeps the product visually
+    // close while letting Ideogram regenerate the full scene + text.
+    if (imageRefUrl && sceneRoute === "ideogram-scene") {
+      const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+      if (ideogramKey) {
+        try {
+          console.log(`[image-start-POST] IDEOGRAM-DIRECT: remix on ref (weight=70, ar=${aspectRatio})`);
+          // Re-upload external ref to our storage so Ideogram can fetch it reliably
+          let accessibleUrl = imageRefUrl;
+          if (!imageRefUrl.includes("supabase") && !imageRefUrl.includes("make-cad57f79")) {
+            try {
+              const dlRes = await fetch(imageRefUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)", "Accept": "image/*" } });
+              if (dlRes.ok) {
+                const ct = dlRes.headers.get("content-type") || "image/jpeg";
+                const bytes = new Uint8Array(await dlRes.arrayBuffer());
+                if (bytes.length >= 5_000) {
+                  const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+                  const path = `generated/reupload/ideogram-direct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+                  const sb = supabaseAdmin();
+                  const { error: upErr } = await sb.storage.from("make-cad57f79-media").upload(path, bytes, { contentType: ct, upsert: true });
+                  if (!upErr) {
+                    const { data: signed } = await sb.storage.from("make-cad57f79-media").createSignedUrl(path, 60 * 60);
+                    if (signed?.signedUrl) accessibleUrl = signed.signedUrl;
+                  }
+                }
+              }
+            } catch (e) { console.log(`[image-start-POST] IDEOGRAM-DIRECT re-upload skipped: ${e}`); }
+          }
+
+          const refRes = await fetch(accessibleUrl);
+          if (!refRes.ok) throw new Error(`ref fetch ${refRes.status}`);
+          const refBlob = await refRes.blob();
+          const arMap: Record<string, string> = { "1:1": "1x1", "16:9": "16x9", "9:16": "9x16", "4:3": "4x3", "3:4": "3x4", "4:5": "4x5", "3:2": "3x2", "2:3": "2x3" };
+          const fd = new FormData();
+          fd.append("image", refBlob, "ref.png");
+          fd.append("prompt", rawPrompt.slice(0, 500));
+          fd.append("image_weight", "70");
+          fd.append("aspect_ratio", arMap[aspectRatio] || "1x1");
+          fd.append("style_type", "REALISTIC");
+          fd.append("magic_prompt", "ON");
+          fd.append("rendering_speed", "DEFAULT");
+
+          const ideoRes = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+            method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
+          });
+          if (ideoRes.ok) {
+            const data = await ideoRes.json();
+            const resultUrl = data?.data?.[0]?.url;
+            if (resultUrl) {
+              const dl = await fetch(resultUrl);
+              if (dl.ok) {
+                const dlBlob = await dl.blob();
+                const fileName = `ideogram-direct-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+                const storagePath = `generated/ideogram/${fileName}`;
+                const sb = supabaseAdmin();
+                const { error: upErr } = await sb.storage.from("make-cad57f79-media").upload(storagePath, new Uint8Array(await dlBlob.arrayBuffer()), { contentType: "image/webp", upsert: true });
+                if (!upErr) {
+                  const { data: signedData } = await sb.storage.from("make-cad57f79-media").createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+                  if (signedData?.signedUrl) {
+                    console.log(`[image-start-POST] IDEOGRAM-DIRECT OK in ${Date.now() - t0}ms`);
+                    if (user) logEvent("generation", { userId: user.id, type: "image", model, provider: "ideogram/v3-remix-direct", route: "ideogram-scene" }).catch(() => {});
+                    return c.json({ success: true, imageUrl: signedData.signedUrl, provider: "ideogram/v3-remix-direct", directResult: true, route: "ideogram-scene" });
+                  }
+                }
+              }
+            }
+          } else {
+            const errBody = await ideoRes.text();
+            console.log(`[image-start-POST] IDEOGRAM-DIRECT ${ideoRes.status}: ${errBody.slice(0, 200)} — falling back to Photoroom`);
+          }
+        } catch (err) {
+          console.log(`[image-start-POST] IDEOGRAM-DIRECT error: ${err} — falling back to Photoroom`);
+        }
+      } else {
+        console.log(`[image-start-POST] IDEOGRAM-DIRECT skipped: no IDEOGRAM_API_KEY — falling back to Photoroom`);
+      }
+    }
+
     // ═══ PRODUCT PHOTO REFERENCE — PHOTOROOM API ═══
     // Photoroom = non-generative: removes bg/people, keeps product pixels 100% intact
     // Then adds studio background, shadows, relighting
