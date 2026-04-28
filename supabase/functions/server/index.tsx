@@ -9247,8 +9247,9 @@ app.post("/analyze/suggest-angles", async (c) => {
       }
     } catch { /* best-effort: calendar is a bonus, not required */ }
 
-    // Brand briefing, identical shape to surprise-me's brandSummary for
-    // maximum prompt consistency.
+    // Brand briefing — covers everything the LLM needs to keep the shot
+    // ideas (and especially any rendered typography) brand-compliant:
+    // palette, typefaces, logo/graphic style, voice/tone, forbidden words.
     const parts: string[] = [];
     if (ctx) {
       if (ctx.brandName)    parts.push(`brand: ${ctx.brandName}`);
@@ -9256,8 +9257,16 @@ app.post("/analyze/suggest-angles", async (c) => {
       if (ctx.tagline)      parts.push(`tagline: ${ctx.tagline}`);
       const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 5);
       if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
+      if (ctx.fonts && ctx.fonts.length > 0) parts.push(`typefaces: ${ctx.fonts.slice(0, 3).join(", ")}`);
+      if (ctx.logoStyle)     parts.push(`logo style: ${ctx.logoStyle}`);
+      if (ctx.graphicStyle)  parts.push(`graphic style: ${ctx.graphicStyle}`);
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
       if (ctx.photoStyle?.lighting) parts.push(`photo lighting: ${ctx.photoStyle.lighting}`);
+      if (ctx.tone?.primary_tone || (ctx.tone?.adjectives && ctx.tone.adjectives.length > 0)) {
+        const toneWords = [ctx.tone?.primary_tone, ...(ctx.tone?.adjectives || [])].filter(Boolean).slice(0, 4).join(", ");
+        if (toneWords) parts.push(`voice: ${toneWords}`);
+      }
+      if (ctx.forbiddenTerms && ctx.forbiddenTerms.length > 0) parts.push(`brand-banned words: ${ctx.forbiddenTerms.slice(0, 5).join(", ")}`);
       if (Array.isArray((ctx as any).target_audiences) && (ctx as any).target_audiences.length > 0) {
         parts.push(`audiences: ${((ctx as any).target_audiences).map((a: any) => typeof a === "string" ? a : a.name || a.label || "").filter(Boolean).slice(0, 2).join(", ")}`);
       }
@@ -9280,6 +9289,7 @@ NON-NEGOTIABLE RULES:
     · "text-card"      = pure typography poster, no product photo
   Default mix per angle: 3 scenes + 1-2 packshot-promo + 0-1 text-card. When the angle is sale/launch/event-driven, lean MORE on packshot-promo (2-3 of them). When the angle is a quote / hiring / announcement, allow up to 2 text-cards. No angle is ALL scenes — every angle must include AT LEAST ONE packshot-promo OR text-card so the typography idea is shipped, not implied.
 - Each shotIdea "line" is one sentence describing the EXACT visual: for scenes, the wearer + setting + light + framing; for packshot-promo, the EXACT text strings to render in quotes ("NEW DROP", "-20% TODAY", "PRE-ORDER OPEN", "MAY 12", etc.) + their typographic treatment (hero headline, full-width band, oversized display) + the brand-colour field they sit on; for text-cards, the exact text strings to render + the typo feel + the background.
+- ANY shotIdea with rendered typography (packshot-promo or text-card) MUST be brand-compliant. Reference the BRAND PALETTE colours by name (from the Brand vault block above) for both the type colour and any background field. Reference the BRAND TYPEFACE feel (if listed) or pick a register that matches the brand's tone — formal/confident → editorial serif or condensed display; warm/playful → rounded sans or hand-set; technical → grotesque or mono; never random pop-culture styles (no rainbow gradient, no comic-sans, no graffiti, no Word-Art) unless those are explicitly part of the brand DNA. If the Brand vault is empty, default to a clean modern register (bold geometric sans, neutral palette).
 - Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief AND for the shotIdeas lines (but the rendered text strings inside packshot-promo / text-card lines stay in whatever language the brand actually uses on social — usually the same as the brief language; for short promo words ('SALE', 'NEW') English is fine even in French campaigns if it's brand-natural).
 - Output JSON only, no prose wrapper, no markdown.
 
@@ -9782,21 +9792,44 @@ OUTPUT JSON:
     // per fallback shot). First-batch races are acceptable: a few duplicate
     // cutouts in storage, only one reused.
     let cachedCutoutUrl: string | null = null;
-    // Brand-lock hint prepended to packshot-promo prompts so Ideogram renders
-    // the promo text in the brand's typographic universe (palette + fonts +
-    // logo placement) rather than generic stock typography. Falls back to a
-    // neutral "clean modern" hint when no Vault is connected.
-    const brandLockHint = (() => {
-      const parts: string[] = [];
-      const colors = (ctx?.colorNames?.length ? ctx.colorNames : ctx?.colorPalette) || [];
-      if (colors.length > 0) parts.push(`brand palette: ${colors.slice(0, 4).join(", ")}`);
-      if (ctx?.fonts && ctx.fonts.length > 0) parts.push(`brand typography feel: ${ctx.fonts.slice(0, 2).join(", ")}`);
-      if (ctx?.brandName) parts.push(`brand name: "${ctx.brandName}"`);
-      if (ctx?.graphicStyle) parts.push(`graphic style: ${ctx.graphicStyle}`);
-      return parts.length > 0
-        ? `BRAND LOCK (rendered text and any graphic accents must use these): ${parts.join(" · ")}.`
-        : `BRAND LOCK: clean modern typography, neutral palette, no random colours.`;
-    })();
+    // Brand-lock hint prepended to BOTH packshot-promo AND text-card prompts
+    // so Ideogram renders text in the brand's typographic universe rather
+    // than generic stock typography. Pulls every signal we have from the
+    // Brand Vault: palette, fonts, logo style, graphic style, photo mood,
+    // tone, and the visualDirective synthesised by buildBrandContext. Tone
+    // shapes typography mood (formal → serif/condensed; warm/playful →
+    // rounded/handwritten); fonts give the actual typeface direction; logo
+    // and graphic style anchor the visual register so promo overlays don't
+    // clash with the brand's existing collateral.
+    const buildBrandTypographyLock = (): string => {
+      if (!ctx) {
+        return `BRAND LOCK: clean modern typography, neutral palette, no random colours, no rainbow gradients, no comic-sans, no graffiti unless explicitly briefed.`;
+      }
+      const lines: string[] = [];
+      if (ctx.brandName) lines.push(`Brand name: "${ctx.brandName}"${ctx.tagline ? ` — tagline "${ctx.tagline}"` : ""}.`);
+      const colors = [...new Set([...(ctx.colorNames || []), ...(ctx.colorPalette || [])])].slice(0, 6);
+      if (colors.length > 0) lines.push(`Palette (rendered text + accents MUST use these — no other colours): ${colors.join(", ")}.`);
+      if (ctx.fonts && ctx.fonts.length > 0) lines.push(`Brand typefaces (use this exact feel — if you can't render the font, match its WEIGHT, X-HEIGHT and PROPORTIONS): ${ctx.fonts.slice(0, 3).join(", ")}.`);
+      if (ctx.logoStyle) lines.push(`Logo style: ${ctx.logoStyle}. Rendered text should sit comfortably alongside this style.`);
+      if (ctx.graphicStyle) lines.push(`Graphic register: ${ctx.graphicStyle}.`);
+      if (ctx.photoStyle?.mood)     lines.push(`Visual mood: ${ctx.photoStyle.mood}.`);
+      if (ctx.photoStyle?.lighting) lines.push(`Lighting feel: ${ctx.photoStyle.lighting}.`);
+      // Translate brand tone into a typography directive when available.
+      // Tone is the single best signal for "should this read formal or
+      // casual" and Ideogram responds well to mood-led typo briefs.
+      if (ctx.tone?.primary_tone || (ctx.tone?.adjectives && ctx.tone.adjectives.length > 0)) {
+        const toneWords = [ctx.tone?.primary_tone, ...(ctx.tone?.adjectives || [])].filter(Boolean).slice(0, 4).join(", ");
+        if (toneWords) lines.push(`Brand voice: ${toneWords}. Match this tone in the typographic treatment (formal/confident → editorial serif or condensed display; warm/playful → rounded sans or hand-set; technical → grotesque or mono).`);
+      }
+      if (ctx.forbiddenTerms && ctx.forbiddenTerms.length > 0) {
+        lines.push(`NEVER render these words/phrases (brand-banned): ${ctx.forbiddenTerms.slice(0, 6).join(", ")}.`);
+      }
+      // Hard floor — even with a partial Vault, ban the most common style
+      // mismatches that turn brand assets into AI slop.
+      lines.push(`HARD BANS regardless of brief: no rainbow gradients, no comic-sans, no Word-Art treatments, no random kerning, no typo styles foreign to the brand voice above.`);
+      return `BRAND TYPOGRAPHY LOCK (any rendered text on the image MUST honour every line below):\n${lines.map((l) => `• ${l}`).join("\n")}`;
+    };
+    const brandLockHint = buildBrandTypographyLock();
     // Apparel/wearable detection runs at TWO levels:
     //  1. Once per pack from productDescription — captures cases where the
     //     user wrote "Lacoste tracksuit jacket" in the brief.
@@ -9824,10 +9857,13 @@ OUTPUT JSON:
           // text quality matters more than photo fidelity (quote, save-the-
           // date, recruitment, promo tile, tip card). Always runs for
           // shot.type === "text-card", regardless of whether a product
-          // photo was uploaded.
+          // photo was uploaded. The brand typography lock is prepended so
+          // the rendered text uses the brand's palette/typefaces/voice and
+          // never drifts into generic stock typography.
           if (job.type === "text-card") {
+            const cardPrompt = `${brandLockHint}\n\n${job.promptText}`;
             const card = await runIdeogramTextCard({
-              prompt: job.promptText,
+              prompt: cardPrompt,
               aspectRatio: job.aspectRatio,
               userId: user.id,
               campaignSlug,
