@@ -782,7 +782,7 @@ function SurpriseContent() {
                   Six posts · every platform · ready to publish
                 </div>
                 <h1 className="leading-[0.98] mb-8" style={{ ...bagel, fontSize: "clamp(40px, 7vw, 88px)" }}>
-                  Drop your product.<br />
+                  Drop a photo.<br />
                   <span style={{ color: COLORS.coral }}>We post for you.</span>
                 </h1>
 
@@ -795,7 +795,7 @@ function SurpriseContent() {
                          style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
                     {uploadingProduct ? <Loader2 size={22} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={22} style={{ color: COLORS.coral }} />}
                     <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
-                      {uploadingProduct ? "Uploading…" : "Drop your product photo"}
+                      {uploadingProduct ? "Uploading…" : "Drop a photo of what you sell"}
                     </span>
                     <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · 1 required, up to 5 angles for studio-grade fidelity</span>
                     <input type="file" accept="image/*" className="hidden"
@@ -983,7 +983,7 @@ function SurpriseContent() {
                         </Button>
                         {noPhoto && (
                           <p className="text-[12.5px]" style={{ color: MUTED }}>
-                            Add a photo of your product to continue.
+                            Add a photo to continue.
                           </p>
                         )}
                         {!noPhoto && noDesc && (

@@ -798,7 +798,7 @@ export function LandingPage() {
         posterSrc={mediaHero.posterSrc}
         imageSrc={mediaHero.imageSrc}
         eyebrow="v2.4 · 2,847 brands · 127,493 posts published"
-        title={<>Drop your product.<br/><span style={{ color: "#FF6B47" }}>We post for you.</span></>}
+        title={<>Drop a photo.<br/><span style={{ color: "#FF6B47" }}>We post for you.</span></>}
         subtitle={<>6 posts ready for Instagram, LinkedIn, Facebook, TikTok. We make them. We publish them. You do something else.</>}
         cta={
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
