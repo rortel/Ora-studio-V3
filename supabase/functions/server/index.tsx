@@ -9274,7 +9274,13 @@ NON-NEGOTIABLE RULES:
 - Each angle must propose a SCENARIO (a specific scene with people, place, action), not a VALUE (sustainability, beauty, etc.). "Linen Fridays in Provence" beats "Sustainable Elegance" every time.
 - Angles must match the product's ACTUAL audience. If the product is men's wear → male-leaning scenarios or explicit gifting (a wife/girlfriend/mom buying it for him). NEVER frame a women's-day or motherhood angle around a men's product unless the angle is explicitly "gift him on X day".
 - 3 angles, all DIFFERENT scenarios (one urban / one outdoor / one intimate, one editorial / one candid / one product-detail, etc.). No repetition of vibe.
-- Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief.
+- Each angle MUST come with a "shotIdeas" array of 5-6 concrete creations the pack will produce, MIXING three creation types so the user never gets a flat row of identical packshots:
+    · "scene"          = lifestyle photo: a real wearer / user in a real setting around the product
+    · "packshot-promo" = the product photo paired with brand-coded typography rendered onto the image (sale band, hero headline, oversized display block — NEVER a corner sticker)
+    · "text-card"      = pure typography poster, no product photo
+  Default mix per angle: 3 scenes + 1-2 packshot-promo + 0-1 text-card. When the angle is sale/launch/event-driven, lean MORE on packshot-promo (2-3 of them). When the angle is a quote / hiring / announcement, allow up to 2 text-cards. No angle is ALL scenes — every angle must include AT LEAST ONE packshot-promo OR text-card so the typography idea is shipped, not implied.
+- Each shotIdea "line" is one sentence describing the EXACT visual: for scenes, the wearer + setting + light + framing; for packshot-promo, the EXACT text strings to render in quotes ("NEW DROP", "-20% TODAY", "PRE-ORDER OPEN", "MAY 12", etc.) + their typographic treatment (hero headline, full-width band, oversized display) + the brand-colour field they sit on; for text-cards, the exact text strings to render + the typo feel + the background.
+- Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief AND for the shotIdeas lines (but the rendered text strings inside packshot-promo / text-card lines stay in whatever language the brand actually uses on social — usually the same as the brief language; for short promo words ('SALE', 'NEW') English is fine even in French campaigns if it's brand-natural).
 - Output JSON only, no prose wrapper, no markdown.
 
 CONTEXT:
@@ -9291,6 +9297,14 @@ OUTPUT SHAPE (strict):
       "title": "2-4 word title that references something concrete from the product (e.g. 'Linen After Hours', 'Wool Coat Diaries', 'Suede in Soho') — NOT a vague mood word",
       "subtitle": "one sentence, max 12 words, describes the SCENARIO not the value",
       "brief": "3-5 sentences, prompt-grade detail — the specific scene, subject angle, mood, narrative beat. Reference the product's material/cut/colour by name. This feeds the image-gen pipeline directly.",
+      "shotIdeas": [
+        { "type": "scene", "line": "Concrete sentence describing one lifestyle shot — the wearer/user, setting, light, framing." },
+        { "type": "scene", "line": "Different scene from the first — different framing or moment of the day." },
+        { "type": "packshot-promo", "line": "Hero headline 'NEW DROP MAY 12' in bold sans condensed across the top third, jacket centered on a marine blue field." },
+        { "type": "scene", "line": "Detail or product-close-up shot." },
+        { "type": "packshot-promo", "line": "Full-width sale band '-20% UNTIL SUNDAY' along the bottom in cream on red, jacket held by a hand on the upper half." },
+        { "type": "text-card", "line": "Quote card 'L'élégance ne se démode pas' in serif crème on marine background, no product photo." }
+      ],
       "platforms": ["instagram-feed","instagram-story","linkedin","facebook","tiktok"] (subset, 2-4 items),
       "creativityLevel": 1-4,
       "assetCount": 6-8
@@ -9299,7 +9313,7 @@ OUTPUT SHAPE (strict):
   ]
 }
 
-Self-check before outputting: re-read each angle. Does the TITLE contain a concrete element from the product? Does the BRIEF describe a scene I could actually photograph with this product? If any answer is no, rewrite it. Pick varied creativityLevels (e.g. 2 / 3 / 4) and varied platform mixes.`;
+Self-check before outputting: re-read each angle. Does the TITLE contain a concrete element from the product? Does the BRIEF describe a scene I could actually photograph with this product? Does the shotIdeas array include AT LEAST ONE packshot-promo OR text-card (never 100% scenes)? Are the rendered text strings in packshot-promo / text-card actually written in quotes inside each line? If any answer is no, rewrite it. Pick varied creativityLevels (e.g. 2 / 3 / 4) and varied platform mixes.`;
 
     const key = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("APIPOD_KEY");
     if (!key) return c.json({ success: false, error: "LLM not configured" }, 500);
@@ -9341,16 +9355,29 @@ Self-check before outputting: re-read each angle. Does the TITLE contain a concr
       return c.json({ success: false, error: "Concept JSON parse failed" }, 502);
     }
     // Sanitize + clip
-    const clean = angles.slice(0, 3).map((a: any, i: number) => ({
-      id:               String(a?.id || `angle-${i + 1}`).slice(0, 60),
-      emoji:            String(a?.emoji || "✨").slice(0, 4),
-      title:            String(a?.title || "Untitled").slice(0, 40),
-      subtitle:         String(a?.subtitle || "").slice(0, 120),
-      brief:            String(a?.brief || "").slice(0, 600),
-      platforms:        Array.isArray(a?.platforms) ? a.platforms.filter((p: any) => typeof p === "string").slice(0, 5) : ["instagram-feed","instagram-story","tiktok"],
-      creativityLevel:  Math.max(1, Math.min(4, parseInt(String(a?.creativityLevel || 2), 10) || 2)),
-      assetCount:       Math.max(4, Math.min(8, parseInt(String(a?.assetCount || 6), 10) || 6)),
-    })).filter((a) => a.title && a.brief);
+    const clean = angles.slice(0, 3).map((a: any, i: number) => {
+      // Normalize shotIdeas: keep only the three known types, clip lengths,
+      // cap at 6 ideas per angle to keep the UI scannable.
+      const rawIdeas = Array.isArray(a?.shotIdeas) ? a.shotIdeas : [];
+      const shotIdeas = rawIdeas
+        .map((s: any) => ({
+          type: ["scene", "packshot-promo", "text-card"].includes(String(s?.type)) ? String(s.type) as "scene" | "packshot-promo" | "text-card" : "scene",
+          line: String(s?.line || "").trim().slice(0, 220),
+        }))
+        .filter((s: any) => s.line.length > 0)
+        .slice(0, 6);
+      return {
+        id:               String(a?.id || `angle-${i + 1}`).slice(0, 60),
+        emoji:            String(a?.emoji || "✨").slice(0, 4),
+        title:            String(a?.title || "Untitled").slice(0, 40),
+        subtitle:         String(a?.subtitle || "").slice(0, 120),
+        brief:            String(a?.brief || "").slice(0, 600),
+        shotIdeas,
+        platforms:        Array.isArray(a?.platforms) ? a.platforms.filter((p: any) => typeof p === "string").slice(0, 5) : ["instagram-feed","instagram-story","tiktok"],
+        creativityLevel:  Math.max(1, Math.min(4, parseInt(String(a?.creativityLevel || 2), 10) || 2)),
+        assetCount:       Math.max(4, Math.min(8, parseInt(String(a?.assetCount || 6), 10) || 6)),
+      };
+    }).filter((a) => a.title && a.brief);
 
     if (clean.length === 0) {
       return c.json({ success: false, error: "No valid angles returned" }, 502);
