@@ -9649,7 +9649,7 @@ OUTPUT JSON:
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
       "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. NO text rendered on the image. If a person is in the scene, describe a coherent setting around them (location, light, time of day, body language) — never a flat-lay or floating product. — for type='packshot-promo': prompt 60-110 words. The product reference photo IS provided to Ideogram Remix; describe (1) the EDITORIAL CAMPAIGN scene around the product (lifestyle context, solid brand-colour field, gradient, store-window setup — NOT a generic cream studio background), (2) the EXACT text strings to render in quotes (3-8 words total, e.g. \"NEW DROP\" / \"-20% TODAY\" / \"FREE SHIPPING\" / \"MAY 12\"), (3) the typographic treatment — MUST be one of: 'large hero headline running across the top third', 'bold full-width sale band along the bottom', 'oversized display number block', 'magazine cover masthead'. NEVER 'corner sticker', 'small badge', 'tiny watermark'. The text must occupy 15-30% of the canvas, (4) brand palette colours by name for the text and any graphic accent. The product stays recognizable but the composition is a poster, not a product-page screenshot. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render in quotes (3-15 words total, like \"NEW DROP\\nMAY 12\"), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
-      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card and packshot-promo types (those are static)."${withCaption ? `,
+      "motion": "short motion brief in ENGLISH (10-30 words). HARD RULE: only CAMERA + ENVIRONMENT may move — never the product, never the wearer's body in a way that morphs the product. Allowed: slow camera push-in / pull-out / orbit / rack focus, atmospheric motion (wind through fabric, steam, particles, light-leak, parallax, golden-hour drift). Forbidden: walking, dancing, putting-on / taking-off the garment, hand gestures that obscure the product, anything that would cause the video model to re-render the product across frames. Used only on film-format shots; ignored otherwise. Set to '' for text-card and packshot-promo types (those are static)."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
@@ -9882,17 +9882,20 @@ OUTPUT JSON:
           // photo with a brand-coded promo overlay rendered onto the image
           // ("NEW DROP", "-20%", "FREE SHIPPING"). Photoroom can't render
           // legible text — Ideogram is the only model that does it without
-          // typos. image_weight=70 (was 80): high enough to keep the product
-          // identity locked but low enough that Ideogram actually composes a
-          // proper editorial poster instead of just slapping a corner sticker
-          // onto the source packshot.
+          // typos. image_weight=75 (was 70): bumped to better preserve the
+          // product across promo shots — fidelity matters more than scene
+          // freedom on a packshot poster, and the typography anchor itself
+          // gives Ideogram enough scene to work with.
           if (job.type === "packshot-promo" && productRef) {
-            const promoPrompt = `${brandLockHint}\n\nDESIGN DIRECTION: this is an EDITORIAL CAMPAIGN POSTER, not a product page screenshot. The promo text MUST be rendered LARGE and CONFIDENT — a hero headline, a full-width sale band, or a bold display block — anchored prominently in the composition. NEVER a tiny corner sticker, never a small badge in the top-left, never a watermark. Think magazine cover, store window decal, or campaign key visual. Aim for typography that occupies 15-30% of the canvas and reads clearly at thumbnail size.\n\nSCENE DIRECTION: do not preserve the reference photo's flat studio background. Build a deliberate composition for the promo — solid brand colour field, gradient, lifestyle context, or a strong graphic background — that frames the product and the text together. The reference photo is there ONLY to lock the product's recognizable identity (colour, material, cut, brand marks).\n\nFRAMING SAFETY: never crop the product, never crop a person's head, keep generous margin around the rendered text so it stays readable.\n\n${job.promptText}`;
+            const productAnchor = productDescription
+              ? `\n\nPRODUCT IDENTITY ANCHOR (must match the reference photo VERBATIM — drift = reject): ${productDescription.slice(0, 400)}`
+              : "";
+            const promoPrompt = `${brandLockHint}\n\nPRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions. The promo overlay surrounds the product — it never replaces or restyles the product itself.${productAnchor}\n\nDESIGN DIRECTION: this is an EDITORIAL CAMPAIGN POSTER, not a product page screenshot. The promo text MUST be rendered LARGE and CONFIDENT — a hero headline, a full-width sale band, or a bold display block — anchored prominently in the composition. NEVER a tiny corner sticker, never a small badge in the top-left, never a watermark. Think magazine cover, store window decal, or campaign key visual. Aim for typography that occupies 15-30% of the canvas and reads clearly at thumbnail size.\n\nSCENE DIRECTION: do not preserve the reference photo's flat studio background. Build a deliberate composition for the promo — solid brand colour field, gradient, lifestyle context, or a strong graphic background — that frames the product and the text together.\n\nFRAMING SAFETY: never crop the product, never crop a person's head, keep generous margin around the rendered text so it stays readable.\n\n${job.promptText}`;
             const remix = await runIdeogramRemixOnRef({
               productImageUrl: productRef,
               prompt: promoPrompt,
               aspectRatio: job.aspectRatio,
-              imageWeight: 70,
+              imageWeight: 75,
               styleType: "REALISTIC",
               userId: user.id,
               campaignSlug,
@@ -9933,17 +9936,24 @@ OUTPUT JSON:
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = productDescIsApparel || isApparelOrWearable("", "", jobScene);
             if (jobIsApparel) {
-              // image_weight=65 (was 85): high enough to keep the garment
-              // recognizable, low enough to actually regenerate the scene.
-              // 85 was too sticky — Ideogram was just preserving the source
-              // packshot bg with a tiny overlay instead of rebuilding the
-              // shot. 65 lets the model invent a real scene + wearer.
-              const apparelPrompt = `REGENERATE THE FULL SCENE — do not preserve the reference photo's background, framing, or absence of a model. The reference photo is ONLY there to lock the garment's recognizable identity (colour, material, cut, brand marks). Build a fresh photo: a real wearer in a real setting matching the brief.\n\nFRAMING SAFETY: full-body or half-body composition, head fully visible with clear margin above the head, never crop face or head, never crop the product. Photographic, editorial, no flat-lay, no cream studio background unless the brief explicitly asks for studio.\n\n${job.promptText}`;
+              // image_weight=78: was 65 → too low, the product was drifting
+              // (colour, material, cut, brand marks all morphed). 78 keeps
+              // the product readably faithful while Ideogram still rebuilds
+              // the scene/wearer. Tradeoff: at 78 a few packshot-source
+              // shots will look slightly more like the source's background;
+              // we counter that with explicit "REGENERATE THE SCENE"
+              // language. Identity drift is the bigger sin than a partly-
+              // preserved background — the user's product is the asset we
+              // can't get wrong.
+              const productAnchor = productDescription
+                ? `\n\nPRODUCT IDENTITY ANCHOR (must match the reference photo VERBATIM — drift = reject): ${productDescription.slice(0, 400)}`
+                : "";
+              const apparelPrompt = `PRODUCT FIDELITY IS NON-NEGOTIABLE. The garment in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions. If you can't preserve the product exactly, the shot is rejected.${productAnchor}\n\nREGENERATE THE SCENE around it: do not preserve the reference photo's background, framing, or absence of a model. Build a fresh editorial photo with a real wearer in a real setting matching the brief.\n\nFRAMING SAFETY: full-body or half-body composition, head fully visible with clear margin above the head, never crop face or head, never crop the product. Photographic, editorial, no flat-lay, no cream studio background unless the brief explicitly asks for studio.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
                 aspectRatio: job.aspectRatio,
-                imageWeight: 65,
+                imageWeight: 78,
                 styleType: "REALISTIC",
                 userId: user.id,
                 campaignSlug,
@@ -10060,8 +10070,20 @@ OUTPUT JSON:
         : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
         const tRay = Date.now();
         try {
-          const motion = opts.motion || "slow cinematic push-in, subtle parallax, gentle light breathing";
-          const prompt = `${motion}. The subject stays photo-real and identical to the first frame; only the surrounding world moves. Scene: ${opts.scene.slice(0, 240)}.`;
+          // Default motion is intentionally minimal — gentler camera moves
+          // produce less per-frame regeneration drift than fancy motion.
+          const motion = opts.motion || "slow cinematic push-in over 5 seconds, subtle parallax, no zoom out";
+          // Hardened motion prompt for product fidelity:
+          // - PRODUCT LOCK is the dominant instruction (Luma Ray drifts when
+          //   the model is told to "animate" without explicit identity lock)
+          // - motion is constrained to CAMERA + ENVIRONMENT, never the
+          //   product itself
+          // - product-anchor description repeats the verbatim identity if
+          //   we have it, so the video model can verify across frames
+          const productAnchor = productDescription
+            ? ` Product identity that MUST stay stable in EVERY frame (never change colour, material, cut, hardware, logo placement, or proportions): ${productDescription.slice(0, 240)}.`
+            : "";
+          const prompt = `PRODUCT LOCK (non-negotiable): the product in the first frame is the hero — its colour, material, cut, brand marks and proportions MUST remain pixel-stable across ALL frames. Do not restyle it, do not change its colour temperature, do not re-render it.${productAnchor}\n\nMOTION (camera + environment ONLY, never the product): ${motion}. Camera moves, ambient light shifts, particles, fabric ripple in wind, parallax. Any motion of the product itself = reject.\n\nSCENE: ${opts.scene.slice(0, 200)}.`;
           const body: any = {
             prompt,
             model: "ray-flash-2",
