@@ -9288,8 +9288,23 @@ NON-NEGOTIABLE RULES:
     · "packshot-promo" = the product photo paired with brand-coded typography rendered onto the image (sale band, hero headline, oversized display block — NEVER a corner sticker)
     · "text-card"      = pure typography poster, no product photo
   Default mix per angle: 3 scenes + 1-2 packshot-promo + 0-1 text-card. When the angle is sale/launch/event-driven, lean MORE on packshot-promo (2-3 of them). When the angle is a quote / hiring / announcement, allow up to 2 text-cards. No angle is ALL scenes — every angle must include AT LEAST ONE packshot-promo OR text-card so the typography idea is shipped, not implied.
-- Each shotIdea "line" is one sentence describing the EXACT visual: for scenes, the wearer + setting + light + framing; for packshot-promo, the EXACT text strings to render in quotes ("NEW DROP", "-20% TODAY", "PRE-ORDER OPEN", "MAY 12", etc.) + their typographic treatment (hero headline, full-width band, oversized display) + the brand-colour field they sit on; for text-cards, the exact text strings to render + the typo feel + the background.
-- ANY shotIdea with rendered typography (packshot-promo or text-card) MUST be brand-compliant. Reference the BRAND PALETTE colours by name (from the Brand vault block above) for both the type colour and any background field. Reference the BRAND TYPEFACE feel (if listed) or pick a register that matches the brand's tone — formal/confident → editorial serif or condensed display; warm/playful → rounded sans or hand-set; technical → grotesque or mono; never random pop-culture styles (no rainbow gradient, no comic-sans, no graffiti, no Word-Art) unless those are explicitly part of the brand DNA. If the Brand vault is empty, default to a clean modern register (bold geometric sans, neutral palette).
+- Each shotIdea is a WIREFRAME + concept. Pick the layout that fits the shot's intent (see WIREFRAME CATALOG below). For layouts with rendered text, fill headlineText (and optionally sublineText) with the EXACT strings to render — short, punchy, brand-voiced.
+- ANY shotIdea with rendered typography (any layout other than scene-fullbleed) MUST be brand-compliant. Reference the BRAND PALETTE colours by name (from the Brand vault block above) for both the type colour and any background field. Reference the BRAND TYPEFACE feel (if listed) or pick a register that matches the brand's tone — formal/confident → editorial serif or condensed display; warm/playful → rounded sans or hand-set; technical → grotesque or mono; never random pop-culture styles (no rainbow gradient, no comic-sans, no graffiti, no Word-Art) unless those are explicitly part of the brand DNA. If the Brand vault is empty, default to a clean modern register (bold geometric sans, neutral palette).
+
+WIREFRAME CATALOG (every shotIdea.layout must be one of these names):
+- scene-fullbleed: full-bleed lifestyle photo, NO text on image. Pure scene. Use for editorial / atmospheric / candid / detail shots where typography would only get in the way.
+- scene-headline-bottom: photo top ~70% + brand-coded headline strip across the bottom ~30%. Use when the photo is the hero but you want a tagline / hook locked in.
+- scene-headline-top: brand-coded headline strip top ~30% + photo bottom ~70%. Use for editorial cover-style shots and announcements (hiring, press, drop dates).
+- split-photo-text: photo left ~50% / typography right ~50% (or vice-versa). Use for product-detail shots paired with a value prop or sale callout.
+- promo-band-bottom: photo top ~75% + bold full-width sale/promo BAND across the bottom ~25% (price, discount, deadline). Use for sales, drops, restocks.
+- promo-band-top: bold sale/promo band top ~25% + photo bottom ~75%. Same intent as promo-band-bottom but inverted; useful when the photo's subject is in the lower half.
+- headline-overlay: full-bleed photo with a centred OVERLAY headline rendered ON TOP of the photo. Use sparingly — needs a photo with a quiet area for the text to sit cleanly.
+- typography-poster: NO product photo, pure typography poster on a brand-colour field (text-card). Use for quotes, save-the-date, hiring ads, manifesto cards.
+
+Match the WIREFRAME to the shotIdea.type:
+- type='scene' → only scene-fullbleed. (If you want text on a scene, set type='packshot-promo' instead.)
+- type='packshot-promo' → any of: scene-headline-bottom, scene-headline-top, split-photo-text, promo-band-bottom, promo-band-top, headline-overlay.
+- type='text-card' → typography-poster (only).
 - Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief AND for the shotIdeas lines (but the rendered text strings inside packshot-promo / text-card lines stay in whatever language the brand actually uses on social — usually the same as the brief language; for short promo words ('SALE', 'NEW') English is fine even in French campaigns if it's brand-natural).
 - Output JSON only, no prose wrapper, no markdown.
 
@@ -9308,12 +9323,18 @@ OUTPUT SHAPE (strict):
       "subtitle": "one sentence, max 12 words, describes the SCENARIO not the value",
       "brief": "3-5 sentences, prompt-grade detail — the specific scene, subject angle, mood, narrative beat. Reference the product's material/cut/colour by name. This feeds the image-gen pipeline directly.",
       "shotIdeas": [
-        { "type": "scene", "line": "Concrete sentence describing one lifestyle shot — the wearer/user, setting, light, framing." },
-        { "type": "scene", "line": "Different scene from the first — different framing or moment of the day." },
-        { "type": "packshot-promo", "line": "Hero headline 'NEW DROP MAY 12' in bold sans condensed across the top third, jacket centered on a marine blue field." },
-        { "type": "scene", "line": "Detail or product-close-up shot." },
-        { "type": "packshot-promo", "line": "Full-width sale band '-20% UNTIL SUNDAY' along the bottom in cream on red, jacket held by a hand on the upper half." },
-        { "type": "text-card", "line": "Quote card 'L'élégance ne se démode pas' in serif crème on marine background, no product photo." }
+        // Each idea = one wireframe + a concept caption. The user sees the
+        // wireframe THUMBNAIL in the UI and picks based on layout, not just
+        // text. Pick the layout that fits the shot's intent — see WIREFRAME
+        // CATALOG below for what each name maps to visually.
+        {
+          "type": "scene | packshot-promo | text-card",
+          "layout": "MUST be one of: scene-fullbleed | scene-headline-bottom | scene-headline-top | split-photo-text | promo-band-bottom | promo-band-top | headline-overlay | typography-poster",
+          "concept": "the creative concept in EXACTLY two short lines, max 14 words per line, separated by '\\n'. Line 1 = the visual hook; line 2 = the mood or twist. NO marketing fluff, NO 'elegance/timeless/iconic'.",
+          "headlineText": "ONLY for layouts that include a headline / promo band / typography (i.e. NOT scene-fullbleed) — the EXACT text rendered on the image, in quotes if it's a slogan or in the brand's voice (3-8 words, e.g. 'NEW DROP MAY 12', '-20% TODAY', 'GRAND CHELEM'). Empty string for scene-fullbleed.",
+          "sublineText": "OPTIONAL second short text line for layouts that support it (typography-poster mostly). 0-6 words. Empty string when not used."
+        }
+        // 5-6 items per angle. Default mix: 3 scenes + 1-2 packshot-promo + 0-1 text-card.
       ],
       "platforms": ["instagram-feed","instagram-story","linkedin","facebook","tiktok"] (subset, 2-4 items),
       "creativityLevel": 1-4,
@@ -9365,16 +9386,47 @@ Self-check before outputting: re-read each angle. Does the TITLE contain a concr
       return c.json({ success: false, error: "Concept JSON parse failed" }, 502);
     }
     // Sanitize + clip
+    const VALID_LAYOUTS = [
+      "scene-fullbleed",
+      "scene-headline-bottom",
+      "scene-headline-top",
+      "split-photo-text",
+      "promo-band-bottom",
+      "promo-band-top",
+      "headline-overlay",
+      "typography-poster",
+    ] as const;
+    type Layout = typeof VALID_LAYOUTS[number];
     const clean = angles.slice(0, 3).map((a: any, i: number) => {
-      // Normalize shotIdeas: keep only the three known types, clip lengths,
-      // cap at 6 ideas per angle to keep the UI scannable.
+      // Normalize shotIdeas: validate type + layout, clip lengths, cap at
+      // 6 ideas per angle. When the LLM hands us an inconsistent
+      // (type, layout) pair (e.g. type=scene but layout=promo-band-bottom),
+      // realign the type so it matches the chosen wireframe — wireframe is
+      // the user-facing artefact and what generation respects, so we trust
+      // it over the textual type.
       const rawIdeas = Array.isArray(a?.shotIdeas) ? a.shotIdeas : [];
       const shotIdeas = rawIdeas
-        .map((s: any) => ({
-          type: ["scene", "packshot-promo", "text-card"].includes(String(s?.type)) ? String(s.type) as "scene" | "packshot-promo" | "text-card" : "scene",
-          line: String(s?.line || "").trim().slice(0, 220),
-        }))
-        .filter((s: any) => s.line.length > 0)
+        .map((s: any) => {
+          const layout: Layout = (VALID_LAYOUTS as readonly string[]).includes(String(s?.layout))
+            ? String(s.layout) as Layout
+            : "scene-fullbleed";
+          let type: "scene" | "packshot-promo" | "text-card";
+          if (layout === "scene-fullbleed") type = "scene";
+          else if (layout === "typography-poster") type = "text-card";
+          else type = "packshot-promo";
+          // Concept: 2 lines max, ~14 words per line. Accept either an
+          // already-2-line "concept" string or fall back to legacy "line".
+          const conceptRaw = String(s?.concept || s?.line || "").trim().slice(0, 240);
+          const concept = conceptRaw.split(/\r?\n/).slice(0, 2).map((l) => l.trim().slice(0, 90)).filter(Boolean).join("\n");
+          const headlineText = type === "scene"
+            ? ""
+            : String(s?.headlineText || "").trim().slice(0, 60);
+          const sublineText = layout === "typography-poster"
+            ? String(s?.sublineText || "").trim().slice(0, 60)
+            : "";
+          return { type, layout, concept, headlineText, sublineText };
+        })
+        .filter((s: any) => s.concept.length > 0)
         .slice(0, 6);
       return {
         id:               String(a?.id || `angle-${i + 1}`).slice(0, 60),
@@ -9632,6 +9684,18 @@ PLATFORM SHOT LIST (${totalShots} shots total):
 ${platformBrief}
 
 For each shot, invent a distinct scene that obeys the platform framing and copyHint. Scenes should share the DA but cover different moments, angles, and narrative beats so the pack feels like a coherent campaign rather than variants.
+
+WIREFRAME-DRIVEN PROMPTS — when the user's brief contains a "Shot ideas" block listing wireframe layouts (scene-fullbleed / scene-headline-bottom / scene-headline-top / split-photo-text / promo-band-bottom / promo-band-top / headline-overlay / typography-poster), each generated shot MUST honour the layout that was previewed to the user. The layout dictates the COMPOSITION of the promptText: where the photo sits, where the rendered text sits, what proportions. Translation rules:
+- scene-fullbleed → type='product', NO rendered text on image, full-bleed photo composition.
+- scene-headline-bottom → type='packshot-promo', photo occupies top ~70% with a brand-coded headline strip across the bottom ~30%; promptText must say "headline strip across the bottom 30% of the canvas, photo composition tightly framed in the upper 70%".
+- scene-headline-top → type='packshot-promo', headline strip top ~30% + photo bottom ~70%.
+- split-photo-text → type='packshot-promo', vertical split: photo left ~50%, headline + subline stacked right ~50% (or vice-versa, pick one and state it).
+- promo-band-bottom → type='packshot-promo', full-width sale/promo band along the bottom ~25% of the canvas, photo above; the band is a SOLID brand-colour bar with bold display typography rendered on it.
+- promo-band-top → type='packshot-promo', full-width promo band top ~25% + photo bottom ~75%.
+- headline-overlay → type='packshot-promo', full-bleed photo with headline text rendered AS AN OVERLAY centred on the photo (use only when the chosen scene has a quiet area for the text).
+- typography-poster → type='text-card', NO product photo, pure typography poster on a brand-colour field.
+When a Shot idea provides headlineText (and optional sublineText), render those EXACT strings as the on-image text — no paraphrasing, no extra punctuation.
+If the user's brief does NOT contain a "Shot ideas" block, fall back to the PACK COMPOSITION TARGETS rules above.
 
 OUTPUT JSON:
 {

@@ -180,7 +180,24 @@ function SurpriseContent() {
   // current month. User clicks a card, campaign runs. Zero typing.
   // If the fetch fails (no vault, no LLM key, network) we silently fall
   // through to the inline-fields brief UI.
-  type ShotIdea = { type: "scene" | "packshot-promo" | "text-card"; line: string };
+  type LayoutName =
+    | "scene-fullbleed"
+    | "scene-headline-bottom"
+    | "scene-headline-top"
+    | "split-photo-text"
+    | "promo-band-bottom"
+    | "promo-band-top"
+    | "headline-overlay"
+    | "typography-poster";
+  type ShotIdea = {
+    type: "scene" | "packshot-promo" | "text-card";
+    layout: LayoutName;
+    concept: string;          // 2 lines max
+    headlineText?: string;    // exact text string rendered on the image
+    sublineText?: string;     // optional second line for typography-poster
+    // legacy back-compat for older server responses
+    line?: string;
+  };
   type AngleSuggestion = {
     id: string; emoji: string; title: string; subtitle: string; brief: string;
     shotIdeas?: ShotIdea[];
@@ -724,33 +741,26 @@ function SurpriseContent() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                     {suggestedAngles.map((a, i) => {
                       // Compose the brief sent to surprise-me. When shotIdeas
-                      // are present, append them so the planner knows the
-                      // exact mix of scenes / packshot-promo / text-cards
-                      // the angle promised — keeps the pack faithful to the
-                      // card the user clicked.
+                      // are present, append the wireframes — layout names +
+                      // exact text strings — so the planner respects the
+                      // visual the user picked. Backwards-compatible with
+                      // legacy "line" string responses.
                       const ideasBlock = (a.shotIdeas && a.shotIdeas.length > 0)
-                        ? "\n\nShot ideas (mix scenes + packshot-promo + text-cards as listed):\n"
-                          + a.shotIdeas.map((s) => `- [${s.type}] ${s.line}`).join("\n")
+                        ? "\n\nShot ideas (each entry is a wireframe the user previewed — respect the layout, the rendered text strings, and the type):\n"
+                          + a.shotIdeas.map((s) => {
+                              const concept = (s.concept || s.line || "").replace(/\n+/g, " · ");
+                              const txt = s.headlineText ? ` headline:"${s.headlineText}"` : "";
+                              const sub = s.sublineText ? ` subline:"${s.sublineText}"` : "";
+                              return `- [type=${s.type} layout=${s.layout || "scene-fullbleed"}${txt}${sub}] ${concept}`;
+                            }).join("\n")
                         : "";
                       const composedBrief = `${a.brief}${ideasBlock}`;
                       return (
-                      <motion.button
+                      <motion.div
                         key={a.id}
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.08 * i, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-                        whileHover={{ y: -4 }}
-                        disabled={busy || uploadingProduct}
-                        onClick={() => handleSurprise({
-                          // Angle card only contributes the creative brief —
-                          // platforms / creativity / assetCount stay whatever
-                          // the user set in the product input form. (Prior
-                          // version passed all four from the angle, which
-                          // silently overrode the slider: asking for 2 assets
-                          // would surface 6-8 because that's what the LLM
-                          // returned per angle.)
-                          brief: composedBrief,
-                        })}
-                        className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="rounded-3xl p-6 md:p-7"
                         style={{
                           background: "#FFFFFF",
                           border: `1px solid ${COLORS.line}`,
@@ -758,45 +768,84 @@ function SurpriseContent() {
                         }}
                       >
                         <div className="text-[28px] leading-none mb-4">{a.emoji || "✨"}</div>
-                        <h3 className="leading-[1.02] mb-2" style={{ ...bagel, fontSize: 28, color: COLORS.ink }}>
+                        <h3 className="leading-[1.02] mb-2" style={{ ...bagel, fontSize: 26, color: COLORS.ink }}>
                           {a.title}
                         </h3>
                         {a.subtitle && (
-                          <p className="text-[13.5px] leading-snug mb-4" style={{ color: COLORS.muted }}>
+                          <p className="text-[13px] leading-snug mb-5" style={{ color: COLORS.muted }}>
                             {a.subtitle}
                           </p>
                         )}
-                        {/* Shot ideas — concrete scene + typo creations the
-                            angle will produce. Mix is decided server-side
-                            and respects the brief (sale → more packshot-promo,
-                            quote/hiring → more text-cards, default → 3 scenes
-                            + 1-2 packshot-promo + 0-1 text-card). */}
+                        {/* Wireframe grid — each cell is a clickable layout
+                            preview showing proportions and text placement
+                            for one creation in the pack. Generation respects
+                            the layout, the product, and the brand voice. */}
                         {a.shotIdeas && a.shotIdeas.length > 0 && (
-                          <ul className="mb-5 space-y-1.5">
-                            {a.shotIdeas.slice(0, 5).map((s, k) => (
-                              <li key={k} className="flex items-start gap-2 text-[12.5px] leading-snug" style={{ color: COLORS.muted }}>
-                                <span className="shrink-0 mt-[2px] px-1.5 py-[1px] rounded text-[9px] font-mono uppercase tracking-wider"
+                          <div className="grid grid-cols-2 gap-2.5 mb-5">
+                            {a.shotIdeas.slice(0, 6).map((s, k) => {
+                              const layout = (s.layout || "scene-fullbleed") as LayoutName;
+                              const conceptText = (s.concept || s.line || "").trim();
+                              return (
+                                <button
+                                  key={k}
+                                  type="button"
+                                  disabled={busy || uploadingProduct}
+                                  onClick={(e) => {
+                                    // Single-wireframe pick — generates a
+                                    // pack with assetCount=1 framed by this
+                                    // exact layout + headline. The angle's
+                                    // overall brief still seeds the scene
+                                    // direction but the wireframe is the
+                                    // only shot to ship.
+                                    e.stopPropagation();
+                                    const wfBrief = `${a.brief}\n\nShoot ONLY this one wireframe (do not add more shots):\n- [type=${s.type} layout=${layout}${s.headlineText ? ` headline:"${s.headlineText}"` : ""}${s.sublineText ? ` subline:"${s.sublineText}"` : ""}] ${conceptText.replace(/\n+/g, " · ")}`;
+                                    handleSurprise({ brief: wfBrief, assetCount: 1 });
+                                  }}
+                                  className="flex flex-col gap-2 text-left rounded-xl p-2 transition disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-[1px] hover:shadow-sm"
+                                  style={{
+                                    background: "#FAFAF7",
+                                    border: `1px solid ${COLORS.line}`,
+                                  }}
+                                >
+                                  <Wireframe layout={layout} headlineText={s.headlineText} sublineText={s.sublineText} />
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="px-1.5 py-[1px] rounded text-[8.5px] font-mono uppercase tracking-wider"
                                       style={{
                                         background: s.type === "packshot-promo" ? "#FFE9DD" : s.type === "text-card" ? "#E8E5FF" : "#EAF2FF",
                                         color:      s.type === "packshot-promo" ? "#B43D11" : s.type === "text-card" ? "#3F2EB5" : "#1E4FA8",
                                       }}>
-                                  {s.type === "packshot-promo" ? "promo" : s.type === "text-card" ? "typo" : "scene"}
-                                </span>
-                                <span>{s.line}</span>
-                              </li>
-                            ))}
-                          </ul>
+                                      {s.type === "packshot-promo" ? "promo" : s.type === "text-card" ? "typo" : "scene"}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11.5px] leading-tight whitespace-pre-line" style={{ color: COLORS.muted }}>
+                                    {conceptText}
+                                  </p>
+                                </button>
+                              );
+                            })}
+                          </div>
                         )}
-                        {/* Show the user's actual settings on the card so
-                            they know what the angle will produce. */}
-                        <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                          <span>{assetCount} post{assetCount === 1 ? "" : "s"}</span>
-                          <span>·</span>
+                        {/* Generate the full pack — uses every wireframe in
+                            the angle. Distinct from picking a single tile,
+                            which generates one shot in that exact layout. */}
+                        <button
+                          type="button"
+                          disabled={busy || uploadingProduct}
+                          onClick={() => handleSurprise({ brief: composedBrief })}
+                          className="w-full rounded-xl py-2.5 text-[12.5px] font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
+                          style={{
+                            background: COLORS.coral,
+                            color: "#FFF",
+                          }}
+                        >
+                          Générer le pack ({assetCount} posts) →
+                        </button>
+                        <div className="flex items-center gap-1.5 text-[11px] mt-3" style={{ color: COLORS.subtle, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                           <span>{platforms.length} platform{platforms.length === 1 ? "" : "s"}</span>
                           <span>·</span>
                           <span>level {creativity}</span>
                         </div>
-                      </motion.button>
+                      </motion.div>
                       );
                     })}
                   </div>
@@ -1443,6 +1492,122 @@ function SurpriseContent() {
         })()}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ─── Wireframe thumbnail for angle shotIdeas ───────────────────────────
+ * Renders a small SVG mockup of the layout: photo region in a soft fill,
+ * text regions with a few horizontal "type lines" plus the actual
+ * headline/subline strings clipped inside the box. Lets the user pick a
+ * composition before generation by SEEING proportions, not reading prose.
+ */
+type WireframeLayoutName =
+  | "scene-fullbleed"
+  | "scene-headline-bottom"
+  | "scene-headline-top"
+  | "split-photo-text"
+  | "promo-band-bottom"
+  | "promo-band-top"
+  | "headline-overlay"
+  | "typography-poster";
+const WIREFRAME_REGIONS: Record<WireframeLayoutName, Array<{ kind: "photo" | "headline" | "promoBand" | "headlineOverlay" | "background" | "subline"; x: number; y: number; w: number; h: number }>> = {
+  "scene-fullbleed": [
+    { kind: "photo", x: 0, y: 0, w: 100, h: 100 },
+  ],
+  "scene-headline-bottom": [
+    { kind: "photo",    x: 0, y: 0,  w: 100, h: 70 },
+    { kind: "headline", x: 0, y: 70, w: 100, h: 30 },
+  ],
+  "scene-headline-top": [
+    { kind: "headline", x: 0, y: 0,  w: 100, h: 30 },
+    { kind: "photo",    x: 0, y: 30, w: 100, h: 70 },
+  ],
+  "split-photo-text": [
+    { kind: "photo",    x: 0,  y: 0,  w: 50,  h: 100 },
+    { kind: "headline", x: 50, y: 25, w: 50,  h: 50 },
+  ],
+  "promo-band-bottom": [
+    { kind: "photo",     x: 0, y: 0,  w: 100, h: 75 },
+    { kind: "promoBand", x: 0, y: 75, w: 100, h: 25 },
+  ],
+  "promo-band-top": [
+    { kind: "promoBand", x: 0, y: 0,  w: 100, h: 25 },
+    { kind: "photo",     x: 0, y: 25, w: 100, h: 75 },
+  ],
+  "headline-overlay": [
+    { kind: "photo",            x: 0,  y: 0,  w: 100, h: 100 },
+    { kind: "headlineOverlay",  x: 10, y: 35, w: 80,  h: 30 },
+  ],
+  "typography-poster": [
+    { kind: "background", x: 0,  y: 0,  w: 100, h: 100 },
+    { kind: "headline",   x: 10, y: 28, w: 80,  h: 30 },
+    { kind: "subline",    x: 10, y: 62, w: 80,  h: 8 },
+  ],
+};
+function Wireframe({ layout, headlineText, sublineText, size = 96 }: {
+  layout: WireframeLayoutName;
+  headlineText?: string;
+  sublineText?: string;
+  size?: number;
+}) {
+  const regions = WIREFRAME_REGIONS[layout] || WIREFRAME_REGIONS["scene-fullbleed"];
+  const fill = {
+    photo:           "#E5E5DF",
+    headline:        "#FFE0CC",
+    promoBand:       "#F66037",
+    headlineOverlay: "rgba(20,20,20,0.55)",
+    background:      "#1F2937",
+    subline:         "#374151",
+  } as const;
+  const stroke = "rgba(17,17,17,0.15)";
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} preserveAspectRatio="none"
+         style={{ display: "block", background: "#FFFFFF", borderRadius: 6, border: `1px solid ${stroke}` }}>
+      {regions.map((r, i) => (
+        <g key={i}>
+          <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill[r.kind]} />
+          {/* Horizontal "type lines" mocking rendered text inside text regions */}
+          {(r.kind === "headline" || r.kind === "promoBand" || r.kind === "headlineOverlay" || r.kind === "subline") && (
+            <>
+              <rect x={r.x + r.w * 0.10} y={r.y + r.h * 0.30} width={r.w * 0.65} height={Math.max(2, r.h * 0.16)}
+                    fill={r.kind === "promoBand" || r.kind === "headlineOverlay" ? "#FFFFFF" : "#1F2937"} opacity={0.85} />
+              <rect x={r.x + r.w * 0.10} y={r.y + r.h * 0.55} width={r.w * 0.45} height={Math.max(1.5, r.h * 0.10)}
+                    fill={r.kind === "promoBand" || r.kind === "headlineOverlay" ? "#FFFFFF" : "#1F2937"} opacity={0.6} />
+            </>
+          )}
+          {/* Photo cue: a couple of soft shapes hinting at "image" */}
+          {r.kind === "photo" && (
+            <>
+              <circle cx={r.x + r.w * 0.32} cy={r.y + r.h * 0.34} r={Math.min(r.w, r.h) * 0.06} fill="#C8C8C0" />
+              <path d={`M${r.x + r.w * 0.05} ${r.y + r.h * 0.85} L${r.x + r.w * 0.42} ${r.y + r.h * 0.55} L${r.x + r.w * 0.65} ${r.y + r.h * 0.78} L${r.x + r.w * 0.95} ${r.y + r.h * 0.50} L${r.x + r.w * 0.95} ${r.y + r.h * 0.95} L${r.x + r.w * 0.05} ${r.y + r.h * 0.95} Z`}
+                    fill="#C8C8C0" />
+            </>
+          )}
+        </g>
+      ))}
+      {/* Optional text labels rendered inside the box for headline/subline.
+          Kept tiny (4-5px in viewBox units) so it reads as a hint, not real type. */}
+      {headlineText && layout !== "scene-fullbleed" && (() => {
+        const headlineRegion = regions.find((r) => r.kind === "headline" || r.kind === "promoBand" || r.kind === "headlineOverlay");
+        if (!headlineRegion) return null;
+        const r = headlineRegion;
+        const colour = r.kind === "promoBand" || r.kind === "headlineOverlay" ? "#FFFFFF" : "#111111";
+        return (
+          <text x={r.x + r.w / 2} y={r.y + r.h * 0.50}
+                textAnchor="middle" dominantBaseline="middle"
+                fontFamily="ui-sans-serif, system-ui" fontWeight={700} fontSize={Math.max(4, Math.min(r.w * 0.13, r.h * 0.40))}
+                fill={colour} opacity={0.9}>
+            {headlineText.length > 14 ? headlineText.slice(0, 14) + "…" : headlineText}
+          </text>
+        );
+      })()}
+      {sublineText && layout === "typography-poster" && (
+        <text x={50} y={68} textAnchor="middle" dominantBaseline="middle"
+              fontFamily="ui-sans-serif, system-ui" fontWeight={500} fontSize={3.5} fill="#FFFFFF" opacity={0.85}>
+          {sublineText.length > 22 ? sublineText.slice(0, 22) + "…" : sublineText}
+        </text>
+      )}
+    </svg>
   );
 }
 
