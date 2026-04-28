@@ -9259,21 +9259,23 @@ app.post("/analyze/suggest-angles", async (c) => {
     }
     const brandSummary = parts.join(" · ");
 
-    const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, editorial campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
+    const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, SPECIFIC campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
 
 The user should NEVER have to write a brief. Each angle must be self-contained and ready to turn into a full social campaign pack without any further input.
 
-RULES:
-- 3 angles, all DIFFERENT moods / narrative beats (don't repeat the same vibe).
-- Each grounded in the brand DA and the current season/moment.
-- Each ready for a 6-asset pack (images + paired films) across the right platforms.
+NON-NEGOTIABLE RULES:
+- BANNED VOCABULARY in titles, subtitles, briefs: "elegance", "elegant", "timeless", "timelessness", "iconic", "sophisticated", "sophistication", "refined", "celebrate", "essence", "embrace", "discover", "redefine", "journey", "moments", "curated", "crafted", "art of", "love at first", "where * meets *". These are fortune-cookie words that signal nothing. If you write any of them, the angle is rejected.
+- Each angle title must contain at least ONE concrete element from the product description (a material, a colour, a cut, a use-case, a setting). Generic mood titles like "Elegant Timelessness" are forbidden.
+- Each angle must propose a SCENARIO (a specific scene with people, place, action), not a VALUE (sustainability, beauty, etc.). "Linen Fridays in Provence" beats "Sustainable Elegance" every time.
+- Angles must match the product's ACTUAL audience. If the product is men's wear → male-leaning scenarios or explicit gifting (a wife/girlfriend/mom buying it for him). NEVER frame a women's-day or motherhood angle around a men's product unless the angle is explicitly "gift him on X day".
+- 3 angles, all DIFFERENT scenarios (one urban / one outdoor / one intimate, one editorial / one candid / one product-detail, etc.). No repetition of vibe.
 - Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief.
 - Output JSON only, no prose wrapper, no markdown.
 
 CONTEXT:
-${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — use tasteful generic editorial angles for the season."}
-${productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST be anchored on this product. The photo is the hero in every asset the pipeline will generate.` : ""}
-${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days to consider (pick at most one to theme one angle — don't force all three):\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
+${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — keep angles tight to the product itself."}
+${productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST mention a SPECIFIC ATTRIBUTE of this product (a material, a cut, a colour name, a likely wearer/user, a setting where it makes sense). Generic angles that could apply to any product = automatic reject.` : ""}
+${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days. ONLY use one of these IF the moment makes natural sense for THIS specific product + audience. Forced calendar match = rejected. If none of these fit, skip them entirely:\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
 
 OUTPUT SHAPE (strict):
 {
@@ -9281,9 +9283,9 @@ OUTPUT SHAPE (strict):
     {
       "id": "kebab-case-slug",
       "emoji": "one emoji that fits the mood",
-      "title": "2-4 word editorial title",
-      "subtitle": "one sentence, max 12 words, describes the mood",
-      "brief": "3-5 sentences, prompt-grade detail — the scene, subject angle, mood, any narrative beat. This is what will feed the image-gen pipeline.",
+      "title": "2-4 word title that references something concrete from the product (e.g. 'Linen After Hours', 'Wool Coat Diaries', 'Suede in Soho') — NOT a vague mood word",
+      "subtitle": "one sentence, max 12 words, describes the SCENARIO not the value",
+      "brief": "3-5 sentences, prompt-grade detail — the specific scene, subject angle, mood, narrative beat. Reference the product's material/cut/colour by name. This feeds the image-gen pipeline directly.",
       "platforms": ["instagram-feed","instagram-story","linkedin","facebook","tiktok"] (subset, 2-4 items),
       "creativityLevel": 1-4,
       "assetCount": 6-8
@@ -9292,7 +9294,7 @@ OUTPUT SHAPE (strict):
   ]
 }
 
-Pick varied creativityLevels across the three (e.g. 2 / 3 / 4). Pick varied platform mixes. Titles should feel editorial (fashion magazine, not SaaS).`;
+Self-check before outputting: re-read each angle. Does the TITLE contain a concrete element from the product? Does the BRIEF describe a scene I could actually photograph with this product? If any answer is no, rewrite it. Pick varied creativityLevels (e.g. 2 / 3 / 4) and varied platform mixes.`;
 
     const key = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("APIPOD_KEY");
     if (!key) return c.json({ success: false, error: "LLM not configured" }, 500);
