@@ -3152,7 +3152,7 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
             if (!uploadError) {
               const { data: signedData } = await sb2.storage
                 .from("make-cad57f79-media")
-                .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
               if (signedData?.signedUrl) {
                 photoroomCompositeUrl = signedData.signedUrl;
                 console.log(`[img2img] STEP 1 OK: Photoroom composite in ${Date.now() - start}ms — ${photoroomCompositeUrl.slice(0, 80)}`);
@@ -3309,7 +3309,7 @@ async function generateImageWithRef(req: { prompt: string; model: string; imageR
                   if (!upErr) {
                     const { data: signedData } = await sb.storage
                       .from("make-cad57f79-media")
-                      .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+                      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
                     if (signedData?.signedUrl) {
                       console.log(`[img2img] STYLE Ideogram V3 Remix OK in ${Date.now() - start}ms`);
                       return { model: req.model, provider: "photoroom+ideogram-remix", imageUrl: signedData.signedUrl, pixelPerfect: true, latencyMs: Date.now() - start };
@@ -8392,7 +8392,7 @@ Rules:
         for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
         const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, buf, { contentType: mt, upsert: true });
         if (!upErr) {
-          const { data: signed } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+          const { data: signed } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
           if (signed?.signedUrl) sourceUrl = signed.signedUrl;
         } else {
           console.log(`[reverse-prompt] source upload skipped: ${upErr.message}`);
@@ -9021,7 +9021,7 @@ app.post("/analyze/series", async (c) => {
         const path = `${user.id}/series/${campaignSlug}/${Date.now()}-${fileName}`;
         const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
         if (upErr) { console.log(`[series] upload err: ${upErr.message}`); return null; }
-        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 365 * 24 * 3600);
         return data?.signedUrl || null;
       } catch (err) {
         console.log(`[series] persist err: ${err}`);
@@ -9459,10 +9459,10 @@ app.post("/analyze/surprise-me", async (c) => {
     // only the LLM system hint and temperature change.
     const PRODUCT_REF_WEIGHT = 0.92; // tight fidelity — raised from 0.85 after reports of colour drift when the scene composition differs from the reference (polo on hanger vs polo on model).
     const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
-      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle graphic twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. The product itself stays exactly as provided." },
-      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. The product itself stays exactly as provided." },
-      3: { temp: 0.95, systemHint: "Be BOLD. Each shot has a DISTINCT, memorable visual twist — oversized scale play, dramatic prop, editorial lighting, unexpected juxtaposition, daring color splash — but the product stays 100% photo-real and IDENTICAL to the reference. Only the world bends." },
-      4: { temp: 1.10, systemHint: "Go WILD. Each shot carries a SURREAL twist — impossible physics, floating elements, scale distortion, dream logic, mixed-media collage, fashion-magazine experimentation. CRITICAL: the product itself stays 100% photo-realistic and IDENTICAL to the reference. Only the universe around it bends." },
+      1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. EVERY twist MUST be brand-compliant (use brand palette colours + brand typography feel — no random AI-mag look). The product itself stays exactly as provided." },
+      2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. EVERY twist MUST be brand-compliant (props/frames coloured from the brand palette, type-treatments using brand typography feel). The product itself stays exactly as provided." },
+      3: { temp: 0.95, systemHint: "Be BOLD. Each shot has a DISTINCT, memorable visual twist — oversized scale play, dramatic prop, editorial lighting, unexpected juxtaposition, daring color splash — but the product stays 100% photo-real and IDENTICAL to the reference. EVERY twist MUST be brand-compliant: scale-play objects, props and colour-splashes use ONLY the brand palette + brand typographic register (never random rainbow gradients, never comic-sans, never AI-stock collage tropes). Only the world bends." },
+      4: { temp: 1.10, systemHint: "Go WILD. Each shot carries a SURREAL twist — impossible physics, floating elements, scale distortion, dream logic, mixed-media collage, fashion-magazine experimentation. CRITICAL: the product itself stays 100% photo-realistic and IDENTICAL to the reference, AND every wild element MUST be brand-compliant (floating shapes, collage layers, oversized props, dream-logic objects all rendered in the brand palette + brand typographic feel — the surrealism reads as a campaign, not as random AI art). Only the universe around it bends." },
     };
     const creative = CREATIVITY[creativity];
 
@@ -9563,8 +9563,8 @@ CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
-- EVERY shot MUST carry a concrete twist fitting the creativity level — but ONLY through the four allowed levers: (a) LIGHTING (golden-hour rake, hard backlight, neon spill, overcast soft light, candle warmth), (b) FRAMING/COMPOSITION (extreme low angle, top-down, off-centre rule-of-thirds, dutch tilt, negative-space heavy), (c) MOOD/TIME (dawn calm, midday heat, blue-hour stillness, night-life energy), (d) ENVIRONMENT (cobblestone street, marble counter, sun-bleached terrace). Randomize across the pack so no two shots use the same lever the same way.
-- BANNED TWIST TYPES (these render as fake AI-pasted artefacts, never use them): no "holographic rim light", no "ribbon overlay", no "floating sphere", no "glowing arc / streak / line", no "graphic prop", no "material swap on the product", no "scale play with oversized object next to the subject", no "inverted horizon". Twists must be PHOTOGRAPHIC choices a real photographer would make on set, not graphic-design overlays.
+- EVERY shot MUST carry a concrete twist fitting the creativity level (see CREATIVITY LEVEL hint above). The twist can be ANY of: photographic levers (lighting, framing, composition, mood, environment), graphic levers (overlay, prop, scale play, frame, vintage grain), or surreal levers at level 4 (floating elements, scale distortion, dream-logic objects). Randomize across the pack so no two shots use the same lever.
+- HARD BRAND-COMPLIANCE RULE on twists: ANY graphic element rendered on the image (overlay, prop, frame, sticker, floating object, scale-play element, type accent) MUST be coloured from the BRAND PALETTE and treated in the BRAND TYPOGRAPHIC FEEL. NEVER rainbow gradients, NEVER comic-sans, NEVER Word-Art, NEVER stock-AI rainbow collage, NEVER random fluo colours that don't exist in the brand. The wilder the twist, the more disciplined the brand discipline must be — a level-4 surreal element in the brand's signature navy + crocodile green reads as a campaign, the same element in random rainbow reads as AI slop.
 - DIVERSITY ACROSS THE PACK is mandatory: vary the SETTING (urban / interior / outdoor / studio), the TIME OF DAY (golden hour / blue hour / night / overcast / harsh midday), the FRAMING (wide / mid / close / overhead), and the HUMAN PRESENCE (with a model / no model / hands only / silhouette / packshot). If you reuse the same model in every shot the pack reads as "AI slop" and the user gets a refund. Mix it up.
 - BANNED VOCABULARY across captions, scene, subject, promptText, campaignName, keyMessage, creativeAngle, tone — ZERO tolerance: "elegance", "elegant", "timeless", "timelessness", "iconic", "sophisticated", "sophistication", "refined", "celebrate", "essence", "embrace", "discover", "redefine", "redefined", "journey", "moments", "curated", "crafted", "art of", "love at first", "where * meets *", "effortless", "weightless", "speaks", "stand tall", "make a statement", "every angle", "every light". Any of these words trigger a rewrite. These are luxury-mag clichés that signal nothing.
 - CAPTIONS must read like a human posting, not a perfume ad. Use concrete nouns (places, objects, times, prices, dates), specific verbs (worn, paired, layered, dropped, shipped), and sentence structures a real person uses. Avoid abstract nouns and floaty adjectives. Bad: "Effortless elegance, redefined." Good: "The new lightweight zip — back in stock Friday." Bad: "Make a statement of timeless grace." Good: "Three colours. One cut. Pick yours."
@@ -9611,7 +9611,7 @@ OUTPUT JSON:
       "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1', 'quote-card', 'sale-tile'",
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
-      "twistElement": "3-8 word label for the PHOTOGRAPHIC twist of THIS shot in ENGLISH — ONLY lighting, framing, mood, or environment levers. Examples: 'low angle golden hour', 'top-down marble counter', 'blue-hour cobblestone street', 'overcast soft light', 'neon backlight', 'dawn rooftop', 'rule-of-thirds negative space'. NEVER 'holographic rim light', 'ribbon overlay', 'floating sphere', 'glowing arc' — those produce hallucinated graphic objects on the image.",
+      "twistElement": "3-8 word label for the visual twist of THIS shot in ENGLISH. Pick ANY type fitting the creativity level: photographic ('low angle golden hour', 'top-down marble counter', 'blue-hour cobblestone'), graphic ('navy gradient wash', 'thin crocodile-green frame', 'oversized brand-colour ribbon', 'vintage tricolour grain'), or surreal at level 4 ('floating brand-colour spheres', 'scale-distorted brand-colour wave', 'mixed-media brand-collage'). REQUIRED: every graphic/surreal twist MUST name the BRAND COLOUR or BRAND TYPOGRAPHIC FEEL it uses (e.g. 'navy gradient wash', not 'gradient wash'; 'tricolour ribbon', not 'ribbon overlay'). The brand-name your twist or the planner has FAILED.",
       "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
       "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
@@ -9726,7 +9726,7 @@ OUTPUT JSON:
         const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
         const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
         if (upErr) { console.log(`[surprise-me] upload err: ${upErr.message}`); return null; }
-        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+        const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 365 * 24 * 3600);
         return data?.signedUrl || null;
       } catch (err) { console.log(`[surprise-me] persist err: ${err}`); return null; }
     };
@@ -9743,8 +9743,12 @@ OUTPUT JSON:
     // Concurrency 5 (was 3): with Ideogram Remix TURBO at ~10-20s per call,
     // 5 parallel finishes a 4-5 shot pack in one batch — comfortably under
     // the Edge gateway timeout. 504s appeared when concurrency 3 forced a
-    // 4-shot pack into 2 batches × 60s.
-    const CONCURRENCY = 5;
+    // 4-shot pack into 2 batches × 60s. Concurrency 4 (was 5): each
+    // Ideogram Remix call holds the source image + result blob in
+    // memory; 5 parallel calls × 5-10MB images was tipping the Edge
+    // 256MB cap and causing 502 Bad Gateway crashes. 4 keeps a similar
+    // wall-clock at TURBO speed (~10-20s/call) without memory pressure.
+    const CONCURRENCY = 4;
     // Cutout cache — first composite that extracts a cutout updates this;
     // subsequent shots in the same run skip Photoroom's Stage 1 (saves ~3-5s
     // per fallback shot). First-batch races are acceptable: a few duplicate
@@ -9913,7 +9917,7 @@ OUTPUT JSON:
           const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
           const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
           if (upErr) { console.log(`[surprise-me:film] upload err: ${upErr.message}`); return null; }
-          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 7 * 24 * 3600);
+          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 365 * 24 * 3600);
           return data?.signedUrl || null;
         } catch (err) { console.log(`[surprise-me:film] persist err: ${err}`); return null; }
       };
@@ -10352,7 +10356,7 @@ async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string 
     upsert: true,
   });
   if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
-  const { data: signedData } = await sb.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
+  const { data: signedData } = await sb.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 7 days
   if (!signedData?.signedUrl) throw new Error("Storage: no signed URL");
   return signedData.signedUrl;
 }
@@ -10429,7 +10433,7 @@ async function runPixelPerfectComposite(opts: {
         if (!uploadError) {
           const { data: signedData } = await sb.storage
             .from("make-cad57f79-media")
-            .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+            .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
           if (signedData?.signedUrl) {
             console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
             logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
@@ -10685,7 +10689,7 @@ async function runIdeogramRemixOnRef(opts: {
       logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
       return { imageUrl: resultUrl, provider: "ideogram/v3-remix" };
     }
-    const { data: signedData } = await sb.storage.from("make-cad57f79-media").createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    const { data: signedData } = await sb.storage.from("make-cad57f79-media").createSignedUrl(storagePath, 60 * 60 * 24 * 365);
     const finalUrl = signedData?.signedUrl || resultUrl;
     console.log(`[ideogram-remix] OK in ${Date.now() - t0}ms (weight=${imageWeight})`);
     logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
@@ -12916,7 +12920,7 @@ app.post("/generate/image-start", async (c) => {
             } else {
               const { data: signedData } = await sb.storage
                 .from("make-cad57f79-media")
-                .createSignedUrl(storagePath, 60 * 60 * 24 * 7); // 7 days
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 7 days
 
               const imageUrl = signedData?.signedUrl;
               if (imageUrl) {
@@ -26090,7 +26094,7 @@ app.post("/library/list", async (c) => {
         const changedItems = new Set<any>();
         // Parallel signed-URL creation — all jobs fire at once.
         const results = await Promise.allSettled(
-          jobs.map(j => sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(j.target[j.pathKey], 7 * 24 * 3600)),
+          jobs.map(j => sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(j.target[j.pathKey], 365 * 24 * 3600)),
         );
         results.forEach((res, i) => {
           if (res.status !== "fulfilled") return;
@@ -26206,7 +26210,7 @@ app.post("/library/items", async (c) => {
               const storagePath = `${user.id}/${Date.now()}-${item.id.slice(0, 12)}-${slug}.${ext}`;
               const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, new Uint8Array(buf), { contentType: ct || `${type}/${ext}`, upsert: true });
               if (upErr) { console.log(`[lib-persist] Upload failed for ${key}: ${upErr.message}`); continue; }
-              const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+              const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
               if (signedData?.signedUrl) {
                 // Update the library item with the persistent URL + storagePath
                 const current = await kv.get(`lib:${user.id}:${item.id}`);
@@ -26322,7 +26326,7 @@ app.post("/library/upload", async (c) => {
     const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, bytes, { contentType: fileType, upsert: true });
     if (upErr) return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
 
-    const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+    const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
     const signedUrl = signedData?.signedUrl || "";
 
     // Build preview based on type
@@ -27699,7 +27703,7 @@ app.post("/assets/persist", async (c) => {
     const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, new Uint8Array(buf), { contentType: ct || `${assetType === "video" ? "video" : assetType === "audio" ? "audio" : "image"}/${ext}`, upsert: true });
     if (upErr) return c.json({ success: false, error: `Upload failed: ${upErr.message}` }, 500);
 
-    const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+    const { data: signedData } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
     if (!signedData?.signedUrl) return c.json({ success: false, error: "Failed to create signed URL" }, 500);
 
     const kvKey = `asset:${user.id}:${assetId || storagePath}`;
@@ -27728,7 +27732,7 @@ app.post("/assets/refresh-url", async (c) => {
 
     await ensureGeneratedAssetsBucket();
     const sb = supabaseAdmin();
-    const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 7 * 24 * 3600);
+    const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
     if (!data?.signedUrl) return c.json({ success: false, error: "Failed to create signed URL" }, 500);
     return c.json({ success: true, signedUrl: data.signedUrl });
   } catch (err) {
@@ -27749,7 +27753,7 @@ app.post("/assets/batch-refresh", async (c) => {
     const results = await Promise.all(
       storagePaths.filter((p: string) => p.startsWith(user.id)).map(async (p: string) => {
         try {
-          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(p, 7 * 24 * 3600);
+          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(p, 365 * 24 * 3600);
           return { storagePath: p, signedUrl: data?.signedUrl || null };
         } catch { return { storagePath: p, signedUrl: null }; }
       })
