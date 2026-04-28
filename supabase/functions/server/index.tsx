@@ -9487,11 +9487,17 @@ app.post("/analyze/surprise-me", async (c) => {
     }
 
     // ── Platform preset grid ──
+    // Aspect ratios match each platform's native feed-friendly format on
+    // mobile (where 80%+ of consumption happens):
+    //   - IG Feed 1:1 — universal-safe, no crop
+    //   - IG Story / TikTok 9:16 — vertical full-screen
+    //   - LinkedIn / Facebook 1:1 — feed-friendly, no mobile-feed crop
+    //     (16:9 used to be common but gets center-cropped on phone feeds)
     const ALL_PLATFORMS = [
       { id: "instagram-feed",  aspectRatio: "1:1",  label: "Instagram Feed",  copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
       { id: "instagram-story", aspectRatio: "9:16", label: "Instagram Story", copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
-      { id: "linkedin",        aspectRatio: "16:9", label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition" },
-      { id: "facebook",        aspectRatio: "16:9", label: "Facebook",        copyHint: "wide social-share composition, headline-friendly" },
+      { id: "linkedin",        aspectRatio: "1:1",  label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition, mobile-feed safe" },
+      { id: "facebook",        aspectRatio: "1:1",  label: "Facebook",        copyHint: "social-share composition, mobile-feed safe" },
       { id: "tiktok",          aspectRatio: "9:16", label: "TikTok",          copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
     ];
     // Resolve the platform subset the caller asked for (default: all 5).
@@ -9582,12 +9588,13 @@ OUTPUT JSON:
   "shots": [
     {
       "platform": "one of: instagram-feed, instagram-story, linkedin, facebook, tiktok",
-      "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1'",
+      "type": "either 'product' (the photo IS the hero — packshot, lifestyle, scene) OR 'text-card' (typography is the hero — quote, save-the-date, recruitment, promo tile, tip-card, branded text). Default to 'product' when a reference photo is provided. Use 'text-card' when the message is text-driven (a discount, a quote, a call to action, hiring news, an event date) — about 1 in 6 shots in a typical pack benefits from a text-card change-of-pace.",
+      "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1', 'quote-card', 'sale-tile'",
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "final generation prompt in ENGLISH, 60-130 words, weaves scene + subject + brand DA + platform framing + copyHint + an explicit sentence that names the twistElement. No JSON, no bullets. Product must remain photo-real and untouched.",
-      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise."${withCaption ? `,
+      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
+      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
@@ -9650,6 +9657,9 @@ OUTPUT JSON:
       twistElement: string; promptText: string; caption: string; fileName: string; videoFileName: string;
       motion: string;
       format: "image" | "film";
+      // 'product' = Photoroom Studio composite (preserves user's photo)
+      // 'text-card' = Ideogram text-card (typography-led, no photo preserve)
+      type: "product" | "text-card";
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -9670,12 +9680,16 @@ OUTPUT JSON:
       const promptText   = String(sh?.promptText || "").trim();
       const caption      = withCaption ? String(sh?.caption || "").trim() : "";
       const motion       = format === "film" ? String(sh?.motion || "").trim() : "";
+      // Default to 'product' when LLM omits the type — keeps the existing
+      // pipeline behaviour for legacy shot lists. text-card needs to be
+      // explicit AND a non-film shot (text-cards aren't animated).
+      const type: "product" | "text-card" = (sh?.type === "text-card" && format !== "film") ? "text-card" : "product";
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
       const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}`;
       const fileName      = `${baseName}.jpg`;
       const videoFileName = `${baseName}.mp4`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format });
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format, type });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -9724,6 +9738,28 @@ OUTPUT JSON:
       const batch = jobs.slice(i, i + CONCURRENCY);
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
         try {
+          // Text-card branch: Ideogram. Used for typography-led shots where
+          // text quality matters more than photo fidelity (quote, save-the-
+          // date, recruitment, promo tile, tip card). Always runs for
+          // shot.type === "text-card", regardless of whether a product
+          // photo was uploaded.
+          if (job.type === "text-card") {
+            const card = await runIdeogramTextCard({
+              prompt: job.promptText,
+              aspectRatio: job.aspectRatio,
+              userId: user.id,
+              campaignSlug,
+            });
+            if (card) {
+              const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: card.provider };
+            }
+            // Ideogram failed — for text-cards there's no clean fallback,
+            // mark the shot as failed (we'd rather skip than ship a typo).
+            console.log(`[surprise-me] ideogram failed for ${job.label}, marking failed`);
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Text-card generation failed" };
+          }
+
           if (productRef) {
             // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated)
             const composite = await runPixelPerfectComposite({
@@ -10285,6 +10321,80 @@ async function runPixelPerfectComposite(opts: {
 
   console.log(`[composite] all strategies failed in ${Date.now() - t0}ms`);
   return null;
+}
+
+// Ideogram v3 text-card generation. Used for text-heavy graphic posts where
+// typography matters: quote cards, save-the-date, recruitment, promo tiles,
+// tip carousels. Ideogram is currently the only image model that renders
+// text reliably (no "LA ROCCELLE" typos that FLUX/Photon/kontext-pro
+// produce).
+//
+// Complementary to runPixelPerfectComposite — NOT a replacement. Photoroom
+// preserves a real product reference photo, Ideogram generates from
+// scratch. For shots where the product photo IS the subject, Photoroom.
+// For shots where the typography IS the subject, Ideogram.
+async function runIdeogramTextCard(opts: {
+  prompt: string;
+  aspectRatio?: string;
+  userId: string | null;
+  campaignSlug?: string;
+}): Promise<{ imageUrl: string; provider: string } | null> {
+  const t0 = Date.now();
+  const { prompt, userId, campaignSlug } = opts;
+  const aspectRatio = opts.aspectRatio || "1:1";
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+  if (!ideogramKey) {
+    console.log(`[ideogram] IDEOGRAM_API_KEY not set`);
+    return null;
+  }
+
+  // Map our internal "1:1" notation to Ideogram's "ASPECT_X_Y" format.
+  // Ideogram v3 supports a wide set; fallback to ASPECT_1_1 for unknown.
+  const ideogramAspectMap: Record<string, string> = {
+    "1:1":  "1x1",
+    "9:16": "9x16",
+    "16:9": "16x9",
+    "4:5":  "4x5",
+    "3:4":  "3x4",
+    "4:3":  "4x3",
+    "2:3":  "2x3",
+    "3:2":  "3x2",
+  };
+  const ideogramAspect = ideogramAspectMap[aspectRatio] || "1x1";
+
+  try {
+    const formData = new FormData();
+    formData.append("prompt", String(prompt).slice(0, 800));
+    formData.append("aspect_ratio", ideogramAspect);
+    formData.append("rendering_speed", "DEFAULT");
+    formData.append("style_type", "DESIGN");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/generate", {
+      method: "POST",
+      headers: { "Api-Key": ideogramKey },
+      body: formData,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.log(`[ideogram] ${res.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    const data = await res.json();
+    const imageUrl = data?.data?.[0]?.url;
+    if (!imageUrl) {
+      logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    console.log(`[ideogram] OK in ${Date.now() - t0}ms`);
+    logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+    return { imageUrl, provider: "ideogram/v3" };
+  } catch (err) {
+    console.log(`[ideogram] error: ${err}`);
+    logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+    return null;
+  }
 }
 
 app.post("/compare/pixel-perfect-product", async (c) => {
