@@ -9879,12 +9879,110 @@ OUTPUT JSON:
         } catch (err) { console.log(`[surprise-me:film] persist err: ${err}`); return null; }
       };
 
+      // Build a hardened, scene-aware motion prompt shared by Kling and
+      // Luma. The exact same prompt format works on both providers — they
+      // both respond to product-lock + scene-lock + atmosphere cues. The
+      // scene type is inferred from the still's scene description so that
+      // a "city pulse" still gets traffic-glow motion and a "tennis court"
+      // still gets crowd-ambient motion.
+      const sceneAtmosphereCues = (scene: string): string => {
+        const s = scene.toLowerCase();
+        if (/\b(city|urban|street|metro|rooftop|skyline|downtown)\b/.test(s)) return "Distant traffic glow and headlight flicker, pedestrians blurred in the far background, golden-hour drift, no abrupt camera moves.";
+        if (/\b(court|stadium|arena|pitch|crowd|spectators?|tennis|football|soccer|basket)\b/.test(s)) return "Distant crowd ambient blur, banner flutter at the edge of frame, soft rim-light pulse on the subject, no on-court action.";
+        if (/\b(beach|coast|sea|ocean|wave|shore|seaside)\b/.test(s)) return "Waves rolling in the far background, breeze subtly moving fabric and hair, sun-flare drift, no abrupt waves on the foreground subject.";
+        if (/\b(forest|tree|park|garden|nature|wood|mountain|trail)\b/.test(s)) return "Wind ripples through foliage in the far background, dappled light shift through leaves, distant clouds drifting, no large objects entering frame.";
+        if (/\b(studio|seamless|backdrop|cyclorama|photo studio)\b/.test(s)) return "Soft rim-light pulse, gentle camera push-in, subtle dust particles in light, no other elements.";
+        if (/\b(office|workspace|desk|meeting|coworking|conference)\b/.test(s)) return "Soft window-light shift, distant figures blurred in the background, no paper or object motion in the foreground.";
+        if (/\b(party|club|bar|restaurant|cafe|coffee|dinner|night out)\b/.test(s)) return "Bokeh light flicker in the far background, distant figures blurred, ambient warmth shift, no on-screen drinks or props moving.";
+        if (/\b(home|interior|living room|bedroom|kitchen|apartment)\b/.test(s)) return "Soft window light breathing, distant curtain ripple, no objects entering the foreground, no hands moving.";
+        return "Slow cinematic camera push-in over the duration, gentle parallax, ambient light breathing, no foreground object change.";
+      };
+
+      const buildMotionPrompt = (motion: string, scene: string): string => {
+        const fallbackMotion = motion || "slow cinematic camera push-in, subtle parallax";
+        const atmosphere = sceneAtmosphereCues(scene);
+        const productAnchor = productDescription
+          ? ` Product identity that MUST stay stable in EVERY frame (never change colour, material, cut, hardware, logo placement, or proportions): ${productDescription.slice(0, 200)}.`
+          : "";
+        // Three explicit lock layers + scene-aware cues. The product lock
+        // is the dominant instruction; everything else is "what to animate"
+        // around the locked subject.
+        return [
+          `PRODUCT LOCK (non-negotiable): the subject in the first frame is the hero — its colour, material, brand marks, accessories, hands position MUST remain pixel-stable across ALL frames. Do NOT introduce, remove, or restyle any object that wasn't in the first frame. No coffee cup appearing, no jacket changing colour.${productAnchor}`,
+          `SCENE LOCK: keep the scene shown in the first frame IDENTICAL — animate the world around it, do not regenerate it.`,
+          `MOTION (camera + environment ONLY, never the product): ${fallbackMotion}. ${atmosphere}`,
+          `Scene: ${scene.slice(0, 200)}.`,
+        ].join("\n\n");
+      };
+
+      // Map our per-pack videoDuration ("3s" | "5s" | "8s") to Kling's
+      // allowed integer durations (5 or 10) and Luma's "5s" | "9s" strings.
+      const klingDurationFor = (d: string): number => (d === "8s" ? 10 : 5);
+
+      // Kling 2.1 Pro via Higgsfield — primary video provider for Surprise
+      // Me. Better product fidelity and motion coherence than Luma Ray
+      // Flash 2; ~$0.12 vs $0.08. We keep Luma as fallback so a missing
+      // HIGGSFIELD_API_KEY or a transient 5xx still ships a clip.
+      const runKlingI2v = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string })
+        : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
+        const tK = Date.now();
+        // Bail early when the key isn't configured — avoids a noisy throw.
+        if (!Deno.env.get("HIGGSFIELD_API_KEY") || !Deno.env.get("HIGGSFIELD_API_SECRET")) {
+          return { ok: false, error: "HIGGSFIELD keys not configured" };
+        }
+        try {
+          const prompt = buildMotionPrompt(opts.motion, opts.scene);
+          // Kling on Higgsfield expects { prompt, image_url, duration, aspect_ratio }
+          const klingAr: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:5": "9:16", "3:4": "9:16", "4:3": "16:9", "3:2": "16:9", "2:3": "9:16" };
+          const submitBody = {
+            prompt,
+            image_url: opts.imageUrl,
+            duration: klingDurationFor(opts.duration),
+            aspect_ratio: klingAr[opts.aspectRatio] || "1:1",
+          };
+          const submit = await hfFetchWithFallback(["kling-video/v2.1/pro/image-to-video"], submitBody, "surprise-me:kling");
+          if (!submit.ok) {
+            logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+            return { ok: false, error: submit.error };
+          }
+          const requestId = submit.data.request_id;
+          // Poll up to 5 min — Kling 2.1 Pro typically completes in 60-180s
+          const pollStart = Date.now();
+          while (Date.now() - pollStart < 300_000) {
+            await new Promise((r) => setTimeout(r, 4_000));
+            try {
+              const statusUrl = `${HIGGSFIELD_BASE}/requests/${requestId}/status`;
+              const pollRes = await fetch(statusUrl, { headers: higgsHeaders(), signal: AbortSignal.timeout(15_000) });
+              if (!pollRes.ok) continue;
+              const data = await pollRes.json();
+              const status = String(data.status || "").toLowerCase();
+              if (status === "completed") {
+                const videoUrl = data.video?.url || data.output?.video?.url || "";
+                if (!videoUrl) {
+                  logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+                  return { ok: false, error: "Kling completed but no video URL" };
+                }
+                logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: getProviderCost("higgsfield/kling-v2.1-pro-i2v", "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tK, userId: user.id, success: true, campaignSlug }).catch(() => {});
+                return { ok: true, url: videoUrl, provider: "higgsfield/kling-v2.1-pro-i2v" };
+              }
+              if (status === "failed" || status === "error" || status === "nsfw") {
+                logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+                return { ok: false, error: `Kling ${status}: ${data.error || ""}` };
+              }
+            } catch {}
+          }
+          logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+          return { ok: false, error: "Kling timed out (>5 min)" };
+        } catch (err: any) {
+          return { ok: false, error: String(err?.message || err) };
+        }
+      };
+
       const runRayVideo = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string })
         : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
         const tRay = Date.now();
         try {
-          const motion = opts.motion || "slow cinematic push-in, subtle parallax, gentle light breathing";
-          const prompt = `${motion}. The subject stays photo-real and identical to the first frame; only the surrounding world moves. Scene: ${opts.scene.slice(0, 240)}.`;
+          const prompt = buildMotionPrompt(opts.motion, opts.scene);
           const body: any = {
             prompt,
             model: "ray-flash-2",
@@ -9929,6 +10027,17 @@ OUTPUT JSON:
         }
       };
 
+      // Primary path = Kling 2.1 Pro (better product consistency, real
+      // scene awareness). Falls back to Luma Ray Flash 2 if Kling fails
+      // for any reason — never lets a video shot fail when Luma still has
+      // a chance.
+      const runVideoForShot = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string }) => {
+        const k = await runKlingI2v(opts);
+        if (k.ok) return k;
+        console.log(`[surprise-me:film] kling failed (${k.error}) — falling back to Luma Ray Flash 2`);
+        return await runRayVideo(opts);
+      };
+
       // Parallel film generation — concurrency 2 because each clip is heavy.
       // Only animate shots whose per-job format is "film" (the rest stay as
       // pure image deliverables for image-first platforms).
@@ -9939,7 +10048,7 @@ OUTPUT JSON:
       for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
         await Promise.all(slice.map(async ({ it, idx, job }) => {
-          const r = await runRayVideo({
+          const r = await runVideoForShot({
             imageUrl: it.imageUrl!,
             motion: job!.motion,
             aspectRatio: it.aspectRatio,
