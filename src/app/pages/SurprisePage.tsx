@@ -180,8 +180,10 @@ function SurpriseContent() {
   // current month. User clicks a card, campaign runs. Zero typing.
   // If the fetch fails (no vault, no LLM key, network) we silently fall
   // through to the inline-fields brief UI.
+  type ShotIdea = { type: "scene" | "packshot-promo" | "text-card"; line: string };
   type AngleSuggestion = {
     id: string; emoji: string; title: string; subtitle: string; brief: string;
+    shotIdeas?: ShotIdea[];
     platforms: string[]; creativityLevel: number; assetCount: number;
   };
   const [anglesLoading, setAnglesLoading] = useState(false);
@@ -720,7 +722,18 @@ function SurpriseContent() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
-                    {suggestedAngles.map((a, i) => (
+                    {suggestedAngles.map((a, i) => {
+                      // Compose the brief sent to surprise-me. When shotIdeas
+                      // are present, append them so the planner knows the
+                      // exact mix of scenes / packshot-promo / text-cards
+                      // the angle promised — keeps the pack faithful to the
+                      // card the user clicked.
+                      const ideasBlock = (a.shotIdeas && a.shotIdeas.length > 0)
+                        ? "\n\nShot ideas (mix scenes + packshot-promo + text-cards as listed):\n"
+                          + a.shotIdeas.map((s) => `- [${s.type}] ${s.line}`).join("\n")
+                        : "";
+                      const composedBrief = `${a.brief}${ideasBlock}`;
+                      return (
                       <motion.button
                         key={a.id}
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -735,7 +748,7 @@ function SurpriseContent() {
                           // silently overrode the slider: asking for 2 assets
                           // would surface 6-8 because that's what the LLM
                           // returned per angle.)
-                          brief: a.brief,
+                          brief: composedBrief,
                         })}
                         className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
@@ -749,9 +762,30 @@ function SurpriseContent() {
                           {a.title}
                         </h3>
                         {a.subtitle && (
-                          <p className="text-[13.5px] leading-snug mb-5" style={{ color: COLORS.muted }}>
+                          <p className="text-[13.5px] leading-snug mb-4" style={{ color: COLORS.muted }}>
                             {a.subtitle}
                           </p>
+                        )}
+                        {/* Shot ideas — concrete scene + typo creations the
+                            angle will produce. Mix is decided server-side
+                            and respects the brief (sale → more packshot-promo,
+                            quote/hiring → more text-cards, default → 3 scenes
+                            + 1-2 packshot-promo + 0-1 text-card). */}
+                        {a.shotIdeas && a.shotIdeas.length > 0 && (
+                          <ul className="mb-5 space-y-1.5">
+                            {a.shotIdeas.slice(0, 5).map((s, k) => (
+                              <li key={k} className="flex items-start gap-2 text-[12.5px] leading-snug" style={{ color: COLORS.muted }}>
+                                <span className="shrink-0 mt-[2px] px-1.5 py-[1px] rounded text-[9px] font-mono uppercase tracking-wider"
+                                      style={{
+                                        background: s.type === "packshot-promo" ? "#FFE9DD" : s.type === "text-card" ? "#E8E5FF" : "#EAF2FF",
+                                        color:      s.type === "packshot-promo" ? "#B43D11" : s.type === "text-card" ? "#3F2EB5" : "#1E4FA8",
+                                      }}>
+                                  {s.type === "packshot-promo" ? "promo" : s.type === "text-card" ? "typo" : "scene"}
+                                </span>
+                                <span>{s.line}</span>
+                              </li>
+                            ))}
+                          </ul>
                         )}
                         {/* Show the user's actual settings on the card so
                             they know what the angle will produce. */}
@@ -763,7 +797,8 @@ function SurpriseContent() {
                           <span>level {creativity}</span>
                         </div>
                       </motion.button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>
