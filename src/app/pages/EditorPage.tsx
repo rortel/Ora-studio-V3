@@ -218,9 +218,18 @@ function EditorAgency() {
       toast.error("No logo in your Brand Vault. Upload one there first.");
       return;
     }
+    // External logo URLs (the brand's own CDN, e.g. wp-content uploads)
+    // typically don't return Access-Control-Allow-Origin, so Konva can't
+    // load them onto the canvas. Route them through our /image-proxy
+    // which adds the CORS header. URLs already on our Supabase storage
+    // are passed through untouched.
+    const isOurStorage = vaultLogoUrl.includes("supabase") || vaultLogoUrl.includes("make-cad57f79") || vaultLogoUrl.startsWith("data:") || vaultLogoUrl.startsWith("blob:");
+    const safeLogoUrl = isOurStorage
+      ? vaultLogoUrl
+      : `${API_BASE}/image-proxy?url=${encodeURIComponent(vaultLogoUrl)}`;
     const W = p.project.width, H = p.project.height;
     const size = Math.round(W * 0.15);
-    const layer = createLogoLayer(vaultLogoUrl, {
+    const layer = createLogoLayer(safeLogoUrl, {
       name: "Logo",
       spatial: { ...createDefaultSpatial(), x: W - size - 40, y: H - size - 40, width: size, height: size },
     });
@@ -465,17 +474,33 @@ function EditorAgency() {
                 {/* Canvas background */}
                 <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" listening={false} />
                 {/* Optional preloaded asset — ternary (not &&) so react-konva
-                 *  never sees a `false` child in its Layer tree. */}
-                {backgroundImg ? (
-                  <KonvaImage
-                    image={backgroundImg}
-                    x={0}
-                    y={0}
-                    width={p.project.width}
-                    height={p.project.height}
-                    listening={false}
-                  />
-                ) : null}
+                 *  never sees a `false` child in its Layer tree.
+                 *  Aspect-preserving fit (object-fit: cover): scale the image
+                 *  to fill the canvas while preserving its native aspect, and
+                 *  centre-crop any overflow. Without this the image stretched
+                 *  whenever the user picked a different format (e.g. 1:1 →
+                 *  16:9 squashed the cake horizontally). */}
+                {backgroundImg ? (() => {
+                  const cw = p.project.width;
+                  const ch = p.project.height;
+                  const iw = backgroundImg.width || cw;
+                  const ih = backgroundImg.height || ch;
+                  const scale = Math.max(cw / iw, ch / ih);
+                  const drawW = iw * scale;
+                  const drawH = ih * scale;
+                  const dx = (cw - drawW) / 2;
+                  const dy = (ch - drawH) / 2;
+                  return (
+                    <KonvaImage
+                      image={backgroundImg}
+                      x={dx}
+                      y={dy}
+                      width={drawW}
+                      height={drawH}
+                      listening={false}
+                    />
+                  );
+                })() : null}
 
                 {/* User layers — insertion order = z-index */}
                 {p.project.layers.filter((l) => l.visible).map((layer) => (
