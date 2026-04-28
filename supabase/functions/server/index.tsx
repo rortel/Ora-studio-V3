@@ -9611,7 +9611,7 @@ OUTPUT JSON:
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. NO text rendered on the image. — for type='packshot-promo': prompt 50-100 words. The product reference photo IS provided to Ideogram Remix; describe (1) the scene/background/light around it, (2) the EXACT text strings to render in quotes (3-8 words total, e.g. \"NEW DROP\" / \"-20% TODAY\" / \"FREE SHIPPING\" / \"MAY 12\"), (3) the typographic feel (bold sans / serif / condensed display) and where it sits in frame (top-left badge, bottom band, corner sticker), (4) brand palette colours by name for the text and any graphic accent. The product itself stays recognizable. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render in quotes (3-15 words total, like \"NEW DROP\\nMAY 12\"), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
+      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. NO text rendered on the image. If a person is in the scene, describe a coherent setting around them (location, light, time of day, body language) — never a flat-lay or floating product. — for type='packshot-promo': prompt 60-110 words. The product reference photo IS provided to Ideogram Remix; describe (1) the EDITORIAL CAMPAIGN scene around the product (lifestyle context, solid brand-colour field, gradient, store-window setup — NOT a generic cream studio background), (2) the EXACT text strings to render in quotes (3-8 words total, e.g. \"NEW DROP\" / \"-20% TODAY\" / \"FREE SHIPPING\" / \"MAY 12\"), (3) the typographic treatment — MUST be one of: 'large hero headline running across the top third', 'bold full-width sale band along the bottom', 'oversized display number block', 'magazine cover masthead'. NEVER 'corner sticker', 'small badge', 'tiny watermark'. The text must occupy 15-30% of the canvas, (4) brand palette colours by name for the text and any graphic accent. The product stays recognizable but the composition is a poster, not a product-page screenshot. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render in quotes (3-15 words total, like \"NEW DROP\\nMAY 12\"), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
       "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card and packshot-promo types (those are static)."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
@@ -9770,13 +9770,17 @@ OUTPUT JSON:
         ? `BRAND LOCK (rendered text and any graphic accents must use these): ${parts.join(" · ")}.`
         : `BRAND LOCK: clean modern typography, neutral palette, no random colours.`;
     })();
-    // Detect apparel/wearable once per run from the enriched product
-    // description. When true, type='product' shots route to Ideogram Remix
-    // (instead of Photoroom Studio AI) because Photoroom can't generate the
-    // wearer — it only cuts out a rigid product. For apparel the cut-out is
-    // either headless or visibly awkward. Ideogram Remix preserves the
-    // garment (image_weight=85) while rebuilding a coherent person + scene.
-    const productIsApparel = !!productRef && isApparelOrWearable("", "", productDescription);
+    // Apparel/wearable detection runs at TWO levels:
+    //  1. Once per pack from productDescription — captures cases where the
+    //     user wrote "Lacoste tracksuit jacket" in the brief.
+    //  2. Per-job from the planner's promptText/scene — captures cases where
+    //     the description is vague but the planner generated a "model wearing
+    //     the polo / homme portant la veste" prompt for a specific shot.
+    // Either signal flips a 'product' shot onto the Ideogram Remix path.
+    // Required because Photoroom Studio AI can't generate the wearer; on a
+    // packshot source it produces incoherent compositions (folded garment on
+    // a barbecue table, etc.).
+    const productDescIsApparel = !!productRef && isApparelOrWearable("", "", productDescription);
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
       videoFileName?: string;
@@ -9784,7 +9788,7 @@ OUTPUT JSON:
       status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
       error?: string; provider?: string; videoProvider?: string;
     }> = [];
-    if (productIsApparel) console.log(`[surprise-me] apparel detected (desc="${productDescription.slice(0, 60)}") → product shots route to Ideogram Remix`);
+    if (productDescIsApparel) console.log(`[surprise-me] apparel detected from description="${productDescription.slice(0, 60)}" → product shots route to Ideogram Remix`);
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const batch = jobs.slice(i, i + CONCURRENCY);
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
@@ -9815,15 +9819,17 @@ OUTPUT JSON:
           // photo with a brand-coded promo overlay rendered onto the image
           // ("NEW DROP", "-20%", "FREE SHIPPING"). Photoroom can't render
           // legible text — Ideogram is the only model that does it without
-          // typos. image_weight=80 keeps the product recognizable while
-          // letting Ideogram render the typography cleanly.
+          // typos. image_weight=70 (was 80): high enough to keep the product
+          // identity locked but low enough that Ideogram actually composes a
+          // proper editorial poster instead of just slapping a corner sticker
+          // onto the source packshot.
           if (job.type === "packshot-promo" && productRef) {
-            const promoPrompt = `${brandLockHint}\n\nFRAMING SAFETY: never crop the product, never crop a person's head; keep generous margin around the rendered text so it stays readable. The product photo is the hero — preserve its colour, material and cut.\n\n${job.promptText}`;
+            const promoPrompt = `${brandLockHint}\n\nDESIGN DIRECTION: this is an EDITORIAL CAMPAIGN POSTER, not a product page screenshot. The promo text MUST be rendered LARGE and CONFIDENT — a hero headline, a full-width sale band, or a bold display block — anchored prominently in the composition. NEVER a tiny corner sticker, never a small badge in the top-left, never a watermark. Think magazine cover, store window decal, or campaign key visual. Aim for typography that occupies 15-30% of the canvas and reads clearly at thumbnail size.\n\nSCENE DIRECTION: do not preserve the reference photo's flat studio background. Build a deliberate composition for the promo — solid brand colour field, gradient, lifestyle context, or a strong graphic background — that frames the product and the text together. The reference photo is there ONLY to lock the product's recognizable identity (colour, material, cut, brand marks).\n\nFRAMING SAFETY: never crop the product, never crop a person's head, keep generous margin around the rendered text so it stays readable.\n\n${job.promptText}`;
             const remix = await runIdeogramRemixOnRef({
               productImageUrl: productRef,
               prompt: promoPrompt,
               aspectRatio: job.aspectRatio,
-              imageWeight: 80,
+              imageWeight: 70,
               styleType: "REALISTIC",
               userId: user.id,
               campaignSlug,
@@ -9855,16 +9861,26 @@ OUTPUT JSON:
           if (productRef) {
             // Apparel / wearable shots: Ideogram Remix beats Photoroom Studio.
             // Photoroom only does a cutout + bg paste, which awkwardly crops
-            // the wearer (head missing, half-arm). Ideogram regenerates a
-            // coherent person while preserving the garment's identity at
-            // image_weight=85.
-            if (productIsApparel) {
-              const apparelPrompt = `FRAMING SAFETY: full-body or half-body, head fully visible with clear margin above, never crop the head or face. Preserve the garment's exact colour, material and cut from the reference photo.\n\n${job.promptText}`;
+            // the wearer (head missing, half-arm) or pastes a flat packshot
+            // into a scene (folded garment on a barbecue table). Ideogram
+            // regenerates a coherent person + scene while preserving the
+            // garment's identity. Per-job re-check lets us catch shots whose
+            // promptText explicitly says "model wearing X" even when the
+            // description was vague.
+            const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
+            const jobIsApparel = productDescIsApparel || isApparelOrWearable("", "", jobScene);
+            if (jobIsApparel) {
+              // image_weight=65 (was 85): high enough to keep the garment
+              // recognizable, low enough to actually regenerate the scene.
+              // 85 was too sticky — Ideogram was just preserving the source
+              // packshot bg with a tiny overlay instead of rebuilding the
+              // shot. 65 lets the model invent a real scene + wearer.
+              const apparelPrompt = `REGENERATE THE FULL SCENE — do not preserve the reference photo's background, framing, or absence of a model. The reference photo is ONLY there to lock the garment's recognizable identity (colour, material, cut, brand marks). Build a fresh photo: a real wearer in a real setting matching the brief.\n\nFRAMING SAFETY: full-body or half-body composition, head fully visible with clear margin above the head, never crop face or head, never crop the product. Photographic, editorial, no flat-lay, no cream studio background unless the brief explicitly asks for studio.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
                 aspectRatio: job.aspectRatio,
-                imageWeight: 85,
+                imageWeight: 65,
                 styleType: "REALISTIC",
                 userId: user.id,
                 campaignSlug,
