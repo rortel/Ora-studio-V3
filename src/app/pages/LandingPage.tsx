@@ -757,6 +757,11 @@ export function LandingPage() {
   // list exclusively (campaigns were only needed by the removed Gallery
   // panel, which the Ship mockup already covers).
   const [showcase, setShowcase] = useState<ShowcaseAsset[]>([]);
+  // Tracks whether the /showcase/featured fetch has resolved (success
+  // or empty). Used by panelMedia to decide whether to fall back to the
+  // bundled rose-petals video — only after the fetch completes empty,
+  // never DURING the fetch (which would flash the wrong video).
+  const [showcaseLoaded, setShowcaseLoaded] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -766,19 +771,31 @@ export function LandingPage() {
         if (cancelled) return;
         if (d?.success && Array.isArray(d.items)) setShowcase(d.items);
       } catch { /* ignore — fallbacks cover us */ }
+      finally { if (!cancelled) setShowcaseLoaded(true); }
     })();
     return () => { cancelled = true; };
   }, []);
 
   // Pick the 4 dark-cinematic panel media from admin-featured assets in
-  // order: first = hero, then Drop / Pick / Ship. Any slot that isn't
-  // populated falls back to the bundled heroVideo so the page never
-  // renders a black hole.
+  // order: first = hero, then Drop / Pick / Ship. While the /showcase
+  // fetch is in flight we render NO video and NO image — just the cream
+  // section background underneath the gradient. Was previously falling
+  // back to a bundled rose-petal heroVideo, which produced a visible
+  // "wrong-video flash" before the admin-featured video swapped in. The
+  // bundled video is kept only as a last-ditch when showcase ends up
+  // empty (404, network failure, no admin curation).
   const panelMedia = (idx: number) => {
     const a = showcase[idx];
-    if (!a) return { videoSrc: heroVideo, posterSrc: undefined as string | undefined, imageSrc: undefined as string | undefined };
-    if (a.videoUrl) return { videoSrc: a.videoUrl, posterSrc: a.imageUrl, imageSrc: undefined };
-    return { videoSrc: undefined, posterSrc: undefined, imageSrc: a.imageUrl };
+    if (a) {
+      if (a.videoUrl) return { videoSrc: a.videoUrl, posterSrc: a.imageUrl, imageSrc: undefined };
+      return { videoSrc: undefined, posterSrc: undefined, imageSrc: a.imageUrl };
+    }
+    // While the fetch is loading: render no media. Only fall back to the
+    // bundled video once the fetch has resolved AND returned nothing.
+    if (showcaseLoaded && showcase.length === 0) {
+      return { videoSrc: heroVideo, posterSrc: undefined as string | undefined, imageSrc: undefined as string | undefined };
+    }
+    return { videoSrc: undefined, posterSrc: undefined, imageSrc: undefined };
   };
   // Hero uses the first admin-featured asset (or heroVideo fallback) —
   // the Drop/Pick/Ship panels don't consume showcase[1..3] anymore
