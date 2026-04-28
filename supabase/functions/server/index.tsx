@@ -9125,7 +9125,12 @@ INCLUDE:
 - distinctive details (logo placement, embroidery, stitching, hardware, prints, labels)
 - branding marks if visible (wordmark, monogram, tonal embroidery)
 
-OUTPUT: ONE paragraph, 80-160 words, factual. NO bullets, NO marketing copy, NO "this elegant…". Pure descriptive prose. ${userHint ? `User-provided hint (use to disambiguate, do not override what you SEE): "${userHint}"` : ""}`;
+EXCLUDE — ABSOLUTE BANS:
+- DO NOT describe the model / wearer / hand-owner. Their perceived ethnicity, race, gender, age, body type, hair, or face are NOT part of the product. If a person appears in the frame, ignore them entirely. Describe the product only.
+- DO NOT use marketing language ("elegant", "timeless", "iconic", "sophisticated", "refined", "stunning", "this beautiful…").
+- NO bullets, NO emojis, NO "this elegant…", NO opinion.
+
+OUTPUT: ONE paragraph, 80-160 words, factual descriptive prose about the PRODUCT only. ${userHint ? `User-provided hint (use to disambiguate, do not override what you SEE): "${userHint}"` : ""}`;
 
     const visionContent: any[] = [{ type: "text", text: "Describe this product." }];
     for (const url of imageUrls) {
@@ -9577,6 +9582,14 @@ CRITICAL PRODUCT-FIDELITY RULES:
 - Every promptText MUST explicitly describe the product by colour, material and cut matching the reference photo. Example: if the reference is "lavender pink piqué polo, slim fit, tonal crocodile embroidery", those exact descriptors belong in every shot's promptText.
 - Do NOT invent variants, alternate colours or styling tweaks between shots. The product is identical across the pack; only the scene around it changes.
 - When a shot removes the product from the model (hangers, packshots, flat-lays), still describe the polo exactly as in the reference — the subject is the SAME garment.
+- FRAMING SAFETY: every shot showing a person must include the FULL relevant body (head + torso + arms + product). Never crop a person mid-face, mid-arm, or below the chest in a way that looks accidental. If the platform aspect demands tight framing, choose a packshot or detail shot instead of a half-cropped human.
+
+CRITICAL ANTI-BIAS / ETHICS RULES (NON-NEGOTIABLE — BRAND LIABILITY):
+- The model in the reference photo (if any) is wearing the product. THEIR APPEARANCE (perceived ethnicity, race, gender, age, body type) MUST NOT INFLUENCE the activities, settings, or poses you propose. EVER.
+- Do NOT propose stereotyped activities tied to a model's perceived ethnicity. EXAMPLES OF WHAT IS BANNED: martial arts / kung fu / karate poses for Asian models; basketball / hip-hop / urban dance for Black models; flamenco / siesta / mariachi tropes for Latino models; baguette / beret / mime gestures for white French models. ANY scene where the activity is racially coded is rejected.
+- Scenes are driven by the BRAND, the PRODUCT, the SEASON, and the user's BRIEF — never by the model's apparent identity. If the brand is Lacoste, scenes are tennis-adjacent / Riviera / yachting / preppy regardless of who's wearing the polo. If the brand has no sport heritage, default to neutral lifestyle (café, walking the city, working from a desk, having dinner with friends).
+- Do NOT mention ethnicity, race, nationality, or culturally-specific descriptors of the model in promptText, scene, subject, or caption. The model is "a person" / "a woman" / "a man" / "the wearer" — never "a Japanese man" / "a Latina woman" / etc.
+- If the brand explicitly markets to a specific cultural moment (Lunar New Year for an Asian-targeted brand, etc.), that's a legitimate brief input — but it comes from the BRAND, not from inferring the model's ethnicity.
 
 PLATFORM SHOT LIST (${totalShots} shots total):
 ${platformBrief}
