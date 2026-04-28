@@ -70,8 +70,13 @@ function CinematicPanel({
   // edge reveals when y-translated.
   const mediaY = useTransform(scrollYProgress, [0, 1], ["-10%", "10%"]);
   // Title slides up and fades as the viewport moves past.
-  const textY = useTransform(scrollYProgress, [0, 0.5, 1], [60, 0, -60]);
-  const textOpacity = useTransform(scrollYProgress, [0, 0.18, 0.78, 1], [0, 1, 1, 0]);
+  // Text starts FULLY visible on first paint — was [0,0.18,0.78,1] →
+  // [0,1,1,0] which left the title invisible until the user scrolled
+  // 18%, producing a "flash of bare video / rose petals" before the
+  // hero copy appeared. Now: visible immediately, fades out only when
+  // scrolling past the section.
+  const textY = useTransform(scrollYProgress, [0, 0.5, 1], [0, 0, -60]);
+  const textOpacity = useTransform(scrollYProgress, [0, 0.78, 1], [1, 1, 0]);
 
   const hasVideo = !!videoSrc;
 
