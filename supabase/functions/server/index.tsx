@@ -9899,18 +9899,21 @@ OUTPUT JSON:
       };
 
       const buildMotionPrompt = (motion: string, scene: string): string => {
-        const fallbackMotion = motion || "slow cinematic camera push-in, subtle parallax";
+        const fallbackMotion = motion || "extremely slow camera push-in over the full duration, no zoom out, no cuts, no panning";
         const atmosphere = sceneAtmosphereCues(scene);
         const productAnchor = productDescription
           ? ` Product identity that MUST stay stable in EVERY frame (never change colour, material, cut, hardware, logo placement, or proportions): ${productDescription.slice(0, 200)}.`
           : "";
-        // Three explicit lock layers + scene-aware cues. The product lock
-        // is the dominant instruction; everything else is "what to animate"
-        // around the locked subject.
+        // Six explicit lock layers + scene-aware cues. We lead with three
+        // hard "do nots" because i2v models (especially cheaper tiers like
+        // Luma Ray Flash 2) tend to regenerate the entire scene if not
+        // strongly constrained.
         return [
-          `PRODUCT LOCK (non-negotiable): the subject in the first frame is the hero — its colour, material, brand marks, accessories, hands position MUST remain pixel-stable across ALL frames. Do NOT introduce, remove, or restyle any object that wasn't in the first frame. No coffee cup appearing, no jacket changing colour.${productAnchor}`,
-          `SCENE LOCK: keep the scene shown in the first frame IDENTICAL — animate the world around it, do not regenerate it.`,
-          `MOTION (camera + environment ONLY, never the product): ${fallbackMotion}. ${atmosphere}`,
+          `STRICT IMAGE-TO-VIDEO ANIMATION TASK. The first frame is FINAL — your job is to ANIMATE it, not to interpret or reimagine it.`,
+          `PRODUCT LOCK (non-negotiable): every visible element in the first frame — the wearer, the garment, brand marks, accessories, props, hands position — MUST remain pixel-stable across ALL frames. Do NOT introduce, remove, or restyle ANY object. No coffee cup appearing, no jacket changing colour, no new people walking in, no signs morphing.${productAnchor}`,
+          `SCENE LOCK: keep the scene shown in the first frame IDENTICAL. Same composition, same framing, same background, same colours. Animate the world around it — do not regenerate it.`,
+          `NO TEXT GENERATION: never render new text, signs, banners, logos or letters that weren't already legible in the first frame. Keep any existing text exactly as it appears.`,
+          `MOTION (camera + ambient atmosphere ONLY, never the subject): ${fallbackMotion}. ${atmosphere}`,
           `Scene: ${scene.slice(0, 200)}.`,
         ].join("\n\n");
       };
@@ -9919,59 +9922,52 @@ OUTPUT JSON:
       // allowed integer durations (5 or 10) and Luma's "5s" | "9s" strings.
       const klingDurationFor = (d: string): number => (d === "8s" ? 10 : 5);
 
-      // Kling 2.1 Pro via Higgsfield — primary video provider for Surprise
-      // Me. Better product fidelity and motion coherence than Luma Ray
-      // Flash 2; ~$0.12 vs $0.08. We keep Luma as fallback so a missing
-      // HIGGSFIELD_API_KEY or a transient 5xx still ships a clip.
+      // Kling 2.5 Turbo Pro via FAL — primary video provider for Surprise Me.
+      // Uses the existing FAL_API_KEY (already configured) instead of Higgsfield
+      // (keys not provisioned). Kling 2.5 is materially better than Luma Ray
+      // Flash 2 on i2v product fidelity and avoids the catastrophic scene-
+      // regeneration drift Luma exhibited on flat-lay sources.
+      // FAL queue API: POST submit -> poll status URL -> fetch response when COMPLETED.
       const runKlingI2v = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string })
         : Promise<{ ok: true; url: string; provider: string } | { ok: false; error: string }> => {
         const tK = Date.now();
-        // Bail early when the key isn't configured — avoids a noisy throw.
-        if (!Deno.env.get("HIGGSFIELD_API_KEY") || !Deno.env.get("HIGGSFIELD_API_SECRET")) {
-          return { ok: false, error: "HIGGSFIELD keys not configured" };
+        if (!Deno.env.get("FAL_API_KEY")) {
+          return { ok: false, error: "FAL_API_KEY not configured" };
         }
         try {
           const prompt = buildMotionPrompt(opts.motion, opts.scene);
-          // Kling on Higgsfield expects { prompt, image_url, duration, aspect_ratio }
-          const klingAr: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:5": "9:16", "3:4": "9:16", "4:3": "16:9", "3:2": "16:9", "2:3": "9:16" };
+          // Kling on FAL: { prompt, image_url, duration: "5"|"10" }
+          // (no aspect_ratio param — Kling derives from the input image)
           const submitBody = {
             prompt,
             image_url: opts.imageUrl,
-            duration: klingDurationFor(opts.duration),
-            aspect_ratio: klingAr[opts.aspectRatio] || "1:1",
+            duration: opts.duration === "8s" ? "10" : "5",
+            negative_prompt: "blur, distortion, distorted hands, distorted face, mutation, extra limbs, extra fingers, garbled text, watermark, logo change, product change, jacket change, scene change",
           };
-          const submit = await hfFetchWithFallback(["kling-video/v2.1/pro/image-to-video"], submitBody, "surprise-me:kling");
+          const submit = await callFalVideoStart("fal-ai/kling-video/v2.5-turbo/pro/image-to-video", submitBody);
           if (!submit.ok) {
-            logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+            logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: submit.error };
           }
-          const requestId = submit.data.request_id;
-          // Poll up to 5 min — Kling 2.1 Pro typically completes in 60-180s
+          // Poll up to 5 min (Kling 2.5 typically completes in 60-180s)
           const pollStart = Date.now();
           while (Date.now() - pollStart < 300_000) {
             await new Promise((r) => setTimeout(r, 4_000));
-            try {
-              const statusUrl = `${HIGGSFIELD_BASE}/requests/${requestId}/status`;
-              const pollRes = await fetch(statusUrl, { headers: higgsHeaders(), signal: AbortSignal.timeout(15_000) });
-              if (!pollRes.ok) continue;
-              const data = await pollRes.json();
-              const status = String(data.status || "").toLowerCase();
-              if (status === "completed") {
-                const videoUrl = data.video?.url || data.output?.video?.url || "";
-                if (!videoUrl) {
-                  logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-                  return { ok: false, error: "Kling completed but no video URL" };
-                }
-                logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: getProviderCost("higgsfield/kling-v2.1-pro-i2v", "video"), revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tK, userId: user.id, success: true, campaignSlug }).catch(() => {});
-                return { ok: true, url: videoUrl, provider: "higgsfield/kling-v2.1-pro-i2v" };
+            const status = await callFalVideoStatus(submit.statusUrl, submit.responseUrl);
+            if (status.state === "completed") {
+              if (!status.videoUrl) {
+                logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+                return { ok: false, error: "Kling completed but no video URL" };
               }
-              if (status === "failed" || status === "error" || status === "nsfw") {
-                logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-                return { ok: false, error: `Kling ${status}: ${data.error || ""}` };
-              }
-            } catch {}
+              logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0.10, revenueEur: REVENUE_PER_TYPE.video, latencyMs: Date.now() - tK, userId: user.id, success: true, campaignSlug }).catch(() => {});
+              return { ok: true, url: status.videoUrl, provider: "fal/kling-v2.5-turbo-pro-i2v" };
+            }
+            if (status.state === "failed" || status.state === "error") {
+              logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+              return { ok: false, error: `Kling ${status.state}: ${status.error || ""}` };
+            }
           }
-          logCost({ type: "video", model: "kling-v2.1-pro", provider: "higgsfield/kling-v2.1-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
+          logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
           return { ok: false, error: "Kling timed out (>5 min)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
@@ -10027,10 +10023,10 @@ OUTPUT JSON:
         }
       };
 
-      // Primary path = Kling 2.1 Pro (better product consistency, real
-      // scene awareness). Falls back to Luma Ray Flash 2 if Kling fails
-      // for any reason — never lets a video shot fail when Luma still has
-      // a chance.
+      // Primary path = Kling 2.5 Turbo Pro on FAL (better product consistency,
+      // good scene awareness, uses the FAL_API_KEY we already have).
+      // Falls back to Luma Ray Flash 2 if Kling fails for any reason — never
+      // lets a video shot fail when Luma still has a chance.
       const runVideoForShot = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string }) => {
         const k = await runKlingI2v(opts);
         if (k.ok) return k;
@@ -10038,12 +10034,30 @@ OUTPUT JSON:
         return await runRayVideo(opts);
       };
 
+      // Flat-lay / overhead / aerial shots are unsuited to image-to-video
+      // animation — every i2v model on the market regenerates the scene
+      // instead of animating it (because they're trained on horizontal-eye
+      // perspectives). We detect them by keyword in the scene/subject and
+      // ship them as static images instead, sparing the user a hallucinated
+      // clip that doesn't match the still.
+      const isFlatLayOrAerial = (scene: string, subject: string): boolean => {
+        const s = `${scene} ${subject}`.toLowerCase();
+        return /\b(flat-?lay|flat lay|top-?down|overhead|bird'?s[- ]?eye|aerial|drone shot|tabletop|surface arrangement|laid out on|knolling)\b/.test(s);
+      };
+
       // Parallel film generation — concurrency 2 because each clip is heavy.
-      // Only animate shots whose per-job format is "film" (the rest stay as
-      // pure image deliverables for image-first platforms).
+      // Only animate shots whose per-job format is "film" AND aren't flat-lay
+      // (the rest stay as pure image deliverables for image-first platforms).
       const filmable = items
         .map((it, idx) => ({ it, idx, job: jobs.find((j) => j.fileName === it.fileName) }))
-        .filter((x) => x.it.status === "ok" && x.it.imageUrl && x.job && x.job.format === "film");
+        .filter((x) => {
+          if (x.it.status !== "ok" || !x.it.imageUrl || !x.job || x.job.format !== "film") return false;
+          if (isFlatLayOrAerial(x.job.scene, x.job.subject)) {
+            console.log(`[surprise-me:film] skipping ${x.job.label} — flat-lay/aerial scenes can't be reliably animated by i2v models`);
+            return false;
+          }
+          return true;
+        });
       const FILM_CONCURRENCY = 2;
       for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
