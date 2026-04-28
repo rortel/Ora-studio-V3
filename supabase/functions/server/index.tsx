@@ -9563,7 +9563,8 @@ CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
-- EVERY shot MUST carry a concrete graphic/scene twist fitting the creativity level (a prop, a light move, an overlay, a scale play, a material swap, a composition dare). Randomize the twists so no two shots are identical moves.
+- EVERY shot MUST carry a concrete twist fitting the creativity level — but ONLY through the four allowed levers: (a) LIGHTING (golden-hour rake, hard backlight, neon spill, overcast soft light, candle warmth), (b) FRAMING/COMPOSITION (extreme low angle, top-down, off-centre rule-of-thirds, dutch tilt, negative-space heavy), (c) MOOD/TIME (dawn calm, midday heat, blue-hour stillness, night-life energy), (d) ENVIRONMENT (cobblestone street, marble counter, sun-bleached terrace). Randomize across the pack so no two shots use the same lever the same way.
+- BANNED TWIST TYPES (these render as fake AI-pasted artefacts, never use them): no "holographic rim light", no "ribbon overlay", no "floating sphere", no "glowing arc / streak / line", no "graphic prop", no "material swap on the product", no "scale play with oversized object next to the subject", no "inverted horizon". Twists must be PHOTOGRAPHIC choices a real photographer would make on set, not graphic-design overlays.
 - DIVERSITY ACROSS THE PACK is mandatory: vary the SETTING (urban / interior / outdoor / studio), the TIME OF DAY (golden hour / blue hour / night / overcast / harsh midday), the FRAMING (wide / mid / close / overhead), and the HUMAN PRESENCE (with a model / no model / hands only / silhouette / packshot). If you reuse the same model in every shot the pack reads as "AI slop" and the user gets a refund. Mix it up.
 - BANNED VOCABULARY across captions, scene, subject, promptText, campaignName, keyMessage, creativeAngle, tone — ZERO tolerance: "elegance", "elegant", "timeless", "timelessness", "iconic", "sophisticated", "sophistication", "refined", "celebrate", "essence", "embrace", "discover", "redefine", "redefined", "journey", "moments", "curated", "crafted", "art of", "love at first", "where * meets *", "effortless", "weightless", "speaks", "stand tall", "make a statement", "every angle", "every light". Any of these words trigger a rewrite. These are luxury-mag clichés that signal nothing.
 - CAPTIONS must read like a human posting, not a perfume ad. Use concrete nouns (places, objects, times, prices, dates), specific verbs (worn, paired, layered, dropped, shipped), and sentence structures a real person uses. Avoid abstract nouns and floaty adjectives. Bad: "Effortless elegance, redefined." Good: "The new lightweight zip — back in stock Friday." Bad: "Make a statement of timeless grace." Good: "Three colours. One cut. Pick yours."
@@ -9610,7 +9611,7 @@ OUTPUT JSON:
       "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1', 'quote-card', 'sale-tile'",
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
-      "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
+      "twistElement": "3-8 word label for the PHOTOGRAPHIC twist of THIS shot in ENGLISH — ONLY lighting, framing, mood, or environment levers. Examples: 'low angle golden hour', 'top-down marble counter', 'blue-hour cobblestone street', 'overcast soft light', 'neon backlight', 'dawn rooftop', 'rule-of-thirds negative space'. NEVER 'holographic rim light', 'ribbon overlay', 'floating sphere', 'glowing arc' — those produce hallucinated graphic objects on the image.",
       "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
       "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
@@ -9779,6 +9780,40 @@ OUTPUT JSON:
           }
 
           if (productRef) {
+            // Apparel/wearable detection: per-pack from the user's
+            // productDescription, and per-shot from the planner's scene/
+            // subject/promptText (catches cases where the description is
+            // vague but the planner generated a "model wearing X" scene).
+            const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
+            const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
+            if (jobIsApparel) {
+              // Apparel path → Ideogram Remix at image_weight=78. This is
+              // the sweet spot we calibrated: garment stays readably
+              // identical to the reference, but the model regenerates a
+              // FRESH wearer + scene so the pack reads as real life rather
+              // than the same Photoroom cutout pasted on different backdrops.
+              // The prompt leads with PRODUCT IDENTITY ANCHOR (verbatim
+              // description) + REGENERATE WEARER + SCENE LOCK.
+              const productAnchor = productDescription
+                ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
+                : "";
+              const apparelPrompt = `PRODUCT FIDELITY IS NON-NEGOTIABLE. The garment in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nREGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.\n\nREAL-LIFE SCENE: build a coherent setting with real interaction (a real café with other people, a real city street with passers-by, a real home with believable props). Avoid floating-product compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: full-body or half-body composition, head fully visible with clear margin above, never crop the face/head, never crop the product.\n\n${job.promptText}`;
+              const remix = await runIdeogramRemixOnRef({
+                productImageUrl: productRef,
+                prompt: apparelPrompt,
+                aspectRatio: job.aspectRatio,
+                imageWeight: 78,
+                userId: user.id,
+                campaignSlug,
+              });
+              if (remix) {
+                const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
+              }
+              console.log(`[surprise-me] apparel ideogram failed for ${job.label}, falling back to Photoroom Studio composite`);
+              // fall through to Photoroom Studio path below
+            }
+
             // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated)
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
@@ -9949,9 +9984,12 @@ OUTPUT JSON:
             logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: submit.error };
           }
-          // Poll up to 5 min (Kling 2.5 typically completes in 60-180s)
+          // Poll up to 2 min (Kling 2.5 typically completes in 60-90s).
+          // Was 5 min — caused 504 Gateway Timeouts on Supabase Edge when
+          // multiple clips were in flight. 2 min is enough for the happy
+          // path, and the user prefers a fast partial pack over a 504.
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 300_000) {
+          while (Date.now() - pollStart < 120_000) {
             await new Promise((r) => setTimeout(r, 4_000));
             const status = await callFalVideoStatus(submit.statusUrl, submit.responseUrl);
             if (status.state === "completed") {
@@ -9968,7 +10006,7 @@ OUTPUT JSON:
             }
           }
           logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Kling timed out (>5 min)" };
+          return { ok: false, error: "Kling timed out (>2 min)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -9999,7 +10037,7 @@ OUTPUT JSON:
           const g = await startRes.json();
           if (!g.id) return { ok: false, error: "Luma Ray: no generation id" };
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 240_000) { // 4 min cap per clip
+          while (Date.now() - pollStart < 90_000) { // 90s cap per clip — Luma Ray Flash 2 is fast, was 4 min and caused 504s
             try {
               const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
               if (pr.ok) {
@@ -10017,7 +10055,7 @@ OUTPUT JSON:
             await new Promise((r) => setTimeout(r, 3_000));
           }
           logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Luma Ray timed out (>4 min)" };
+          return { ok: false, error: "Luma Ray timed out (>90s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -10058,7 +10096,11 @@ OUTPUT JSON:
           }
           return true;
         });
-      const FILM_CONCURRENCY = 2;
+      // Concurrency 3 (was 2): with FAL Kling 2.5 the per-clip wait is
+      // ~90s, so 4 clips at concurrency 2 = 3 minutes (close to the
+      // Supabase Edge gateway timeout). At concurrency 3, same pack
+      // finishes in ~2 min — safer headroom against 504s.
+      const FILM_CONCURRENCY = 3;
       for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
         await Promise.all(slice.map(async ({ it, idx, job }) => {
@@ -10536,6 +10578,137 @@ async function runIdeogramTextCard(opts: {
     logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
     return null;
   }
+}
+
+// Ideogram v3 Remix on a product reference photo. Used for apparel /
+// wearable shots where Photoroom Studio AI's cutout-and-paste produces
+// an unrealistic "same person pasted on different backdrops" effect.
+// Ideogram regenerates a coherent NEW wearer + scene around the garment
+// — image_weight=78 is the sweet spot (we tried 65 = product drift, and
+// 85 = no scene change). Image-weight stays high enough to keep the
+// garment readably faithful, low enough for the model to invent real
+// life around it.
+async function runIdeogramRemixOnRef(opts: {
+  productImageUrl: string;
+  prompt: string;
+  aspectRatio?: string;
+  imageWeight?: number;
+  userId: string | null;
+  campaignSlug?: string;
+}): Promise<{ imageUrl: string; provider: string } | null> {
+  const t0 = Date.now();
+  const { productImageUrl, prompt, userId, campaignSlug } = opts;
+  const aspectRatio = opts.aspectRatio || "1:1";
+  const imageWeight = Math.max(50, Math.min(95, opts.imageWeight ?? 78));
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+  if (!ideogramKey) {
+    console.log(`[ideogram-remix] IDEOGRAM_API_KEY not set`);
+    return null;
+  }
+  const arMap: Record<string, string> = {
+    "1:1": "1x1", "16:9": "16x9", "9:16": "9x16",
+    "4:3": "4x3", "3:4": "3x4", "4:5": "4x5",
+    "3:2": "3x2", "2:3": "2x3",
+  };
+  const ideogramAspect = arMap[aspectRatio] || "1x1";
+  try {
+    // Re-upload external refs to our own storage so Ideogram can fetch
+    // them (some CDNs reject Ideogram's User-Agent).
+    let accessibleUrl = productImageUrl;
+    if (!productImageUrl.includes("supabase") && !productImageUrl.includes("make-cad57f79")) {
+      try {
+        const dlRes = await fetch(productImageUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)", "Accept": "image/*" },
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (dlRes.ok) {
+          const ct = dlRes.headers.get("content-type") || "image/jpeg";
+          const bytes = new Uint8Array(await dlRes.arrayBuffer());
+          if (bytes.length >= 5_000) {
+            const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+            const path = `generated/reupload/ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+            const sb = supabaseAdmin();
+            const { error: upErr } = await sb.storage.from("make-cad57f79-media").upload(path, bytes, { contentType: ct, upsert: true });
+            if (!upErr) {
+              const { data: signed } = await sb.storage.from("make-cad57f79-media").createSignedUrl(path, 60 * 60);
+              if (signed?.signedUrl) accessibleUrl = signed.signedUrl;
+            }
+          }
+        }
+      } catch (e) { console.log(`[ideogram-remix] re-upload skipped: ${e}`); }
+    }
+    const refRes = await fetch(accessibleUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!refRes.ok) throw new Error(`ref fetch ${refRes.status}`);
+    const refBlob = await refRes.blob();
+    const fd = new FormData();
+    fd.append("image", refBlob, "ref.png");
+    fd.append("prompt", String(prompt).slice(0, 800));
+    fd.append("image_weight", String(imageWeight));
+    fd.append("aspect_ratio", ideogramAspect);
+    fd.append("style_type", "REALISTIC");
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "DEFAULT");
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+      method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.log(`[ideogram-remix] ${res.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) {
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    // Persist to our bucket so the URL doesn't expire on the user.
+    const dl = await fetch(resultUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!dl.ok) {
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+      return { imageUrl: resultUrl, provider: "ideogram/v3-remix" };
+    }
+    const dlBlob = await dl.blob();
+    const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const storagePath = `generated/ideogram/${fileName}`;
+    const sb = supabaseAdmin();
+    const { error: upErr } = await sb.storage
+      .from("make-cad57f79-media")
+      .upload(storagePath, new Uint8Array(await dlBlob.arrayBuffer()), { contentType: "image/webp", upsert: true });
+    if (upErr) {
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+      return { imageUrl: resultUrl, provider: "ideogram/v3-remix" };
+    }
+    const { data: signedData } = await sb.storage.from("make-cad57f79-media").createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    const finalUrl = signedData?.signedUrl || resultUrl;
+    console.log(`[ideogram-remix] OK in ${Date.now() - t0}ms (weight=${imageWeight})`);
+    logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+    return { imageUrl: finalUrl, provider: "ideogram/v3-remix" };
+  } catch (err) {
+    console.log(`[ideogram-remix] error: ${err}`);
+    logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+    return null;
+  }
+}
+
+// Detect apparel / wearable / accessory products. When true, surprise-me
+// routes the image generation to Ideogram Remix (which regenerates a
+// fresh wearer + scene) instead of Photoroom Studio AI (which would
+// just paste the source person on different backdrops).
+function isApparelOrWearable(productCategory: string, productName: string, prompt: string): boolean {
+  const cat = (productCategory || "").toLowerCase();
+  const name = (productName || "").toLowerCase();
+  const promptLower = (prompt || "").toLowerCase();
+  const apparelCats = /\b(fashion|apparel|clothing|vetement|vêtement|mode|wear|tenue|streetwear|sport|sportswear|footwear|shoes|chaussures|accessory|accessoire|bag|sac|jewelry|bijou|hat|chapeau|swim|maillot|lingerie|underwear|eyewear|lunettes)\b/;
+  const apparelNames = /\b(t-?shirt|hoodie|jacket|veste|coat|manteau|dress|robe|pants|pantalon|jeans|shorts|sneakers|baskets|sweater|pull|tracksuit|survêt|polo|shirt|chemise|skirt|jupe|scarf|écharpe|cap|casquette|sunglasses)\b/;
+  const personCues = /\b(model|mannequin|wearing|porte|portant|on a person|sur (un|une) (homme|femme|mannequin))\b/;
+  return apparelCats.test(cat)
+      || apparelCats.test(name)
+      || apparelNames.test(name)
+      || apparelNames.test(promptLower)
+      || personCues.test(promptLower);
 }
 
 app.post("/compare/pixel-perfect-product", async (c) => {
