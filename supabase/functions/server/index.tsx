@@ -9606,13 +9606,13 @@ OUTPUT JSON:
   "shots": [
     {
       "platform": "one of: instagram-feed, instagram-story, linkedin, facebook, tiktok",
-      "type": "either 'product' (the photo IS the hero — packshot, lifestyle, scene) OR 'text-card' (typography is the hero — quote, save-the-date, recruitment, promo tile, tip-card, branded text). Default to 'product' when a reference photo is provided. Use 'text-card' when the message is text-driven (a discount, a quote, a call to action, hiring news, an event date) — about 1 in 6 shots in a typical pack benefits from a text-card change-of-pace.",
+      "type": "one of three (MUST pick the right one — do NOT default to 'product' just because a photo is provided): (a) 'product' = clean packshot or lifestyle scene, no text rendered on the image, the product photo is the hero. (b) 'packshot-promo' = the product photo IS still the hero BUT a short brand-coded promo line is rendered onto the image (e.g. 'NEW DROP', '-20%', 'FREE SHIPPING', 'BACK IN STOCK', 'MAY 12'). Use this for sale/launch/event/restock briefs and whenever a marketer would naturally add a sticker or callout. (c) 'text-card' = pure typography poster, no product photo at all (quote, save-the-date, recruitment ad, tip card). PACK COMPOSITION TARGETS for an 8-shot pack: 4-5 'product' + 1-2 'packshot-promo' + 1 'text-card' as a change-of-pace. Lean MORE on 'packshot-promo' when the brief mentions sale/discount/launch/drop/event/event-date/restock; lean MORE on 'text-card' when the message is purely textual (quote, hiring, announcement) and there's no product hero needed. Never compose a pack that is 100% 'product' — the planner has FAILED if every shot is type='product'.",
       "label": "kebab-case short label like 'hero', 'lifestyle-morning', 'packshot-hero', 'story-vertical-1', 'quote-card', 'sale-tile'",
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the graphic/scene twist of THIS shot in ENGLISH (e.g. 'holographic rim light', 'oversized floating sphere', 'ribbon overlay', 'vintage print grain', 'inverted horizon')",
-      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
-      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
+      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. NO text rendered on the image. — for type='packshot-promo': prompt 50-100 words. The product reference photo IS provided to Ideogram Remix; describe (1) the scene/background/light around it, (2) the EXACT text strings to render in quotes (3-8 words total, e.g. \"NEW DROP\" / \"-20% TODAY\" / \"FREE SHIPPING\" / \"MAY 12\"), (3) the typographic feel (bold sans / serif / condensed display) and where it sits in frame (top-left badge, bottom band, corner sticker), (4) brand palette colours by name for the text and any graphic accent. The product itself stays recognizable. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render in quotes (3-15 words total, like \"NEW DROP\\nMAY 12\"), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
+      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card and packshot-promo types (those are static)."${withCaption ? `,
       "caption": "short on-platform caption text in ${lang === "fr" ? "French" : "English"} (1-2 sentences, platform-appropriate voice, on-brand) that pairs with this shot. Include 1-3 relevant hashtags ONLY if the platform is instagram-feed, instagram-story or tiktok. Never add them to linkedin or facebook."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
@@ -9675,9 +9675,13 @@ OUTPUT JSON:
       twistElement: string; promptText: string; caption: string; fileName: string; videoFileName: string;
       motion: string;
       format: "image" | "film";
-      // 'product' = Photoroom Studio composite (preserves user's photo)
-      // 'text-card' = Ideogram text-card (typography-led, no photo preserve)
-      type: "product" | "text-card";
+      // 'product'        = Photoroom Studio composite (preserves user's photo) for rigid SKUs,
+      //                    Ideogram Remix on the ref for apparel/wearable (Photoroom can't
+      //                    generate the wearer).
+      // 'packshot-promo' = Ideogram Remix on the user's product photo with a brand-coded
+      //                    promo overlay rendered onto the image (NEW DROP, -20%, etc.).
+      // 'text-card'      = Ideogram text-card (typography-led, no product photo).
+      type: "product" | "packshot-promo" | "text-card";
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -9698,10 +9702,16 @@ OUTPUT JSON:
       const promptText   = String(sh?.promptText || "").trim();
       const caption      = withCaption ? String(sh?.caption || "").trim() : "";
       const motion       = format === "film" ? String(sh?.motion || "").trim() : "";
-      // Default to 'product' when LLM omits the type — keeps the existing
-      // pipeline behaviour for legacy shot lists. text-card needs to be
-      // explicit AND a non-film shot (text-cards aren't animated).
-      const type: "product" | "text-card" = (sh?.type === "text-card" && format !== "film") ? "text-card" : "product";
+      // Default to 'product' when the LLM omits the type — keeps the existing
+      // pipeline behaviour for legacy shot lists. text-card and packshot-promo
+      // need to be explicit AND non-film shots (they're static by nature).
+      // packshot-promo also requires a product reference photo — without one,
+      // we have nothing to remix and silently downgrade to text-card.
+      let type: "product" | "packshot-promo" | "text-card" = "product";
+      if (format !== "film") {
+        if (sh?.type === "text-card") type = "text-card";
+        else if (sh?.type === "packshot-promo") type = productRef ? "packshot-promo" : "text-card";
+      }
       if (!promptText) continue;
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
       const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}`;
@@ -9745,6 +9755,28 @@ OUTPUT JSON:
     // per fallback shot). First-batch races are acceptable: a few duplicate
     // cutouts in storage, only one reused.
     let cachedCutoutUrl: string | null = null;
+    // Brand-lock hint prepended to packshot-promo prompts so Ideogram renders
+    // the promo text in the brand's typographic universe (palette + fonts +
+    // logo placement) rather than generic stock typography. Falls back to a
+    // neutral "clean modern" hint when no Vault is connected.
+    const brandLockHint = (() => {
+      const parts: string[] = [];
+      const colors = (ctx?.colorNames?.length ? ctx.colorNames : ctx?.colorPalette) || [];
+      if (colors.length > 0) parts.push(`brand palette: ${colors.slice(0, 4).join(", ")}`);
+      if (ctx?.fonts && ctx.fonts.length > 0) parts.push(`brand typography feel: ${ctx.fonts.slice(0, 2).join(", ")}`);
+      if (ctx?.brandName) parts.push(`brand name: "${ctx.brandName}"`);
+      if (ctx?.graphicStyle) parts.push(`graphic style: ${ctx.graphicStyle}`);
+      return parts.length > 0
+        ? `BRAND LOCK (rendered text and any graphic accents must use these): ${parts.join(" · ")}.`
+        : `BRAND LOCK: clean modern typography, neutral palette, no random colours.`;
+    })();
+    // Detect apparel/wearable once per run from the enriched product
+    // description. When true, type='product' shots route to Ideogram Remix
+    // (instead of Photoroom Studio AI) because Photoroom can't generate the
+    // wearer — it only cuts out a rigid product. For apparel the cut-out is
+    // either headless or visibly awkward. Ideogram Remix preserves the
+    // garment (image_weight=85) while rebuilding a coherent person + scene.
+    const productIsApparel = !!productRef && isApparelOrWearable("", "", productDescription);
     const items: Array<{
       platform: string; aspectRatio: string; label: string; fileName: string;
       videoFileName?: string;
@@ -9752,6 +9784,7 @@ OUTPUT JSON:
       status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
       error?: string; provider?: string; videoProvider?: string;
     }> = [];
+    if (productIsApparel) console.log(`[surprise-me] apparel detected (desc="${productDescription.slice(0, 60)}") → product shots route to Ideogram Remix`);
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       const batch = jobs.slice(i, i + CONCURRENCY);
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
@@ -9778,7 +9811,72 @@ OUTPUT JSON:
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Text-card generation failed" };
           }
 
+          // packshot-promo branch: Ideogram Remix on the product reference
+          // photo with a brand-coded promo overlay rendered onto the image
+          // ("NEW DROP", "-20%", "FREE SHIPPING"). Photoroom can't render
+          // legible text — Ideogram is the only model that does it without
+          // typos. image_weight=80 keeps the product recognizable while
+          // letting Ideogram render the typography cleanly.
+          if (job.type === "packshot-promo" && productRef) {
+            const promoPrompt = `${brandLockHint}\n\nFRAMING SAFETY: never crop the product, never crop a person's head; keep generous margin around the rendered text so it stays readable. The product photo is the hero — preserve its colour, material and cut.\n\n${job.promptText}`;
+            const remix = await runIdeogramRemixOnRef({
+              productImageUrl: productRef,
+              prompt: promoPrompt,
+              aspectRatio: job.aspectRatio,
+              imageWeight: 80,
+              styleType: "REALISTIC",
+              userId: user.id,
+              campaignSlug,
+            });
+            if (remix) {
+              const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
+            }
+            // Ideogram failed — degrade gracefully to a clean Photoroom
+            // packshot (without the promo overlay). User still gets a usable
+            // shot rather than a hole in the pack.
+            console.log(`[surprise-me] packshot-promo ideogram failed for ${job.label}, falling back to Photoroom Studio (no overlay)`);
+            const composite = await runPixelPerfectComposite({
+              productImageUrl: productRef,
+              prompt: job.promptText,
+              aspectRatio: job.aspectRatio,
+              userId: user.id,
+              cachedCutoutUrl,
+              campaignSlug,
+            });
+            if (composite?.cutoutUrl && !cachedCutoutUrl) cachedCutoutUrl = composite.cutoutUrl;
+            if (composite) {
+              const persisted = await persistOne(composite.imageUrl, job.fileName, job.platform);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || composite.imageUrl, provider: `${composite.provider}+no-promo` };
+            }
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Packshot-promo generation failed" };
+          }
+
           if (productRef) {
+            // Apparel / wearable shots: Ideogram Remix beats Photoroom Studio.
+            // Photoroom only does a cutout + bg paste, which awkwardly crops
+            // the wearer (head missing, half-arm). Ideogram regenerates a
+            // coherent person while preserving the garment's identity at
+            // image_weight=85.
+            if (productIsApparel) {
+              const apparelPrompt = `FRAMING SAFETY: full-body or half-body, head fully visible with clear margin above, never crop the head or face. Preserve the garment's exact colour, material and cut from the reference photo.\n\n${job.promptText}`;
+              const remix = await runIdeogramRemixOnRef({
+                productImageUrl: productRef,
+                prompt: apparelPrompt,
+                aspectRatio: job.aspectRatio,
+                imageWeight: 85,
+                styleType: "REALISTIC",
+                userId: user.id,
+                campaignSlug,
+              });
+              if (remix) {
+                const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
+              }
+              console.log(`[surprise-me] apparel ideogram failed for ${job.label}, falling back to Photoroom Studio`);
+              // fall through to Photoroom Studio composite below
+            }
+
             // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated)
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
@@ -10238,7 +10336,10 @@ async function runPixelPerfectComposite(opts: {
       params.set("background.prompt", String(prompt).slice(0, 400));
       params.set("lighting.mode", "ai.preserve-hue-and-saturation");
       params.set("outputSize", outputSize);
-      params.set("padding", "0.08");
+      // padding 0.12 (was 0.08): gives more headroom around the cutout so
+      // models with hair / hats don't get clipped at the top of the canvas
+      // when the source ratio doesn't match the target aspect.
+      params.set("padding", "0.12");
       params.set("ignorePaddingAndSnapOnCroppedSides", "false");
       params.set("export.format", "webp");
 
@@ -10413,6 +10514,153 @@ async function runIdeogramTextCard(opts: {
     logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
     return null;
   }
+}
+
+// Ideogram v3 Remix on a product reference photo. Used for two cases that
+// Photoroom Studio AI can't handle:
+//   1. Apparel / wearable products — Photoroom does cutout + bg, but can't
+//      regenerate the wearer or fix awkward crops. Ideogram Remix keeps the
+//      garment recognizable (image_weight ~80-85) while regenerating the
+//      person + scene cleanly.
+//   2. packshot-promo shots — product packshot with brand-coded promo text
+//      rendered onto the image ("NEW DROP", "-20%", "FREE SHIPPING"). Photoroom
+//      can't render text; Ideogram is the only model that does it without typos.
+async function runIdeogramRemixOnRef(opts: {
+  productImageUrl: string;
+  prompt: string;
+  aspectRatio?: string;
+  imageWeight?: number;
+  styleType?: "REALISTIC" | "DESIGN" | "GENERAL";
+  userId: string | null;
+  campaignSlug?: string;
+}): Promise<{ imageUrl: string; provider: string } | null> {
+  const t0 = Date.now();
+  const { productImageUrl, prompt, userId, campaignSlug } = opts;
+  const aspectRatio = opts.aspectRatio || "1:1";
+  const imageWeight = Math.max(50, Math.min(95, opts.imageWeight ?? 80));
+  const styleType = opts.styleType || "REALISTIC";
+  const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
+  if (!ideogramKey) {
+    console.log(`[ideogram-remix] IDEOGRAM_API_KEY not set`);
+    return null;
+  }
+
+  const arMap: Record<string, string> = {
+    "1:1": "1x1", "16:9": "16x9", "9:16": "9x16",
+    "4:3": "4x3", "3:4": "3x4", "4:5": "4x5",
+    "3:2": "3x2", "2:3": "2x3",
+  };
+  const ideogramAspect = arMap[aspectRatio] || "1x1";
+
+  try {
+    // Re-upload external refs to our storage so Ideogram can fetch them
+    // reliably (some CDNs reject Ideogram's User-Agent).
+    let accessibleUrl = productImageUrl;
+    if (!productImageUrl.includes("supabase") && !productImageUrl.includes("make-cad57f79")) {
+      try {
+        const dlRes = await fetch(productImageUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; OraStudio/1.0)", "Accept": "image/*" },
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (dlRes.ok) {
+          const ct = dlRes.headers.get("content-type") || "image/jpeg";
+          const bytes = new Uint8Array(await dlRes.arrayBuffer());
+          if (bytes.length >= 5_000) {
+            const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+            const path = `generated/reupload/ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+            const sb = supabaseAdmin();
+            const { error: upErr } = await sb.storage.from("make-cad57f79-media").upload(path, bytes, { contentType: ct, upsert: true });
+            if (!upErr) {
+              const { data: signed } = await sb.storage.from("make-cad57f79-media").createSignedUrl(path, 60 * 60);
+              if (signed?.signedUrl) accessibleUrl = signed.signedUrl;
+            }
+          }
+        }
+      } catch (e) { console.log(`[ideogram-remix] re-upload skipped: ${e}`); }
+    }
+
+    const refRes = await fetch(accessibleUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!refRes.ok) throw new Error(`ref fetch ${refRes.status}`);
+    const refBlob = await refRes.blob();
+
+    const fd = new FormData();
+    fd.append("image", refBlob, "ref.png");
+    fd.append("prompt", String(prompt).slice(0, 800));
+    fd.append("image_weight", String(imageWeight));
+    fd.append("aspect_ratio", ideogramAspect);
+    fd.append("style_type", styleType);
+    fd.append("magic_prompt", "ON");
+    fd.append("rendering_speed", "DEFAULT");
+
+    const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
+      method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.log(`[ideogram-remix] ${res.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    const data = await res.json();
+    const resultUrl = data?.data?.[0]?.url;
+    if (!resultUrl) {
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+
+    // Persist to our bucket so the URL doesn't expire on the user.
+    const dl = await fetch(resultUrl, { signal: AbortSignal.timeout(20_000) });
+    if (!dl.ok) {
+      console.log(`[ideogram-remix] OK in ${Date.now() - t0}ms (returning provider URL)`);
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+      return { imageUrl: resultUrl, provider: "ideogram/v3-remix" };
+    }
+    const dlBlob = await dl.blob();
+    const fileName = `ideogram-remix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const storagePath = `generated/ideogram/${fileName}`;
+    const sb = supabaseAdmin();
+    const { error: upErr } = await sb.storage
+      .from("make-cad57f79-media")
+      .upload(storagePath, new Uint8Array(await dlBlob.arrayBuffer()), { contentType: "image/webp", upsert: true });
+    if (upErr) {
+      console.log(`[ideogram-remix] persist failed (${upErr.message}); returning provider URL`);
+      logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+      return { imageUrl: resultUrl, provider: "ideogram/v3-remix" };
+    }
+    const { data: signedData } = await sb.storage.from("make-cad57f79-media").createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    const finalUrl = signedData?.signedUrl || resultUrl;
+    console.log(`[ideogram-remix] OK in ${Date.now() - t0}ms (weight=${imageWeight}, style=${styleType})`);
+    logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: getProviderCost("ideogram/v3", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+    return { imageUrl: finalUrl, provider: "ideogram/v3-remix" };
+  } catch (err) {
+    console.log(`[ideogram-remix] error: ${err}`);
+    logCost({ type: "image", model: "ideogram-v3-remix", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+    return null;
+  }
+}
+
+// Detect whether a product shot is apparel / wearable / accessory — i.e. a
+// thing a person wears. Photoroom Studio AI can cut out a rigid product and
+// paste it on a generated background, but it can't generate the wearer. For
+// those shots Ideogram Remix is the right tool: it preserves the garment's
+// recognizable identity (image_weight ~80) while regenerating a coherent
+// person + scene around it.
+//
+// Returns true on apparel / wearable / accessory signals — false for rigid
+// SKUs (cosmetics jar, watch, packaging, hardware) where Photoroom is better.
+function isApparelOrWearable(productCategory: string, productName: string, prompt: string): boolean {
+  const cat = (productCategory || "").toLowerCase();
+  const name = (productName || "").toLowerCase();
+  const promptLower = (prompt || "").toLowerCase();
+  const apparelCats = /\b(fashion|apparel|clothing|vetement|vêtement|mode|wear|tenue|streetwear|sport|sportswear|footwear|shoes|chaussures|accessory|accessoire|bag|sac|jewelry|bijou|hat|chapeau|swim|maillot|lingerie|underwear|eyewear|lunettes)\b/;
+  const apparelNames = /\b(t-?shirt|hoodie|jacket|veste|coat|manteau|dress|robe|pants|pantalon|jeans|shorts|sneakers|baskets|sweater|pull|tracksuit|survêt|polo|shirt|chemise|skirt|jupe|scarf|écharpe|cap|casquette|sunglasses)\b/;
+  const personCues = /\b(model|mannequin|wearing|porte|portant|on a person|sur (un|une) (homme|femme|mannequin))\b/;
+  return apparelCats.test(cat)
+      || apparelCats.test(name)
+      || apparelNames.test(name)
+      || apparelNames.test(promptLower)
+      || personCues.test(promptLower);
 }
 
 app.post("/compare/pixel-perfect-product", async (c) => {
