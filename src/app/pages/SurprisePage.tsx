@@ -135,6 +135,26 @@ function SurpriseContent() {
   // finally clicks Generate from the style view, we fire handleSurprise
   // with the same brief they originally chose on the angle card.
   const [pendingBrief, setPendingBrief] = useState<string>("");
+  // Whether the style catalog has been seeded (≥1 image present in the
+  // manifest). Until an admin clicks "Seed" once, the gallery is empty —
+  // we skip the style step entirely and fire generation directly from
+  // the angle card so users never see misleading fallback tiles.
+  const [styleCatalogReady, setStyleCatalogReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/style-catalog/get`);
+        const d = await r.json();
+        if (cancelled) return;
+        const ready = !!(d?.success && Array.isArray(d.styles) && d.styles.some((s: any) =>
+          Array.isArray(s.examples) && s.examples.some((e: any) => !!e.imageUrl)
+        ));
+        setStyleCatalogReady(ready);
+      } catch { /* leave false — picker stays hidden, no harm */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // UI state
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
@@ -820,11 +840,17 @@ function SurpriseContent() {
                         onClick={() => {
                           // Angle card only contributes the creative brief —
                           // platforms / creativity / assetCount stay whatever
-                          // the user set in the product input form. We don't
-                          // fire generation yet: the user gets the StylePicker
-                          // gallery as a final visual choice before kickoff.
-                          setPendingBrief(a.brief);
-                          setIdleView("style");
+                          // the user set in the product input form. When the
+                          // style catalog has been seeded by an admin, route
+                          // through the StylePicker as a final visual choice;
+                          // otherwise fire generation directly so users don't
+                          // see misleading fallback tiles.
+                          if (styleCatalogReady) {
+                            setPendingBrief(a.brief);
+                            setIdleView("style");
+                          } else {
+                            handleSurprise({ brief: a.brief });
+                          }
                         }}
                         className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
