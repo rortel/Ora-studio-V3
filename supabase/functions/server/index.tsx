@@ -8663,7 +8663,7 @@ Rules:
             temperature: 0.3,
             response_format: { type: "json_object" },
           }),
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(30_000),
         });
         if (!res.ok) {
           console.log(`[reverse-prompt] OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -8720,7 +8720,7 @@ Rules:
             }],
             generationConfig: { maxOutputTokens: 1500, temperature: 0.3, responseMimeType: "application/json" },
           }),
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(25_000),
         });
         if (!res.ok) {
           console.log(`[reverse-prompt] Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -8748,15 +8748,34 @@ Rules:
       }
     };
 
-    let parsed = await tryOpenAI();
-    let provider: "openai" | "gemini" | null = parsed ? "openai" : null;
-    if (!parsed) {
-      parsed = await tryGemini();
-      if (parsed) provider = "gemini";
+    // Race the two providers in parallel — first one back with a usable
+    // result wins. Sequential was the old shape (OpenAI first, fallback
+    // to Gemini) but it makes the worst case = sum of both timeouts.
+    // When OpenAI Vision is slow (524 territory like today) the user
+    // saw the upload spinner hang for 55 s+ and the client AbortController
+    // fired before Gemini could even start. Parallel = worst case is
+    // max(30s, 25s) = 30 s, well inside the 90 s client cap.
+    let provider: "openai" | "gemini" | null = null;
+    let parsed: any = null;
+    const openaiP = tryOpenAI().then((r) => (r ? { provider: "openai" as const, parsed: r } : null));
+    const geminiP = tryGemini().then((r) => (r ? { provider: "gemini" as const, parsed: r } : null));
+    try {
+      const winner = await Promise.any([
+        openaiP.then((v) => v ?? Promise.reject(new Error("openai_null"))),
+        geminiP.then((v) => v ?? Promise.reject(new Error("gemini_null"))),
+      ]);
+      provider = winner.provider;
+      parsed = winner.parsed;
+    } catch {
+      // Both rejected (or both returned null) → settle for whichever
+      // did come back, preferring OpenAI's richer schema if both arrived.
+      const [oa, gm] = await Promise.allSettled([openaiP, geminiP]);
+      const pick = (oa.status === "fulfilled" && oa.value) || (gm.status === "fulfilled" && gm.value) || null;
+      if (pick) { provider = pick.provider; parsed = pick.parsed; }
     }
 
     if (!parsed || typeof parsed !== "object") {
-      return c.json({ success: false, error: "All vision providers failed" }, 502);
+      return c.json({ success: false, error: "Vision providers slow or unavailable — please retry in a moment." }, 502);
     }
 
     const s = (v: any) => String(v || "").trim();
