@@ -9745,10 +9745,14 @@ OUTPUT JSON:
     // the Edge gateway timeout. 504s appeared when concurrency 3 forced a
     // 4-shot pack into 2 batches × 60s. Concurrency 4 (was 5): each
     // Ideogram Remix call holds the source image + result blob in
-    // memory; 5 parallel calls × 5-10MB images was tipping the Edge
-    // 256MB cap and causing 502 Bad Gateway crashes. 4 keeps a similar
-    // wall-clock at TURBO speed (~10-20s/call) without memory pressure.
-    const CONCURRENCY = 4;
+    // CONCURRENCY 3 (was 4 — and 5 before that). Each Ideogram Remix
+    // call holds the source blob + result blob in memory; Supabase Edge
+    // is capped at 256MB. With 4 concurrent calls × ~10MB each + planner
+    // payload + other allocations we kept hitting OOM and getting 502
+    // Bad Gateway. 3 gives steady headroom (worst case ~30MB blobs in
+    // flight) while still finishing a 6-shot pack in 2 batches at
+    // TURBO speed (~30-40s total stills phase).
+    const CONCURRENCY = 3;
     // Cutout cache — first composite that extracts a cutout updates this;
     // subsequent shots in the same run skip Photoroom's Stage 1 (saves ~3-5s
     // per fallback shot). First-batch races are acceptable: a few duplicate
@@ -9951,6 +9955,12 @@ OUTPUT JSON:
         return result;
       }));
       items.push(...batchRes);
+      // Brief pause between batches to let the runtime release blob
+      // memory from the just-completed batch before the next one
+      // allocates new blobs. Without this, peak memory accumulates
+      // across batches and trips the 256MB Edge cap on packs of 6+.
+      // 200ms is enough for V8's incremental GC to run a cycle.
+      await new Promise((r) => setTimeout(r, 200));
     }
 
     // ══════════════════════════════════════════════════════════════════
