@@ -13,6 +13,7 @@ import { Badge } from "../components/ora/Badge";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { suggestScheduleForPack, scheduleToCalendarEvent } from "../lib/publish-scheduling";
+import { StylePicker } from "../components/StylePicker";
 
 /* ═══ Palette — aligned with the shared ora/ tokens ═══ */
 const BG       = COLORS.cream;
@@ -139,6 +140,11 @@ function SurpriseContent() {
   // poll /analyze/surprise-me-progress and replace the time-windowed phase
   // approximation with the real backend phase.
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  // Style picked from the gallery (null = let the planner pick freely).
+  // Sent to /analyze/surprise-me as `styleId`; the server injects a hard
+  // STYLE_DIRECTIVES entry into the planner so all 6 shots respect the
+  // chosen aesthetic instead of mixing styles. Persists for the session.
+  const [styleId, setStyleId] = useState<string | null>(null);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
   const [outOfCredits, setOutOfCredits] = useState<{ remaining: number; required: number } | null>(null);
@@ -372,6 +378,7 @@ function SurpriseContent() {
       const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
         requestId: reqId,
+        styleId: styleId || undefined,
         productImageUrl: productPhotos[0] || undefined,
         productImageUrls: productPhotos.length > 0 ? productPhotos : undefined,
         productDescription: productDescription.trim() || undefined,
@@ -428,7 +435,7 @@ function SurpriseContent() {
       setBusy(false);
       setActiveRequestId(null);
     }
-  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile, styleId]);
 
   // ── Publish the entire pack to the Calendar ──────────────────────
   // Maps each ok asset → a draft Calendar event with an AI-suggested
@@ -698,6 +705,14 @@ function SurpriseContent() {
                   className="overflow-hidden"
                 >
                   <div className="mt-6 flex flex-col gap-6">
+                    {/* Style picker — Ideogram-style masonry gallery. Lets
+                        the user click a vibe (one tile) before generating
+                        so all 6 shots respect the chosen aesthetic. Sits
+                        first in fine-tune because picking a style is the
+                        biggest creative lever, before creativity-level
+                        and post count. */}
+                    <StylePicker selectedStyleId={styleId} onPick={setStyleId} />
+
                     <TuneBlock label="Creative level">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {CREATIVITY.map((c) => {
