@@ -127,9 +127,14 @@ function SurpriseContent() {
   const [productDescription, setProductDescription] = useState("");
   const [productPrice, setProductPrice] = useState("");
   // idle sub-view: "input" = product form, "angles" = the 3 suggestions
-  // we show after the user clicks "Propose angles". Custom-brief mode is
-  // a separate flag below that short-circuits straight to generation.
-  const [idleView, setIdleView] = useState<"input" | "angles">("input");
+  // we show after the user clicks "Propose angles", "style" = the
+  // StylePicker gallery (final step before generation — user picks a
+  // vibe so all 6 shots respect that aesthetic).
+  const [idleView, setIdleView] = useState<"input" | "angles" | "style">("input");
+  // Brief carried from the angle pick to the style view. When the user
+  // finally clicks Generate from the style view, we fire handleSurprise
+  // with the same brief they originally chose on the angle card.
+  const [pendingBrief, setPendingBrief] = useState<string>("");
 
   // UI state
   const [fineTuneOpen, setFineTuneOpen] = useState(false);
@@ -706,14 +711,10 @@ function SurpriseContent() {
                   className="overflow-hidden"
                 >
                   <div className="mt-6 flex flex-col gap-6">
-                    {/* Style picker — Ideogram-style masonry gallery. Lets
-                        the user click a vibe (one tile) before generating
-                        so all 6 shots respect the chosen aesthetic. Sits
-                        first in fine-tune because picking a style is the
-                        biggest creative lever, before creativity-level
-                        and post count. */}
-                    <StylePicker selectedStyleId={styleId} onPick={setStyleId} />
-
+                    {/* StylePicker lives in its own dedicated step
+                        (idleView === "style") — see below. We don't
+                        repeat it here to avoid two paths to the same
+                        choice (would split user attention). */}
                     <TuneBlock label="Creative level">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                         {CREATIVITY.map((c) => {
@@ -816,16 +817,15 @@ function SurpriseContent() {
                         transition={{ delay: 0.08 * i, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                         whileHover={{ y: -4 }}
                         disabled={busy || uploadingProduct}
-                        onClick={() => handleSurprise({
+                        onClick={() => {
                           // Angle card only contributes the creative brief —
                           // platforms / creativity / assetCount stay whatever
-                          // the user set in the product input form. (Prior
-                          // version passed all four from the angle, which
-                          // silently overrode the slider: asking for 2 assets
-                          // would surface 6-8 because that's what the LLM
-                          // returned per angle.)
-                          brief: a.brief,
-                        })}
+                          // the user set in the product input form. We don't
+                          // fire generation yet: the user gets the StylePicker
+                          // gallery as a final visual choice before kickoff.
+                          setPendingBrief(a.brief);
+                          setIdleView("style");
+                        }}
                         className="text-left rounded-3xl p-6 md:p-7 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         style={{
                           background: "#FFFFFF",
@@ -855,6 +855,58 @@ function SurpriseContent() {
                     ))}
                   </div>
                 )}
+              </motion.div>
+            ) : idleView === "style" ? (
+              /* ═══ Style picker — final step before generation ═══
+               *   The user has already picked an angle/brief. Now they
+               *   pick a visual vibe from the masonry gallery (or skip).
+               *   "Generate" fires handleSurprise with the chosen styleId
+               *   and the brief saved in pendingBrief. */
+              <motion.div
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+                className="mb-10"
+              >
+                <div className="text-[11px] font-mono uppercase tracking-[0.25em] mb-4 flex items-center justify-between gap-3" style={{ color: MUTED }}>
+                  <span>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: PINK }} />
+                    Final touch
+                  </span>
+                  <button
+                    onClick={() => setIdleView("angles")}
+                    className="text-[10.5px] hover:text-black transition"
+                    style={{ color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}
+                  >
+                    ← Back to angles
+                  </button>
+                </div>
+                <h1 className="leading-[0.98] mb-3" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 92px)" }}>
+                  Pick a vibe.
+                </h1>
+                <p className="text-[15px] mb-8" style={{ color: MUTED, maxWidth: 640 }}>
+                  Tap any image — your 6 posts will all share that aesthetic. Or skip to let Ora mix styles.
+                </p>
+
+                <StylePicker selectedStyleId={styleId} onPick={setStyleId} />
+
+                {/* Sticky-ish bottom CTA bar */}
+                <div className="mt-10 flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl" style={{ background: "#FFF", border: `1px solid ${BORDER}` }}>
+                  <div className="text-[12.5px]" style={{ color: MUTED }}>
+                    {styleId ? (
+                      <>Vibe locked: <b style={{ color: COLORS.ink, textTransform: "capitalize" }}>{styleId}</b></>
+                    ) : (
+                      <>No vibe picked — Ora will mix styles freely.</>
+                    )}
+                  </div>
+                  <Button
+                    variant="accent"
+                    size="md"
+                    onClick={() => handleSurprise({ brief: pendingBrief })}
+                    disabled={busy || uploadingProduct}
+                  >
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {busy ? "Generating…" : "Generate"}
+                  </Button>
+                </div>
               </motion.div>
             ) : (
               // PRODUCT INPUT — the new default view
@@ -1158,7 +1210,7 @@ function SurpriseContent() {
                   {publishingPack ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                   {publishingPack ? "Adding to calendar…" : "Publish your creations"}
                 </Button>
-                <Button variant="ghost" size="md" onClick={() => { setPack(null); setStage("idle"); }}
+                <Button variant="ghost" size="md" onClick={() => { setPack(null); setStage("idle"); setIdleView("input"); setPendingBrief(""); }}
                         style={{ border: `1px solid ${BORDER}` }}>
                   <Sparkles size={14} /> Surprise me again
                 </Button>
