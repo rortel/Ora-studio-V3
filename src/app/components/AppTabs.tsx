@@ -58,7 +58,14 @@ export function AppTabs({ active }: { active?: TabId }) {
       style={{ background: headerBg, backdropFilter: headerBlur, borderBottom: headerBorder }}
     >
       <Link to="/" className="flex items-center" aria-label="Ora">
-        <span className="text-[22px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
+        <span
+          className="text-[22px]"
+          style={{
+            fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`,
+            letterSpacing: "-0.01em",
+            color: isLanding ? "#FFFFFF" : INK,
+          }}
+        >Ora</span>
       </Link>
 
       <nav
@@ -103,7 +110,11 @@ export function AppTabs({ active }: { active?: TabId }) {
           <span>{credits}</span>
           <span className="hidden md:inline" style={{ opacity: 0.7 }}>· {planLabel}</span>
         </Link>
-        <Link to="/profile" className="hidden md:inline-flex text-[12.5px] hover:text-black transition" style={{ color: MUTED }}>Account</Link>
+        <Link
+          to="/profile"
+          className="hidden md:inline-flex text-[12.5px] hover:opacity-100 transition"
+          style={{ color: isLanding ? "rgba(255,255,255,0.85)" : MUTED }}
+        >Account</Link>
       </div>
     </header>
   );

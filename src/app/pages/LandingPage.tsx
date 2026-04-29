@@ -126,7 +126,7 @@ function CinematicPanel({
         className="relative z-10 flex h-full flex-col justify-end px-6 md:px-16 pb-[7vh] md:pb-[9vh] max-w-[1500px] mx-auto"
       >
         {eyebrow && (
-          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(17,17,17,0.72)" }}>
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: "rgba(255,255,255,0.85)" }}>
             <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: "#FF6B47" }} />
             <span>{eyebrow}</span>
           </div>
@@ -145,7 +145,7 @@ function CinematicPanel({
         {subtitle && (
           <p
             className="body-tight mt-6 max-w-xl text-[16px] md:text-[18px]"
-            style={{ color: "rgba(17,17,17,0.8)" }}
+            style={{ color: "rgba(255,255,255,0.92)" }}
           >
             {subtitle}
           </p>
@@ -829,7 +829,7 @@ export function LandingPage() {
                 {user ? "Open Ora" : "Try it. No card."} <ArrowRight size={16} />
               </Button>
             </Link>
-            <span className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
+            <span className="mono-label" style={{ color: "rgba(255,255,255,0.7)" }}>
               {user ? "Drop a photo. We post." : "6 posts on the house. No card."}
             </span>
           </div>
