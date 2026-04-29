@@ -325,6 +325,114 @@ app.get("/admin/errors/recent", async (c) => {
   }
 });
 
+// ── ANALYTICS — in-house event tracking ──────────────────────────────
+// Replaces Mixpanel/Posthog for tonight's "weapon of war" sprint. No
+// external account, no DSN, ~3KB client bundle. Stores last 5000
+// events in KV (auto-pruned). Admin sees aggregates via
+// /admin/analytics/summary.
+app.post("/analytics/track", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    if (!body?.event || typeof body.event !== "string") {
+      return c.json({ success: false, error: "Missing event" }, 400);
+    }
+    const entry = {
+      id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ts: new Date().toISOString(),
+      event: String(body.event).slice(0, 80),
+      props: typeof body.props === "object" ? body.props : {},
+      userId: String(body.userId || "anon").slice(0, 60),
+      sessionId: String(body.sessionId || "").slice(0, 60),
+      route: String(body.route || "").slice(0, 100),
+      url: String(body.url || "").slice(0, 300),
+      referrer: String(body.referrer || "").slice(0, 300),
+      userAgent: String(body.userAgent || "").slice(0, 200),
+    };
+    await kv.set(`evt:${entry.id}`, entry);
+    // Best-effort prune: keep only the 5000 most recent events.
+    try {
+      const all = await kv.getByPrefix("evt:");
+      if (Array.isArray(all) && all.length > 5000) {
+        const sorted = [...all].sort((a: any, b: any) => (b?.ts || "").localeCompare(a?.ts || ""));
+        const tooOld = sorted.slice(5000);
+        for (const old of tooOld) {
+          if (old?.id) await kv.del(`evt:${old.id}`);
+        }
+      }
+    } catch { /* prune best-effort */ }
+    return c.json({ success: true }, 200, { "access-control-allow-origin": "*" });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// Admin summary — aggregates events by name, top users, top routes,
+// recent activity, and Web Vitals percentiles. Admin-only.
+app.get("/admin/analytics/summary", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    if (user.email.toLowerCase() !== ADMIN_EMAIL) {
+      return c.json({ success: false, error: "Forbidden" }, 403);
+    }
+    const all = await kv.getByPrefix("evt:");
+    if (!Array.isArray(all)) return c.json({ success: true, summary: {} });
+    const events = all as any[];
+
+    // Aggregate by event name
+    const byEvent: Record<string, number> = {};
+    const byUser: Record<string, number> = {};
+    const byRoute: Record<string, number> = {};
+    const vitals: Record<string, number[]> = {};
+    let last24h = 0;
+    const oneDayAgo = Date.now() - 24 * 3600 * 1000;
+    for (const e of events) {
+      byEvent[e.event] = (byEvent[e.event] || 0) + 1;
+      if (e.userId && e.userId !== "anon") byUser[e.userId] = (byUser[e.userId] || 0) + 1;
+      if (e.route) byRoute[e.route] = (byRoute[e.route] || 0) + 1;
+      try {
+        const ts = new Date(e.ts).getTime();
+        if (ts > oneDayAgo) last24h += 1;
+      } catch {}
+      // Web Vitals percentiles
+      if (e.event === "web_vital" && e.props?.metric && typeof e.props?.value === "number") {
+        const m = String(e.props.metric);
+        if (!vitals[m]) vitals[m] = [];
+        vitals[m].push(e.props.value);
+      }
+    }
+    const sortDesc = (obj: Record<string, number>, n = 10) =>
+      Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ key: k, count: v }));
+    const percentile = (arr: number[], p: number) => {
+      if (!arr.length) return 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const idx = Math.floor(sorted.length * p);
+      return sorted[Math.min(idx, sorted.length - 1)];
+    };
+    const vitalsSummary: Record<string, { p50: number; p75: number; p95: number; samples: number }> = {};
+    for (const [m, values] of Object.entries(vitals)) {
+      vitalsSummary[m] = {
+        p50: percentile(values, 0.5),
+        p75: percentile(values, 0.75),
+        p95: percentile(values, 0.95),
+        samples: values.length,
+      };
+    }
+    return c.json({
+      success: true,
+      summary: {
+        totalEvents: events.length,
+        last24hEvents: last24h,
+        topEvents: sortDesc(byEvent, 20),
+        topUsers: sortDesc(byUser, 10),
+        topRoutes: sortDesc(byRoute, 10),
+        webVitals: vitalsSummary,
+      },
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({

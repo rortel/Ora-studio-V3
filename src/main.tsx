@@ -4,11 +4,18 @@ import App from "./app/App";
 import { Toaster } from "sonner";
 import "./styles/index.css";
 import { installErrorReporter, reportError } from "./app/lib/error-reporter";
+import { installAnalytics } from "./app/lib/analytics";
 
 // Wire up global error capture (window.onerror + unhandledrejection)
 // at app boot. Lightweight in-house alternative to Sentry — posts to
 // /errors/report which stores in Supabase KV. Idempotent.
 installErrorReporter();
+
+// Install analytics + Web Vitals capture. Auto-tracks page views,
+// session start, and LCP/CLS/INP/TTFB/FCP performance metrics. Custom
+// events via trackEvent("name", {props}). Visible in
+// /admin/analytics/summary.
+installAnalytics();
 
 /* ═══════════════════════════════════
    ERROR BOUNDARY — catches any React
