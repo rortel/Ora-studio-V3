@@ -1134,9 +1134,33 @@ function SurpriseContent() {
                             <img src={it.imageUrl} alt={it.fileName} loading="lazy" decoding="async"
                                  className="w-full h-auto block" style={{ aspectRatio: it.aspectRatio.replace(":", " / ") }} />
                           ) : (
-                            <div className="w-full flex items-center justify-center p-6 text-[12px] text-center"
-                                 style={{ aspectRatio: it.aspectRatio.replace(":", " / "), color: "#B91C1C" }}>
-                              {it.error?.slice(0, 100) || "failed"}
+                            // Failed shot — show what went wrong + a clear
+                            // retry CTA that re-runs the whole pack with the
+                            // same brief. Server already retries each shot
+                            // 2x internally; this button is for the user
+                            // when budget-eviction or both retries failed.
+                            <div className="w-full flex flex-col items-center justify-center gap-3 p-6 text-center"
+                                 style={{ aspectRatio: it.aspectRatio.replace(":", " / "), background: "#FFF5F0" }}>
+                              <div className="text-[11px] font-mono uppercase tracking-wider" style={{ color: "#B91C1C" }}>
+                                generation incomplete
+                              </div>
+                              <div className="text-[12px] leading-snug max-w-[260px]" style={{ color: "#7C2D12" }}>
+                                {it.error?.slice(0, 140) || "This shot didn't make it. Tap retry to regenerate the pack."}
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (busy) return;
+                                  // Regenerate with the same brief that produced this pack.
+                                  // Brief is in pack.creativeAngle or we just trigger handleSurprise() with no override.
+                                  handleSurprise();
+                                }}
+                                disabled={busy}
+                                className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[12px] font-semibold transition disabled:opacity-50"
+                                style={{ background: COLORS.coral, color: "#FFF" }}
+                              >
+                                <Sparkles size={12} /> Regenerate pack
+                              </button>
                             </div>
                           )}
                           {clickable && (
