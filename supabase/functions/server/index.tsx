@@ -1178,6 +1178,25 @@ interface BrandRefImage {
   style: string;
 }
 
+// ── BRAND ARCHETYPES (Jungian, applied to branding) ─────────────────
+// 12 archetypes common in brand strategy. Each one has a distinct
+// creative posture that shapes both copy and visual choices. Stored
+// as ctx.archetype (lowercase) and injected into the planner prompts.
+const ARCHETYPE_DIRECTIVES: Record<string, string> = {
+  hero: "frame challenges and triumphs. Show effort, mastery, the moment of overcoming. Lighting bold and contrasted. Copy: action verbs, direct, motivational.",
+  outlaw: "subvert category conventions. Show rebellion, disruption, breaking the rules. Lighting harsh or moody. Copy: provocative, anti-establishment, refuses to apologise.",
+  magician: "transform the ordinary into the extraordinary. Show the moment of revelation. Lighting ethereal, surreal lensing. Copy: visionary, suggestive, hints at hidden possibility.",
+  innocent: "purity, simplicity, optimism. Show open spaces, clean light, candid moments. Lighting bright and uncluttered. Copy: warm, honest, never cynical.",
+  sage: "truth and insight. Show wisdom in action — research, expertise, considered detail. Lighting natural and revealing. Copy: precise, evidence-led, calmly authoritative.",
+  explorer: "freedom and discovery. Show movement, horizons, the road. Lighting open-air natural. Copy: invitational, adventurous, never sedentary.",
+  lover: "intimacy, sensuality, beauty. Show closeness, texture, soft focus. Lighting warm and golden. Copy: evocative, sensorial, emotionally direct.",
+  jester: "play, humour, lightness. Show the unexpected joy in everyday. Lighting bright and saturated. Copy: witty, self-aware, never takes itself seriously.",
+  caregiver: "service, protection, nurture. Show care in action — for people, places, craft. Lighting soft and inclusive. Copy: reassuring, generous, others-first.",
+  creator: "expression, originality, craft. Show the making — hands, tools, work-in-progress. Lighting studio-controlled. Copy: distinctive, opinionated, signature voice.",
+  ruler: "leadership, authority, premium. Show command, polish, signature gestures. Lighting controlled and architectural. Copy: confident, declarative, reserved.",
+  everyman: "belonging, community, real life. Show the everyday hero — relatable, unstaged. Lighting available-light, candid. Copy: conversational, plain-spoken, in-the-mix.",
+};
+
 interface BrandContext {
   brandName: string;
   industry: string;
@@ -1201,6 +1220,11 @@ interface BrandContext {
   logoUrl: string;
   logoStyle: string;
   graphicStyle: string;
+  // Brand archetype (Jungian) — drives the creative posture that the
+  // suggest-angles and surprise-me planners adopt. One of: hero, outlaw,
+  // magician, innocent, sage, explorer, lover, jester, caregiver,
+  // creator, ruler, everyman. Empty string when unset.
+  archetype: string;
 }
 
 async function buildBrandContext(userId: string): Promise<BrandContext | null> {
@@ -1237,6 +1261,7 @@ async function buildBrandContext(userId: string): Promise<BrandContext | null> {
       logoUrl: vaultData.logo_url || vaultData.logoUrl || vaultData.logo?.url || "",
       logoStyle: vaultData.logo?.style || vaultData.logo?.description || "",
       graphicStyle: vaultData.visual_identity?.graphic_style || vaultData.graphic_style || "",
+      archetype: String(vaultData.archetype || vaultData.brand_archetype || "").toLowerCase().trim(),
     };
     const analyzed = (brandImages || []).filter((img: any) => img?.analysis && !img.analysis._parseError);
     analyzed.sort((a: any, b: any) => (b.analysis?.brand_alignment?.score || 0) - (a.analysis?.brand_alignment?.score || 0));
@@ -9529,6 +9554,12 @@ app.post("/analyze/suggest-angles", async (c) => {
       if (ctx.brandName)    parts.push(`brand: ${ctx.brandName}`);
       if (ctx.industry)     parts.push(`industry: ${ctx.industry}`);
       if (ctx.tagline)      parts.push(`tagline: ${ctx.tagline}`);
+      // Brand archetype drives the creative posture — the planner adopts
+      // a HERO frame (challenge / triumph) vs an OUTLAW frame (rebellion
+      // / disruption) vs a SAGE frame (truth / insight) vs an INNOCENT
+      // frame (purity / simplicity), etc. Maps to the 12 Jungian
+      // archetypes commonly used in branding.
+      if (ctx.archetype) parts.push(`brand archetype: ${ctx.archetype} — ${ARCHETYPE_DIRECTIVES[ctx.archetype] || "express this archetype's posture in copy and visual choices"}`);
       const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 5);
       if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
@@ -9860,6 +9891,9 @@ app.post("/analyze/surprise-me", async (c) => {
       const parts: string[] = [];
       const brandName = (ctx as any)?.brandName || (ctx as any)?.company_name;
       if (brandName) parts.push(`brand: ${brandName}`);
+      // Brand archetype shapes the creative posture of every shot.
+      // Same field used by /suggest-angles for prompt parity.
+      if (ctx.archetype) parts.push(`brand archetype: ${ctx.archetype} — ${ARCHETYPE_DIRECTIVES[ctx.archetype] || "express this archetype's posture in copy and visual choices"}`);
       const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 6);
       if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
