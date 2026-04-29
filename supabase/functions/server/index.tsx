@@ -433,6 +433,57 @@ app.get("/admin/analytics/summary", async (c) => {
   }
 });
 
+// ── A/B EXPERIMENT RESULTS — admin endpoint ─────────────────────────
+// For each experiment key, group events by variant assignment and
+// count exposures + key conversion events. Lets admin see if variant
+// B converts better than A without leaving the dashboard.
+app.get("/admin/experiments/results", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    if (user.email.toLowerCase() !== ADMIN_EMAIL) {
+      return c.json({ success: false, error: "Forbidden" }, 403);
+    }
+    const all = await kv.getByPrefix("evt:");
+    if (!Array.isArray(all)) return c.json({ success: true, experiments: {} });
+    const events = all as any[];
+
+    // Build a map: experimentKey → variant → { exposures, conversions: { eventName: count } }
+    const results: Record<string, Record<string, { exposures: number; uniqueUsers: Set<string>; events: Record<string, number> }>> = {};
+
+    for (const e of events) {
+      const exp = e?.props?._exp;
+      if (!exp || typeof exp !== "object") continue;
+      for (const [expKey, variant] of Object.entries(exp)) {
+        if (typeof variant !== "string") continue;
+        if (!results[expKey]) results[expKey] = {};
+        if (!results[expKey][variant]) {
+          results[expKey][variant] = { exposures: 0, uniqueUsers: new Set(), events: {} };
+        }
+        const bucket = results[expKey][variant];
+        bucket.events[e.event] = (bucket.events[e.event] || 0) + 1;
+        if (e.event === "experiment_exposure" && e?.props?.key === expKey) bucket.exposures += 1;
+        if (e.userId && e.userId !== "anon") bucket.uniqueUsers.add(e.userId);
+      }
+    }
+
+    // Convert Sets to counts for JSON serialisation.
+    const out: Record<string, Record<string, { exposures: number; uniqueUsers: number; events: Record<string, number> }>> = {};
+    for (const [expKey, variants] of Object.entries(results)) {
+      out[expKey] = {};
+      for (const [variant, data] of Object.entries(variants)) {
+        out[expKey][variant] = {
+          exposures: data.exposures,
+          uniqueUsers: data.uniqueUsers.size,
+          events: data.events,
+        };
+      }
+    }
+    return c.json({ success: true, experiments: out });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({
