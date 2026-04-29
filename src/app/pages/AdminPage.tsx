@@ -1774,6 +1774,7 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
 // after tuning the prompts in STYLE_CATALOG (server/index.tsx).
 function StyleCatalogSeed({ authToken }: { authToken: string }) {
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ step: number; total: number; label: string } | null>(null);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [manifest, setManifest] = useState<any>(null);
@@ -1787,33 +1788,77 @@ function StyleCatalogSeed({ authToken }: { authToken: string }) {
   };
   useEffect(() => { refreshManifest(); }, []);
 
-  const seed = async (onlyStyle?: string) => {
+  // Seeds one style (4 images, ~30-60s). Always pass onlyStyle to keep the
+  // request well under the gateway timeout — the full-catalog mode loops
+  // client-side via seedAll() below.
+  const seedOne = async (styleId: string) => {
+    const r = await fetch(`${API_BASE}/admin/style-catalog/seed`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${publicAnonKey}`,
+        "Content-Type": "text/plain",
+      },
+      body: JSON.stringify({ _token: authToken, onlyStyle: styleId }),
+      signal: AbortSignal.timeout(180_000), // 3 min for 4 images
+    });
+    const text = await r.text();
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = { success: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` }; }
+    if (!data?.success) throw new Error(data?.error || `HTTP ${r.status}`);
+    return data as { okCount: number; failCount: number; tookMs: number };
+  };
+
+  const seed = async (onlyStyle: string) => {
     setRunning(true);
     setError("");
     setResult(null);
+    setProgress(null);
     try {
-      const r = await fetch(`${API_BASE}/admin/style-catalog/seed`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${publicAnonKey}`,
-          "Content-Type": "text/plain",
-        },
-        body: JSON.stringify({ _token: authToken, onlyStyle }),
-        signal: AbortSignal.timeout(300_000), // 5 min — 24 generations
-      });
-      const text = await r.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch { data = { success: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` }; }
-      if (data.success) {
-        setResult(data);
-        await refreshManifest();
-      } else {
-        setError(data.error || `Seed failed (HTTP ${r.status})`);
-      }
+      const data = await seedOne(onlyStyle);
+      setResult(data);
+      await refreshManifest();
     } catch (err: any) {
       setError(err?.message || String(err));
     } finally {
       setRunning(false);
+    }
+  };
+
+  // Full-catalog seed — loops client-side, one style per request, so each
+  // call stays small enough to clear the edge gateway timeout. Refreshes
+  // the manifest between styles so the per-style preview updates live.
+  const seedAll = async () => {
+    const styleIds: string[] = (manifest?.styles || []).map((s: any) => s.id);
+    if (styleIds.length === 0) {
+      setError("Catalog list unavailable — refresh and retry.");
+      return;
+    }
+    setRunning(true);
+    setError("");
+    setResult(null);
+    let okTotal = 0, failTotal = 0, tookTotal = 0;
+    const failures: string[] = [];
+    try {
+      for (let i = 0; i < styleIds.length; i++) {
+        const sid = styleIds[i];
+        const sname = manifest?.styles?.find((s: any) => s.id === sid)?.name || sid;
+        setProgress({ step: i + 1, total: styleIds.length, label: sname });
+        try {
+          const r = await seedOne(sid);
+          okTotal += r.okCount;
+          failTotal += r.failCount;
+          tookTotal += r.tookMs || 0;
+        } catch (err: any) {
+          failures.push(`${sname}: ${err?.message || err}`);
+          failTotal += 4;
+        }
+        await refreshManifest();
+      }
+      setResult({ okCount: okTotal, failCount: failTotal, tookMs: tookTotal });
+      if (failures.length) setError(`Some styles failed — ${failures.join(" · ")}`);
+    } finally {
+      setRunning(false);
+      setProgress(null);
     }
   };
 
@@ -1840,7 +1885,7 @@ function StyleCatalogSeed({ authToken }: { authToken: string }) {
       </div>
 
       <button
-        onClick={() => seed()}
+        onClick={() => seedAll()}
         disabled={running}
         className="px-4 py-2 rounded-lg cursor-pointer transition disabled:opacity-50"
         style={{
@@ -1850,7 +1895,11 @@ function StyleCatalogSeed({ authToken }: { authToken: string }) {
           color: "var(--background)",
         }}
       >
-        {running ? "Generating 24 images… (~3 min)" : "Seed full catalog (~$2.50)"}
+        {running
+          ? progress
+            ? `Generating ${progress.step}/${progress.total} — ${progress.label}…`
+            : "Generating…"
+          : "Seed full catalog (~$2.50)"}
       </button>
 
       {result && (
