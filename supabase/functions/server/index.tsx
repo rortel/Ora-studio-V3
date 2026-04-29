@@ -9958,6 +9958,215 @@ app.get("/analyze/surprise-me-progress", async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// STYLE CATALOG — gallery picker for Surprise Me
+// ═══════════════════════════════════════════════════════════════════
+// 6 visual styles, each with 4 reference example tiles in the gallery.
+// The user picks a style by clicking ANY tile (the gallery mixes
+// packshots / typo cards / portraits / lifestyle so picking a tile
+// communicates intent through the example, not through a label).
+//
+// Once a style is picked, the planner gets STYLE_DIRECTIVES injected
+// to ensure all 6 generated shots respect the chosen aesthetic.
+//
+// Examples are seeded one-time by an admin via /admin/style-catalog/seed
+// — generates 24 images via Ideogram, uploads to public bucket, stores
+// the manifest in KV. Cost ~$2.50.
+
+interface StyleSpec {
+  id: string;
+  name: string;
+  tagline: string;          // 3-4 word hook for the picker
+  directive: string;        // injected into the surprise-me planner
+  examples: Array<{
+    kind: "packshot" | "typo" | "portrait" | "lifestyle";
+    aspectRatio: "1:1" | "4:5" | "9:16" | "16:9" | "3:4";
+    prompt: string;         // text-to-image prompt for Ideogram
+  }>;
+}
+
+const STYLE_CATALOG: StyleSpec[] = [
+  {
+    id: "editorial",
+    name: "Editorial",
+    tagline: "Cinematic, dramatic, deep",
+    directive: "EDITORIAL aesthetic across every shot: cinematic depth, dramatic side-lighting, marble or moody surfaces, soft film grain, magazine-cover gravitas. Wide tonal range with rich shadows. Avoid bright daylight, avoid white seamless backgrounds, avoid flat lighting.",
+    examples: [
+      { kind: "packshot", aspectRatio: "4:5", prompt: "Editorial product photography of a generic premium glass bottle on dark veined marble, dramatic side-rim lighting, deep rich shadows, magazine-cover gravitas, cinematic depth, no text" },
+      { kind: "typo",     aspectRatio: "1:1",  prompt: "Editorial typography poster, the words 'GRAND CRU' in oversized condensed serif on a deep navy background with a thin gold underline, magazine cover treatment, cinematic gradient" },
+      { kind: "portrait", aspectRatio: "4:5", prompt: "Editorial fashion portrait of a model in shadow, dramatic side-lighting, deep navy and burgundy palette, cinematic depth, film grain, magazine-cover composition, no text" },
+      { kind: "lifestyle",aspectRatio: "16:9", prompt: "Editorial scene: empty restaurant table at dusk with a single candle, marble surface, deep shadows, cinematic atmosphere, no text" },
+    ],
+  },
+  {
+    id: "studio",
+    name: "Studio",
+    tagline: "Clean, hero, e-commerce",
+    directive: "STUDIO aesthetic across every shot: clean white or pale neutral seamless backdrop, soft even fill light, hero-product treatment, e-commerce ready. Avoid moody lighting, avoid lifestyle scenes, avoid heavy shadows.",
+    examples: [
+      { kind: "packshot", aspectRatio: "1:1",  prompt: "Studio product photography of a generic premium glass bottle, white seamless backdrop, soft even fill light, hero-product e-commerce treatment, no text" },
+      { kind: "typo",     aspectRatio: "1:1",  prompt: "Minimalist typography poster, the words 'NEW' in clean modern sans on a soft cream background, ample negative space, studio cleanliness" },
+      { kind: "portrait", aspectRatio: "4:5", prompt: "Studio portrait of a model in soft warm clothing, white seamless backdrop, soft even beauty-dish lighting, clean e-commerce framing, no text" },
+      { kind: "lifestyle",aspectRatio: "4:5", prompt: "Studio still life of three small cosmetic-style bottles arranged on a pale neutral surface, soft fill light, clean e-commerce composition, no text" },
+    ],
+  },
+  {
+    id: "lifestyle",
+    name: "Lifestyle",
+    tagline: "Natural, candid, golden hour",
+    directive: "LIFESTYLE aesthetic across every shot: real-life context, golden-hour or window light, candid feel, natural environments (cafés, homes, streets, gardens). Real people doing real things. Avoid studio backdrops, avoid graphic typography, avoid surreal twists.",
+    examples: [
+      { kind: "packshot", aspectRatio: "4:5", prompt: "Lifestyle product photography of a generic premium glass bottle on a wooden café table at golden hour, soft window light, blurred café in background, candid composition, no text" },
+      { kind: "portrait", aspectRatio: "4:5", prompt: "Lifestyle portrait of a young woman holding a coffee cup at a café terrace, golden-hour rim light, candid expression, natural city background, no text" },
+      { kind: "lifestyle",aspectRatio: "16:9", prompt: "Lifestyle scene: hand pouring coffee in a sunlit kitchen, golden-hour window light, plants on the counter, candid moment, no text" },
+      { kind: "lifestyle",aspectRatio: "1:1",  prompt: "Lifestyle still life: breakfast table outdoors with linen napkins, fresh fruit, and a glass carafe, golden-hour light, candid arrangement, no text" },
+    ],
+  },
+  {
+    id: "magazine",
+    name: "Magazine",
+    tagline: "Bold colour, oversized typo",
+    directive: "MAGAZINE aesthetic across every shot: saturated brand-colour fields, oversized condensed display typography, graphic split-layouts, sale-band treatments. Bold and confident. Avoid muted palettes, avoid empty negative space, avoid quiet compositions.",
+    examples: [
+      { kind: "typo",     aspectRatio: "4:5", prompt: "Bold magazine cover typography poster, the words 'SUMMER DROP' in oversized condensed display sans across a saturated tomato-red background with a thin cream stripe at the bottom, no other elements" },
+      { kind: "packshot", aspectRatio: "1:1",  prompt: "Bold editorial product photography of a generic premium glass bottle against a saturated mustard-yellow split-colour wall, oversized white condensed sans typography reading 'NEW' in the upper third, magazine-cover energy, graphic" },
+      { kind: "typo",     aspectRatio: "9:16", prompt: "Story-format typography poster, the words '−20%' in massive cream condensed display sans on a saturated cobalt background, with a small line of supporting text at the bottom, magazine-grade graphic energy" },
+      { kind: "lifestyle",aspectRatio: "1:1",  prompt: "Bold split-layout magazine still life: half saturated coral, half saturated forest green, with a generic premium glass bottle centred at the seam, oversized condensed sans typography reading 'GRAND OPENING', magazine-cover treatment" },
+    ],
+  },
+  {
+    id: "ugc",
+    name: "UGC",
+    tagline: "Phone aesthetic, daylight, raw",
+    directive: "UGC aesthetic across every shot: phone-camera feel, raw daylight, casual hand-held framing, authentic real-person energy, slight off-centre composition. Avoid polished studio lighting, avoid heavy retouching, avoid graphic typography.",
+    examples: [
+      { kind: "packshot", aspectRatio: "9:16", prompt: "Phone-camera style product photo: a hand holding a generic premium glass bottle in a sunlit kitchen, raw daylight, slight off-centre framing, authentic UGC feel, no professional lighting, no text" },
+      { kind: "lifestyle",aspectRatio: "4:5", prompt: "Phone-camera style scene: messy desk with coffee, notebook, plant, and a generic small bottle, raw daylight, casual top-down framing, authentic real-life feel, no text" },
+      { kind: "portrait", aspectRatio: "9:16", prompt: "Phone-camera selfie of a young person smiling, holding a generic small bottle near their face, raw daylight, slight motion blur, authentic UGC selfie energy, no text" },
+      { kind: "lifestyle",aspectRatio: "1:1",  prompt: "Phone-camera still life: a generic small glass bottle on a car dashboard, daylight through the windshield, casual snapshot framing, authentic UGC feel, no text" },
+    ],
+  },
+  {
+    id: "minimal",
+    name: "Minimal",
+    tagline: "Negative space, geometric",
+    directive: "MINIMAL aesthetic across every shot: large negative space, single hero element, geometric compositions, monochrome or duo-tone palettes, thin typography when present. Avoid clutter, avoid saturated colours, avoid lifestyle scenes.",
+    examples: [
+      { kind: "packshot", aspectRatio: "1:1",  prompt: "Minimal product photography of a generic premium glass bottle centred on a vast pale-grey field, large negative space, geometric composition, monochrome palette, no text" },
+      { kind: "typo",     aspectRatio: "4:5", prompt: "Minimal typography poster, the word 'less' set very small in thin centred sans on a vast cream field, large negative space, single typographic element, no other elements" },
+      { kind: "lifestyle",aspectRatio: "4:5", prompt: "Minimal architectural still life: a single white sphere on a pale concrete shelf in front of a vast empty grey wall, geometric composition, soft directional shadow, monochrome, no text" },
+      { kind: "lifestyle",aspectRatio: "16:9", prompt: "Minimal pattern: a grid of small identical generic bottles on a pale neutral surface, top-down geometric composition, monochrome, large margins, no text" },
+    ],
+  },
+];
+
+const STYLE_DIRECTIVES: Record<string, string> = Object.fromEntries(
+  STYLE_CATALOG.map((s) => [s.id, s.directive]),
+);
+
+// ── GET /style-catalog/get — Public manifest for the picker ───────
+// Returns the catalog (id/name/tagline) plus the seeded image URLs.
+// When the catalog hasn't been seeded yet, examples[].imageUrl is null
+// and the frontend renders styled fallback tiles.
+app.get("/style-catalog/get", async (c) => {
+  try {
+    const manifest = await kv.get("style-catalog:manifest");
+    const examplesByStyle: Record<string, Array<{ kind: string; aspectRatio: string; imageUrl: string }>> =
+      manifest?.examplesByStyle || {};
+    const out = STYLE_CATALOG.map((s) => ({
+      id: s.id,
+      name: s.name,
+      tagline: s.tagline,
+      examples: s.examples.map((e, i) => ({
+        kind: e.kind,
+        aspectRatio: e.aspectRatio,
+        imageUrl: examplesByStyle[s.id]?.[i]?.imageUrl || null,
+      })),
+    }));
+    return c.json({ success: true, styles: out, seededAt: manifest?.seededAt || null });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// ── POST /admin/style-catalog/seed — One-time generation of the 24 ──
+// reference images. Admin-only because it costs ~$2.50 in Ideogram
+// credits. Uploads each generated image to a public bucket, stores
+// the manifest in KV at `style-catalog:manifest`. Idempotent — re-running
+// regenerates and overwrites the manifest.
+app.post("/admin/style-catalog/seed", async (c) => {
+  try {
+    const user = await requireAdmin(c);
+    const t0 = Date.now();
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const onlyStyle: string | null = body?.onlyStyle || null; // optional: re-seed one style
+
+    await ensureGeneratedAssetsBucket();
+    const sb = supabaseAdmin();
+    const existingManifest = await kv.get("style-catalog:manifest").catch(() => null);
+    const examplesByStyle: Record<string, Array<{ kind: string; aspectRatio: string; imageUrl: string }>> =
+      existingManifest?.examplesByStyle || {};
+
+    const toSeed = onlyStyle ? STYLE_CATALOG.filter((s) => s.id === onlyStyle) : STYLE_CATALOG;
+    let okCount = 0, failCount = 0;
+
+    for (const style of toSeed) {
+      const styleResults: Array<{ kind: string; aspectRatio: string; imageUrl: string }> = [];
+      for (let i = 0; i < style.examples.length; i++) {
+        const ex = style.examples[i];
+        // Use the existing text-card helper since it accepts a free-form
+        // prompt and returns a clean URL — works for any "describe the
+        // scene/typo and I'll render it" use case.
+        const out = await runIdeogramTextCard({
+          prompt: ex.prompt,
+          aspectRatio: ex.aspectRatio,
+          userId: user.id,
+          campaignSlug: `style-catalog-${style.id}`,
+        });
+        if (!out?.imageUrl) { failCount++; continue; }
+        // Persist the image to our own Storage so the URL is permanent
+        // (Ideogram's URLs eventually expire). Public path since the
+        // gallery is shown pre-auth on Surprise Me.
+        try {
+          const dl = await fetch(out.imageUrl, { signal: AbortSignal.timeout(30_000) });
+          if (!dl.ok) { failCount++; continue; }
+          const ct = dl.headers.get("content-type") || "image/png";
+          const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+          const buf = new Uint8Array(await dl.arrayBuffer());
+          const path = `style-catalog/${style.id}/${i}-${ex.kind}.${ext}`;
+          const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
+          if (upErr) { console.log(`[style-seed] upload err ${style.id}/${i}: ${upErr.message}`); failCount++; continue; }
+          const { data } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(path, 365 * 24 * 3600);
+          if (!data?.signedUrl) { failCount++; continue; }
+          styleResults.push({ kind: ex.kind, aspectRatio: ex.aspectRatio, imageUrl: data.signedUrl });
+          okCount++;
+        } catch (err) {
+          console.log(`[style-seed] persist err ${style.id}/${i}: ${err}`);
+          failCount++;
+        }
+      }
+      examplesByStyle[style.id] = styleResults;
+    }
+
+    const manifest = {
+      examplesByStyle,
+      seededAt: new Date().toISOString(),
+      seededBy: user.id,
+      tookMs: Date.now() - t0,
+    };
+    await kv.set("style-catalog:manifest", manifest);
+
+    return c.json({
+      success: true,
+      okCount, failCount,
+      tookMs: Date.now() - t0,
+      manifest,
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Forbidden" ? 403 : 500);
+  }
+});
+
 app.post("/analyze/surprise-me", async (c) => {
   const t0 = Date.now();
   try {
@@ -10018,6 +10227,12 @@ app.post("/analyze/surprise-me", async (c) => {
     const ctxWhy     = String(context?.why || "").trim();
     const fallbackBrief = [ctxWhat && `about: ${ctxWhat}`, ctxWho && `for: ${ctxWho}`, ctxWhy && `because: ${ctxWhy}`].filter(Boolean).join(" · ");
     const brief = [String(body?.brief || "").trim(), fallbackBrief].filter(Boolean).join(". ");
+
+    // Optional style picked by the user from the gallery on Surprise Me.
+    // When present, STYLE_DIRECTIVES are injected into the planner so all
+    // 6 shots share the same visual aesthetic instead of mixing styles.
+    const styleId = String(body?.styleId || "").trim();
+    const styleDirective = styleId && STYLE_DIRECTIVES[styleId] ? STYLE_DIRECTIVES[styleId] : "";
 
     // Per-platform format map — the network's natural usage drives whether a
     // shot is a still image or a 5s motion clip. TikTok + IG Story lean film,
@@ -10081,6 +10296,10 @@ app.post("/analyze/surprise-me", async (c) => {
       // Brand archetype shapes the creative posture of every shot.
       // Same field used by /suggest-angles for prompt parity.
       if (ctx.archetype) parts.push(`brand archetype: ${ctx.archetype} — ${ARCHETYPE_DIRECTIVES[ctx.archetype] || "express this archetype's posture in copy and visual choices"}`);
+      // User-picked style from the Surprise Me gallery. Hard directive —
+      // every shot in the pack must respect this aesthetic, overriding
+      // the planner's default style mixing.
+      if (styleDirective) parts.push(`PICKED STYLE (HARD): ${styleDirective}`);
       const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 6);
       if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
@@ -10095,6 +10314,11 @@ app.post("/analyze/surprise-me", async (c) => {
         parts.push(`messages: ${((ctx as any).key_messages).slice(0, 3).join("; ")}`);
       }
       brandSummary = parts.join(" · ");
+    }
+    // If the user has no vault but picked a style, surface the style
+    // directive into brandSummary anyway so the planner sees it.
+    if (!brandSummary && styleDirective) {
+      brandSummary = `PICKED STYLE (HARD): ${styleDirective}`;
     }
     if (!brandSummary && !brief) {
       return c.json({ success: false, error: "Need a Brand Vault or a textual brief to compose a campaign." }, 400);

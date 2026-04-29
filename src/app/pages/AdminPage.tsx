@@ -1762,6 +1762,148 @@ function DiagnosticsTab({ authToken }: { authToken: string }) {
           </div>
         )}
       </div>
+
+      <StyleCatalogSeed authToken={authToken} />
+    </div>
+  );
+}
+
+// ── Style Catalog Seed — one-time generation of the 24 reference images ──
+// for the Surprise Me StylePicker gallery. Cost ~$2.50 in Ideogram credits.
+// Idempotent (re-running overwrites the manifest), so the admin can re-seed
+// after tuning the prompts in STYLE_CATALOG (server/index.tsx).
+function StyleCatalogSeed({ authToken }: { authToken: string }) {
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState("");
+  const [manifest, setManifest] = useState<any>(null);
+
+  const refreshManifest = async () => {
+    try {
+      const r = await fetch(`${API_BASE}/style-catalog/get`);
+      const d = await r.json();
+      if (d?.success) setManifest(d);
+    } catch { /* silent */ }
+  };
+  useEffect(() => { refreshManifest(); }, []);
+
+  const seed = async (onlyStyle?: string) => {
+    setRunning(true);
+    setError("");
+    setResult(null);
+    try {
+      const r = await fetch(`${API_BASE}/admin/style-catalog/seed`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${publicAnonKey}`,
+          "Content-Type": "text/plain",
+        },
+        body: JSON.stringify({ _token: authToken, onlyStyle }),
+        signal: AbortSignal.timeout(300_000), // 5 min — 24 generations
+      });
+      const text = await r.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { success: false, error: `HTTP ${r.status}: ${text.slice(0, 200)}` }; }
+      if (data.success) {
+        setResult(data);
+        await refreshManifest();
+      } else {
+        setError(data.error || `Seed failed (HTTP ${r.status})`);
+      }
+    } catch (err: any) {
+      setError(err?.message || String(err));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const seededCount = manifest?.styles
+    ? manifest.styles.reduce((acc: number, s: any) => acc + (s.examples || []).filter((e: any) => !!e.imageUrl).length, 0)
+    : 0;
+
+  return (
+    <div className="mt-8 p-6 rounded-lg border border-border bg-card">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--foreground)" }}>
+            Style Catalog Seed
+          </h3>
+          <p style={{ fontSize: "12px", color: "var(--muted-foreground)", marginTop: "4px", lineHeight: 1.5 }}>
+            One-time generation of the 24 reference images for the Surprise Me StylePicker gallery.
+            6 styles × 4 examples each. Cost ≈ $2.50. Re-run after editing STYLE_CATALOG prompts.
+          </p>
+          <p style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "6px" }}>
+            Currently seeded: <b style={{ color: "var(--foreground)" }}>{seededCount}/24</b>
+            {manifest?.seededAt ? ` · last run ${new Date(manifest.seededAt).toLocaleString()}` : ""}
+          </p>
+        </div>
+      </div>
+
+      <button
+        onClick={() => seed()}
+        disabled={running}
+        className="px-4 py-2 rounded-lg cursor-pointer transition disabled:opacity-50"
+        style={{
+          fontSize: "13px",
+          fontWeight: 600,
+          background: "var(--foreground)",
+          color: "var(--background)",
+        }}
+      >
+        {running ? "Generating 24 images… (~3 min)" : "Seed full catalog (~$2.50)"}
+      </button>
+
+      {result && (
+        <div className="mt-4 p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.3)" }}>
+          <p style={{ fontSize: "12px", color: "var(--foreground)" }}>
+            <b>Seed complete.</b> {result.okCount} ok · {result.failCount} failed · {Math.round((result.tookMs || 0) / 1000)}s
+          </p>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 p-3 rounded-lg" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.3)" }}>
+          <p style={{ fontSize: "12px", color: "var(--destructive)" }}>{error}</p>
+        </div>
+      )}
+
+      {/* Per-style preview — useful to spot bad generations and re-seed
+          one style at a time without paying for the full catalog again. */}
+      {manifest?.styles && (
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+          {manifest.styles.map((s: any) => {
+            const ok = (s.examples || []).filter((e: any) => !!e.imageUrl).length;
+            return (
+              <div key={s.id} className="p-3 rounded-lg border border-border">
+                <div className="flex items-baseline justify-between">
+                  <div style={{ fontSize: "12px", fontWeight: 600 }}>{s.name}</div>
+                  <div style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{ok}/4</div>
+                </div>
+                <div className="mt-1" style={{ fontSize: "10px", color: "var(--muted-foreground)" }}>{s.tagline}</div>
+                <div className="mt-2 flex gap-1">
+                  {(s.examples || []).map((e: any, i: number) => (
+                    <div key={i} className="w-12 h-12 rounded overflow-hidden bg-secondary">
+                      {e.imageUrl ? (
+                        <img src={e.imageUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[8px] text-muted-foreground">empty</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => seed(s.id)}
+                  disabled={running}
+                  className="mt-2 text-[10px] hover:underline disabled:opacity-50"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  Re-seed this style
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
