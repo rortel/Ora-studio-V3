@@ -9761,10 +9761,40 @@ OUTPUT JSON:
       status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
       error?: string; provider?: string; videoProvider?: string;
     }> = [];
+    // Wall-clock budget for the entire still phase. Supabase Edge gateway
+    // cuts off around 150s; we leave 30s headroom for film generation +
+    // response serialisation. If a batch runs us past the budget, we
+    // gracefully bail with whatever's done so far + mark remaining shots
+    // as queued — better than a silent 502/504.
+    const STILLS_BUDGET_MS = 100_000;
+    const handlerStart = t0;
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+      // Time-budget check — if we're close to the gateway timeout, stop
+      // launching new batches and mark remaining shots as queued so the
+      // user can re-trigger them from the result screen.
+      if (Date.now() - handlerStart > STILLS_BUDGET_MS) {
+        console.log(`[surprise-me] stills budget exceeded at batch ${i / CONCURRENCY}, queuing ${jobs.length - i} remaining shots`);
+        for (let j = i; j < jobs.length; j++) {
+          const job = jobs[j];
+          items.push({
+            platform: job.platform, aspectRatio: job.aspectRatio,
+            label: job.label, fileName: job.fileName,
+            twistElement: job.twistElement, caption: job.caption,
+            status: "failed", error: "Time budget exceeded — please re-run",
+          });
+        }
+        break;
+      }
       const batch = jobs.slice(i, i + CONCURRENCY);
       const batchRes = await Promise.all(batch.map(async (job): Promise<typeof items[number]> => {
-        try {
+        // Retry guarantee: each shot gets up to 2 attempts. Most flakiness
+        // comes from rate-limits + transient 5xx on upstream providers
+        // (Ideogram, FAL, Luma) — a second attempt usually succeeds. We
+        // only retry on `status: "failed"`; successful generations return
+        // immediately. Retry budget is bounded at 2 to keep the wall-clock
+        // predictable.
+        const tryOnce = async (attempt: number): Promise<typeof items[number]> => {
+          try {
           // Text-card branch: Ideogram. Used for typography-led shots where
           // text quality matters more than photo fidelity (quote, save-the-
           // date, recruitment, promo tile, tip card). Always runs for
@@ -9890,9 +9920,25 @@ OUTPUT JSON:
           logCost({ type: "image", model: "photon-1", provider: "luma/photon-1", costUsd: getProviderCost("luma/photon-1", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - tLuma, userId: user.id, success: true, campaignSlug }).catch(() => {});
           const persisted = await persistOne(finalUrl, job.fileName, job.platform);
           return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || finalUrl, provider: "luma/photon-1" };
-        } catch (err: any) {
-          return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: String(err?.message || err) };
+          } catch (err: any) {
+            console.error(`[surprise-me:shot] attempt ${attempt} CRASHED for ${job.label}: ${err?.message || err}`);
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: String(err?.message || err) };
+          }
+        };
+        // First attempt
+        let result = await tryOnce(1);
+        // Retry once if the first attempt failed
+        if (result.status === "failed") {
+          console.log(`[surprise-me:shot] retrying ${job.label} after first failure: ${(result as any).error}`);
+          const retry = await tryOnce(2);
+          if (retry.status === "ok") {
+            result = retry;
+          } else {
+            // Both attempts failed — log structured for debugging tomorrow
+            console.error(`[surprise-me:shot] FINAL FAIL ${job.label} type=${job.type} platform=${job.platform} ratio=${job.aspectRatio} error1="${(result as any).error}" error2="${(retry as any).error}"`);
+          }
         }
+        return result;
       }));
       items.push(...batchRes);
     }
