@@ -26461,7 +26461,24 @@ app.post("/library/list", async (c) => {
         for (const target of targets) {
           for (const field of urlFields) {
             const pathKey = `${field}StoragePath`;
-            if (target[pathKey]) jobs.push({ item, target, pathKey, field });
+            if (target[pathKey]) {
+              jobs.push({ item, target, pathKey, field });
+              continue;
+            }
+            // Legacy items don't store the storage path explicitly. Parse
+            // it from the existing signed URL (Supabase shape:
+            // /storage/v1/object/sign/<bucket>/<path>?token=...). This
+            // makes the preventive refresh cover items created before
+            // we started persisting the path.
+            const existingUrl: string | undefined = target[field];
+            if (typeof existingUrl === "string" && existingUrl.includes("/storage/v1/object/sign/")) {
+              const m = existingUrl.match(/\/storage\/v1\/object\/sign\/([^/]+)\/([^?]+)/);
+              if (m) {
+                const parsedPath = decodeURIComponent(m[2]);
+                target[pathKey] = parsedPath; // backfill so future runs are fast
+                jobs.push({ item, target, pathKey, field });
+              }
+            }
           }
         }
       }
