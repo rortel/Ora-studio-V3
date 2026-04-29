@@ -14978,18 +14978,39 @@ app.post("/vault/load", async (c) => {
     const user = await requireAuth(c);
     const gated = await vaultPlanGate(user.id, user.email);
     if (gated) return c.json({ success: false, ...gated }, 402);
-    let rawVault = await kv.get(`vault:${user.id}`);
-    // Auto-fix: if vault has a nested "vault" key from old onboarding bug, flatten it
-    if (rawVault && rawVault.vault && typeof rawVault.vault === "object" && !Array.isArray(rawVault.vault)) {
-      const { vault: nested, ...rest } = rawVault;
-      rawVault = { ...rest, ...nested };
-      await saveVaultToKV(user.id, rawVault);
-      console.log(`[vault/load] Auto-fixed nested vault.vault for user=${user.id.slice(0,8)}`);
+    let rawVault = null;
+    try {
+      rawVault = await kv.get(`vault:${user.id}`);
+    } catch (kvErr) {
+      console.log(`[vault/load] kv.get failed for user=${user.id.slice(0, 8)}: ${kvErr}`);
+      // Return success with null vault — the client treats this the same as
+      // "no vault yet" which is the correct UX (no scary error toast).
+      return c.json({ success: true, vault: null });
+    }
+    // Auto-fix: if vault has a nested "vault" key from old onboarding bug, flatten it.
+    // Wrapped in try/catch so a malformed vault doesn't 500 the whole request — we
+    // just hand back what we have and let the user re-save from the UI.
+    try {
+      if (rawVault && rawVault.vault && typeof rawVault.vault === "object" && !Array.isArray(rawVault.vault)) {
+        const { vault: nested, ...rest } = rawVault;
+        rawVault = { ...rest, ...nested };
+        await saveVaultToKV(user.id, rawVault).catch((saveErr) => {
+          console.log(`[vault/load] auto-fix save failed (non-fatal): ${saveErr}`);
+        });
+        console.log(`[vault/load] Auto-fixed nested vault.vault for user=${user.id.slice(0,8)}`);
+      }
+    } catch (fixErr) {
+      console.log(`[vault/load] auto-fix skipped: ${fixErr}`);
     }
     const vault = syncVaultNames(rawVault);
     console.log(`[vault/load] user ${user.id}: vault ${vault ? "found" : "not found"} brand="${vault?.brandName || ""}" company="${vault?.company_name || ""}" onboarding=${vault?.onboarding_completed}`);
     return c.json({ success: true, vault: vault || null });
-  } catch (err) { return c.json({ success: false, error: String(err) }, 500); }
+  } catch (err: any) {
+    // Map auth errors to 401 (was always 500), keep 500 for true server faults
+    if (err?.message === "Unauthorized") return c.json({ success: false, error: "Unauthorized" }, 401);
+    console.log(`[vault/load] FATAL: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
 });
 
 // POST /vault — Save vault data (CORS-safe: token in body)
