@@ -50,8 +50,14 @@ export function OnboardingChecklist() {
 
   // Detect completion from user state. Re-runs on route change so the
   // checklist auto-updates when the user finishes a step.
+  // Gate the network calls on a non-empty access token — without this
+  // gate the effect fired during the auth-state warm-up window (the
+  // moment between `user` being set and `profile.accessToken` being
+  // hydrated) and the server returned 401, polluting the console.
   useEffect(() => {
     if (!user) return;
+    const token = profile?.accessToken || "";
+    if (!token) return; // wait until the token is in memory
     let cancelled = false;
     (async () => {
       try {
@@ -59,7 +65,7 @@ export function OnboardingChecklist() {
         const vaultRes = await fetch(`${API_BASE}/vault/load`, {
           method: "POST",
           headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
-          body: JSON.stringify({ _token: profile?.accessToken || "" }),
+          body: JSON.stringify({ _token: token }),
         });
         const vaultData = await vaultRes.json().catch(() => ({}));
         const v = vaultData?.vault || {};
@@ -69,7 +75,7 @@ export function OnboardingChecklist() {
         const libRes = await fetch(`${API_BASE}/library/list`, {
           method: "POST",
           headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
-          body: JSON.stringify({ _token: profile?.accessToken || "" }),
+          body: JSON.stringify({ _token: token }),
         });
         const libData = await libRes.json().catch(() => ({}));
         const items: any[] = libData?.items || [];

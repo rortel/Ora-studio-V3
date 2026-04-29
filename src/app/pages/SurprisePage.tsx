@@ -162,10 +162,11 @@ function SurpriseContent() {
   });
   useEffect(() => {
     if (!hasVaultFeature || vaultNudgeDismissed) return;
+    const token = getAuthHeader();
+    if (!token) return; // wait for auth to hydrate before firing the call
     let cancelled = false;
     (async () => {
       try {
-        const token = getAuthHeader();
         const r = await fetch(`${API_BASE}/vault/load`, {
           method: "POST",
           headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
