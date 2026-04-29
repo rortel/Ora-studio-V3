@@ -9825,13 +9825,14 @@ OUTPUT JSON:
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
             if (jobIsApparel) {
-              // Apparel path → Ideogram Remix at image_weight=78. This is
-              // the sweet spot we calibrated: garment stays readably
-              // identical to the reference, but the model regenerates a
-              // FRESH wearer + scene so the pack reads as real life rather
-              // than the same Photoroom cutout pasted on different backdrops.
-              // The prompt leads with PRODUCT IDENTITY ANCHOR (verbatim
-              // description) + REGENERATE WEARER + SCENE LOCK.
+              // Apparel path → Ideogram Remix at image_weight=82. Bumped
+              // from 78 (which let products drift on cut/colour/logo)
+              // toward stricter fidelity. Trade-off accepted: scene
+              // variety drops slightly, product fidelity gains a lot —
+              // and product fidelity is what users pay for. The prompt
+              // leads with PRODUCT IDENTITY ANCHOR (verbatim) + REGENERATE
+              // WEARER + SCENE LOCK so we still get variety in the
+              // person/scene around the locked garment.
               const productAnchor = productDescription
                 ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
                 : "";
@@ -9840,7 +9841,7 @@ OUTPUT JSON:
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
                 aspectRatio: job.aspectRatio,
-                imageWeight: 78,
+                imageWeight: 82,
                 userId: user.id,
                 campaignSlug,
               });
@@ -9852,10 +9853,17 @@ OUTPUT JSON:
               // fall through to Photoroom Studio path below
             }
 
-            // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated)
+            // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated).
+            // Inject the verbatim product description into the bg prompt so
+            // the AI background generator places the product in a context
+            // that matches the product's identity (a navy tracksuit doesn't
+            // get a beige bohemian setting).
+            const compositePrompt = productDescription
+              ? `PRODUCT IDENTITY (preserve exactly): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
+              : job.promptText;
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
-              prompt: job.promptText,
+              prompt: compositePrompt,
               aspectRatio: job.aspectRatio,
               userId: user.id,
               cachedCutoutUrl,
@@ -9868,10 +9876,12 @@ OUTPUT JSON:
             }
 
             // Stage 2: kontext-pro fallback (compositing failed — usually
-            // means Photoroom + FAL keys missing or all three providers down)
+            // means Photoroom + FAL keys missing or all three providers down).
+            // Stronger product anchor here too: kontext-pro is more drift-prone
+            // than Photoroom, so we always prepend the verbatim description.
             console.log(`[surprise-me] composite failed for ${job.label}, falling back to kontext-pro`);
-            const promptWithProduct = productDescription && !job.promptText.toLowerCase().includes(productDescription.toLowerCase().split(/\s+/)[0] || "")
-              ? `PRODUCT (preserve exactly from reference photo): ${productDescription}.\n\n${job.promptText}`
+            const promptWithProduct = productDescription
+              ? `PRODUCT IDENTITY ANCHOR (must match reference photo VERBATIM — colour, material, cut, hardware, logo placement, proportions): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
               : job.promptText;
             const r = await runRemix({
               finalPrompt: promptWithProduct, imageUrl: productRef,
