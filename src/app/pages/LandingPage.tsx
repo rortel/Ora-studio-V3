@@ -571,6 +571,16 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
     { platform: "IG · Reel",   dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
   ];
 
+  // Track which tile media has failed to load (expired signed URL,
+  // 404, network error). When that happens we fall back to the
+  // platform-coloured gradient placeholder so the grid never shows an
+  // empty white square.
+  const [brokenIdx, setBrokenIdx] = useState<Set<number>>(new Set());
+  const markBroken = (i: number) => setBrokenIdx((prev) => {
+    if (prev.has(i)) return prev;
+    const next = new Set(prev); next.add(i); return next;
+  });
+
   return (
     <MouseTilt maxTilt={3} className="w-full max-w-[1080px]">
       <motion.div
@@ -582,6 +592,7 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
       >
         {TILES.map((t, i) => {
           const a = assets[i];
+          const showFallback = !a || (!a.imageUrl && !a.videoUrl) || brokenIdx.has(i);
           return (
             <motion.div
               key={i}
@@ -593,15 +604,15 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
               transition={{ type: "spring", stiffness: 220, damping: 24, delay: i * 0.07 }}
               whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 22 } }}
             >
-              {/* Real admin-featured asset if available, otherwise a branded
-               *  coral/ink gradient placeholder so the grid never looks
-                empty when the showcase has fewer than 6 items. */}
-              {a && (a.videoUrl ? (
-                <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" />
+              {/* Real admin-featured asset if available (and not broken),
+               *  otherwise a branded gradient placeholder so the grid
+               *  never looks empty. */}
+              {!showFallback && a && (a.videoUrl ? (
+                <video src={a.videoUrl} autoPlay muted loop playsInline preload="metadata" className="absolute inset-0 w-full h-full object-cover" onError={() => markBroken(i)} />
               ) : a.imageUrl ? (
-                <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                <img src={a.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" onError={() => markBroken(i)} />
               ) : null)}
-              {!a?.imageUrl && !a?.videoUrl && (
+              {showFallback && (
                 <div className="absolute inset-0" style={{ background: t.gradient }} />
               )}
 
