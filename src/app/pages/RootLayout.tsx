@@ -6,6 +6,7 @@ import { AppTabs } from "../components/AppTabs";
 import { Footer } from "../components/Footer";
 import { AppSidebar } from "../components/AppSidebar";
 import { CookieBanner } from "../components/CookieBanner";
+import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import { Loader2 } from "lucide-react";
 
 function PageLoader() {
@@ -108,6 +109,10 @@ export function RootLayout() {
         </>
       )}
       <CookieBanner />
+      {/* Onboarding checklist — auto-hides when all steps are done or
+          when the user dismisses. Floats bottom-right, doesn't block
+          UI. Only renders for authenticated users. */}
+      {isHub && <OnboardingChecklist />}
     </div>
   );
 }
