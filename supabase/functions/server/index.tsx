@@ -239,6 +239,63 @@ app.get("/storage/refresh-signed-url", async (c) => {
   }
 });
 
+// ── ERROR REPORTING — lightweight in-house observability ────────────
+// Replaces a Sentry integration for tonight's "weapon of war" sprint —
+// no external account needed, no DSN to configure, no bundle bloat.
+// Frontend posts unhandled errors here; we store the last 200 in KV
+// (auto-pruned). Admin endpoint /admin/errors/recent returns them so
+// we can debug production crashes that the user reports tomorrow.
+app.post("/errors/report", async (c) => {
+  try {
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const entry = {
+      id: `err_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ts: new Date().toISOString(),
+      message: String(body?.message || "").slice(0, 500),
+      stack: String(body?.stack || "").slice(0, 4000),
+      url: String(body?.url || "").slice(0, 300),
+      userAgent: String(body?.userAgent || "").slice(0, 200),
+      userId: String(body?.userId || "").slice(0, 60) || "anon",
+      route: String(body?.route || "").slice(0, 100),
+      severity: ["fatal", "error", "warning", "info"].includes(String(body?.severity)) ? String(body?.severity) : "error",
+    };
+    await kv.set(`err:${entry.id}`, entry);
+    // Best-effort prune: keep only the 200 most recent. We could index
+    // by timestamp but simpler to scan-and-trim on each insert.
+    try {
+      const all = await kv.getByPrefix("err:");
+      if (Array.isArray(all) && all.length > 200) {
+        const sorted = [...all].sort((a: any, b: any) => (b?.ts || "").localeCompare(a?.ts || ""));
+        const tooOld = sorted.slice(200);
+        for (const old of tooOld) {
+          if (old?.id) await kv.del(`err:${old.id}`);
+        }
+      }
+    } catch { /* prune best-effort */ }
+    console.log(`[errors:report] ${entry.severity.toUpperCase()} ${entry.userId} ${entry.route}: ${entry.message}`);
+    return c.json({ success: true, id: entry.id }, 200, { "access-control-allow-origin": "*" });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
+// Admin viewer — returns the 50 most recent errors. Auth required: the
+// caller must be the configured ADMIN_EMAIL.
+app.get("/admin/errors/recent", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    if (user.email.toLowerCase() !== ADMIN_EMAIL) {
+      return c.json({ success: false, error: "Forbidden" }, 403);
+    }
+    const all = await kv.getByPrefix("err:");
+    if (!Array.isArray(all)) return c.json({ success: true, errors: [] });
+    const sorted = [...all].sort((a: any, b: any) => (b?.ts || "").localeCompare(a?.ts || "")).slice(0, 50);
+    return c.json({ success: true, errors: sorted });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({
