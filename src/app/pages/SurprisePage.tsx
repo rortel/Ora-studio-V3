@@ -290,7 +290,11 @@ function SurpriseContent() {
         r.onerror = reject;
         r.readAsDataURL(file);
       });
-      const res = await serverPost("/analyze/reverse-prompt", { imageBase64: b64.base64, mimeType: b64.mimeType }, 60_000);
+      // 90 s cap — server races OpenAI (30 s) + Gemini (25 s) in
+      // parallel, so worst case is ~30 s. The 60 s margin protects
+      // against rare double-stalls without making the user wait
+      // forever when both providers are down.
+      const res = await serverPost("/analyze/reverse-prompt", { imageBase64: b64.base64, mimeType: b64.mimeType }, 90_000);
       if (res?.success && res.sourceUrl) {
         let nextUrls: string[] = [];
         setProductPhotos((prev) => {
@@ -300,10 +304,17 @@ function SurpriseContent() {
         toast.success(nextUrls.length > 1 ? `${nextUrls.length} angles locked` : "Visual ready");
         if (nextUrls.length >= 2) refreshEnrichedDescription(nextUrls);
       } else {
-        toast.error(res?.error || "Upload failed");
+        toast.error(res?.error || "Upload failed — vision API may be slow, please retry.");
       }
     } catch (err: any) {
-      toast.error(String(err?.message || err));
+      // AbortController-fired errors land here — surface a useful
+      // message instead of the raw "AbortError" / "signal aborted".
+      const msg = String(err?.message || err);
+      if (/abort|timeout|signal/i.test(msg)) {
+        toast.error("Upload timed out — vision API is slow, please retry.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setUploadingProduct(false);
     }
