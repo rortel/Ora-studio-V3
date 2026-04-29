@@ -17,6 +17,7 @@
  */
 
 import { API_BASE, publicAnonKey } from "./supabase";
+import { getAllAssignments } from "./experiments";
 
 const MAX_EVENTS_PER_SESSION = 100;
 const DEDUP_WINDOW_MS = 1000;
@@ -68,9 +69,13 @@ export function trackEvent(name: string, props?: TrackProps): void {
   eventCount += 1;
 
   try {
+    // Auto-attach active experiment variants to every event so the
+    // admin dashboard can compute conversion rates per variant from the
+    // existing event log without extra schema.
+    const exp = (() => { try { return getAllAssignments(); } catch { return {}; } })();
     const body = {
       event: name,
-      props: props || {},
+      props: { ...(props || {}), _exp: exp },
       userId: getUserId(),
       sessionId: SESSION_ID,
       route: location.pathname,
