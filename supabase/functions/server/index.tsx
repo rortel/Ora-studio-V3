@@ -10296,10 +10296,9 @@ app.post("/analyze/surprise-me", async (c) => {
       // Brand archetype shapes the creative posture of every shot.
       // Same field used by /suggest-angles for prompt parity.
       if (ctx.archetype) parts.push(`brand archetype: ${ctx.archetype} — ${ARCHETYPE_DIRECTIVES[ctx.archetype] || "express this archetype's posture in copy and visual choices"}`);
-      // User-picked style from the Surprise Me gallery. Hard directive —
-      // every shot in the pack must respect this aesthetic, overriding
-      // the planner's default style mixing.
-      if (styleDirective) parts.push(`PICKED STYLE (HARD): ${styleDirective}`);
+      // User-picked style is surfaced separately in the prompt CONTEXT
+      // (not joined into brandSummary) so it isn't diluted alongside
+      // brand attributes — it needs to read as a top-level style lock.
       const colors = [...new Set([...(ctx.colorPalette || []), ...(ctx.imageBankColors || [])])].slice(0, 6);
       if (colors.length > 0) parts.push(`palette: ${colors.join(", ")}`);
       if (ctx.photoStyle?.mood)     parts.push(`photo mood: ${ctx.photoStyle.mood}`);
@@ -10315,12 +10314,11 @@ app.post("/analyze/surprise-me", async (c) => {
       }
       brandSummary = parts.join(" · ");
     }
-    // If the user has no vault but picked a style, surface the style
-    // directive into brandSummary anyway so the planner sees it.
-    if (!brandSummary && styleDirective) {
-      brandSummary = `PICKED STYLE (HARD): ${styleDirective}`;
-    }
-    if (!brandSummary && !brief) {
+    // The picked-style directive is its own top-level CONTEXT line below;
+    // we no longer fold it into brandSummary. But the "no vault, no brief"
+    // gate must still pass when only a style is picked — otherwise users
+    // who skipped the brief block here.
+    if (!brandSummary && !brief && !styleDirective) {
       return c.json({ success: false, error: "Need a Brand Vault or a textual brief to compose a campaign." }, 400);
     }
 
@@ -10394,6 +10392,7 @@ CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
+${styleDirective ? `- PICKED STYLE LOCK (NON-NEGOTIABLE): the user picked a specific aesthetic from the gallery (see PICKED STYLE in CONTEXT). EVERY shot's promptText MUST open with that style's signature descriptors — its lighting, surfaces, palette cues, mood vocabulary — BEFORE the scene-specific details. Honour the "Avoid:" clauses verbatim. This style overrides any conflicting brand mood/photo-style guidance from the brand vault. If the picked style is "Editorial" (cinematic, marble, side-lighting), do NOT propose bright daylight studio shots even if the brand vault says "clean studio". The style wins.` : ""}
 - EVERY shot MUST carry a concrete twist fitting the creativity level (see CREATIVITY LEVEL hint above). The twist can be ANY of: photographic levers (lighting, framing, composition, mood, environment), graphic levers (overlay, prop, scale play, frame, vintage grain), or surreal levers at level 4 (floating elements, scale distortion, dream-logic objects). Randomize across the pack so no two shots use the same lever.
 - HARD BRAND-COMPLIANCE RULE on twists: ANY graphic element rendered on the image (overlay, prop, frame, sticker, floating object, scale-play element, type accent) MUST be coloured from the BRAND PALETTE and treated in the BRAND TYPOGRAPHIC FEEL. NEVER rainbow gradients, NEVER comic-sans, NEVER Word-Art, NEVER stock-AI rainbow collage, NEVER random fluo colours that don't exist in the brand. The wilder the twist, the more disciplined the brand discipline must be — a level-4 surreal element in the brand's signature navy + crocodile green reads as a campaign, the same element in random rainbow reads as AI slop.
 - DIVERSITY ACROSS THE PACK is mandatory: vary the SETTING (urban / interior / outdoor / studio), the TIME OF DAY (golden hour / blue hour / night / overcast / harsh midday), the FRAMING (wide / mid / close / overhead), and the HUMAN PRESENCE (with a model / no model / hands only / silhouette / packshot). If you reuse the same model in every shot the pack reads as "AI slop" and the user gets a refund. Mix it up.
@@ -10405,6 +10404,7 @@ ${ctx?.brandName || ctx?.logoStyle ? `- Weave a subtle brand mark into most shot
 
 CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — compose from brief alone."}
+${styleDirective ? `PICKED STYLE (HARD — see PICKED STYLE LOCK rule above): ${styleDirective}` : ""}
 ${brief ? `User brief: ${brief}` : ""}
 ${season ? `Season / moment: ${season}` : ""}
 ${productRef ? "A product reference photo IS provided (image_ref will be attached on every shot)." : "No product photo provided — generation is text-to-image only."}
@@ -10443,7 +10443,7 @@ OUTPUT JSON:
       "scene": "rich evocative 1-2 sentence scene description in ENGLISH",
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the visual twist of THIS shot in ENGLISH. Pick ANY type fitting the creativity level: photographic ('low angle golden hour', 'top-down marble counter', 'blue-hour cobblestone'), graphic ('navy gradient wash', 'thin crocodile-green frame', 'oversized brand-colour ribbon', 'vintage tricolour grain'), or surreal at level 4 ('floating brand-colour spheres', 'scale-distorted brand-colour wave', 'mixed-media brand-collage'). REQUIRED: every graphic/surreal twist MUST name the BRAND COLOUR or BRAND TYPOGRAPHIC FEEL it uses (e.g. 'navy gradient wash', not 'gradient wash'; 'tricolour ribbon', not 'ribbon overlay'). The brand-name your twist or the planner has FAILED.",
-      "promptText": "for type='product': final generation prompt 60-130 words weaving scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel (bold sans, classic serif, condensed display), background (solid colour, gradient, minimal pattern). NO photo composition needed.",
+      "promptText": "for type='product': final generation prompt 60-130 words${styleDirective ? ` that MUST open with the PICKED STYLE descriptors (lighting/surfaces/palette/mood from the style lock) and then weave` : ` weaving`} scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. — for type='text-card': describe the typography poster Ideogram should generate — exact text strings to render (3-15 words total, like 'NEW DROP\\nMAY 12'), brand palette colours by name, font feel${styleDirective ? ` (consistent with the picked style — Editorial = serif gravitas, Magazine = condensed bold display, Minimal = thin centred sans, etc.)` : ` (bold sans, classic serif, condensed display)`}, background${styleDirective ? ` consistent with the picked style's surface/palette guidance` : ` (solid colour, gradient, minimal pattern)`}. NO photo composition needed.",
       "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
       "caption": "long-form on-platform caption text in ${lang === "fr" ? "French" : "English"} that ACTIVELY SELLS THE PRODUCT. Required structure: (1) HOOK — first sentence grabs attention with a concrete detail, surprise, or question (no 'discover the new...' clichés). (2) BENEFIT BLOCK — 2-4 sentences naming the product by name + its specific value prop (what problem does it solve, why this is different from alternatives, who it's for). Use the product's actual material/cut/colour/feature. NO abstract praise like 'elegant' or 'iconic'. (3) CTA — one direct call to action ('shop now', 'pre-order', 'tap the link', 'comment SIZE for stock'). (4) Hashtags — 3-7 relevant tags, brand + category + 1-2 trending, ONLY on instagram-feed, instagram-story, tiktok, or facebook (never linkedin). LENGTH PER PLATFORM: instagram-feed 80-150 words, instagram-story 30-60 words (more concise — story is fleeting), tiktok 30-80 words (punchy, trending energy), linkedin 100-200 words (professional, thought-leadership angle, no hashtags), facebook 80-150 words (conversational). TONE PER PLATFORM: instagram-feed = warm + visual; instagram-story = casual urgent ('out today', 'last 24h'); tiktok = trend-aware, punchy, slangy ok; linkedin = professional, expertise frame ('here's what most people miss about X'); facebook = community + storytelling. NEVER use the BANNED VOCABULARY listed above (elegance, timeless, iconic, etc.) — those signal nothing. The caption must make a real human want to click."` : ""}
     }
