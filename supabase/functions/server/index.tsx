@@ -8748,13 +8748,43 @@ Rules:
       }
     };
 
+    // ── Storage upload runs IN PARALLEL with vision analysis ──
+    // The previous shape blocked the upload behind vision: when both
+    // vision providers failed (today's prod incident — APIPOD + Gemini
+    // both 502'd), the user couldn't even attach a photo to Surprise
+    // Me. Now the upload always completes when the auth + bytes are
+    // there, and vision is treated as a NICE-TO-HAVE bonus. If vision
+    // returns nothing, the client gets back sourceUrl with empty
+    // analysis fields and the photo is still usable.
+    const uploadSourceP: Promise<string | null> = (async () => {
+      if (!user || !imageBase64) return null;
+      try {
+        await ensureGeneratedAssetsBucket();
+        const sb = supabaseAdmin();
+        const mt = mimeType || "image/png";
+        const ext = mt.includes("png") ? "png" : mt.includes("webp") ? "webp" : "jpg";
+        const storagePath = `${user.id}/sources/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const bin = atob(imageBase64);
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, buf, { contentType: mt, upsert: true });
+        if (upErr) {
+          console.log(`[reverse-prompt] source upload skipped: ${upErr.message}`);
+          return null;
+        }
+        const { data: signed } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
+        return signed?.signedUrl || null;
+      } catch (err) {
+        console.log(`[reverse-prompt] source upload error (non-fatal): ${err}`);
+        return null;
+      }
+    })();
+
     // Race the two providers in parallel — first one back with a usable
     // result wins. Sequential was the old shape (OpenAI first, fallback
     // to Gemini) but it makes the worst case = sum of both timeouts.
-    // When OpenAI Vision is slow (524 territory like today) the user
-    // saw the upload spinner hang for 55 s+ and the client AbortController
-    // fired before Gemini could even start. Parallel = worst case is
-    // max(30s, 25s) = 30 s, well inside the 90 s client cap.
+    // Parallel = worst case is max(30s, 25s) = 30 s, well inside the
+    // 90 s client cap.
     let provider: "openai" | "gemini" | null = null;
     let parsed: any = null;
     const openaiP = tryOpenAI().then((r) => (r ? { provider: "openai" as const, parsed: r } : null));
@@ -8774,12 +8804,18 @@ Rules:
       if (pick) { provider = pick.provider; parsed = pick.parsed; }
     }
 
-    if (!parsed || typeof parsed !== "object") {
+    const sourceUrl = await uploadSourceP;
+    const visionOk = !!(parsed && typeof parsed === "object");
+
+    // Vision down + no upload either → real failure (client will show
+    // "Vision providers slow" toast). But if we DID upload the photo,
+    // we always return success so the user can proceed without DA hints.
+    if (!visionOk && !sourceUrl) {
       return c.json({ success: false, error: "Vision providers slow or unavailable — please retry in a moment." }, 502);
     }
 
     const s = (v: any) => String(v || "").trim();
-    const daLock = {
+    const daLock = visionOk ? {
       palette:          s(parsed.daLock?.palette          ?? parsed.palette),
       visualStyle:      s(parsed.daLock?.visualStyle      ?? parsed.style),
       lightingQuality:  s(parsed.daLock?.lightingQuality  ?? parsed.lighting),
@@ -8787,22 +8823,22 @@ Rules:
       cameraProfile:    s(parsed.daLock?.cameraProfile    ?? parsed.camera),
       postGrade:        s(parsed.daLock?.postGrade        ?? parsed.finish),
       renderingTexture: s(parsed.daLock?.renderingTexture ?? ""),
-    };
-    const sceneVary = {
+    } : { palette: "", visualStyle: "", lightingQuality: "", mood: "", cameraProfile: "", postGrade: "", renderingTexture: "" };
+    const sceneVary = visionOk ? {
       framing:           s(parsed.sceneVary?.framing           ?? parsed.composition),
       angle:             s(parsed.sceneVary?.angle             ?? ""),
       placement:         s(parsed.sceneVary?.placement         ?? ""),
       lightingDirection: s(parsed.sceneVary?.lightingDirection ?? ""),
       moment:            s(parsed.sceneVary?.moment            ?? ""),
-    };
-    const subject        = s(parsed.subject);
-    const heroObject     = s(parsed.heroObject) || subject;
-    const currentScene   = s(parsed.currentScene);
-    const narrativeTheme = s(parsed.narrativeTheme);
-    const avoid          = Array.isArray(parsed.avoid)
+    } : { framing: "", angle: "", placement: "", lightingDirection: "", moment: "" };
+    const subject        = visionOk ? s(parsed.subject) : "";
+    const heroObject     = visionOk ? (s(parsed.heroObject) || subject) : "";
+    const currentScene   = visionOk ? s(parsed.currentScene) : "";
+    const narrativeTheme = visionOk ? s(parsed.narrativeTheme) : "";
+    const avoid          = visionOk && Array.isArray(parsed.avoid)
       ? parsed.avoid.map(s).filter(Boolean).slice(0, 8)
       : ["no visible text except existing signage", "no watermark", "no logo"];
-    const promptText = s(parsed.promptText);
+    const promptText = visionOk ? s(parsed.promptText) : "";
 
     // Back-compat flat schema (old 8-dim consumers keep reading the same shape)
     const schema = {
@@ -8816,36 +8852,13 @@ Rules:
       finish: daLock.postGrade,
     };
 
-    // ── Optional: upload source to Storage when authenticated, so it can be used as a ref later ──
-    let sourceUrl: string | null = null;
-    if (user && imageBase64) {
-      try {
-        await ensureGeneratedAssetsBucket();
-        const sb = supabaseAdmin();
-        const mt = mimeType || "image/png";
-        const ext = mt.includes("png") ? "png" : mt.includes("webp") ? "webp" : "jpg";
-        const storagePath = `${user.id}/sources/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const bin = atob(imageBase64);
-        const buf = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-        const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(storagePath, buf, { contentType: mt, upsert: true });
-        if (!upErr) {
-          const { data: signed } = await sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(storagePath, 365 * 24 * 3600);
-          if (signed?.signedUrl) sourceUrl = signed.signedUrl;
-        } else {
-          console.log(`[reverse-prompt] source upload skipped: ${upErr.message}`);
-        }
-      } catch (err) {
-        console.log(`[reverse-prompt] source upload error (non-fatal): ${err}`);
-      }
-    }
-
-    console.log(`[reverse-prompt] ok via ${provider} in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"}, source=${!!sourceUrl})`);
+    console.log(`[reverse-prompt] done in ${Date.now() - t0}ms (user=${user?.id?.slice(0, 8) || "anon"}, source=${!!sourceUrl}, vision=${visionOk ? provider : "none"})`);
     return c.json({
       success: true,
       schema, daLock, sceneVary,
       subject, heroObject, currentScene, narrativeTheme,
       avoid, promptText, provider, sourceUrl,
+      visionOk,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {

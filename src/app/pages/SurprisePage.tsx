@@ -293,7 +293,10 @@ function SurpriseContent() {
       // 90 s cap — server races OpenAI (30 s) + Gemini (25 s) in
       // parallel, so worst case is ~30 s. The 60 s margin protects
       // against rare double-stalls without making the user wait
-      // forever when both providers are down.
+      // forever when both providers are down. The server uploads the
+      // photo to Storage in parallel with vision, so we ALWAYS get
+      // back sourceUrl when the upload succeeded — even when vision
+      // is down (response carries visionOk=false in that case).
       const res = await serverPost("/analyze/reverse-prompt", { imageBase64: b64.base64, mimeType: b64.mimeType }, 90_000);
       if (res?.success && res.sourceUrl) {
         let nextUrls: string[] = [];
@@ -301,7 +304,14 @@ function SurpriseContent() {
           nextUrls = prev.length >= 5 ? prev : [...prev, res.sourceUrl];
           return nextUrls;
         });
-        toast.success(nextUrls.length > 1 ? `${nextUrls.length} angles locked` : "Visual ready");
+        if (res.visionOk === false) {
+          // Photo is locked in but DA hints couldn't be extracted.
+          // The user can still generate — the planner will fall
+          // back to the brand vault + brief alone.
+          toast.success("Photo ready — DA hints unavailable, you can still generate.");
+        } else {
+          toast.success(nextUrls.length > 1 ? `${nextUrls.length} angles locked` : "Visual ready");
+        }
         if (nextUrls.length >= 2) refreshEnrichedDescription(nextUrls);
       } else {
         toast.error(res?.error || "Upload failed — vision API may be slow, please retry.");
