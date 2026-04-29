@@ -12,6 +12,7 @@ import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
+import { suggestScheduleForPack, scheduleToCalendarEvent } from "../lib/publish-scheduling";
 
 /* ═══ Palette — aligned with the shared ora/ tokens ═══ */
 const BG       = COLORS.cream;
@@ -407,6 +408,44 @@ function SurpriseContent() {
       setActiveRequestId(null);
     }
   }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
+
+  // ── Publish the entire pack to the Calendar ──────────────────────
+  // Maps each ok asset → a draft Calendar event with an AI-suggested
+  // posting time (one per day starting tomorrow, picked from the
+  // platform's optimal hour). The user lands on /hub/calendar with
+  // the events already laid out and can edit / drag / deploy from
+  // there. We POST events in parallel and toast the count saved.
+  const [publishingPack, setPublishingPack] = useState(false);
+  const publishPackToCalendar = useCallback(async () => {
+    if (!pack || publishingPack) return;
+    const okItems = pack.items.filter((it) => it.status === "ok" && (it.imageUrl || it.videoUrl));
+    if (okItems.length === 0) {
+      toast.error("Nothing to publish — pack is empty.");
+      return;
+    }
+    setPublishingPack(true);
+    try {
+      const schedule = suggestScheduleForPack(okItems);
+      const created = await Promise.allSettled(
+        schedule.map((s) =>
+          serverPost("/calendar", scheduleToCalendarEvent(s, { campaignName: pack.campaignName })),
+        ),
+      );
+      const okCount = created.filter((r) => r.status === "fulfilled" && (r as any).value?.success).length;
+      if (okCount > 0) {
+        toast.success(
+          `${okCount} post${okCount === 1 ? "" : "s"} added to your calendar. Review & publish from there.`,
+        );
+        navigate("/hub/calendar");
+      } else {
+        toast.error("Couldn't seed the calendar. Try again from Library.");
+      }
+    } catch (err: any) {
+      toast.error(String(err?.message || err));
+    } finally {
+      setPublishingPack(false);
+    }
+  }, [pack, publishingPack, serverPost, navigate]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -1075,12 +1114,20 @@ function SurpriseContent() {
                 )}
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
-                <Button variant="ink" size="md" onClick={() => navigate("/hub/library")}>
-                  <Package size={14} /> Open in Library
+                {/* Primary CTA — schedule the whole pack onto the calendar
+                    with AI-suggested times, then jump there. The user
+                    can review/drag/deploy from /hub/calendar. */}
+                <Button variant="accent" size="md" onClick={publishPackToCalendar} disabled={publishingPack}>
+                  {publishingPack ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {publishingPack ? "Adding to calendar…" : "Publish your creations"}
                 </Button>
                 <Button variant="ghost" size="md" onClick={() => { setPack(null); setStage("idle"); }}
                         style={{ border: `1px solid ${BORDER}` }}>
                   <Sparkles size={14} /> Surprise me again
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => navigate("/hub/library")}
+                        style={{ border: `1px solid ${BORDER}` }}>
+                  <Package size={14} /> Open in Library
                 </Button>
               </div>
             </motion.div>
