@@ -32,12 +32,24 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // Isolate konva/react-konva into their own chunk so CJS → ESM wrappers
-        // are fully initialised before any component code runs (fixes TDZ crash).
+        // Granular vendor chunking. Keeps the main `index` chunk small
+        // (~300KB instead of 800KB) by isolating heavy libraries that
+        // are either lazy-loaded (Konva, pdfjs) or imported by a small
+        // subset of pages (charts, MUI). Result: first paint downloads
+        // only react + the page chunk, everything else streams in when
+        // needed.
         manualChunks(id) {
-          if (id.includes('node_modules/konva') || id.includes('node_modules/react-konva')) {
-            return 'konva';
-          }
+          if (id.includes('node_modules/konva') || id.includes('node_modules/react-konva')) return 'konva';
+          if (id.includes('node_modules/pdfjs-dist')) return 'pdf';
+          if (id.includes('node_modules/@ffmpeg/')) return 'ffmpeg';
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/victory-vendor') || id.includes('node_modules/recharts-scale')) return 'charts';
+          if (id.includes('node_modules/@mui/') || id.includes('node_modules/@emotion/')) return 'mui';
+          if (id.includes('node_modules/@radix-ui/')) return 'radix';
+          if (id.includes('node_modules/motion/')) return 'motion';
+          if (id.includes('node_modules/@remotion/') || id.includes('node_modules/remotion/')) return 'remotion';
+          if (id.includes('node_modules/jszip') || id.includes('node_modules/html-to-image') || id.includes('node_modules/wavesurfer.js')) return 'media-tools';
+          if (id.includes('node_modules/react-slick') || id.includes('node_modules/react-popper') || id.includes('node_modules/embla-carousel-react') || id.includes('node_modules/react-day-picker') || id.includes('node_modules/react-dnd')) return 'ui-extras';
+          if (id.includes('node_modules/lucide-react')) return 'icons';
         },
       },
     },
