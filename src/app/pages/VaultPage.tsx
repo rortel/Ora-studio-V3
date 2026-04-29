@@ -57,6 +57,9 @@ interface VaultData {
   confidence_score: number;
   source_url: string | null;
   updatedAt: string | null;
+  // Brand archetype (one of 12 Jungian) — drives the creative posture
+  // suggest-angles + surprise-me adopt. Empty string when unset.
+  archetype: string;
   // Brand Charter fields
   mission: string | null;
   vision: string | null;
@@ -137,6 +140,7 @@ const EMPTY_VAULT: VaultData = {
   colors: [], logo_url: null, logo_description: null, tone: null, photo_style: null,
   social_presence: [], key_messages: [], approved_terms: [], forbidden_terms: [],
   fonts: [], confidence_score: 0, source_url: null, updatedAt: null,
+  archetype: "",
   mission: null, vision: null, personality: null, usp: null, values: null,
   font_usage_rules: null, competitors: null, brand_guidelines_text: null,
   brand_platform: null,
@@ -260,6 +264,11 @@ function mergeVaultData(existing: VaultData, incoming: Partial<VaultData>): Vaul
     logo_url: existing.logo_url || incoming.logo_url || null,
     logo_description: existing.logo_description || incoming.logo_description || null,
     source_url: existing.source_url || incoming.source_url || null,
+    // Archetype: user-picked value wins. Incoming charter typically
+    // doesn't carry archetype (the URL extractor doesn't infer it),
+    // but if it ever does, treat it as a fallback when the user hasn't
+    // chosen one yet.
+    archetype: existing.archetype || incoming.archetype || "",
 
     // Directive lists: charter enriches (union + dedupe)
     colors: dedupeColors(existing.colors || [], incoming.colors || []),
@@ -1454,6 +1463,46 @@ function VaultPageContent() {
                     {vault.tagline && (
                       <p style={{ fontSize: "13px", color: "var(--text-tertiary)", fontStyle: "italic", marginTop: 2 }}>"{vault.tagline}"</p>
                     )}
+                    {/* Archetype picker — drives creative posture in
+                        suggest-angles + surprise-me planners. 12 Jungian
+                        archetypes; user picks one, server expands the
+                        directive in prompts. */}
+                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(17,17,17,0.55)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Archetype
+                      </label>
+                      <select
+                        value={vault.archetype || ""}
+                        onChange={(e) => {
+                          const next = { ...vault, archetype: e.target.value };
+                          setVault(next);
+                          saveVault(next);
+                        }}
+                        style={{
+                          fontSize: "12px",
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          border: "1px solid rgba(17,17,17,0.15)",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        <option value="">— Pick one —</option>
+                        <option value="hero">Hero · challenges & triumphs</option>
+                        <option value="outlaw">Outlaw · disruption & rebellion</option>
+                        <option value="magician">Magician · transformation & vision</option>
+                        <option value="innocent">Innocent · purity & optimism</option>
+                        <option value="sage">Sage · wisdom & truth</option>
+                        <option value="explorer">Explorer · freedom & discovery</option>
+                        <option value="lover">Lover · intimacy & beauty</option>
+                        <option value="jester">Jester · play & wit</option>
+                        <option value="caregiver">Caregiver · service & nurture</option>
+                        <option value="creator">Creator · craft & expression</option>
+                        <option value="ruler">Ruler · authority & premium</option>
+                        <option value="everyman">Everyman · belonging & real life</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
