@@ -279,6 +279,35 @@ app.post("/errors/report", async (c) => {
   }
 });
 
+// Internal helper to log server-side errors to the same KV bucket the
+// client uses. Lets us see prod crashes in /admin/errors/recent without
+// scrolling through Supabase Edge stdout. Best-effort — never throws.
+async function reportServerError(opts: {
+  message: string;
+  stack?: string;
+  route: string;
+  userId?: string | null;
+  severity?: "fatal" | "error" | "warning";
+  context?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const entry = {
+      id: `err_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ts: new Date().toISOString(),
+      message: String(opts.message || "").slice(0, 500),
+      stack: String(opts.stack || "").slice(0, 4000),
+      url: `[server] ${opts.route}`,
+      userAgent: "server",
+      userId: String(opts.userId || "server"),
+      route: String(opts.route || "").slice(0, 100),
+      severity: opts.severity || "error",
+      context: opts.context,
+    };
+    await kv.set(`err:${entry.id}`, entry);
+    console.error(`[server-error] ${entry.severity.toUpperCase()} ${entry.route}: ${entry.message}`);
+  } catch { /* never throw from error reporting */ }
+}
+
 // Admin viewer — returns the 50 most recent errors. Auth required: the
 // caller must be the configured ADMIN_EMAIL.
 app.get("/admin/errors/recent", async (c) => {
@@ -10146,8 +10175,23 @@ OUTPUT JSON:
           if (retry.status === "ok") {
             result = retry;
           } else {
-            // Both attempts failed — log structured for debugging tomorrow
+            // Both attempts failed — log structured for debugging tomorrow,
+            // and also persist to /admin/errors/recent so we see the
+            // pattern over time (which platforms / types fail most).
             console.error(`[surprise-me:shot] FINAL FAIL ${job.label} type=${job.type} platform=${job.platform} ratio=${job.aspectRatio} error1="${(result as any).error}" error2="${(retry as any).error}"`);
+            reportServerError({
+              message: `Shot final fail: ${job.label}`,
+              route: "/analyze/surprise-me",
+              userId: user.id,
+              severity: "error",
+              context: {
+                type: job.type,
+                platform: job.platform,
+                aspectRatio: job.aspectRatio,
+                error1: (result as any).error,
+                error2: (retry as any).error,
+              },
+            }).catch(() => {});
           }
         }
         return result;
@@ -10425,7 +10469,20 @@ OUTPUT JSON:
               scene: job!.scene,
             });
             if (retry.ok) r = retry;
-            else console.error(`[surprise-me:film] FINAL FAIL ${job!.label} platform=${job!.platform} error1="${(r as any).error}" error2="${(retry as any).error}"`);
+            else {
+              console.error(`[surprise-me:film] FINAL FAIL ${job!.label} platform=${job!.platform} error1="${(r as any).error}" error2="${(retry as any).error}"`);
+              reportServerError({
+                message: `Film final fail: ${job!.label}`,
+                route: "/analyze/surprise-me:film",
+                userId: user.id,
+                severity: "error",
+                context: {
+                  platform: job!.platform,
+                  error1: (r as any).error,
+                  error2: (retry as any).error,
+                },
+              }).catch(() => {});
+            }
           }
           items[idx].motion = job!.motion;
           items[idx].videoFileName = job!.videoFileName;
@@ -10623,6 +10680,17 @@ OUTPUT JSON:
     });
   } catch (err: any) {
     console.log(`[surprise-me] FATAL: ${err?.message || err}`);
+    // Persist to /admin/errors/recent so we see this in the dashboard
+    // — not just stdout. Skip "Unauthorized" since it's a 401 not a bug.
+    if (err?.message !== "Unauthorized") {
+      await reportServerError({
+        message: `surprise-me FATAL: ${err?.message || err}`,
+        stack: err?.stack,
+        route: "/analyze/surprise-me",
+        severity: "fatal",
+        context: { tookMs: Date.now() - t0 },
+      });
+    }
     return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
   }
 });
