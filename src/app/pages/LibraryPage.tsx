@@ -62,6 +62,42 @@ interface LibraryItem {
 }
 
 /** Returns a compact badge for deployment status: "published", "scheduled", or null */
+/* HealingImg — drop-in <img> replacement that auto-refreshes Supabase
+ * signed URLs that have expired (400 status). On first error, calls
+ * /storage/refresh-signed-url to swap in a fresh 365-day token. If the
+ * second attempt also fails, shows a placeholder. Used for Library
+ * thumbnails which were generated when signed URLs lived only 7 days
+ * (most legacy items have already expired). */
+function HealingImg(props: React.ImgHTMLAttributes<HTMLImageElement> & { fallbackBg?: string }) {
+  const { src: originalSrc, fallbackBg, onError: parentOnError, ...rest } = props;
+  const [src, setSrc] = useState<string | undefined>(originalSrc as string | undefined);
+  const [healed, setHealed] = useState(false);
+  const [dead, setDead] = useState(false);
+  // Reset when the underlying URL changes (new item).
+  useEffect(() => { setSrc(originalSrc as string | undefined); setHealed(false); setDead(false); }, [originalSrc]);
+  const handleError = async (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    if (dead) { parentOnError?.(e); return; }
+    if (healed || !originalSrc) { setDead(true); parentOnError?.(e); return; }
+    try {
+      const u = `${API_BASE}/storage/refresh-signed-url?url=${encodeURIComponent(originalSrc as string)}`;
+      const r = await fetch(u, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+      const d = await r.json().catch(() => ({}));
+      if (d?.success && d.url) {
+        setHealed(true);
+        setSrc(d.url);
+      } else {
+        setDead(true); parentOnError?.(e);
+      }
+    } catch {
+      setDead(true); parentOnError?.(e);
+    }
+  };
+  if (dead) {
+    return <div {...({ className: rest.className, style: { ...rest.style, background: fallbackBg || "linear-gradient(135deg, #EFEFF1, #F7F7F9)" } } as any)} />;
+  }
+  return <img {...rest} src={src} onError={handleError} />;
+}
+
 function getDeploymentBadge(item: LibraryItem): { label: string; color: string; icon: typeof CheckCircle2 } | null {
   const deps = item.deployments || [];
   if (deps.length === 0) return null;
@@ -923,13 +959,13 @@ function LibraryPageContent() {
                                 {a.videoUrl ? (
                                   <video src={a.videoUrl} className="w-full h-full object-cover" muted playsInline preload="none" />
                                 ) : (
-                                  <img src={a.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
+                                  <HealingImg src={a.imageUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                                 )}
                               </div>
                             ))}
                           </div>
                         ) : coverUrl ? (
-                          <img src={coverUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
+                          <HealingImg src={coverUrl} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <FolderOpen size={32} style={{ color: "#3d3c3b" }} />
@@ -1079,7 +1115,7 @@ function LibraryPageContent() {
                           {/* Preview area */}
                           <div className="relative" style={{ aspectRatio, background: "#0e0d0c", maxHeight: 280 }}>
                             {asset.imageUrl ? (
-                              <img src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
+                              <HealingImg src={asset.imageUrl} alt={asset.label} className="w-full h-full object-cover" crossOrigin="anonymous" loading="lazy" decoding="async" />
                             ) : asset.videoUrl ? (
                               <div className="relative w-full h-full">
                                 <video
@@ -1618,7 +1654,7 @@ function LibraryPageContent() {
                           const isVideo = item.type === "film" || isVideoUrl;
                           const isImage = !isVideo && !!url && item.type !== "sound";
                           if (isImage) {
-                            return <img src={url!} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" loading="lazy" decoding="async" />;
+                            return <HealingImg src={url!} alt={getItemName(item)} className="w-full object-cover transition-transform duration-500 group-hover:scale-105" crossOrigin="anonymous" loading="lazy" decoding="async" />;
                           }
                           if (isVideo && url) {
                             return (
