@@ -40,11 +40,19 @@ export function AppTabs({ active }: { active?: TabId }) {
   })();
   const credits = typeof remainingCredits === "number" ? remainingCredits : 0;
   const lowOrEmpty = credits <= 5;
+  // On the landing page (root URL) the navbar sits over a dark hero video.
+  // The cream-tinted background was reading as a yellow strip — kill it
+  // there. Inside the app (/hub/...) we keep the tinted blurred backdrop
+  // for legibility against scrolling content.
+  const isLanding = location.pathname === "/" || location.pathname === "";
+  const headerBg = isLanding ? "transparent" : `${BG}CC`;
+  const headerBorder = isLanding ? "1px solid transparent" : `1px solid ${LINE}`;
+  const headerBlur = isLanding ? "none" : "blur(18px) saturate(180%)";
 
   return (
     <header
       className="sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-14"
-      style={{ background: `${BG}CC`, backdropFilter: "blur(18px) saturate(180%)", borderBottom: `1px solid ${LINE}` }}
+      style={{ background: headerBg, backdropFilter: headerBlur, borderBottom: headerBorder }}
     >
       <Link to="/" className="flex items-center" aria-label="Ora">
         <span className="text-[22px]" style={{ fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`, letterSpacing: "-0.01em" }}>Ora</span>
