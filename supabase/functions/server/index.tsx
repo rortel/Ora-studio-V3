@@ -209,6 +209,36 @@ app.get("/image-proxy", async (c) => {
   }
 });
 
+// ── REFRESH SIGNED URL ───────────────────────────────────────────────
+// Library entries store Supabase Storage signed URLs which used to
+// expire after 7 days (now 365 days, but legacy items are dead). The
+// frontend hits this endpoint when an <img> 400s — we extract the
+// bucket + path from the stale URL and re-sign it with a fresh
+// 365-day token. No auth required because the URL itself is the proof
+// of access (caller can only refresh URLs they already had).
+app.get("/storage/refresh-signed-url", async (c) => {
+  const url = c.req.query("url");
+  if (!url) return c.json({ success: false, error: "Missing url param" }, 400);
+  try {
+    // Supabase signed URL shape: ".../storage/v1/object/sign/<bucket>/<path>?token=..."
+    const u = new URL(url);
+    const m = u.pathname.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+)$/);
+    if (!m) return c.json({ success: false, error: "Not a Supabase signed URL" }, 400);
+    const [, bucket, path] = m;
+    const sb = supabaseAdmin();
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(decodeURIComponent(path), 365 * 24 * 3600);
+    if (error || !data?.signedUrl) {
+      return c.json({ success: false, error: error?.message || "Could not re-sign" }, 502);
+    }
+    return c.json({ success: true, url: data.signedUrl }, 200, {
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, 500);
+  }
+});
+
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({
