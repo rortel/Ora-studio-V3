@@ -808,12 +808,12 @@ export function LandingPage() {
     }
     return { videoSrc: undefined, posterSrc: undefined, imageSrc: undefined };
   };
-  // Hero uses the first admin-featured asset (or heroVideo fallback) —
-  // the Drop/Pick/Ship panels don't consume showcase[1..3] anymore
-  // since they render mocked UI instead of brand-output videos. The
-  // showcase tail still feeds the bento gallery + the ShipMockup's
-  // 6-tile stack.
-  const mediaHero = panelMedia(0);
+  // Hero panel ALWAYS uses the bundled heroVideo. It's part of the app
+  // bundle so it loads instantly — no fetch, no flash, no grey gradient
+  // window between page paint and video play. The /showcase/featured
+  // fetch still drives the ShipMockup grid below; the hero is decoupled
+  // from network latency.
+  const mediaHero = { videoSrc: heroVideo, posterSrc: undefined as string | undefined, imageSrc: undefined as string | undefined };
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
