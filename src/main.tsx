@@ -3,6 +3,12 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { Toaster } from "sonner";
 import "./styles/index.css";
+import { installErrorReporter, reportError } from "./app/lib/error-reporter";
+
+// Wire up global error capture (window.onerror + unhandledrejection)
+// at app boot. Lightweight in-house alternative to Sentry — posts to
+// /errors/report which stores in Supabase KV. Idempotent.
+installErrorReporter();
 
 /* ═══════════════════════════════════
    ERROR BOUNDARY — catches any React
@@ -22,6 +28,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("[ErrorBoundary]", error, info.componentStack);
     this.setState({ info: info.componentStack || "" });
+    // Report to /errors/report so we can debug in /admin/errors/recent.
+    reportError({
+      message: error.message || "React render error",
+      stack: error.stack,
+      severity: "fatal",
+      context: { componentStack: info.componentStack?.slice(0, 1000) || "" },
+    });
   }
 
   render() {
