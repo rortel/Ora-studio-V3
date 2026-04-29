@@ -10150,7 +10150,7 @@ OUTPUT JSON:
       // Parallel film generation — concurrency 2 because each clip is heavy.
       // Only animate shots whose per-job format is "film" AND aren't flat-lay
       // (the rest stay as pure image deliverables for image-first platforms).
-      const filmable = items
+      const allFilmable = items
         .map((it, idx) => ({ it, idx, job: jobs.find((j) => j.fileName === it.fileName) }))
         .filter((x) => {
           if (x.it.status !== "ok" || !x.it.imageUrl || !x.job || x.job.format !== "film") return false;
@@ -10160,21 +10160,65 @@ OUTPUT JSON:
           }
           return true;
         });
-      // Concurrency 3 (was 2): with FAL Kling 2.5 the per-clip wait is
-      // ~90s, so 4 clips at concurrency 2 = 3 minutes (close to the
-      // Supabase Edge gateway timeout). At concurrency 3, same pack
-      // finishes in ~2 min — safer headroom against 504s.
+      // FILM CAP: animate AT MOST half of the pack (rounded up). Trying to
+      // animate 6+ shots inside one Edge function call risks 504 timeouts
+      // and produces redundant motion (most viewers don't watch every
+      // clip). Half is the sweet spot — pack still feels "alive" without
+      // burning the wall-clock budget. Earliest filmable shots win the
+      // budget (deterministic, predictable for the user).
+      const MAX_FILMS = Math.ceil(allFilmable.length / 2);
+      const filmable = allFilmable.slice(0, MAX_FILMS);
+      if (allFilmable.length > MAX_FILMS) {
+        console.log(`[surprise-me:film] pack capped at ${MAX_FILMS}/${allFilmable.length} films (rest ship as stills only)`);
+      }
+      // FILM PHASE WALL-CLOCK BUDGET. Together with the stills budget
+      // (100s), this keeps total request well under the 150s gateway
+      // timeout. If we're already past the stills budget, skip films
+      // entirely — they'd 504 anyway, better to ship the still pack
+      // clean than wait for a failed clip.
+      const FILMS_BUDGET_MS = 80_000;
+      const filmsStartedAt = Date.now();
+      const handlerElapsedAtFilmStart = filmsStartedAt - t0;
+      if (handlerElapsedAtFilmStart > 110_000) {
+        console.log(`[surprise-me:film] skipping film phase entirely — stills already used ${handlerElapsedAtFilmStart}ms, no budget left`);
+        for (const { idx } of filmable) {
+          (items[idx] as any).videoError = "Skipped — pack hit budget on stills, retry to add films";
+        }
+      }
       const FILM_CONCURRENCY = 3;
-      for (let i = 0; i < filmable.length; i += FILM_CONCURRENCY) {
+      for (let i = 0; handlerElapsedAtFilmStart <= 110_000 && i < filmable.length; i += FILM_CONCURRENCY) {
+        // Check budget before launching next batch — bail if close to limit.
+        if (Date.now() - filmsStartedAt > FILMS_BUDGET_MS) {
+          console.log(`[surprise-me:film] film budget exceeded after ${i} clips, marking remaining as queued`);
+          for (let j = i; j < filmable.length; j++) {
+            (items[filmable[j].idx] as any).videoError = "Time budget exceeded — retry to add this clip";
+          }
+          break;
+        }
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
         await Promise.all(slice.map(async ({ it, idx, job }) => {
-          const r = await runVideoForShot({
+          // Single retry on video failure (most flakiness is transient
+          // FAL/Luma 5xx). Doubles wall-clock worst case but the win
+          // on success rate is worth it.
+          let r = await runVideoForShot({
             imageUrl: it.imageUrl!,
             motion: job!.motion,
             aspectRatio: it.aspectRatio,
             duration: videoDuration,
             scene: job!.scene,
           });
+          if (!r.ok) {
+            console.log(`[surprise-me:film] retry ${job!.label} after first failure: ${(r as any).error}`);
+            const retry = await runVideoForShot({
+              imageUrl: it.imageUrl!,
+              motion: job!.motion,
+              aspectRatio: it.aspectRatio,
+              duration: videoDuration,
+              scene: job!.scene,
+            });
+            if (retry.ok) r = retry;
+            else console.error(`[surprise-me:film] FINAL FAIL ${job!.label} platform=${job!.platform} error1="${(r as any).error}" error2="${(retry as any).error}"`);
+          }
           items[idx].motion = job!.motion;
           items[idx].videoFileName = job!.videoFileName;
           if (r.ok && r.url) {
