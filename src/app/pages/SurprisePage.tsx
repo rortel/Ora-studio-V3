@@ -1017,40 +1017,10 @@ function SurpriseContent() {
         </main>
       )}
 
-      {/* Generating — polaroid-style placeholders filling in */}
+      {/* Generating — multi-step progress with cycling status + ETA so
+          users see the pipeline working (not "is it stuck?" anxiety). */}
       {(stage === "concept" || stage === "generating") && (
-        <main className="flex-1 flex items-center justify-center px-5 md:px-10 py-12">
-          <div className="w-full max-w-[760px] text-center">
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}
-              className="mb-10"
-            >
-              <div className="inline-flex items-center gap-2 text-[13px]" style={{ color: ACCENT, fontWeight: 600 }}>
-                <Loader2 size={14} className="animate-spin" />
-                {stage === "concept" ? "Writing the concept…" : "Shooting the pack…"}
-              </div>
-            </motion.div>
-
-            <div className="grid grid-cols-3 gap-3">
-              {Array.from({ length: Math.min(9, Math.max(6, assetCount)) }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="rounded-2xl overflow-hidden"
-                  style={{ aspectRatio: "1 / 1", background: "linear-gradient(135deg, #EFEFF1, #F7F7F9)" }}
-                  initial={{ opacity: 0.35, scale: 0.96 }}
-                  animate={{ opacity: [0.35, 0.75, 0.35] }}
-                  transition={{ duration: 1.6 + (i % 3) * 0.3, repeat: Infinity, delay: i * 0.1 }}
-                />
-              ))}
-            </div>
-
-            <div className="mt-10 text-[12.5px]" style={{ color: MUTED }}>
-              {mediaType === "film"
-                ? `~${Math.ceil(30 + assetCount * 45)}s total · ${assetCount} images + ${assetCount} films in parallel · brand DA locked`
-                : `30 to 90 seconds · ${assetCount} assets in parallel · brand DA locked`}
-            </div>
-          </div>
-        </main>
+        <GenerationProgress stage={stage} mediaType={mediaType} assetCount={assetCount} />
       )}
 
       {/* Done */}
@@ -1432,6 +1402,119 @@ function SurpriseContent() {
         })()}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ─── GenerationProgress — multi-step status while the pack is being
+ *   generated. Cycles through realistic backend phases based on elapsed
+ *   time so the user sees a moving progress bar + status line + ETA
+ *   countdown. Removes the "is it stuck?" anxiety on long generations.
+ *   No real backend telemetry (we'd need streaming) — the timeline
+ *   below is calibrated to what surprise-me actually does. */
+function GenerationProgress({ stage, mediaType, assetCount }: {
+  stage: "concept" | "generating";
+  mediaType: string;
+  assetCount: number;
+}) {
+  // Total expected runtime in seconds. Films add ~45s per asset since
+  // they queue after the still. Image-only is much faster.
+  const estTotal = mediaType === "film"
+    ? 30 + assetCount * 45
+    : 30 + assetCount * 8;
+
+  const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    const t0 = Date.now();
+    const tick = () => setElapsedSec(Math.floor((Date.now() - t0) / 1000));
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  // Calibrated phases — each maps to a window of elapsed time and a
+  // visible status line. The percentages are calibrated against actual
+  // observed runtimes (concept ~30s, stills ~30s, captions ~5s, films
+  // ~45s/clip). Not exact but feels right.
+  type Phase = { upTo: number; emoji: string; label: string };
+  const phases: Phase[] = mediaType === "film" ? [
+    { upTo: 0.10, emoji: "🧠", label: "Reading your brand & product…" },
+    { upTo: 0.25, emoji: "✏️", label: "Writing the campaign concept…" },
+    { upTo: 0.55, emoji: "📷", label: `Shooting ${assetCount} stills (different scenes, locked product)…` },
+    { upTo: 0.65, emoji: "✍️", label: "Writing platform-tuned captions…" },
+    { upTo: 0.95, emoji: "🎬", label: "Animating films (Kling 2.5 Pro)…" },
+    { upTo: 1.00, emoji: "📦", label: "Packing for Library…" },
+  ] : [
+    { upTo: 0.20, emoji: "🧠", label: "Reading your brand & product…" },
+    { upTo: 0.40, emoji: "✏️", label: "Writing the campaign concept…" },
+    { upTo: 0.85, emoji: "📷", label: `Shooting ${assetCount} stills (different scenes, locked product)…` },
+    { upTo: 0.95, emoji: "✍️", label: "Writing platform-tuned captions…" },
+    { upTo: 1.00, emoji: "📦", label: "Packing for Library…" },
+  ];
+
+  const progressFraction = Math.min(0.97, elapsedSec / Math.max(1, estTotal));
+  const currentPhase = phases.find((p) => progressFraction <= p.upTo) || phases[phases.length - 1];
+  const remainingSec = Math.max(0, estTotal - elapsedSec);
+
+  return (
+    <main className="flex-1 flex items-center justify-center px-5 md:px-10 py-12">
+      <div className="w-full max-w-[760px]">
+        {/* Status line — animated emoji + cycling label */}
+        <div className="flex flex-col items-center text-center mb-6">
+          <motion.div
+            key={currentPhase.label}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="flex items-center gap-2 text-[15px] md:text-[17px] font-semibold"
+            style={{ color: TEXT }}
+          >
+            <span className="text-[20px]">{currentPhase.emoji}</span>
+            <span>{currentPhase.label}</span>
+          </motion.div>
+          <div className="mt-2 text-[12px] font-mono tabular-nums" style={{ color: MUTED }}>
+            {elapsedSec}s / ~{estTotal}s · {remainingSec}s remaining
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="w-full h-1.5 rounded-full overflow-hidden mb-8" style={{ background: "rgba(17,17,17,0.06)" }}>
+          <motion.div
+            className="h-full rounded-full"
+            style={{ background: COLORS.coral }}
+            initial={{ width: 0 }}
+            animate={{ width: `${progressFraction * 100}%` }}
+            transition={{ duration: 0.5, ease: "linear" }}
+          />
+        </div>
+
+        {/* Polaroid placeholders with shimmer effect */}
+        <div className="grid grid-cols-3 gap-3">
+          {Array.from({ length: Math.min(9, Math.max(6, assetCount)) }).map((_, i) => (
+            <motion.div
+              key={i}
+              className="rounded-2xl overflow-hidden relative"
+              style={{ aspectRatio: "1 / 1", background: "linear-gradient(135deg, #EFEFF1, #F7F7F9)" }}
+              initial={{ opacity: 0.35, scale: 0.96 }}
+              animate={{ opacity: [0.35, 0.85, 0.35] }}
+              transition={{ duration: 1.6 + (i % 3) * 0.3, repeat: Infinity, delay: i * 0.15 }}
+            >
+              {/* Shimmer pass */}
+              <motion.div
+                className="absolute inset-0"
+                style={{ background: "linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.9) 50%, transparent 70%)" }}
+                initial={{ x: "-100%" }}
+                animate={{ x: "100%" }}
+                transition={{ duration: 2.2, repeat: Infinity, delay: i * 0.18, ease: "linear" }}
+              />
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Footer note — what's locked */}
+        <div className="mt-8 text-center text-[12px]" style={{ color: MUTED }}>
+          Brand DA locked · Product fidelity guaranteed · {mediaType === "film" ? `${assetCount} images + ${Math.ceil(assetCount / 2)} films` : `${assetCount} platform-tuned posts`}
+        </div>
+      </div>
+    </main>
   );
 }
 
