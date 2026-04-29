@@ -9907,11 +9907,47 @@ If any check fails, rewrite the angle before outputting.`;
   }
 });
 
+// ── PROGRESS POLLING — read endpoint paired with the writes inside
+// surprise-me below. The handler writes phase updates to
+// `progress:<userId>:<requestId>` throughout its 60-150s run; the
+// client polls this endpoint every 2s to render an honest progress
+// bar instead of a time-windowed approximation. KV entries auto-expire
+// after 10 minutes (best-effort prune on next access).
+app.get("/analyze/surprise-me-progress", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const id = c.req.query("id");
+    if (!id) return c.json({ success: false, error: "Missing id" }, 400);
+    const data = await kv.get(`progress:${user.id}:${id}`);
+    if (!data) return c.json({ success: true, progress: null });
+    return c.json({ success: true, progress: data });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 app.post("/analyze/surprise-me", async (c) => {
   const t0 = Date.now();
   try {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    // Optional client-supplied request id used for progress polling.
+    // Format: any string up to 60 chars. Falls back to a server-generated
+    // id (same hash space) when absent — but then progress isn't
+    // pollable since the client doesn't know the id.
+    const requestId = String(body?.requestId || `srp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`).slice(0, 60);
+    const progressKey = `progress:${user.id}:${requestId}`;
+    const writeProgress = (phase: string, fraction: number, detail?: string) => {
+      // Best-effort fire-and-forget. We never let a progress write
+      // block or break the main pipeline.
+      kv.set(progressKey, {
+        phase, fraction: Math.max(0, Math.min(1, fraction)),
+        detail: detail || "",
+        elapsedMs: Date.now() - t0,
+        ts: new Date().toISOString(),
+      }).catch(() => {});
+    };
+    writeProgress("starting", 0.02, "Reading your brand & product…");
     // Accept productImageUrls (array, max 5) or productImageUrl (legacy single).
     // kontext-pro takes a single image_ref, so we use [0]. Additional angles
     // are processed upstream by /analyze/product-multi which produces a rich
@@ -10198,10 +10234,12 @@ OUTPUT JSON:
       } catch (err) { console.log(`[surprise-me] concept err: ${err}`); return null; }
     };
 
+    writeProgress("concept", 0.10, "Writing the campaign concept…");
     const concept = await callConcept();
     if (!concept || !Array.isArray(concept.shots) || concept.shots.length === 0) {
       return c.json({ success: false, error: "Could not generate campaign concept" }, 502);
     }
+    writeProgress("concept_done", 0.25, `Concept ready — ${concept.shots.length} shots planned`);
 
     const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "campaign";
@@ -10311,7 +10349,15 @@ OUTPUT JSON:
     // as queued — better than a silent 502/504.
     const STILLS_BUDGET_MS = 100_000;
     const handlerStart = t0;
+    writeProgress("stills_started", 0.30, `Shooting ${jobs.length} stills…`);
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+      // Real-time progress: each batch boundary updates the fraction
+      // proportional to how many stills are done. Stills phase spans
+      // 0.30 → 0.70 of the total.
+      const stillsFractionStart = 0.30;
+      const stillsFractionEnd = 0.70;
+      const fraction = stillsFractionStart + (stillsFractionEnd - stillsFractionStart) * (i / Math.max(1, jobs.length));
+      writeProgress("stills", fraction, `Shot ${i}/${jobs.length}…`);
       // Time-budget check — if we're close to the gateway timeout, stop
       // launching new batches and mark remaining shots as queued so the
       // user can re-trigger them from the result screen.
@@ -10522,9 +10568,11 @@ OUTPUT JSON:
     // Luma Ray (image-to-video). The existing image is the FIRST FRAME,
     // so the product never morphs — only the world around it moves.
     // ══════════════════════════════════════════════════════════════════
+    writeProgress("stills_done", 0.70, `${items.filter((it) => it.status === "ok").length} stills ready`);
     // Film pass — runs whenever any shot was assigned format=film
     // (either by the per-platform map or by the all-film override).
     if (jobs.some((j) => j.format === "film")) {
+      writeProgress("films_started", 0.72, "Animating films (Kling 2.5 Pro)…");
       const filmStart = Date.now();
       const arRayMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
 
@@ -10810,6 +10858,7 @@ OUTPUT JSON:
       }
       const filmCount = items.filter((x) => x.videoUrl).length;
       console.log(`[surprise-me:film] ${filmCount}/${filmable.length} films done in ${Date.now() - filmStart}ms (duration=${videoDuration})`);
+      writeProgress("films_done", 0.92, `${filmCount} film${filmCount === 1 ? "" : "s"} ready`);
     }
 
     const okCount = items.filter((x) => x.status === "ok").length;
@@ -10833,6 +10882,7 @@ OUTPUT JSON:
       : [...requestedPlatformSet].filter((p) => deliveredPlatformSet.has(p)).length / requestedPlatformSet.size;
     const captionsOk = items.filter((x) => x.status === "ok" && !!x.caption).length;
     const captionCoverage = okCount === 0 ? 0 : captionsOk / okCount;
+    writeProgress("persisting", 0.95, "Packing for Library…");
     const successRate = items.length === 0 ? 0 : okCount / items.length;
     const brandLockScore = Math.max(0, Math.min(100, Math.round(
       (ctx ? 30 : 0)
@@ -10999,6 +11049,7 @@ OUTPUT JSON:
       } catch { /* email best-effort */ }
     })();
 
+    writeProgress("done", 1.0, "Pack ready");
     return c.json({
       success: true,
       campaignName, campaignSlug,
@@ -11014,6 +11065,7 @@ OUTPUT JSON:
       creditsCharged,
       remainingCredits,
       brandLockScore,
+      requestId,
       tookMs: Date.now() - t0,
     });
   } catch (err: any) {

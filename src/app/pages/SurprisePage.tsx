@@ -80,7 +80,7 @@ export function SurprisePage() {
 }
 
 function SurpriseContent() {
-  const { getAuthHeader, can, remainingCredits, refreshProfile } = useAuth();
+  const { getAuthHeader, can, remainingCredits, refreshProfile, accessToken } = useAuth();
   const navigate = useNavigate();
 
   // Core inputs (minimal — the two blanks)
@@ -134,6 +134,10 @@ function SurpriseContent() {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<"idle" | "concept" | "generating" | "done">("idle");
   const [pack, setPack] = useState<Pack | null>(null);
+  // Request ID for the in-flight generation. Used by GenerationProgress to
+  // poll /analyze/surprise-me-progress and replace the time-windowed phase
+  // approximation with the real backend phase.
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [publishTarget, setPublishTarget] = useState<PublishableAsset | null>(null);
   const [outOfCredits, setOutOfCredits] = useState<{ remaining: number; required: number } | null>(null);
@@ -329,6 +333,13 @@ function SurpriseContent() {
     setBusy(true);
     setStage("concept");
     setPack(null);
+    // Generate a per-run request id the backend uses as the progress KV
+    // key. Browsers from ~2022 expose crypto.randomUUID; we fall back to a
+    // timestamp+random combo for older runtimes (and for SSR safety).
+    const reqId = (typeof crypto !== "undefined" && (crypto as any).randomUUID)
+      ? (crypto as any).randomUUID()
+      : `srp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setActiveRequestId(reqId);
     try {
       await new Promise((r) => setTimeout(r, 500));
       setStage("generating");
@@ -338,6 +349,7 @@ function SurpriseContent() {
       const effCreativity = override?.creativity ?? creativity;
       const effAssetCount = override?.assetCount ?? assetCount;
       const res = await serverPost("/analyze/surprise-me", {
+        requestId: reqId,
         productImageUrl: productPhotos[0] || undefined,
         productImageUrls: productPhotos.length > 0 ? productPhotos : undefined,
         productDescription: productDescription.trim() || undefined,
@@ -392,6 +404,7 @@ function SurpriseContent() {
       setStage("idle");
     } finally {
       setBusy(false);
+      setActiveRequestId(null);
     }
   }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile]);
 
@@ -1020,7 +1033,13 @@ function SurpriseContent() {
       {/* Generating — multi-step progress with cycling status + ETA so
           users see the pipeline working (not "is it stuck?" anxiety). */}
       {(stage === "concept" || stage === "generating") && (
-        <GenerationProgress stage={stage} mediaType={mediaType} assetCount={assetCount} />
+        <GenerationProgress
+          stage={stage}
+          mediaType={mediaType}
+          assetCount={assetCount}
+          requestId={activeRequestId}
+          accessToken={accessToken}
+        />
       )}
 
       {/* Done */}
@@ -1406,15 +1425,18 @@ function SurpriseContent() {
 }
 
 /* ─── GenerationProgress — multi-step status while the pack is being
- *   generated. Cycles through realistic backend phases based on elapsed
- *   time so the user sees a moving progress bar + status line + ETA
- *   countdown. Removes the "is it stuck?" anxiety on long generations.
- *   No real backend telemetry (we'd need streaming) — the timeline
- *   below is calibrated to what surprise-me actually does. */
-function GenerationProgress({ stage, mediaType, assetCount }: {
+ *   generated. When a `requestId` is provided we poll the backend's
+ *   progress KV (/analyze/surprise-me-progress) every 2 s and drive the
+ *   UI from the real phase + fraction the server writes at each major
+ *   step. When no requestId is available (or the first poll hasn't
+ *   landed yet) we fall back to the time-windowed approximation below
+ *   so the bar still moves. */
+function GenerationProgress({ stage, mediaType, assetCount, requestId, accessToken }: {
   stage: "concept" | "generating";
   mediaType: string;
   assetCount: number;
+  requestId?: string | null;
+  accessToken?: string | null;
 }) {
   // Total expected runtime in seconds. Films add ~45s per asset since
   // they queue after the still. Image-only is much faster.
@@ -1430,10 +1452,48 @@ function GenerationProgress({ stage, mediaType, assetCount }: {
     return () => clearInterval(id);
   }, []);
 
+  // ── Real backend progress (KV-polled) ────────────────────────────
+  // Polls /analyze/surprise-me-progress every 2 s while the request is
+  // live. The backend writes a row at every major phase boundary
+  // (starting / concept / concept_done / stills_started / stills /
+  // stills_done / films_started / films_done / persisting / done) and
+  // we use phase + fraction to drive the bar honestly.
+  const [serverProgress, setServerProgress] = useState<
+    | { phase: string; fraction: number; detail: string }
+    | null
+  >(null);
+  useEffect(() => {
+    if (!requestId || !accessToken) { setServerProgress(null); return; }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        // The progress endpoint reads the user JWT from `_token` query
+        // param (CORS-safe path also used by other authenticated GETs).
+        // Authorization header carries the public anon key so the
+        // Supabase gateway lets the request through to the function.
+        const url = `${API_BASE}/analyze/surprise-me-progress?id=${encodeURIComponent(requestId)}&_token=${encodeURIComponent(accessToken)}`;
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+        if (!r.ok) return;
+        const j = await r.json().catch(() => null);
+        if (!cancelled && j?.success && j.progress) {
+          setServerProgress({
+            phase: String(j.progress.phase || ""),
+            fraction: Number(j.progress.fraction || 0),
+            detail: String(j.progress.detail || ""),
+          });
+        }
+      } catch { /* ignore */ }
+    };
+    poll();
+    const id = setInterval(poll, 2_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [requestId, accessToken]);
+
   // Calibrated phases — each maps to a window of elapsed time and a
   // visible status line. The percentages are calibrated against actual
   // observed runtimes (concept ~30s, stills ~30s, captions ~5s, films
-  // ~45s/clip). Not exact but feels right.
+  // ~45s/clip). Not exact but feels right. Used as a fallback when
+  // serverProgress hasn't arrived yet.
   type Phase = { upTo: number; emoji: string; label: string };
   const phases: Phase[] = mediaType === "film" ? [
     { upTo: 0.10, emoji: "🧠", label: "Reading your brand & product…" },
@@ -1450,8 +1510,36 @@ function GenerationProgress({ stage, mediaType, assetCount }: {
     { upTo: 1.00, emoji: "📦", label: "Packing for Library…" },
   ];
 
-  const progressFraction = Math.min(0.97, elapsedSec / Math.max(1, estTotal));
-  const currentPhase = phases.find((p) => progressFraction <= p.upTo) || phases[phases.length - 1];
+  // Map a backend phase to a human-readable label + emoji. Falls back
+  // to the time-windowed phase when serverProgress is null.
+  const phaseLabel = (phase: string, detail: string): { emoji: string; label: string } => {
+    switch (phase) {
+      case "starting":       return { emoji: "🧠", label: detail || "Reading your brand & product…" };
+      case "concept":        return { emoji: "✏️", label: detail || "Writing the campaign concept…" };
+      case "concept_done":   return { emoji: "✏️", label: detail || "Concept ready" };
+      case "stills_started": return { emoji: "📷", label: detail || `Shooting ${assetCount} stills (different scenes, locked product)…` };
+      case "stills":         return { emoji: "📷", label: detail || `Shooting ${assetCount} stills…` };
+      case "stills_done":    return { emoji: "📷", label: detail || "Stills ready" };
+      case "films_started":  return { emoji: "🎬", label: detail || "Animating films (Kling 2.5 Pro)…" };
+      case "films_done":     return { emoji: "🎬", label: detail || "Films ready" };
+      case "persisting":     return { emoji: "📦", label: detail || "Packing for Library…" };
+      case "done":           return { emoji: "✅", label: detail || "Pack ready" };
+      default:               return { emoji: "🧠", label: detail || "Working…" };
+    }
+  };
+
+  // Prefer real server progress when available; otherwise use the
+  // time-windowed approximation. The UI never goes backwards: if the
+  // local approximation has already passed the server fraction (e.g.
+  // a stale poll result), we keep the higher of the two.
+  const fallbackFraction = Math.min(0.97, elapsedSec / Math.max(1, estTotal));
+  const fallbackPhase = phases.find((p) => fallbackFraction <= p.upTo) || phases[phases.length - 1];
+  const progressFraction = serverProgress
+    ? Math.max(serverProgress.fraction, fallbackFraction * 0.85)
+    : fallbackFraction;
+  const currentPhase = serverProgress
+    ? phaseLabel(serverProgress.phase, serverProgress.detail)
+    : { emoji: fallbackPhase.emoji, label: fallbackPhase.label };
   const remainingSec = Math.max(0, estTotal - elapsedSec);
 
   return (
