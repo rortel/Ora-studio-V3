@@ -879,6 +879,125 @@ async function sendEmailWithId(to: string, subject: string, html: string): Promi
   } catch (err) { console.log(`[email] Error sending to ${to}: ${err}`); return { ok: false }; }
 }
 
+// ── TRANSACTIONAL EMAIL TEMPLATES ─────────────────────────────────
+// Pack-ready, low-credits, weekly-digest. All gated on user prefs
+// (kv: user:<id>.emailPrefs.{packReady|lowCredits|weekly}) — defaults
+// to ON for packReady + lowCredits, OFF for weekly. RESEND_API_KEY
+// missing → all calls degrade to no-op (logged), nothing breaks.
+
+const ORA_LOGO_BLACK = "https://ora-studio.app/og-image.png";
+const ORA_HUB = "https://ora-studio.app/hub/library";
+
+function emailShell(content: string, ctaUrl?: string, ctaLabel?: string): string {
+  const ctaHtml = ctaUrl && ctaLabel ? `
+    <tr><td style="padding:20px 0">
+      <a href="${ctaUrl}" style="display:inline-block;background:#FF6B47;color:#FFFFFF;padding:14px 28px;border-radius:999px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;text-decoration:none">${ctaLabel}</a>
+    </td></tr>` : "";
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;padding:0;background:#F4EFE6;font-family:Inter,system-ui,-apple-system,sans-serif;color:#111111">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="600" style="max-width:600px;margin:0 auto;background:#FFFFFF;border-radius:24px;overflow:hidden;margin-top:32px;margin-bottom:32px">
+      <tr><td style="padding:32px 40px 0">
+        <span style="font-family:'Bagel Fat One',Inter,sans-serif;font-size:28px;letter-spacing:-0.02em">Ora</span>
+      </td></tr>
+      <tr><td style="padding:24px 40px 8px;font-size:15px;line-height:1.6;color:#111">${content}</td></tr>
+      ${ctaHtml ? `<tr><td style="padding:0 40px">${ctaHtml}</td></tr>` : ""}
+      <tr><td style="padding:32px 40px;border-top:1px solid rgba(17,17,17,0.08);font-size:11px;color:rgba(17,17,17,0.55);line-height:1.6">
+        Ora Studio · drop your product, we do the rest<br>
+        <a href="https://ora-studio.app/profile" style="color:rgba(17,17,17,0.55);text-decoration:underline">Notification preferences</a>
+      </td></tr>
+    </table>
+  </body></html>`;
+}
+
+interface EmailPrefs { packReady?: boolean; lowCredits?: boolean; weekly?: boolean; }
+async function getEmailPrefs(userId: string): Promise<EmailPrefs> {
+  try {
+    const profile = await kv.get(`user:${userId}`);
+    const prefs = profile?.emailPrefs || {};
+    return {
+      packReady:  prefs.packReady !== false,   // default ON
+      lowCredits: prefs.lowCredits !== false,  // default ON
+      weekly:     prefs.weekly === true,        // default OFF
+    };
+  } catch { return { packReady: true, lowCredits: true, weekly: false }; }
+}
+
+/** Pack-ready: fired when /analyze/surprise-me succeeds. Best-effort. */
+export async function sendPackReadyEmail(opts: {
+  userId: string; userEmail: string; userName: string;
+  campaignName: string; assetCount: number; previewUrl?: string;
+}): Promise<void> {
+  const prefs = await getEmailPrefs(opts.userId);
+  if (!prefs.packReady) return;
+  const subject = `📦 ${opts.campaignName} — your pack is ready`;
+  const previewHtml = opts.previewUrl
+    ? `<tr><td style="padding:8px 0 24px"><img src="${opts.previewUrl}" style="width:100%;max-width:520px;border-radius:12px" alt=""></td></tr>`
+    : "";
+  const content = `
+    <p style="font-size:24px;line-height:1.2;margin:0 0 16px;font-weight:600">Your pack just dropped.</p>
+    <p>Hey ${opts.userName.split(" ")[0] || "there"} — Ora finished composing <strong>${opts.campaignName}</strong>. ${opts.assetCount} platform-ready posts, captions written, ready to publish.</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0">${previewHtml}</table>
+    <p style="color:rgba(17,17,17,0.55);font-size:13px">No edits required. Just publish.</p>`;
+  await sendEmail(opts.userEmail, subject, emailShell(content, `${ORA_HUB}`, "Open in Library"));
+}
+
+/** Low-credits: fired when remaining credits drop to ≤5 after a charge. */
+export async function sendLowCreditsEmail(opts: {
+  userId: string; userEmail: string; userName: string;
+  remaining: number; planLabel: string;
+}): Promise<void> {
+  const prefs = await getEmailPrefs(opts.userId);
+  if (!prefs.lowCredits) return;
+  // Throttle: don't send more than once per 24h per user.
+  try {
+    const profile = await kv.get(`user:${opts.userId}`);
+    const lastSent = profile?.lastLowCreditsEmailAt;
+    if (typeof lastSent === "number" && Date.now() - lastSent < 24 * 3600 * 1000) return;
+    if (profile) await kv.set(`user:${opts.userId}`, { ...profile, lastLowCreditsEmailAt: Date.now() });
+  } catch {}
+  const subject = `⚡ ${opts.remaining} asset${opts.remaining === 1 ? "" : "s"} left this month`;
+  const content = `
+    <p style="font-size:24px;line-height:1.2;margin:0 0 16px;font-weight:600">Running low on credits.</p>
+    <p>Hey ${opts.userName.split(" ")[0] || "there"} — you have <strong>${opts.remaining} asset${opts.remaining === 1 ? "" : "s"} left</strong> on your ${opts.planLabel} plan this month.</p>
+    <p>Each Surprise Me pack uses 6 assets. Top up or upgrade to keep shipping without interruption.</p>`;
+  await sendEmail(opts.userEmail, subject, emailShell(content, "https://ora-studio.app/pricing", "Top up credits"));
+}
+
+/** Weekly digest: opt-in summary of the user's last 7 days of activity. */
+export async function sendWeeklyDigestEmail(opts: {
+  userId: string; userEmail: string; userName: string;
+  packsThisWeek: number; assetsThisWeek: number; topPlatform: string;
+}): Promise<void> {
+  const prefs = await getEmailPrefs(opts.userId);
+  if (!prefs.weekly) return;
+  const subject = `📊 Your week on Ora — ${opts.packsThisWeek} pack${opts.packsThisWeek === 1 ? "" : "s"}, ${opts.assetsThisWeek} asset${opts.assetsThisWeek === 1 ? "" : "s"}`;
+  const content = `
+    <p style="font-size:24px;line-height:1.2;margin:0 0 16px;font-weight:600">7 days of Ora.</p>
+    <p>Hey ${opts.userName.split(" ")[0] || "there"} — here's what you shipped this week:</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:24px 0">
+      <tr>
+        <td style="padding:16px 0;border-top:1px solid rgba(17,17,17,0.08);border-bottom:1px solid rgba(17,17,17,0.08)">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Packs generated</div>
+          <div style="font-size:28px;font-weight:600;margin-top:4px">${opts.packsThisWeek}</div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 0;border-bottom:1px solid rgba(17,17,17,0.08)">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Total assets</div>
+          <div style="font-size:28px;font-weight:600;margin-top:4px">${opts.assetsThisWeek}</div>
+        </td>
+      </tr>
+      ${opts.topPlatform ? `<tr>
+        <td style="padding:16px 0;border-bottom:1px solid rgba(17,17,17,0.08)">
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Most-used platform</div>
+          <div style="font-size:20px;font-weight:600;margin-top:4px;text-transform:capitalize">${opts.topPlatform.replace(/-/g, " ")}</div>
+        </td>
+      </tr>` : ""}
+    </table>
+    <p style="color:rgba(17,17,17,0.55);font-size:13px">Keep the rhythm. Drop a product, we'll handle the rest.</p>`;
+  await sendEmail(opts.userEmail, subject, emailShell(content, ORA_HUB, "Open Library"));
+}
+
 // resolveEmailList — resolve a list to actual user emails
 async function resolveEmailList(list: any): Promise<Array<{ email: string; name: string }>> {
   if (list.type === "manual" && list.userIds?.length) {
@@ -10853,6 +10972,32 @@ OUTPUT JSON:
       if (latestProfile?.role === "admin") remainingCredits = -1; // -1 = unlimited
       else remainingCredits = Math.max(0, (latestProfile?.credits || 0) - (latestProfile?.creditsUsed || 0));
     } catch {}
+
+    // Fire pack-ready email + low-credits warning AFTER the response —
+    // both are best-effort, must not block the user from seeing their
+    // pack. RESEND_API_KEY missing → silent no-op, nothing breaks.
+    (async () => {
+      try {
+        const okItem = items.find((it) => it.status === "ok" && it.imageUrl);
+        const userEmail = user.email || "";
+        if (!userEmail) return;
+        const userProfile = await kv.get(`user:${user.id}`).catch(() => null);
+        const userName = (user as any).name || userProfile?.name || userEmail.split("@")[0] || "there";
+        await sendPackReadyEmail({
+          userId: user.id, userEmail, userName,
+          campaignName, assetCount: items.filter((it) => it.status === "ok").length,
+          previewUrl: okItem?.imageUrl,
+        });
+        if (typeof remainingCredits === "number" && remainingCredits <= 5 && remainingCredits >= 0) {
+          const plan = String(userProfile?.plan || "Free");
+          const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+          await sendLowCreditsEmail({
+            userId: user.id, userEmail, userName,
+            remaining: remainingCredits, planLabel,
+          });
+        }
+      } catch { /* email best-effort */ }
+    })();
 
     return c.json({
       success: true,
