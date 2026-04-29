@@ -9264,16 +9264,120 @@ app.post("/analyze/suggest-angles", async (c) => {
     }
     const brandSummary = parts.join(" · ");
 
+    // ── CAMPAIGN ARCHETYPE CATALOGUE ────────────────────────────────────
+    // Industry-specific campaign archetypes the LLM picks from. Each
+    // archetype is a proven creative vehicle ("manifesto", "behind-the-
+    // seams", "customer in the wild") that already has cultural traction
+    // in the category. Forcing the LLM to pick a DIFFERENT archetype per
+    // angle eliminates the "3 variations of the same lifestyle vibe"
+    // problem we kept hitting. Categories matched broadly via keywords
+    // on industry / vault sector / brand name.
+    const ARCHETYPES_BY_CATEGORY: Record<string, string[]> = {
+      fashion: [
+        "drop announcement (release energy, scarcity, countdown)",
+        "capsule story (a small numbered run with a creative angle)",
+        "off-runway (the garment in a real life context, NOT styled)",
+        "customer in the wild (UGC-style, real people wearing)",
+        "behind-the-seams (atelier, fabric mill, craftsperson)",
+        "manifesto (the brand declares a stance, not a product)",
+        "lookbook editorial (full styled spread, art-directed)",
+        "remix / collab (existing piece reimagined by guest creator)",
+        "product nerd-out (single detail magnified — stitching, hardware)",
+        "pack-and-go (the garment as essential travel companion)",
+      ],
+      food: [
+        "recipe drop (the product as ingredient in a 30-sec recipe)",
+        "craft moment (artisan's hands at work, slow gesture)",
+        "ritual (the product woven into a daily moment — coffee, dinner)",
+        "sharing (group around the product — table, picnic, party)",
+        "origin story (the farmer / the producer / the source)",
+        "indulgence (intimate close-up, sensory texture, cropped tight)",
+        "health claim (real, specific — not 'wellness' platitudes)",
+        "pairing (the product alongside another loved staple)",
+        "behind-the-pastry (kitchen rhythm, dough, oven)",
+        "ambient (the product just existing in a beautiful frame)",
+      ],
+      beauty: [
+        "results showcase (before/after, real skin, real hair)",
+        "ritual (the product as part of a self-care moment)",
+        "ingredient deep-dive (the hero molecule explained)",
+        "tutorial (apply / blend / finish in 15-30 sec)",
+        "expert voice (dermatologist, makeup artist, real authority)",
+        "transformation story (real person, real journey)",
+        "raw texture (extreme macro, the product itself as art)",
+        "off-camera (UGC, raw bathroom shot, no glam)",
+        "shade / scent palette (the full spectrum)",
+        "manifesto (against the category's BS)",
+      ],
+      tech: [
+        "feature reveal (one capability, dramatized)",
+        "use-case in context (real workflow, real benefit)",
+        "spec deep-dive (numbers, specs, tech-bro audience)",
+        "creator showcase (real users producing real work with it)",
+        "vs the world (comparison, taking on a competitor)",
+        "behind-the-build (engineering team, lab footage)",
+        "speed test (the product doing the thing, fast)",
+        "lifestyle integration (the product slipping into daily life)",
+        "manifesto (the tech philosophy)",
+        "easter-egg / hidden-feature reveal",
+      ],
+      services: [
+        "case study (real client, real numbers, real outcome)",
+        "process reveal (the methodology demystified)",
+        "founder voice (personal POV, conviction, unfiltered)",
+        "client testimonial (specific quote, real face)",
+        "thought leadership (industry hot-take, contrarian angle)",
+        "behind-the-pitch (the team in motion, war-room energy)",
+        "data drop (proprietary insights, charts, surprise stats)",
+        "manifesto (mission statement reframed)",
+        "framework (signature method as carousel)",
+        "anti-hustle / craft (slowdown messaging vs grindset culture)",
+      ],
+      // Default fallback when industry is unknown / unmapped
+      default: [
+        "product hero (the artifact at the centre, dramatized)",
+        "use-case in context (real life, real moment)",
+        "behind-the-scenes (how it's made, who makes it)",
+        "customer voice (real users, real stories)",
+        "manifesto (the brand stance, not the product)",
+        "results / proof (specific outcomes, numbers)",
+        "ritual (the product woven into daily rhythm)",
+        "ambient editorial (slow, art-directed, atmospheric)",
+        "scarcity / drop (release energy, urgency)",
+        "remix / collab (reimagined by guest)",
+      ],
+    };
+    const pickArchetypeCategory = (): keyof typeof ARCHETYPES_BY_CATEGORY => {
+      const probe = `${ctx?.industry || ""} ${(ctx as any)?.sector || ""} ${ctx?.brandName || ""}`.toLowerCase();
+      if (/\b(fashion|apparel|clothing|wear|streetwear|footwear|sportswear|luxe|luxury)\b/.test(probe)) return "fashion";
+      if (/\b(food|patisserie|bakery|chocolat|restaurant|chef|cuisine|gastronomie|cafe|coffee|drink|beverage|wine|spirits)\b/.test(probe)) return "food";
+      if (/\b(beauty|cosmetic|skincare|makeup|haircare|fragrance|perfum|wellness|spa)\b/.test(probe)) return "beauty";
+      if (/\b(tech|software|saas|app|digital|platform|hardware|gadget|electronic|ai|cloud|data)\b/.test(probe)) return "tech";
+      if (/\b(service|consult|agency|studio|firm|advisory|legal|finance|insurance|coaching)\b/.test(probe)) return "services";
+      return "default";
+    };
+    const archetypeCategory = pickArchetypeCategory();
+    const archetypes = ARCHETYPES_BY_CATEGORY[archetypeCategory];
+
     const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, SPECIFIC campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
 
 The user should NEVER have to write a brief. Each angle must be self-contained and ready to turn into a full social campaign pack without any further input.
+
+THE 3 ANGLES MUST OCCUPY 3 DIFFERENT CREATIVE AXES (NEVER 3 VARIATIONS OF THE SAME IDEA):
+- Angle 1 = PRODUCT-CENTRED. The product itself is the hero — its design, craft, detail, story. creativityLevel: 1 (safe & brand-conventional).
+- Angle 2 = USE-CASE / UNEXPECTED CONTEXT. The product placed in a moment that surprises (a wrong place, an off-script time, a non-obvious user). creativityLevel: 3 (bold but recognisable).
+- Angle 3 = MANIFESTO / PROVOCATION. The product as cultural statement, not as object. The brand declares something ABOUT the world. creativityLevel: 4 (surreal, art-directed, provocative — but on-brand).
+
+CAMPAIGN ARCHETYPE CATALOGUE (${archetypeCategory} category — pick a DIFFERENT archetype for each angle, never the same one twice):
+${archetypes.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
 NON-NEGOTIABLE RULES:
 - BANNED VOCABULARY in titles, subtitles, briefs: "elegance", "elegant", "timeless", "timelessness", "iconic", "sophisticated", "sophistication", "refined", "celebrate", "essence", "embrace", "discover", "redefine", "journey", "moments", "curated", "crafted", "art of", "love at first", "where * meets *". These are fortune-cookie words that signal nothing. If you write any of them, the angle is rejected.
 - Each angle title must contain at least ONE concrete element from the product description (a material, a colour, a cut, a use-case, a setting). Generic mood titles like "Elegant Timelessness" are forbidden.
 - Each angle must propose a SCENARIO (a specific scene with people, place, action), not a VALUE (sustainability, beauty, etc.). "Linen Fridays in Provence" beats "Sustainable Elegance" every time.
 - Angles must match the product's ACTUAL audience. If the product is men's wear → male-leaning scenarios or explicit gifting (a wife/girlfriend/mom buying it for him). NEVER frame a women's-day or motherhood angle around a men's product unless the angle is explicitly "gift him on X day".
-- 3 angles, all DIFFERENT scenarios (one urban / one outdoor / one intimate, one editorial / one candid / one product-detail, etc.). No repetition of vibe.
+- 3 angles, EACH on a different creative axis (see the 3-axis rule above) AND each using a different campaign archetype from the catalogue above. No repetition of vibe, no two angles in the same archetype.
+- Each angle MUST name its archetype in the brief (e.g. "Behind-the-seams: …", "Manifesto: …", "Customer in the wild: …") so the planner downstream knows the genre.
 - Language: ${lang === "fr" ? "French" : "English"} for title/subtitle/brief.
 - Output JSON only, no prose wrapper, no markdown.
 
@@ -9299,7 +9403,14 @@ OUTPUT SHAPE (strict):
   ]
 }
 
-Self-check before outputting: re-read each angle. Does the TITLE contain a concrete element from the product? Does the BRIEF describe a scene I could actually photograph with this product? If any answer is no, rewrite it. Pick varied creativityLevels (e.g. 2 / 3 / 4) and varied platform mixes.`;
+Self-check before outputting:
+- Are the 3 angles on the 3 different creative axes (PRODUCT-CENTRED / USE-CASE / MANIFESTO)? If two share an axis, rewrite.
+- Are the creativity levels exactly 1, 3, and 4 (one of each)? If two angles share a level, rewrite.
+- Does each angle use a DIFFERENT campaign archetype from the catalogue? Two same archetypes = rewrite.
+- Does each TITLE contain a concrete element from the product (material, colour, cut, use-case)?
+- Does each BRIEF name its archetype explicitly (e.g. "Manifesto: …" / "Behind-the-seams: …") so the downstream planner knows the genre?
+- Vary platform mixes — not all 3 angles target the same 5 platforms.
+If any check fails, rewrite the angle before outputting.`;
 
     const key = Deno.env.get("OPENAI_API_KEY") || Deno.env.get("APIPOD_KEY");
     if (!key) return c.json({ success: false, error: "LLM not configured" }, 500);
