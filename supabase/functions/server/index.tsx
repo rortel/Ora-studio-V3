@@ -24564,6 +24564,27 @@ app.post("/campaign/deploy", async (c) => {
     const deployId = `deploy:${user.id}:${Date.now()}`;
     await kv.set(deployId, { id: deployId, userId: user.id, platform, zernioPlatform, status: deploySuccess ? (scheduledAt ? "scheduled" : "published") : "failed", error: deployError || undefined, zernioPostId: zernioResponse?.post?._id || null, zernioPostUrl: zernioResponse?.post?.platforms?.[0]?.platformPostUrl || null, scheduledAt: scheduledAt || null, createdAt: new Date().toISOString() });
 
+    // Persist failures to /admin/errors/recent so we can see exactly what
+    // the upstream API rejected — message, payload, raw response — without
+    // needing the user to capture browser DevTools traces. Critical
+    // signal for "user clicks Publish, nothing posts" reports.
+    if (!deploySuccess) {
+      await reportServerError({
+        message: `deploy failed: ${platform} → ${deployError || "unknown"}`,
+        route: "/campaign/deploy",
+        userId: user.id,
+        severity: "error",
+        context: {
+          platform, zernioPlatform, accountId: resolvedAccountId,
+          hasMedia: mediaItems.length > 0,
+          scheduled: !!scheduledAt,
+          captionLen: contentText.length,
+          // Truncate the raw response so we don't blow KV size on long bodies
+          response: typeof zernioResponse === "object" ? zernioResponse : String(zernioResponse).slice(0, 2000),
+        },
+      }).catch(() => {});
+    }
+
     const finalStatus = deploySuccess ? (scheduledAt ? "scheduled" : "published") : "failed";
     console.log(`[deploy] ${finalStatus} in ${Date.now() - t0}ms, postId=${zernioResponse?.post?._id || "none"}`);
     return c.json({ success: deploySuccess, status: finalStatus, error: deployError || undefined, zernioPostId: zernioResponse?.post?._id || null, zernioPostUrl: zernioResponse?.post?.platforms?.[0]?.platformPostUrl || null, deployId });

@@ -6,6 +6,7 @@ import {
   Instagram, Linkedin, Facebook, Twitter, Youtube, Plus, ExternalLink,
   Sparkles, PenLine, Crop,
 } from "lucide-react";
+import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
@@ -317,8 +318,25 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     }
 
     setPublishing(false);
+
+    // Top-level toast — the per-platform tiles inside the modal are
+    // easy to miss when scrolled away or hidden behind the keyboard
+    // on mobile. The toast is unmissable and surfaces the first
+    // upstream error verbatim so the user knows what to do.
+    const okCount = outcomes.filter(o => o.status === "published" || o.status === "scheduled").length;
+    const failCount = outcomes.length - okCount;
+    if (failCount === 0 && okCount > 0) {
+      toast.success(isFr ? `${okCount} publication${okCount > 1 ? "s" : ""} envoyée${okCount > 1 ? "s" : ""}` : `${okCount} post${okCount > 1 ? "s" : ""} sent`);
+    } else if (okCount === 0 && failCount > 0) {
+      const firstError = outcomes.find(o => o.error)?.error || "Unknown error";
+      toast.error(isFr ? `Aucune publication envoyée — ${firstError}` : `No posts sent — ${firstError}`);
+    } else if (okCount > 0 && failCount > 0) {
+      const firstError = outcomes.find(o => o.error)?.error || "Unknown error";
+      toast.warning(isFr ? `${okCount}/${outcomes.length} envoyée${okCount > 1 ? "s" : ""} — ${failCount} échec${failCount > 1 ? "s" : ""} (${firstError})` : `${okCount}/${outcomes.length} sent — ${failCount} failed (${firstError})`);
+    }
+
     onPublished?.(outcomes.map(o => ({ platform: o.platform, status: o.status, url: o.url })));
-  }, [canPublish, scheduleMode, scheduledAt, selectedPlatforms, connectedByPlatform, serverPost, captionMode, perPlatform, sharedCaption, sharedHashtags, autoReframe, asset, onPublished]);
+  }, [canPublish, scheduleMode, scheduledAt, selectedPlatforms, connectedByPlatform, serverPost, captionMode, perPlatform, sharedCaption, sharedHashtags, autoReframe, asset, onPublished, isFr]);
 
   if (!open) return null;
 
