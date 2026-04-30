@@ -1,0 +1,41 @@
+name: Quality Gates
+
+# Source-level checks that catch product-promise regressions BEFORE merge.
+# These complement build-check.yml (which catches build breakage). Each
+# gate is paired with a real bug we've already shipped — see the script
+# header for context.
+#
+# Adding a new gate? Drop a `*.mjs` script in scripts/quality-gates/ and
+# reference it in the matrix below.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'scripts/quality-gates/**'
+      - '.github/workflows/quality-gates.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - 'scripts/quality-gates/**'
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - style-prompt-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run ${{ matrix.gate }}
+        run: node scripts/quality-gates/${{ matrix.gate }}.mjs
