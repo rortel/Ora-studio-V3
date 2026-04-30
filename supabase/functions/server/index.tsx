@@ -24177,8 +24177,34 @@ async function getOrCreateZernioProfile(userId: string, email: string): Promise<
   const kvKey = `zernio:profile:${userId}`;
   const stored = await kv.get(kvKey);
   if (stored?.profileId) {
-    console.log(`[zernio] Reusing profileId=${stored.profileId} for user=${userId.slice(0, 8)}`);
-    return stored.profileId;
+    // Validate the stored profileId still exists in the current Zernio
+    // workspace. Stale ids appear after an API-key rotation: the cached
+    // id was minted under the OLD workspace and Zernio replies "profile
+    // not found" on every subsequent /connect or /accounts call. Auto-
+    // heal by checking once per session and recreating on 404.
+    try {
+      const checkRes = await fetch(`${ZERNIO_BASE}/profiles/${encodeURIComponent(stored.profileId)}?includeOverLimit=true`, {
+        headers: zernioHeaders(),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (checkRes.ok) {
+        console.log(`[zernio] Reusing profileId=${stored.profileId} for user=${userId.slice(0, 8)}`);
+        return stored.profileId;
+      }
+      if (checkRes.status === 404) {
+        console.log(`[zernio] Stored profileId=${stored.profileId} 404'd (likely API key rotation). Invalidating KV and recreating for user=${userId.slice(0, 8)}.`);
+        await kv.del(kvKey);
+        // fall through to creation
+      } else {
+        // Transient error — keep using the stored id rather than spawn
+        // a duplicate profile we'd then have to garbage-collect.
+        console.log(`[zernio] Profile validation got HTTP ${checkRes.status}, keeping stored profileId=${stored.profileId}`);
+        return stored.profileId;
+      }
+    } catch (e) {
+      console.log(`[zernio] Profile validation threw (${e}), keeping stored profileId=${stored.profileId}`);
+      return stored.profileId;
+    }
   }
   // No stored profile — create a NEW one (NEVER reuse another user's profile)
   let brandName = "ORA Campaign";
