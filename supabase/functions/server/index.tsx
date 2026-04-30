@@ -433,57 +433,6 @@ app.get("/admin/analytics/summary", async (c) => {
   }
 });
 
-// ── A/B EXPERIMENT RESULTS — admin endpoint ─────────────────────────
-// For each experiment key, group events by variant assignment and
-// count exposures + key conversion events. Lets admin see if variant
-// B converts better than A without leaving the dashboard.
-app.get("/admin/experiments/results", async (c) => {
-  try {
-    const user = await requireAuth(c);
-    if (user.email.toLowerCase() !== ADMIN_EMAIL) {
-      return c.json({ success: false, error: "Forbidden" }, 403);
-    }
-    const all = await kv.getByPrefix("evt:");
-    if (!Array.isArray(all)) return c.json({ success: true, experiments: {} });
-    const events = all as any[];
-
-    // Build a map: experimentKey → variant → { exposures, conversions: { eventName: count } }
-    const results: Record<string, Record<string, { exposures: number; uniqueUsers: Set<string>; events: Record<string, number> }>> = {};
-
-    for (const e of events) {
-      const exp = e?.props?._exp;
-      if (!exp || typeof exp !== "object") continue;
-      for (const [expKey, variant] of Object.entries(exp)) {
-        if (typeof variant !== "string") continue;
-        if (!results[expKey]) results[expKey] = {};
-        if (!results[expKey][variant]) {
-          results[expKey][variant] = { exposures: 0, uniqueUsers: new Set(), events: {} };
-        }
-        const bucket = results[expKey][variant];
-        bucket.events[e.event] = (bucket.events[e.event] || 0) + 1;
-        if (e.event === "experiment_exposure" && e?.props?.key === expKey) bucket.exposures += 1;
-        if (e.userId && e.userId !== "anon") bucket.uniqueUsers.add(e.userId);
-      }
-    }
-
-    // Convert Sets to counts for JSON serialisation.
-    const out: Record<string, Record<string, { exposures: number; uniqueUsers: number; events: Record<string, number> }>> = {};
-    for (const [expKey, variants] of Object.entries(results)) {
-      out[expKey] = {};
-      for (const [variant, data] of Object.entries(variants)) {
-        out[expKey][variant] = {
-          exposures: data.exposures,
-          uniqueUsers: data.uniqueUsers.size,
-          events: data.events,
-        };
-      }
-    }
-    return c.json({ success: true, experiments: out });
-  } catch (err: any) {
-    return c.json({ success: false, error: String(err?.message || err) }, 500);
-  }
-});
-
 // ── CREDIT COSTS — public endpoint for frontend to display per-model pricing ──
 app.get("/credit-costs", (c) => {
   return c.json({
@@ -880,10 +829,9 @@ async function sendEmailWithId(to: string, subject: string, html: string): Promi
 }
 
 // ── TRANSACTIONAL EMAIL TEMPLATES ─────────────────────────────────
-// Pack-ready, low-credits, weekly-digest. All gated on user prefs
-// (kv: user:<id>.emailPrefs.{packReady|lowCredits|weekly}) — defaults
-// to ON for packReady + lowCredits, OFF for weekly. RESEND_API_KEY
-// missing → all calls degrade to no-op (logged), nothing breaks.
+// Pack-ready + low-credits. Both gated on user prefs
+// (kv: user:<id>.emailPrefs.{packReady|lowCredits}) — defaults ON.
+// RESEND_API_KEY missing → all calls degrade to no-op (logged).
 
 const ORA_LOGO_BLACK = "https://ora-studio.app/og-image.png";
 const ORA_HUB = "https://ora-studio.app/hub/library";
@@ -909,7 +857,7 @@ function emailShell(content: string, ctaUrl?: string, ctaLabel?: string): string
   </body></html>`;
 }
 
-interface EmailPrefs { packReady?: boolean; lowCredits?: boolean; weekly?: boolean; }
+interface EmailPrefs { packReady?: boolean; lowCredits?: boolean; }
 async function getEmailPrefs(userId: string): Promise<EmailPrefs> {
   try {
     const profile = await kv.get(`user:${userId}`);
@@ -917,9 +865,8 @@ async function getEmailPrefs(userId: string): Promise<EmailPrefs> {
     return {
       packReady:  prefs.packReady !== false,   // default ON
       lowCredits: prefs.lowCredits !== false,  // default ON
-      weekly:     prefs.weekly === true,        // default OFF
     };
-  } catch { return { packReady: true, lowCredits: true, weekly: false }; }
+  } catch { return { packReady: true, lowCredits: true }; }
 }
 
 /** Pack-ready: fired when /analyze/surprise-me succeeds. Best-effort. */
@@ -961,41 +908,6 @@ export async function sendLowCreditsEmail(opts: {
     <p>Hey ${opts.userName.split(" ")[0] || "there"} — you have <strong>${opts.remaining} asset${opts.remaining === 1 ? "" : "s"} left</strong> on your ${opts.planLabel} plan this month.</p>
     <p>Each Surprise Me pack uses 6 assets. Top up or upgrade to keep shipping without interruption.</p>`;
   await sendEmail(opts.userEmail, subject, emailShell(content, "https://ora-studio.app/pricing", "Top up credits"));
-}
-
-/** Weekly digest: opt-in summary of the user's last 7 days of activity. */
-export async function sendWeeklyDigestEmail(opts: {
-  userId: string; userEmail: string; userName: string;
-  packsThisWeek: number; assetsThisWeek: number; topPlatform: string;
-}): Promise<void> {
-  const prefs = await getEmailPrefs(opts.userId);
-  if (!prefs.weekly) return;
-  const subject = `📊 Your week on Ora — ${opts.packsThisWeek} pack${opts.packsThisWeek === 1 ? "" : "s"}, ${opts.assetsThisWeek} asset${opts.assetsThisWeek === 1 ? "" : "s"}`;
-  const content = `
-    <p style="font-size:24px;line-height:1.2;margin:0 0 16px;font-weight:600">7 days of Ora.</p>
-    <p>Hey ${opts.userName.split(" ")[0] || "there"} — here's what you shipped this week:</p>
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:24px 0">
-      <tr>
-        <td style="padding:16px 0;border-top:1px solid rgba(17,17,17,0.08);border-bottom:1px solid rgba(17,17,17,0.08)">
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Packs generated</div>
-          <div style="font-size:28px;font-weight:600;margin-top:4px">${opts.packsThisWeek}</div>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:16px 0;border-bottom:1px solid rgba(17,17,17,0.08)">
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Total assets</div>
-          <div style="font-size:28px;font-weight:600;margin-top:4px">${opts.assetsThisWeek}</div>
-        </td>
-      </tr>
-      ${opts.topPlatform ? `<tr>
-        <td style="padding:16px 0;border-bottom:1px solid rgba(17,17,17,0.08)">
-          <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:rgba(17,17,17,0.55)">Most-used platform</div>
-          <div style="font-size:20px;font-weight:600;margin-top:4px;text-transform:capitalize">${opts.topPlatform.replace(/-/g, " ")}</div>
-        </td>
-      </tr>` : ""}
-    </table>
-    <p style="color:rgba(17,17,17,0.55);font-size:13px">Keep the rhythm. Drop a product, we'll handle the rest.</p>`;
-  await sendEmail(opts.userEmail, subject, emailShell(content, ORA_HUB, "Open Library"));
 }
 
 // resolveEmailList — resolve a list to actual user emails
