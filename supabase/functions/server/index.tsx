@@ -24244,22 +24244,29 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
     }
   };
 
-  // Strategy 1: scope by user's profile (the right answer when both sides agree on profileId)
-  accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}`);
+  // Strategy 1: scope by user's profile (the right answer when both sides agree on profileId).
+  // includeOverLimit=true is REQUIRED — Zernio silently omits accounts on
+  // profiles flagged isOverLimit (post-downgrade or plan-cap) by default,
+  // and that's a major reason "user has accounts on the dashboard but
+  // Ora's API call returns 0". See docs.zernio.com/changelog.
+  accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
   if (accounts.length > 0) strategy = "profile-scoped";
 
   // Strategy 2: fan out across every profile in the workspace and union the results.
   // Catches the case where the user's accounts were connected under a
   // different profileId (different user session, manual dashboard connect,
   // legacy mapping). For the single-tenant test workspace this is fine.
+  // includeOverLimit=true on /profiles too — without it, profiles that
+  // exceed the plan limit are hidden from the listing and we never even
+  // try to fan out into them.
   if (accounts.length === 0) {
     try {
-      const profilesRes = await fetch(`${ZERNIO_BASE}/profiles`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
+      const profilesRes = await fetch(`${ZERNIO_BASE}/profiles?includeOverLimit=true`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
       const profilesData = await profilesRes.json().catch(() => ({}));
       const profiles: any[] = Array.isArray(profilesData?.profiles) ? profilesData.profiles : [];
       console.log(`[zernio] strategy=fan-out across ${profiles.length} profile(s)`);
       const all = await Promise.all(
-        profiles.map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}`)),
+        profiles.map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}&includeOverLimit=true`)),
       );
       const merged = new Map<string, any>();
       for (const list of all) for (const a of list) if (a?._id) merged.set(a._id, a);
@@ -24272,7 +24279,7 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
 
   // Strategy 3: bare /accounts as last resort (legacy behaviour)
   if (accounts.length === 0) {
-    accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts`);
+    accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?includeOverLimit=true`);
     if (accounts.length > 0) strategy = "bare-list";
   }
 
@@ -24336,13 +24343,16 @@ app.post("/admin/zernio/debug", async (c) => {
         return { url, status: 0, ok: false, error: String(err?.message || err) };
       }
     };
-    const profilesProbe = await probe(`${ZERNIO_BASE}/profiles`);
-    const profileScopedProbe = await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}`);
-    const bareProbe = await probe(`${ZERNIO_BASE}/accounts`);
+    // Mirror the production calls exactly: includeOverLimit=true on each
+    // probe so the diagnostic surfaces accounts that would otherwise be
+    // hidden by Zernio's plan-limit filter.
+    const profilesProbe = await probe(`${ZERNIO_BASE}/profiles?includeOverLimit=true`);
+    const profileScopedProbe = await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
+    const bareProbe = await probe(`${ZERNIO_BASE}/accounts?includeOverLimit=true`);
     const fanout: any[] = [];
     if (Array.isArray(profilesProbe.parsed?.profiles)) {
       for (const p of profilesProbe.parsed.profiles) {
-        if (p?._id) fanout.push(await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}`));
+        if (p?._id) fanout.push(await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}&includeOverLimit=true`));
       }
     }
     return c.json({
