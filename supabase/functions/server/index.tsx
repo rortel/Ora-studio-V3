@@ -24544,17 +24544,49 @@ app.post("/campaign/deploy", async (c) => {
 
     console.log(`[deploy] user=${user.id.slice(0, 8)}, platform=${platform}->${zernioPlatform}, hasImage=${!!imageUrl}, hasVideo=${!!videoUrl}, scheduled=${!!scheduledAt}`);
 
-    // Resolve accountId: use provided or auto-find from user's SCOPED accounts
-    let resolvedAccountId = accountId;
-    if (!resolvedAccountId) {
-      try {
-        const { accounts: userAccounts } = await listZernioAccountsForUser(user.id, user.email);
-        const match = userAccounts.find((a: any) => a.platform === zernioPlatform);
-        if (match) { resolvedAccountId = match._id; console.log(`[deploy] Auto-resolved accountId: ${resolvedAccountId} for ${zernioPlatform} (user-scoped)`); }
-      } catch (e) { console.log(`[deploy] Account lookup failed: ${e}`); }
+    // Resolve accountId. CRITICAL: every accountId — whether the client
+    // sent one or we auto-resolve one — MUST be cross-checked against the
+    // user's profile-scoped account list before we trust it. Otherwise a
+    // stale client-side cache (e.g. accounts populated under PR #104's
+    // since-removed cross-profile fan-out) or a manipulated payload can
+    // make us publish to another tenant's social account. We learned the
+    // hard way: an admin testing in "client mode" published to the
+    // admin's Instagram because the modal still held a stale accountId.
+    let resolvedAccountId: string | null = null;
+    let userAccounts: any[] = [];
+    try {
+      const result = await listZernioAccountsForUser(user.id, user.email);
+      userAccounts = result.accounts || [];
+    } catch (e) {
+      console.log(`[deploy] Account lookup failed: ${e}`);
+    }
+    if (accountId) {
+      // Client-supplied accountId: ONLY accept it if it appears in the
+      // user's own profile-scoped list. Any mismatch is a security
+      // failure — refuse the deploy and surface a clear error.
+      const owned = userAccounts.find((a: any) => a._id === accountId && a.platform === zernioPlatform);
+      if (!owned) {
+        console.warn(`[deploy] REJECTED cross-tenant accountId attempt: user=${user.id.slice(0, 8)}, platform=${zernioPlatform}, requestedAccountId=${accountId}`);
+        await reportServerError({
+          message: `deploy rejected: client-supplied accountId not in user's profile`,
+          route: "/campaign/deploy",
+          userId: user.id,
+          severity: "error",
+          context: { platform, zernioPlatform, requestedAccountId: accountId, userAccountIds: userAccounts.map((a: any) => a._id) },
+        }).catch(() => {});
+        return c.json({ success: false, error: `That account isn't connected to your profile. Reconnect ${platform} from the publish modal.`, needsConnect: true, platform: zernioPlatform }, 403);
+      }
+      resolvedAccountId = owned._id;
+    } else {
+      // Auto-resolve from the user's own list — same source of truth.
+      const match = userAccounts.find((a: any) => a.platform === zernioPlatform);
+      if (match) resolvedAccountId = match._id;
     }
     if (!resolvedAccountId) {
       return c.json({ success: false, error: `No ${platform} account connected. Use the connect button to link your account.`, needsConnect: true, platform: zernioPlatform });
+    }
+    if (resolvedAccountId !== accountId) {
+      console.log(`[deploy] Auto-resolved accountId: ${resolvedAccountId} for ${zernioPlatform} (user-scoped)`);
     }
 
     // Build Zernio POST /v1/posts payload per docs.
@@ -24770,7 +24802,26 @@ app.post("/campaign/deploy-batch", async (c) => {
       if (dep.platform === "Email" || dep.platform === "Web") { results.push({ formatId: dep.formatId, platform: dep.platform, success: true, status: "skipped", reason: "Not supported by Zernio" }); continue; }
       const zernioPlatform = ZERNIO_PLATFORM_MAP[dep.platform];
       if (!zernioPlatform) { console.warn(`[deploy-batch] Platform "${dep.platform}" is not in ZERNIO_PLATFORM_MAP — skipping`); results.push({ formatId: dep.formatId, platform: dep.platform, success: false, status: "skipped", error: `Platform ${dep.platform} is not yet supported for auto-deploy` }); continue; }
-      const acctId = dep.accountId || connectedAccounts.find((a: any) => a.platform === zernioPlatform)?._id;
+      const requested = dep.accountId;
+      const ownedById = requested ? connectedAccounts.find((a: any) => a._id === requested && a.platform === zernioPlatform) : null;
+      const fallback = !requested ? connectedAccounts.find((a: any) => a.platform === zernioPlatform) : null;
+      // Reject any client-supplied accountId that isn't in the user's
+      // own profile-scoped list. Same hard-guard as /campaign/deploy —
+      // prevents publishing to another tenant's account via stale or
+      // malicious payloads.
+      if (requested && !ownedById) {
+        console.warn(`[deploy-batch] REJECTED cross-tenant accountId: user=${user.id.slice(0, 8)}, platform=${zernioPlatform}, requestedAccountId=${requested}`);
+        await reportServerError({
+          message: `deploy-batch rejected: client-supplied accountId not in user's profile`,
+          route: "/campaign/deploy-batch",
+          userId: user.id,
+          severity: "error",
+          context: { platform: dep.platform, zernioPlatform, requestedAccountId: requested, userAccountIds: connectedAccounts.map((a: any) => a._id) },
+        }).catch(() => {});
+        results.push({ formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: `That account isn't connected to your profile. Reconnect ${dep.platform} from the publish modal.`, needsConnect: true });
+        continue;
+      }
+      const acctId = ownedById?._id || fallback?._id;
       if (!acctId) { results.push({ formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: `No Zernio account connected for ${dep.platform}`, needsConnect: true }); continue; }
 
       try {
