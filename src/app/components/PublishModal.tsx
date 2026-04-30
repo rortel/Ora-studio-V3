@@ -167,8 +167,13 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     if (!zernioSlug) return;
     setConnectingPlatform(oraLabel);
     const res = await serverPost(`/zernio/connect/${zernioSlug}`, {});
-    if (res?.success && res.url) {
-      const popup = window.open(res.url, "zernio_oauth", "width=600,height=700");
+    // Server returns { success, authUrl } — the other 3 consumers
+    // (CampaignLab, ProfilePage, CalendarPage) read `authUrl` correctly;
+    // PublishModal was reading `res.url` (which is undefined), so the
+    // popup never opened and we fell straight into the "Connection
+    // error" alert even when the OAuth URL came back fine.
+    if (res?.success && res.authUrl) {
+      const popup = window.open(res.authUrl, "zernio_oauth", "width=600,height=700");
       const timer = setInterval(() => {
         if (popup?.closed) {
           clearInterval(timer);
