@@ -173,19 +173,61 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     // PublishModal was reading `res.url` (which is undefined), so the
     // popup never opened and we fell straight into the "Connection
     // error" alert even when the OAuth URL came back fine.
-    if (res?.success && res.authUrl) {
-      const popup = window.open(res.authUrl, "social_oauth", "width=600,height=700");
-      const timer = setInterval(() => {
-        if (popup?.closed) {
-          clearInterval(timer);
-          setConnectingPlatform(null);
-          refreshAccounts();
-        }
-      }, 1000);
-    } else {
+    if (!(res?.success && res.authUrl)) {
       setConnectingPlatform(null);
       alert(res?.error || (isFr ? "Erreur de connexion" : "Connection error"));
+      return;
     }
+
+    const popup = window.open(res.authUrl, "social_oauth", "width=600,height=700");
+
+    // Connection-completion detection that survives Cross-Origin-Opener-Policy.
+    // OAuth provider pages (Zernio + the upstream socials) ship COOP headers
+    // that block popup.closed reads on the opener — the field stays false
+    // forever and the console fills with "policy would block the window.closed
+    // call". Result: connectingPlatform stayed stuck even after the user
+    // finished the OAuth flow successfully on the backend.
+    //
+    // Strategy:
+    //   1. Listen for postMessage from the OAuth callback (instant resolve
+    //      when our callback page sends it; no-op if it doesn't).
+    //   2. Poll /zernio/accounts/list every 3s and finish the moment the
+    //      target platform shows up connected — this is the path that
+    //      actually fires today.
+    //   3. Best-effort try popup.closed inside try/catch as a tertiary hint.
+    //   4. Hard 5-min cap so abandoned flows don't poll forever.
+    const startedAt = Date.now();
+    const HARD_TIMEOUT_MS = 5 * 60 * 1000;
+    const POLL_MS = 3000;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const onMessage = (e: MessageEvent) => {
+      const ok = (typeof e.data === "string" && e.data.startsWith("zernio:connected"))
+        || (e.data && typeof e.data === "object" && (e.data as any).type === "zernio:connected");
+      if (ok) finish();
+    };
+    const finish = () => {
+      if (timer) { clearInterval(timer); timer = null; }
+      window.removeEventListener("message", onMessage);
+      setConnectingPlatform(null);
+      refreshAccounts();
+    };
+    window.addEventListener("message", onMessage);
+    timer = setInterval(async () => {
+      if (Date.now() - startedAt > HARD_TIMEOUT_MS) { finish(); return; }
+      let popupClosed = false;
+      try { popupClosed = !!popup?.closed; } catch { /* COOP-blocked, ignore */ }
+      try {
+        const fresh = await serverPost("/zernio/accounts/list", {});
+        if (fresh?.success && Array.isArray(fresh.accounts)) {
+          const hit = fresh.accounts.find((a: SocialAccount) =>
+            (a.status === "connected" || a.status === "active")
+            && PLATFORM_BY_SLUG[a.platform] === oraLabel,
+          );
+          if (hit) { setAccounts(fresh.accounts); finish(); return; }
+        }
+      } catch { /* transient network blip — keep polling */ }
+      if (popupClosed) finish();
+    }, POLL_MS);
   }, [serverPost, refreshAccounts, isFr]);
 
   const togglePlatform = (id: string) => {
