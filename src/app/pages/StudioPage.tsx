@@ -2048,7 +2048,11 @@ const SOCIAL_PLATFORMS_STUDIO = [
 
 function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products }: { onSend: (text: string) => void; onFillInput: (text: string) => void; onSetMode: (mode: string) => void; vault?: any; products?: any[] }) {
   const { t, locale } = useI18n();
-  const { session } = useAuth();
+  // Auth context exposes accessToken directly — `session` was undefined,
+  // so the inspiring-ideas fetch sent an empty Bearer token and the
+  // server's apikey-only fallback never auth'd the user. Same fix in
+  // PublishModal + LibraryPicker.
+  const { accessToken } = useAuth();
   const [inspiring, setInspiring] = useState(false);
   const [ideas, setIdeas] = useState<string[]>([]);
 
@@ -2093,7 +2097,7 @@ function WelcomeScreen({ onSend, onFillInput, onSetMode, vault, products }: { on
       const systemPrompt = `You are a senior social media strategist working for a creative agency. You have deep knowledge of this brand:\n\n${brandContext}\n\nGenerate exactly 3 different campaign ideas. Each idea = 1 short sentence (max 15 words), specific and actionable. Each must reference a concrete angle (product, event, value, audience). Format: one idea per line, numbered 1. 2. 3. — nothing else. Reply in ${locale === "fr" ? "French" : "English"}.`;
 
       const res = await fetch(`${API_BASE}/generate/text-multi-get?prompt=${encodeURIComponent("Generate 3 campaign ideas for this brand.")}&models=gpt-5&systemPrompt=${encodeURIComponent(systemPrompt)}&maxTokens=200`, {
-        headers: { Authorization: `Bearer ${session?.access_token || ""}`, apikey: publicAnonKey },
+        headers: { Authorization: `Bearer ${accessToken || ""}`, apikey: publicAnonKey },
       });
       const data = await res.json();
       if (data.success && data.results?.[0]?.result?.text) {
