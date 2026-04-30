@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { Sparkles, FolderOpen, Wand2, BookOpen, Zap } from "lucide-react";
+import { Sparkles, FolderOpen, Wand2, BookOpen, BarChart3, Zap } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { COLORS } from "./ora/tokens";
 
@@ -8,13 +8,18 @@ const MUTED = COLORS.muted;
 const LINE  = COLORS.line;
 const BG    = COLORS.cream;
 
-type TabId = "surprise" | "library" | "edit" | "vault";
+type TabId = "surprise" | "library" | "edit" | "vault" | "analytics";
 
 const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNode }> = [
-  { id: "surprise", label: "Surprise Me", href: "/hub/surprise", icon: <Sparkles size={14} /> },
-  { id: "library",  label: "Library",     href: "/hub/library",  icon: <FolderOpen size={14} /> },
-  { id: "edit",     label: "Edit",        href: "/hub/editor",   icon: <Wand2 size={14} /> },
-  { id: "vault",    label: "Vault",       href: "/hub/vault",    icon: <BookOpen size={14} /> },
+  { id: "surprise",  label: "Surprise Me", href: "/hub/surprise",  icon: <Sparkles size={14} /> },
+  { id: "library",   label: "Library",     href: "/hub/library",   icon: <FolderOpen size={14} /> },
+  { id: "edit",      label: "Edit",        href: "/hub/editor",    icon: <Wand2 size={14} /> },
+  { id: "vault",     label: "Vault",       href: "/hub/vault",     icon: <BookOpen size={14} /> },
+  // Analytics surfaces the Zernio post-performance metrics (engagement,
+  // reach, AI insights) that are already wired server-side. The page is
+  // RouteGuard-gated to Starter+; we render the tab for everyone and
+  // let the page itself handle the upgrade nudge for free-tier users.
+  { id: "analytics", label: "Analytics",   href: "/hub/analytics", icon: <BarChart3 size={14} /> },
 ];
 
 /**
@@ -27,9 +32,10 @@ export function AppTabs({ active }: { active?: TabId }) {
   const location = useLocation();
   const { remainingCredits, profile } = useAuth();
   const activeId: TabId = active
-    ?? (location.pathname.startsWith("/hub/library") ? "library"
-      : location.pathname.startsWith("/hub/editor")  ? "edit"
-      : location.pathname.startsWith("/hub/vault")   ? "vault"
+    ?? (location.pathname.startsWith("/hub/library")    ? "library"
+      : location.pathname.startsWith("/hub/editor")     ? "edit"
+      : location.pathname.startsWith("/hub/vault")      ? "vault"
+      : location.pathname.startsWith("/hub/analytics")  ? "analytics"
       : "surprise");
   const planLabel = (() => {
     const p = String(profile?.plan || "").toLowerCase();
