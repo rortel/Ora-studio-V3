@@ -24246,41 +24246,63 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
 
   // Strategy 1: scope by user's profile (the right answer when both sides agree on profileId).
   // includeOverLimit=true is REQUIRED — Zernio silently omits accounts on
-  // profiles flagged isOverLimit (post-downgrade or plan-cap) by default,
-  // and that's a major reason "user has accounts on the dashboard but
-  // Ora's API call returns 0". See docs.zernio.com/changelog.
-  accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
-  if (accounts.length > 0) strategy = "profile-scoped";
+  // profiles flagged isOverLimit (post-downgrade or plan-cap) by default.
+  const scoped = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
 
-  // Strategy 2: fan out across every profile in the workspace and union the results.
-  // Catches the case where the user's accounts were connected under a
-  // different profileId (different user session, manual dashboard connect,
-  // legacy mapping). For the single-tenant test workspace this is fine.
-  // includeOverLimit=true on /profiles too — without it, profiles that
-  // exceed the plan limit are hidden from the listing and we never even
-  // try to fan out into them.
-  if (accounts.length === 0) {
-    try {
-      const profilesRes = await fetch(`${ZERNIO_BASE}/profiles?includeOverLimit=true`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
-      const profilesData = await profilesRes.json().catch(() => ({}));
-      const profiles: any[] = Array.isArray(profilesData?.profiles) ? profilesData.profiles : [];
-      console.log(`[zernio] strategy=fan-out across ${profiles.length} profile(s)`);
-      const all = await Promise.all(
-        profiles.map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}&includeOverLimit=true`)),
-      );
-      const merged = new Map<string, any>();
-      for (const list of all) for (const a of list) if (a?._id) merged.set(a._id, a);
-      accounts = Array.from(merged.values());
-      if (accounts.length > 0) strategy = "fan-out";
-    } catch (err) {
-      console.log(`[zernio] fan-out strategy failed: ${err}`);
-    }
+  // Strategy 2: ALWAYS fan out across every profile in the workspace and
+  // union the results. Used to be conditional ("only if scoped returns
+  // 0"), but a user can have accounts split across multiple profiles
+  // (e.g. a "Default Profile" with the LinkedIn org + a per-user profile
+  // with Instagram/personal-LinkedIn) — conditional fan-out missed the
+  // accounts on the OTHER profile entirely. Union > short-circuit.
+  let fannedOut: any[] = [];
+  try {
+    const profilesRes = await fetch(`${ZERNIO_BASE}/profiles?includeOverLimit=true`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
+    const profilesData = await profilesRes.json().catch(() => ({}));
+    const profiles: any[] = Array.isArray(profilesData?.profiles) ? profilesData.profiles : [];
+    console.log(`[zernio] fan-out across ${profiles.length} profile(s) (always-on)`);
+    const all = await Promise.all(
+      profiles
+        .filter((p) => p?._id && p._id !== profileId) // skip the scoped one we already have
+        .map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}&includeOverLimit=true`)),
+    );
+    fannedOut = all.flat();
+  } catch (err) {
+    console.log(`[zernio] fan-out failed: ${err}`);
   }
 
-  // Strategy 3: bare /accounts as last resort (legacy behaviour)
-  if (accounts.length === 0) {
-    accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?includeOverLimit=true`);
-    if (accounts.length > 0) strategy = "bare-list";
+  // Strategy 3: bare /accounts as last resort — only if both above came back empty.
+  let bare: any[] = [];
+  if (scoped.length === 0 && fannedOut.length === 0) {
+    bare = await fetchAccounts(`${ZERNIO_BASE}/accounts?includeOverLimit=true`);
+  }
+
+  // Union all sources, deduped by _id.
+  const mergedAccounts = new Map<string, any>();
+  for (const list of [scoped, fannedOut, bare]) {
+    for (const a of list) if (a?._id) mergedAccounts.set(a._id, a);
+  }
+  accounts = Array.from(mergedAccounts.values());
+
+  // Normalize the `status` field — Zernio's response shape uses
+  // `platformStatus` ("active" | …) and `isActive` (bool). PublishModal
+  // and other consumers filter on `a.status === "connected" | "active"`,
+  // so without this map every connected account was silently treated as
+  // disconnected and the modal showed all "+". User-initiated disconnect
+  // is signalled by `intentionalDisconnectAt` being non-null.
+  const normalizeStatus = (a: any): string => {
+    if (a?.intentionalDisconnectAt) return "disconnected";
+    if (a?.platformStatus === "active" || a?.isActive === true) return "active";
+    if (a?.isActive === false) return "disconnected";
+    return a?.status || a?.platformStatus || "unknown";
+  };
+  accounts = accounts.map((a) => ({ ...a, status: normalizeStatus(a) }));
+
+  if (accounts.length > 0) {
+    strategy = scoped.length > 0 && fannedOut.length > 0 ? "scoped+fan-out"
+      : scoped.length > 0 ? "profile-scoped"
+      : fannedOut.length > 0 ? "fan-out"
+      : "bare-list";
   }
 
   console.log(`[zernio] resolved strategy=${strategy}, accounts=${accounts.length}: ${accounts.map((a: any) => `${a.platform}/${a.status}`).join(", ")}`);
