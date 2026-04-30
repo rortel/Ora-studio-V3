@@ -14,6 +14,7 @@ import { bagel, COLORS } from "../components/ora/tokens";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { suggestScheduleForPack, scheduleToCalendarEvent } from "../lib/publish-scheduling";
 import { StylePicker } from "../components/StylePicker";
+import { parseHex, scorePack, type RGB } from "../lib/brand-fidelity";
 
 /* ═══ Palette — aligned with the shared ora/ tokens ═══ */
 const BG       = COLORS.cream;
@@ -177,6 +178,18 @@ function SurpriseContent() {
   // Navigates across the whole pack in display order (platform-grouped).
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  // Brand palette resolved from the user's Vault. Loaded once on mount
+  // (independent of the nudge logic below — the nudge can be dismissed
+  // while we still need the palette for the post-generation fidelity
+  // score). Empty array = no vault / no palette / vault load failed,
+  // in which case the palette score is simply hidden.
+  const [brandPalette, setBrandPalette] = useState<RGB[]>([]);
+  // Result of the brand-fidelity scoring pass on the most recent pack.
+  // null while the pack is generating or being scored; numeric once the
+  // canvas-based palette extraction completes (typically <1s after the
+  // result page renders).
+  const [paletteScore, setPaletteScore] = useState<number | null>(null);
+
   // Brand Vault nudge: Studio+ users without a vault get a soft prompt to set
   // one up, since Surprise Me without brand context can't deliver on the
   // "locked DA across every shot" promise. Dismiss persists in localStorage.
@@ -210,6 +223,70 @@ function SurpriseContent() {
     try { localStorage.setItem("ora:vault-nudge-dismissed", "1"); } catch {}
     setVaultNudgeDismissed(true);
   }, []);
+
+  // ── Brand palette load (independent of the nudge dismissal) ──────────
+  // Pulls the user's brand colours from the Vault for use by the
+  // post-generation fidelity scoring pass. We do this in a separate
+  // effect from the nudge load above because the nudge has its own
+  // gating (Studio+ feature, dismissal flag) that we don't want to
+  // couple to "do we have colours to score against".
+  useEffect(() => {
+    const token = getAuthHeader();
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/vault/load`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+          body: JSON.stringify({ _token: token }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        const v = d?.vault || d?.data || null;
+        // Vault stores colours as either an array of hex strings or as
+        // an array of { hex, name? } records — normalise both shapes.
+        const raw: Array<unknown> = Array.isArray(v?.colors)
+          ? v.colors
+          : Array.isArray(v?.colorPalette)
+            ? v.colorPalette
+            : [];
+        const palette: RGB[] = raw
+          .map((c) => {
+            if (typeof c === "string") return parseHex(c);
+            if (c && typeof c === "object" && "hex" in c) return parseHex(String((c as { hex: string }).hex));
+            return null;
+          })
+          .filter((x): x is RGB => !!x);
+        setBrandPalette(palette);
+      } catch { /* silent — palette score will simply not render */ }
+    })();
+    return () => { cancelled = true; };
+  }, [getAuthHeader]);
+
+  // ── Brand-fidelity scoring pass on the result pack ───────────────────
+  // Once a pack lands and we have a brand palette, extract dominant
+  // colours from each generated image (canvas-based, ~50ms per shot)
+  // and compute the pack's palette-respect score. Async + non-blocking:
+  // the result page renders immediately, the badge appears once scoring
+  // completes (typically <500ms). Surfaces the brand-promise as a
+  // measurable number on every pack — Ora's core differentiator.
+  useEffect(() => {
+    setPaletteScore(null);
+    if (!pack || brandPalette.length === 0) return;
+    const urls = pack.items
+      .filter((i) => i.status === "ok" && !!i.imageUrl)
+      .map((i) => i.imageUrl as string);
+    if (urls.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await scorePack(urls, brandPalette);
+        if (!cancelled) setPaletteScore(res.packScore);
+      } catch { /* silent — badge stays hidden if scoring throws */ }
+    })();
+    return () => { cancelled = true; };
+  }, [pack, brandPalette]);
 
   // ── Auto-angles ──────────────────────────────────────────────────────
   // The anti-prompt play: on mount, ask /analyze/suggest-angles for 3
@@ -1225,6 +1302,12 @@ function SurpriseContent() {
                   <Badge tone={pack.brandLockScore >= 80 ? "butter" : pack.brandLockScore >= 60 ? "warm" : "coral"}>
                     <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
                     Brand lock · {pack.brandLockScore}%
+                  </Badge>
+                )}
+                {paletteScore !== null && (
+                  <Badge tone={paletteScore >= 80 ? "butter" : paletteScore >= 60 ? "warm" : "coral"}>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: INK }} />
+                    Palette · {paletteScore}%
                   </Badge>
                 )}
               </div>
