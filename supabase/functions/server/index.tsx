@@ -24206,26 +24206,86 @@ async function getOrCreateZernioProfile(userId: string, email: string): Promise<
 }
 
 // ── Shared helper: list accounts scoped to a user's profile ──
-async function listZernioAccountsForUser(userId: string, email: string): Promise<{ accounts: any[]; profileId: string }> {
+//
+// Cascading strategy — image-gen-quality of "find the user's connected
+// accounts no matter where they live in the workspace". The previous
+// implementation tried "GET /accounts" without any filter and trusted
+// it would return everything; in practice it returned an empty list
+// because the API scopes by profile. Users who'd connected accounts
+// via earlier flows (or via the dashboard directly) saw their modal
+// stuck on "+" with no way to reach their already-connected handles.
+//
+// Strategy:
+//   1. GET /accounts?profileId=<user's profile> — the spec-compliant call
+//   2. If empty: list ALL profiles in the workspace, fan out per profile
+//      (single-tenant assumption — comment thread on this code
+//      explicitly accepts this trade-off for now)
+//   3. If still empty: bare GET /accounts as a final safety net
+// First strategy that returns >0 accounts wins.
+async function listZernioAccountsForUser(userId: string, email: string): Promise<{ accounts: any[]; profileId: string; strategy: string }> {
   const profileId = await getOrCreateZernioProfile(userId, email);
-  const res = await fetch(`${ZERNIO_BASE}/accounts`, {
-    headers: zernioHeaders(), signal: AbortSignal.timeout(10_000),
-  });
-  const rawText = await res.text();
-  let data: any;
-  try { data = JSON.parse(rawText); } catch { throw new Error(`Zernio accounts returned non-JSON (HTTP ${res.status}): ${rawText.slice(0, 100)}`); }
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  const allAccounts = data.accounts || [];
-  console.log(`[zernio] All accounts (${allAccounts.length}): ${allAccounts.map((a: any) => `${a.platform}/${a.status}/${a._id}`).join(", ")}`);
-  // Return ALL accounts — profile filtering was causing false negatives
-  // In a single-user context, all connected accounts belong to the current user
-  if (allAccounts.length > 0) {
+  let accounts: any[] = [];
+  let strategy = "none";
+
+  const fetchAccounts = async (url: string): Promise<any[]> => {
+    try {
+      const res = await fetch(url, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
+      const text = await res.text();
+      if (!res.ok) {
+        console.log(`[zernio] fetch ${url} failed: HTTP ${res.status}: ${text.slice(0, 200)}`);
+        return [];
+      }
+      let data: any;
+      try { data = JSON.parse(text); } catch { return []; }
+      return Array.isArray(data?.accounts) ? data.accounts : [];
+    } catch (err) {
+      console.log(`[zernio] fetch ${url} error: ${err}`);
+      return [];
+    }
+  };
+
+  // Strategy 1: scope by user's profile (the right answer when both sides agree on profileId)
+  accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}`);
+  if (accounts.length > 0) strategy = "profile-scoped";
+
+  // Strategy 2: fan out across every profile in the workspace and union the results.
+  // Catches the case where the user's accounts were connected under a
+  // different profileId (different user session, manual dashboard connect,
+  // legacy mapping). For the single-tenant test workspace this is fine.
+  if (accounts.length === 0) {
+    try {
+      const profilesRes = await fetch(`${ZERNIO_BASE}/profiles`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
+      const profilesData = await profilesRes.json().catch(() => ({}));
+      const profiles: any[] = Array.isArray(profilesData?.profiles) ? profilesData.profiles : [];
+      console.log(`[zernio] strategy=fan-out across ${profiles.length} profile(s)`);
+      const all = await Promise.all(
+        profiles.map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}`)),
+      );
+      const merged = new Map<string, any>();
+      for (const list of all) for (const a of list) if (a?._id) merged.set(a._id, a);
+      accounts = Array.from(merged.values());
+      if (accounts.length > 0) strategy = "fan-out";
+    } catch (err) {
+      console.log(`[zernio] fan-out strategy failed: ${err}`);
+    }
+  }
+
+  // Strategy 3: bare /accounts as last resort (legacy behaviour)
+  if (accounts.length === 0) {
+    accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts`);
+    if (accounts.length > 0) strategy = "bare-list";
+  }
+
+  console.log(`[zernio] resolved strategy=${strategy}, accounts=${accounts.length}: ${accounts.map((a: any) => `${a.platform}/${a.status}`).join(", ")}`);
+
+  if (accounts.length > 0) {
     await kv.set(`zernio:accounts:${userId}`, {
-      profileId, accounts: allAccounts.map((a: any) => ({ _id: a._id, id: a.id, platform: a.platform, username: a.username, status: a.status })),
+      profileId, strategy,
+      accounts: accounts.map((a: any) => ({ _id: a._id, id: a.id, platform: a.platform, username: a.username, status: a.status })),
       updatedAt: new Date().toISOString(),
     });
   }
-  return { accounts: allAccounts, profileId };
+  return { accounts, profileId, strategy };
 }
 
 // POST /zernio/ensure-profile — Idempotently create/retrieve user's Zernio profile
@@ -24246,9 +24306,9 @@ app.post("/zernio/ensure-profile", async (c) => {
 async function listZernioAccounts(c: any) {
   try {
     const user = await requireAuth(c);
-    const { accounts, profileId } = await listZernioAccountsForUser(user.id, user.email);
-    console.log(`[zernio/accounts] user=${user.id.slice(0, 8)}, profile=${profileId}, accounts=${accounts.length}`);
-    return c.json({ success: true, accounts, profileId });
+    const { accounts, profileId, strategy } = await listZernioAccountsForUser(user.id, user.email);
+    console.log(`[zernio/accounts] user=${user.id.slice(0, 8)}, profile=${profileId}, strategy=${strategy}, accounts=${accounts.length}`);
+    return c.json({ success: true, accounts, profileId, strategy });
   } catch (err) {
     console.log(`[zernio] List accounts error: ${err}`);
     return c.json({ success: false, error: String(err) }, 500);
@@ -24256,6 +24316,45 @@ async function listZernioAccounts(c: any) {
 }
 app.get("/zernio/accounts", listZernioAccounts);
 app.post("/zernio/accounts/list", listZernioAccounts);
+
+// ── DIAGNOSTIC: see exactly what each strategy returns from the
+// publishing backend. Admin-only. Useful when a user reports
+// "my account is connected on the dashboard but Ora can't see it" —
+// shows raw responses + which strategy resolved (or didn't).
+app.post("/admin/zernio/debug", async (c) => {
+  try {
+    const user = await requireAdmin(c);
+    const profileId = await getOrCreateZernioProfile(user.id, user.email);
+    const probe = async (url: string) => {
+      try {
+        const res = await fetch(url, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
+        const text = await res.text();
+        let json: any = null;
+        try { json = JSON.parse(text); } catch { /* keep raw */ }
+        return { url, status: res.status, ok: res.ok, raw: text.slice(0, 4000), parsed: json };
+      } catch (err: any) {
+        return { url, status: 0, ok: false, error: String(err?.message || err) };
+      }
+    };
+    const profilesProbe = await probe(`${ZERNIO_BASE}/profiles`);
+    const profileScopedProbe = await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}`);
+    const bareProbe = await probe(`${ZERNIO_BASE}/accounts`);
+    const fanout: any[] = [];
+    if (Array.isArray(profilesProbe.parsed?.profiles)) {
+      for (const p of profilesProbe.parsed.profiles) {
+        if (p?._id) fanout.push(await probe(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}`));
+      }
+    }
+    return c.json({
+      success: true,
+      userId: user.id,
+      userProfileId: profileId,
+      probes: { profiles: profilesProbe, profileScoped: profileScopedProbe, bare: bareProbe, fanout },
+    });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Forbidden" ? 403 : 500);
+  }
+});
 
 // GET /zernio/profiles — List profiles (only this user's)
 app.get("/zernio/profiles", async (c) => {
