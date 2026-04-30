@@ -24484,6 +24484,36 @@ app.post("/zernio/disconnect", async (c) => {
   }
 });
 
+// Re-sign a Supabase signed URL right before handing it to an upstream
+// API (Zernio) that will fetch it server-side. The library already
+// stores tokens with our project's max TTL, but those URLs sit in the
+// client for hours/days before Publish and the project caps signed
+// tokens at 7 days, so anything older was 400'ing on Zernio's side
+// and the post silently failed. For non-signed URLs (public buckets,
+// external CDN) we leave the input alone. Falls back to the original
+// URL on any parsing/signing error so the deploy never gets blocked
+// by this safety net.
+async function refreshSupabaseSignedUrl(url: string | undefined | null): Promise<string | undefined> {
+  if (!url || typeof url !== "string") return url || undefined;
+  if (!url.includes("/storage/v1/object/sign/")) return url;
+  const m = url.match(/\/storage\/v1\/object\/sign\/([^/]+)\/([^?]+)/);
+  if (!m) return url;
+  const bucket = m[1];
+  const path = decodeURIComponent(m[2]);
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 365 * 24 * 3600);
+    if (error || !data?.signedUrl) {
+      console.log(`[deploy] re-sign failed for ${bucket}/${path.slice(0, 60)}: ${error?.message || "no url"}`);
+      return url;
+    }
+    return data.signedUrl;
+  } catch (err) {
+    console.log(`[deploy] re-sign threw for ${bucket}: ${err}`);
+    return url;
+  }
+}
+
 // POST /campaign/deploy — Publish a single asset via Zernio Posts API
 app.post("/campaign/deploy", async (c) => {
   const t0 = Date.now();
@@ -24521,11 +24551,20 @@ app.post("/campaign/deploy", async (c) => {
       return c.json({ success: false, error: `No ${platform} account connected. Use the connect button to link your account.`, needsConnect: true, platform: zernioPlatform });
     }
 
-    // Build Zernio POST /v1/posts payload per docs
+    // Build Zernio POST /v1/posts payload per docs.
+    // Re-sign storage URLs at deploy time: clients hold onto signed URLs
+    // for hours or days before clicking Publish, and Zernio fetches the
+    // media server-side, so a stale token returns 400 and the post
+    // fails with no clear cause. For scheduled posts this is even more
+    // critical — Zernio fetches at posting time, not scheduling time.
     const contentText = [caption || headline || "", hashtags || ""].filter(Boolean).join("\n\n");
+    const [freshImageUrl, freshVideoUrl] = await Promise.all([
+      refreshSupabaseSignedUrl(imageUrl),
+      refreshSupabaseSignedUrl(videoUrl),
+    ]);
     const mediaItems: any[] = [];
-    if (imageUrl) mediaItems.push({ type: "image", url: imageUrl });
-    if (videoUrl) mediaItems.push({ type: "video", url: videoUrl });
+    if (freshImageUrl) mediaItems.push({ type: "image", url: freshImageUrl });
+    if (freshVideoUrl) mediaItems.push({ type: "video", url: freshVideoUrl });
 
     const zernioPayload: any = {
       content: contentText.slice(0, 5000),
@@ -24730,9 +24769,13 @@ app.post("/campaign/deploy-batch", async (c) => {
 
       try {
         const contentText = [dep.caption || dep.headline || "", dep.hashtags || ""].filter(Boolean).join("\n\n");
+        const [freshImg, freshVid] = await Promise.all([
+          refreshSupabaseSignedUrl(dep.imageUrl),
+          refreshSupabaseSignedUrl(dep.videoUrl),
+        ]);
         const mediaItems: any[] = [];
-        if (dep.imageUrl) mediaItems.push({ type: "image", url: dep.imageUrl });
-        if (dep.videoUrl) mediaItems.push({ type: "video", url: dep.videoUrl });
+        if (freshImg) mediaItems.push({ type: "image", url: freshImg });
+        if (freshVid) mediaItems.push({ type: "video", url: freshVid });
         const zernioPayload: any = { content: contentText.slice(0, 5000), platforms: [{ platform: zernioPlatform, accountId: acctId }] };
         if (mediaItems.length > 0) zernioPayload.mediaItems = mediaItems;
         if (dep.scheduledAt) { zernioPayload.scheduledFor = dep.scheduledAt; zernioPayload.timezone = timezone || "Europe/Paris"; } else { zernioPayload.publishNow = true; }
@@ -27130,82 +27173,128 @@ app.post("/library/list", async (c) => {
     console.log(`[library/list] user ${user.id}: ${allItems.length} items`);
 
     // ── Refresh signed URLs for items that have storagePaths ──
-    // Signed URLs live 7 days; we renew lazily and only if the last refresh
-    // was >24h ago (stored as item.urlsRefreshedAt). All storage calls for a
-    // given /library/list request run in parallel instead of serially — this
-    // used to be the main reason the Library "didn't load" for users with
-    // many items.
+    // Signed URLs live up to 7 days under our project's storage config;
+    // we renew lazily and only if the last refresh was >24h ago (stored
+    // as item.urlsRefreshedAt). All storage calls for a given
+    // /library/list request run in parallel instead of serially — this
+    // used to be the main reason the Library "didn't load" for users
+    // with many items.
+    //
+    // Bucket-aware: the same library mixes items uploaded into
+    // make-cad57f79-media (legacy generated paths, vault, hub-refs) and
+    // make-cad57f79-generated-assets (newer persisted CDN re-hosts). The
+    // refresh used to hardcode GENERATED_ASSETS_BUCKET, which silently
+    // signed tokens against the wrong bucket for legacy items → all
+    // /sign/.../make-cad57f79-media/* URLs returned 400 once the
+    // original token aged out. Track the bucket per-job from the
+    // existing URL or a backfilled `${field}Bucket` field.
     if (allItems.length > 0) {
       const sb = supabaseAdmin();
       const urlFields = ["imageUrl", "videoUrl", "audioUrl"] as const;
       const REFRESH_THROTTLE_MS = 24 * 3600 * 1000; // 1 day
       const now = Date.now();
 
+      // Items previously marked refreshed by the buggy code path may
+      // still hold expired URLs. Force-reprocess any item whose existing
+      // URL is already past (or within 24h of) its `exp` claim, even if
+      // urlsRefreshedAt is recent.
+      const isUrlNearExpiry = (u: unknown): boolean => {
+        if (typeof u !== "string" || !u.includes("/storage/v1/object/sign/")) return false;
+        const tokenMatch = u.match(/[?&]token=([^&]+)/);
+        if (!tokenMatch) return true;
+        try {
+          const payloadB64 = tokenMatch[1].split(".")[1];
+          const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/").padEnd(payloadB64.length + (4 - (payloadB64.length % 4)) % 4, "=");
+          const payload = JSON.parse(atob(padded));
+          if (typeof payload?.exp !== "number") return true;
+          return payload.exp * 1000 < now + 24 * 3600 * 1000;
+        } catch { return true; }
+      };
+
       // Collect every (target, pathKey, field) tuple that needs a new URL.
       type Target = Record<string, any>;
-      type RefreshJob = { item: any; target: Target; pathKey: string; field: string };
+      type RefreshJob = { item: any; target: Target; pathKey: string; field: string; bucket: string };
       const jobs: RefreshJob[] = [];
       const staleItems: any[] = [];
 
       for (const item of allItems) {
         const lastRefresh = typeof item.urlsRefreshedAt === "number" ? item.urlsRefreshedAt : 0;
-        if (lastRefresh && now - lastRefresh < REFRESH_THROTTLE_MS) continue;
-        staleItems.push(item);
 
+        // Walk targets first so we can detect expired URLs even when
+        // the throttle says "not stale". One expired URL is enough to
+        // force a full refresh of the item.
         const preview = item.preview || {};
         item.preview = preview;
         const targets: Target[] = [preview];
         if (Array.isArray(preview.assets)) targets.push(...preview.assets);
         if (Array.isArray(item.assets))    targets.push(...item.assets);
 
+        let hasExpired = false;
+        for (const target of targets) {
+          for (const field of urlFields) {
+            if (isUrlNearExpiry(target[field])) { hasExpired = true; break; }
+          }
+          if (hasExpired) break;
+        }
+
+        const throttled = lastRefresh && now - lastRefresh < REFRESH_THROTTLE_MS;
+        if (throttled && !hasExpired) continue;
+        staleItems.push(item);
+
         for (const target of targets) {
           for (const field of urlFields) {
             const pathKey = `${field}StoragePath`;
-            if (target[pathKey]) {
-              jobs.push({ item, target, pathKey, field });
-              continue;
-            }
-            // Legacy items don't store the storage path explicitly. Parse
-            // it from the existing signed URL (Supabase shape:
-            // /storage/v1/object/sign/<bucket>/<path>?token=...). This
-            // makes the preventive refresh cover items created before
-            // we started persisting the path.
+            const bucketKey = `${field}Bucket`;
             const existingUrl: string | undefined = target[field];
-            if (typeof existingUrl === "string" && existingUrl.includes("/storage/v1/object/sign/")) {
+            // Try to recover bucket+path from the existing signed URL when
+            // either field is missing. Supabase shape:
+            //   /storage/v1/object/sign/<bucket>/<path>?token=...
+            if ((!target[pathKey] || !target[bucketKey]) && typeof existingUrl === "string" && existingUrl.includes("/storage/v1/object/sign/")) {
               const m = existingUrl.match(/\/storage\/v1\/object\/sign\/([^/]+)\/([^?]+)/);
               if (m) {
-                const parsedPath = decodeURIComponent(m[2]);
-                target[pathKey] = parsedPath; // backfill so future runs are fast
-                jobs.push({ item, target, pathKey, field });
+                if (!target[bucketKey]) target[bucketKey] = m[1];
+                if (!target[pathKey])   target[pathKey]   = decodeURIComponent(m[2]);
               }
             }
+            if (!target[pathKey]) continue;
+            jobs.push({
+              item, target, pathKey, field,
+              bucket: target[bucketKey] || GENERATED_ASSETS_BUCKET,
+            });
           }
         }
       }
 
       if (jobs.length > 0) {
         const changedItems = new Set<any>();
-        // Parallel signed-URL creation — all jobs fire at once.
+        const failedItems = new Set<any>();
+        // Parallel signed-URL creation — all jobs fire at once. Each
+        // job knows its own bucket, fixing the legacy mismatch where
+        // make-cad57f79-media items were signed against
+        // make-cad57f79-generated-assets and 400'd on fetch.
         const results = await Promise.allSettled(
-          jobs.map(j => sb.storage.from(GENERATED_ASSETS_BUCKET).createSignedUrl(j.target[j.pathKey], 365 * 24 * 3600)),
+          jobs.map(j => sb.storage.from(j.bucket).createSignedUrl(j.target[j.pathKey], 365 * 24 * 3600)),
         );
         results.forEach((res, i) => {
-          if (res.status !== "fulfilled") return;
-          const url = res.value?.data?.signedUrl;
-          if (!url) return;
           const { item, target, field } = jobs[i];
+          if (res.status !== "fulfilled") { failedItems.add(item); return; }
+          const url = res.value?.data?.signedUrl;
+          if (!url) { failedItems.add(item); return; }
           if (target[field] !== url) {
             target[field] = url;
             changedItems.add(item);
           }
         });
 
-        // Mark every stale item as refreshed so we don't reprocess on every call,
-        // even if URLs didn't actually change (e.g. cached in Supabase).
-        for (const item of staleItems) item.urlsRefreshedAt = now;
+        // Only mark items as refreshed when none of their URL jobs
+        // failed. If any job rejected we want the next request to try
+        // again rather than wait 24h with broken URLs in place.
+        for (const item of staleItems) {
+          if (!failedItems.has(item)) item.urlsRefreshedAt = now;
+        }
 
         const kvUpdates = staleItems.map(item => ({ key: `lib:${user.id}:${item.id}`, value: item }));
-        console.log(`[library/list] refreshed ${changedItems.size}/${kvUpdates.length} items (${jobs.length} URLs)`);
+        console.log(`[library/list] refreshed ${changedItems.size}/${kvUpdates.length} items (${jobs.length} URLs, ${failedItems.size} failed)`);
         // Fire-and-forget KV persist so the response returns immediately.
         (async () => {
           await Promise.allSettled(kvUpdates.map(({ key, value }) => kv.set(key, value)));
