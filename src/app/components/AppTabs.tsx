@@ -15,7 +15,7 @@ const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNod
   { id: "library",   label: "Library",     href: "/hub/library",   icon: <FolderOpen size={14} /> },
   { id: "edit",      label: "Edit",        href: "/hub/editor",    icon: <Wand2 size={14} /> },
   { id: "vault",     label: "Vault",       href: "/hub/vault",     icon: <BookOpen size={14} /> },
-  // Analytics surfaces the Zernio post-performance metrics (engagement,
+  // Analytics surfaces post-performance metrics (engagement,
   // reach, AI insights) that are already wired server-side. The page is
   // RouteGuard-gated to Starter+; we render the tab for everyone and
   // let the page itself handle the upgrade nudge for free-tier users.

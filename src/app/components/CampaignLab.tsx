@@ -183,8 +183,8 @@ const FORMAT_DIVERSITY: Record<string, string> = {
   "linkedin-article": "",
 };
 
-// Maps ORA platform names → Zernio API platform slugs (frontend side)
-const ZERNIO_PLATFORM_MAP_FE: Record<string, string> = {
+// Maps ORA platform display names → backend platform slugs.
+const PLATFORM_SLUG_BY_LABEL: Record<string, string> = {
   LinkedIn: "linkedin", Instagram: "instagram", Facebook: "facebook",
   "Twitter/X": "twitter", Twitter: "twitter", TikTok: "tiktok",
   YouTube: "youtube", Pinterest: "pinterest",
@@ -415,9 +415,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [showCalendarPanel, setShowCalendarPanel] = useState(false);
   const [calendarViewMonth, setCalendarViewMonth] = useState(new Date().getMonth());
   const [calendarViewYear, setCalendarViewYear] = useState(new Date().getFullYear());
-  const [zernioAccounts, setZernioAccounts] = useState<any[]>([]);
-  const [zernioLoading, setZernioLoading] = useState(false);
-  const zernioLoadedRef = useRef(false);
+  const [socialAccounts, setSocialAccounts] = useState<any[]>([]);
+  const [socialAccountsLoading, setSocialAccountsLoading] = useState(false);
+  const socialAccountsLoadedRef = useRef(false);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
   // ── Product state ──
@@ -1898,40 +1898,40 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
   }, [phase, assets, handleSaveCampaign]);
 
-  // ── Refresh Zernio accounts list (must be before useEffect and handleConnectPlatform that use it) ──
-  const refreshZernioAccounts = useCallback(() => {
-    setZernioLoading(true);
+  // ── Refresh connected social accounts (must be defined before the useEffect / handleConnectPlatform that consume it) ──
+  const refreshSocialAccounts = useCallback(() => {
+    setSocialAccountsLoading(true);
     serverGet("/zernio/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
-          setZernioAccounts(data.accounts);
+          setSocialAccounts(data.accounts);
           console.log(`[CampaignLab] Refreshed accounts:`, data.accounts.map((a: any) => `${a.platform}:${a._id}`));
         }
       })
       .catch(err => console.log("[CampaignLab] Accounts refresh:", err))
-      .finally(() => setZernioLoading(false));
+      .finally(() => setSocialAccountsLoading(false));
   }, [serverGet]);
 
-  // Load Zernio accounts when entering results phase
+  // Load connected social accounts when entering the results phase
   useEffect(() => {
-    if (phase !== "results" || zernioLoadedRef.current) return;
-    zernioLoadedRef.current = true;
-    setZernioLoading(true);
+    if (phase !== "results" || socialAccountsLoadedRef.current) return;
+    socialAccountsLoadedRef.current = true;
+    setSocialAccountsLoading(true);
     serverGet("/zernio/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
-          setZernioAccounts(data.accounts);
+          setSocialAccounts(data.accounts);
         }
       })
-      .catch(err => console.log("[CampaignLab] Zernio accounts fetch:", err))
-      .finally(() => setZernioLoading(false));
+      .catch(err => console.log("[CampaignLab] social accounts fetch:", err))
+      .finally(() => setSocialAccountsLoading(false));
   }, [phase, serverGet]);
 
-  // ── Connect a social platform via OAuth popup (transparent — no Zernio branding) ──
+  // ── Connect a social platform via OAuth popup (we route through our backend so the user only sees Ora) ──
   const handleConnectPlatform = useCallback(async (platform: string) => {
     setConnectingPlatform(platform);
     try {
-      // Get OAuth URL from backend (auto-creates Zernio profile if needed)
+      // Get OAuth URL from our backend (provisions a publishing profile if needed)
       const token = getAuthToken();
       const qp = new URLSearchParams({ redirectUrl: window.location.origin + "/hub" });
       if (token) qp.set("_token", token);
@@ -1956,7 +1956,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
           clearInterval(pollInterval);
           setConnectingPlatform(null);
           // Refresh accounts after OAuth completes
-          setTimeout(() => refreshZernioAccounts(), 1500);
+          setTimeout(() => refreshSocialAccounts(), 1500);
           toast.success(t("studio.connectSuccess").replace("{platform}", platform.charAt(0).toUpperCase() + platform.slice(1)));
         }
       }, 500);
@@ -1972,7 +1972,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       toast.error(`${t("studio.connectionFailed")}: ${err?.message || "Unknown error"}`);
       setConnectingPlatform(null);
     }
-  }, [serverGet, getAuthToken, refreshZernioAccounts]);
+  }, [serverGet, getAuthToken, refreshSocialAccounts]);
 
   // ── Generate editorial calendar from ready assets (frontend-only, deterministic) ──
   const handleGenerateCalendar = () => {
@@ -2158,7 +2158,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     persistEvents();
   };
 
-  // ── Deploy a single asset via Zernio ──
+  // ── Deploy a single asset to its platform ──
   const handleDeployAsset = async (asset: GeneratedAsset, scheduledAt?: string) => {
     setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "deploying" }));
     try {
@@ -2186,8 +2186,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
         toast.success(t("studio.deploySuccess").replace("{label}", asset.label).replace("{status}", status === "scheduled" ? t("studio.statusScheduled") : t("studio.statusPublished")).replace("{platform}", asset.platform));
       } else if (data.needsConnect) {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
-        const zernioPlatform = ZERNIO_PLATFORM_MAP_FE[asset.platform] || asset.platform.toLowerCase();
-        toast.error(t("studio.noAccountConnected").replace("{platform}", asset.platform), { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(zernioPlatform) } });
+        const platformSlug = PLATFORM_SLUG_BY_LABEL[asset.platform] || asset.platform.toLowerCase();
+        toast.error(t("studio.noAccountConnected").replace("{platform}", asset.platform), { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(platformSlug) } });
       } else {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
         toast.error(`${t("studio.deployFailed")}: ${data.error || "Unknown error"}`);
@@ -2370,7 +2370,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
               {savingCampaign ? t("studio.saving") : campaignSavedId ? t("studio.saved") : t("studio.saveCampaign")}
             </button>
             <button
-              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); zernioLoadedRef.current = false; setZernioAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); setCampaignSavedId(null); }}
+              onClick={() => { setPhase("input"); setAssets([]); setCalendarEvents([]); setCalendarGenerated(false); setDeployingAssets({}); setShowCalendarPanel(false); socialAccountsLoadedRef.current = false; setSocialAccounts([]); setConnectingPlatform(null); setSelectedProduct(null); setCampaignSavedId(null); }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all cursor-pointer"
               style={{ background: "rgba(26,23,20,0.03)", border: "1px solid rgba(26,23,20,0.04)", color: "var(--foreground)", fontSize: "13px", fontWeight: 500 }}
             >
@@ -3471,16 +3471,16 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                       <div>
                         <span style={{ fontSize: "14px", color: "var(--foreground)", fontWeight: 600, display: "block" }}>Connecter vos réseaux</span>
                         <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                          {zernioAccounts.length > 0
-                            ? `${zernioAccounts.length} compte${zernioAccounts.length > 1 ? "s" : ""} connecté${zernioAccounts.length > 1 ? "s" : ""}`
+                          {socialAccounts.length > 0
+                            ? `${socialAccounts.length} compte${socialAccounts.length > 1 ? "s" : ""} connecté${socialAccounts.length > 1 ? "s" : ""}`
                             : "Connectez vos réseaux pour publier directement"}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {zernioLoading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
-                      {!zernioLoading && zernioAccounts.length > 0 && (
-                        <button onClick={refreshZernioAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }} title={t("studio.refresh")}>
+                      {socialAccountsLoading && <Loader2 size={12} className="animate-spin" style={{ color: "var(--text-secondary)" }} />}
+                      {!socialAccountsLoading && socialAccounts.length > 0 && (
+                        <button onClick={refreshSocialAccounts} className="p-1.5 rounded-md cursor-pointer" style={{ background: "rgba(26,23,20,0.03)" }} title={t("studio.refresh")}>
                           <RefreshCw size={12} style={{ color: "var(--text-secondary)" }} />
                         </button>
                       )}
@@ -3488,9 +3488,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                   </div>
 
                   {/* Connected accounts */}
-                  {zernioAccounts.length > 0 && (
+                  {socialAccounts.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap mb-3">
-                      {zernioAccounts.map((acc: any, i: number) => {
+                      {socialAccounts.map((acc: any, i: number) => {
                         const pName = acc.platform?.charAt(0).toUpperCase() + acc.platform?.slice(1);
                         const PIcon = CONNECTABLE_PLATFORMS.find(cp => cp.id === acc.platform)?.icon || Send;
                         return (
@@ -3507,8 +3507,8 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
                   {/* Connect buttons — large, clear */}
                   {(() => {
-                    const unconnected = CONNECTABLE_PLATFORMS.filter(p => !zernioAccounts.some((a: any) => a.platform === p.id));
-                    if (unconnected.length === 0 && zernioAccounts.length > 0) {
+                    const unconnected = CONNECTABLE_PLATFORMS.filter(p => !socialAccounts.some((a: any) => a.platform === p.id));
+                    if (unconnected.length === 0 && socialAccounts.length > 0) {
                       return (
                         <div className="flex items-center gap-2 py-1">
                           <CheckCircle2 size={13} style={{ color: "#666666" }} />

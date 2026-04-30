@@ -99,7 +99,7 @@ function CalendarPageContent() {
   const [deployingEvent, setDeployingEvent] = useState<string | null>(null);
   const [deployingAll, setDeployingAll] = useState(false);
 
-  // ── Social accounts (Zernio) ──
+  // ── Social accounts ──
   const [socialAccounts, setSocialAccounts] = useState<any[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);

@@ -46,7 +46,7 @@ const PLATFORMS = [
   { id: "YouTube",   label: "YouTube",   icon: Youtube   },
 ] as const;
 
-const ZERNIO_TO_ORA: Record<string, string> = {
+const PLATFORM_BY_SLUG: Record<string, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   facebook: "Facebook",
@@ -65,7 +65,7 @@ const PLATFORM_RATIO: Record<string, string> = {
   YouTube:   "16:9",
 };
 
-interface ZernioAccount {
+interface SocialAccount {
   _id: string;
   platform: string;
   status: string;
@@ -86,14 +86,14 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
   // Auth context exposes accessToken directly (not a `session` wrapper) —
   // the previous `const { session } = useAuth()` was a long-standing bug
   // that always returned undefined, so getAuthHeader returned null,
-  // /zernio/accounts/list got a null _token, requireAuth threw
+  // the social-accounts list call got a null _token, requireAuth threw
   // Unauthorized, and every publish attempt failed silently. Same fix
   // landed in LibraryPicker + StudioPage in the same PR.
   const { accessToken } = useAuth();
   const { locale } = useI18n();
   const isFr = locale === "fr";
 
-  const [accounts, setAccounts] = useState<ZernioAccount[]>([]);
+  const [accounts, setAccounts] = useState<SocialAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [captionMode, setCaptionMode] = useState<CaptionMode>("self");
@@ -152,10 +152,10 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
 
   // Map connected account IDs per ORA platform label
   const connectedByPlatform = useMemo(() => {
-    const map: Record<string, ZernioAccount[]> = {};
+    const map: Record<string, SocialAccount[]> = {};
     for (const a of accounts) {
       if (a.status !== "connected" && a.status !== "active") continue;
-      const oraLabel = ZERNIO_TO_ORA[a.platform];
+      const oraLabel = PLATFORM_BY_SLUG[a.platform];
       if (!oraLabel) continue;
       (map[oraLabel] ||= []).push(a);
     }
@@ -163,17 +163,17 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
   }, [accounts]);
 
   const connectPlatform = useCallback(async (oraLabel: string) => {
-    const zernioSlug = Object.entries(ZERNIO_TO_ORA).find(([, v]) => v === oraLabel)?.[0];
-    if (!zernioSlug) return;
+    const platformSlug = Object.entries(PLATFORM_BY_SLUG).find(([, v]) => v === oraLabel)?.[0];
+    if (!platformSlug) return;
     setConnectingPlatform(oraLabel);
-    const res = await serverPost(`/zernio/connect/${zernioSlug}`, {});
+    const res = await serverPost(`/zernio/connect/${platformSlug}`, {});
     // Server returns { success, authUrl } — the other 3 consumers
     // (CampaignLab, ProfilePage, CalendarPage) read `authUrl` correctly;
     // PublishModal was reading `res.url` (which is undefined), so the
     // popup never opened and we fell straight into the "Connection
     // error" alert even when the OAuth URL came back fine.
     if (res?.success && res.authUrl) {
-      const popup = window.open(res.authUrl, "zernio_oauth", "width=600,height=700");
+      const popup = window.open(res.authUrl, "social_oauth", "width=600,height=700");
       const timer = setInterval(() => {
         if (popup?.closed) {
           clearInterval(timer);
