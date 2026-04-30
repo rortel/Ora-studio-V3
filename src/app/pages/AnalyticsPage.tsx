@@ -158,7 +158,7 @@ function AnalyticsPageContent() {
       const data = await res.json();
       if (data.success) setSocialData(data);
 
-      // Fetch detailed post metrics from Zernio
+      // Fetch detailed post-level performance metrics for every deployed asset
       const metricsRes = await fetch(apiUrl("/analytics/all-posts-metrics"), {
         method: "POST",
         headers: { "Authorization": `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
@@ -422,7 +422,7 @@ function AnalyticsPageContent() {
           )}
         </motion.div>
 
-        {/* Post-Level Performance Metrics from Zernio */}
+        {/* Post-level performance metrics */}
         {postMetrics && postMetrics.posts?.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
             className="bg-card border border-border rounded-xl p-6 mb-10">

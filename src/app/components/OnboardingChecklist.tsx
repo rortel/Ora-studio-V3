@@ -5,7 +5,7 @@
  *   1. Set up Brand Vault  → /hub/vault
  *   2. Drop a product, generate first pack  → /hub/surprise
  *   3. Edit a post  → /hub/editor (after a Library item exists)
- *   4. Publish (coming soon)  → Zernio integration
+ *   4. Publish (coming soon)  → social-publishing integration
  *
  * Progress is auto-detected from user state (vault fields populated,
  * library count, etc.) — not stored separately. Dismissal is stored
@@ -30,7 +30,7 @@ interface OnboardingState {
   vaultDone: boolean;
   firstPackDone: boolean;
   firstEditDone: boolean;
-  // Future: publishDone (Zernio)
+  // Future: publishDone (social publishing)
   loaded: boolean;
 }
 
@@ -195,7 +195,7 @@ export function OnboardingChecklist() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[12.5px] font-medium leading-tight" style={{ color: "rgba(17,17,17,0.45)" }}>
-                      Publish via Zernio
+                      Publish to socials
                     </div>
                     <div className="text-[11px] mt-0.5" style={{ color: "rgba(17,17,17,0.45)" }}>
                       Coming soon — auto-publish to Instagram, LinkedIn, Facebook, TikTok.

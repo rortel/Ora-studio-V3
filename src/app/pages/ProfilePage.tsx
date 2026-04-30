@@ -690,7 +690,7 @@ function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubs
 }
 
 /* ═══════════════════════════════════
-   SOCIAL ACCOUNTS SECTION (transparent Zernio)
+   SOCIAL ACCOUNTS SECTION
    ═══════════════════════════════════ */
 
 const SOCIAL_PLATFORMS = [
