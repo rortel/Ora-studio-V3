@@ -24295,13 +24295,21 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
   // `platformStatus` ("active" | …) and `isActive` (bool). PublishModal
   // and other consumers filter on `a.status === "connected" | "active"`,
   // so without this map every connected account was silently treated as
-  // disconnected and the modal showed all "+". User-initiated disconnect
-  // is signalled by `intentionalDisconnectAt` being non-null.
+  // disconnected and the modal showed all "+".
+  //
+  // Optimistic default: any account that comes back in the user's
+  // profile-scoped list and has NO explicit disconnect signal is
+  // treated as "active". A freshly-OAuth'd account starts with
+  // platformStatus / isActive unset (Zernio populates them async after
+  // the first sync); the previous "unknown" default kept those new
+  // accounts invisible to the modal — user clicked "+" again, OAuth
+  // fired again, infinite loop, no error in console.
   const normalizeStatus = (a: any): string => {
     if (a?.intentionalDisconnectAt) return "disconnected";
-    if (a?.platformStatus === "active" || a?.isActive === true) return "active";
     if (a?.isActive === false) return "disconnected";
-    return a?.status || a?.platformStatus || "unknown";
+    if (a?.platformStatus === "active" || a?.isActive === true) return "active";
+    // No disconnect signal + present in profile = treat as connected.
+    return "active";
   };
   accounts = accounts.map((a) => ({ ...a, status: normalizeStatus(a) }));
 
