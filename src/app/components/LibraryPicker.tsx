@@ -18,7 +18,10 @@ interface LibraryPickerProps {
 }
 
 export function LibraryPicker({ open, onClose, onSelect, maxSelect = 10 }: LibraryPickerProps) {
-  const { session } = useAuth();
+  // Auth context exposes accessToken directly — `session` was undefined,
+  // which is why the library fetch silently no-op'd (early-return on
+  // !session?.access_token), leaving the picker permanently empty.
+  const { accessToken } = useAuth();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -26,7 +29,7 @@ export function LibraryPicker({ open, onClose, onSelect, maxSelect = 10 }: Libra
 
   // Fetch library images
   useEffect(() => {
-    if (!open || !session?.access_token) return;
+    if (!open || !accessToken) return;
     setLoading(true);
 
     const API = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || "";
@@ -34,7 +37,7 @@ export function LibraryPicker({ open, onClose, onSelect, maxSelect = 10 }: Libra
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({}),
     })
@@ -48,7 +51,7 @@ export function LibraryPicker({ open, onClose, onSelect, maxSelect = 10 }: Libra
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [open, session?.access_token]);
+  }, [open, accessToken]);
 
   const toggle = useCallback(
     (id: string) => {

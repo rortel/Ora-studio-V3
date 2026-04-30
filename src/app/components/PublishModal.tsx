@@ -83,7 +83,13 @@ interface PerPlatformState {
 }
 
 export function PublishModal({ asset, open, onClose, onPublished }: PublishModalProps) {
-  const { session } = useAuth();
+  // Auth context exposes accessToken directly (not a `session` wrapper) —
+  // the previous `const { session } = useAuth()` was a long-standing bug
+  // that always returned undefined, so getAuthHeader returned null,
+  // /zernio/accounts/list got a null _token, requireAuth threw
+  // Unauthorized, and every publish attempt failed silently. Same fix
+  // landed in LibraryPicker + StudioPage in the same PR.
+  const { accessToken } = useAuth();
   const { locale } = useI18n();
   const isFr = locale === "fr";
 
@@ -103,7 +109,7 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
   const [results, setResults] = useState<{ platform: string; status: string; url?: string; error?: string }[]>([]);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
-  const getAuthHeader = useCallback(() => session?.access_token || null, [session]);
+  const getAuthHeader = useCallback(() => accessToken || null, [accessToken]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 30_000) => {
     const token = getAuthHeader();
