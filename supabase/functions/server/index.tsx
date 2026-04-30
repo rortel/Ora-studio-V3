@@ -24244,45 +24244,26 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
     }
   };
 
-  // Strategy 1: scope by user's profile (the right answer when both sides agree on profileId).
-  // includeOverLimit=true is REQUIRED — Zernio silently omits accounts on
-  // profiles flagged isOverLimit (post-downgrade or plan-cap) by default.
-  const scoped = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
-
-  // Strategy 2: ALWAYS fan out across every profile in the workspace and
-  // union the results. Used to be conditional ("only if scoped returns
-  // 0"), but a user can have accounts split across multiple profiles
-  // (e.g. a "Default Profile" with the LinkedIn org + a per-user profile
-  // with Instagram/personal-LinkedIn) — conditional fan-out missed the
-  // accounts on the OTHER profile entirely. Union > short-circuit.
-  let fannedOut: any[] = [];
-  try {
-    const profilesRes = await fetch(`${ZERNIO_BASE}/profiles?includeOverLimit=true`, { headers: zernioHeaders(), signal: AbortSignal.timeout(10_000) });
-    const profilesData = await profilesRes.json().catch(() => ({}));
-    const profiles: any[] = Array.isArray(profilesData?.profiles) ? profilesData.profiles : [];
-    console.log(`[zernio] fan-out across ${profiles.length} profile(s) (always-on)`);
-    const all = await Promise.all(
-      profiles
-        .filter((p) => p?._id && p._id !== profileId) // skip the scoped one we already have
-        .map((p) => fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(p._id)}&includeOverLimit=true`)),
-    );
-    fannedOut = all.flat();
-  } catch (err) {
-    console.log(`[zernio] fan-out failed: ${err}`);
-  }
-
-  // Strategy 3: bare /accounts as last resort — only if both above came back empty.
-  let bare: any[] = [];
-  if (scoped.length === 0 && fannedOut.length === 0) {
-    bare = await fetchAccounts(`${ZERNIO_BASE}/accounts?includeOverLimit=true`);
-  }
-
-  // Union all sources, deduped by _id.
-  const mergedAccounts = new Map<string, any>();
-  for (const list of [scoped, fannedOut, bare]) {
-    for (const a of list) if (a?._id) mergedAccounts.set(a._id, a);
-  }
-  accounts = Array.from(mergedAccounts.values());
+  // STRICT PROFILE-SCOPED. Multi-tenancy boundary: each Ora user maps to
+  // their own Zernio profile via getOrCreateZernioProfile, and we ONLY
+  // ever surface accounts attached to that profile. Cross-profile
+  // fan-out and the bare /accounts fallback have been removed because
+  // they leak other users' connected social accounts into the current
+  // user's PublishModal — a "client" sees the admin's Instagram listed
+  // as connected, can select it, and would publish to the WRONG account.
+  //
+  // The earlier cascade (PR #99 conditional fan-out, PR #104 always-on)
+  // tried to recover accounts that had been connected on a different
+  // profile in the workspace. That's the right answer for a single-
+  // tenant admin tool but the wrong answer for our multi-tenant SaaS.
+  // For the orphan-account recovery use case (an admin whose own legacy
+  // accounts live on Default Profile), the right move is to reconnect
+  // through Ora once so they get attached to the user's own profile.
+  //
+  // includeOverLimit=true is still REQUIRED — Zernio silently omits
+  // accounts on profiles flagged isOverLimit by default.
+  accounts = await fetchAccounts(`${ZERNIO_BASE}/accounts?profileId=${encodeURIComponent(profileId)}&includeOverLimit=true`);
+  if (accounts.length > 0) strategy = "profile-scoped";
 
   // Normalize the `status` field — Zernio's response shape uses
   // `platformStatus` ("active" | …) and `isActive` (bool). PublishModal
@@ -24297,13 +24278,6 @@ async function listZernioAccountsForUser(userId: string, email: string): Promise
     return a?.status || a?.platformStatus || "unknown";
   };
   accounts = accounts.map((a) => ({ ...a, status: normalizeStatus(a) }));
-
-  if (accounts.length > 0) {
-    strategy = scoped.length > 0 && fannedOut.length > 0 ? "scoped+fan-out"
-      : scoped.length > 0 ? "profile-scoped"
-      : fannedOut.length > 0 ? "fan-out"
-      : "bare-list";
-  }
 
   console.log(`[zernio] resolved strategy=${strategy}, accounts=${accounts.length}: ${accounts.map((a: any) => `${a.platform}/${a.status}`).join(", ")}`);
 
