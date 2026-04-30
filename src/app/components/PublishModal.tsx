@@ -167,12 +167,16 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     const platformSlug = Object.entries(PLATFORM_BY_SLUG).find(([, v]) => v === oraLabel)?.[0];
     if (!platformSlug) return;
     setConnectingPlatform(oraLabel);
-    const res = await serverPost(`/zernio/connect/${platformSlug}`, {});
-    // Server returns { success, authUrl } — the other 3 consumers
-    // (CampaignLab, ProfilePage, CalendarPage) read `authUrl` correctly;
-    // PublishModal was reading `res.url` (which is undefined), so the
-    // popup never opened and we fell straight into the "Connection
-    // error" alert even when the OAuth URL came back fine.
+    // White-label OAuth: send Zernio our own callback page as
+    // redirect_url. Without this, Zernio defaults to its own hosted
+    // dashboard (zernio.com/signin) and end-customer "client" users see
+    // Zernio branding mid-OAuth — visible in the screenshot from
+    // ora-studio.app session 30/04. /zernio-callback.html ships in
+    // public/, is excluded from the SPA rewrite in vercel.json, and
+    // already handles the LinkedIn-org / Facebook-page selection step
+    // plus posts back to the opener via window.postMessage.
+    const redirectUrl = `${window.location.origin}/zernio-callback.html`;
+    const res = await serverPost(`/zernio/connect/${platformSlug}`, { redirectUrl });
     if (!(res?.success && res.authUrl)) {
       setConnectingPlatform(null);
       alert(res?.error || (isFr ? "Erreur de connexion" : "Connection error"));
@@ -201,8 +205,17 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     const POLL_MS = 3000;
     let timer: ReturnType<typeof setInterval> | null = null;
     const onMessage = (e: MessageEvent) => {
-      const ok = (typeof e.data === "string" && e.data.startsWith("zernio:connected"))
-        || (e.data && typeof e.data === "object" && (e.data as any).type === "zernio:connected");
+      // Accept both the legacy literal "zernio:connected" shape and the
+      // actual shape emitted by /public/zernio-callback.html
+      // (`{ type: "zernio-oauth-complete", platform, status }`). The two
+      // were never aligned — the listener missed every real callback,
+      // which is why the modal stayed stuck even when OAuth succeeded.
+      const data = e.data as any;
+      const ok = (typeof data === "string" && data.startsWith("zernio:connected"))
+        || (data && typeof data === "object" && (
+              data.type === "zernio:connected"
+              || data.type === "zernio-oauth-complete"
+           ));
       if (ok) finish();
     };
     const finish = () => {
