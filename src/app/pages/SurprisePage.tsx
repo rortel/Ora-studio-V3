@@ -1330,6 +1330,38 @@ function SurpriseContent() {
               </div>
             </motion.div>
 
+            {/* Pack-level failure banner — surfaces silently-failed shots so
+                the user knows they paid for N but received M < N, with a
+                one-click re-run. The per-shot retry above the placeholder
+                tile already exists, but users miss it when they scroll
+                past the failed cards. This banner is unmissable. */}
+            {(() => {
+              const okCount = pack.items.filter((it) => it.status === "ok").length;
+              const failedCount = pack.items.length - okCount;
+              if (failedCount === 0) return null;
+              const reasons = Array.from(new Set(
+                pack.items.filter((it) => it.status === "failed" && !!it.error).map((it) => it.error as string)
+              )).slice(0, 2);
+              return (
+                <div className="rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap"
+                     style={{ background: "#FFF5F0", border: "1px solid #FCA5A5", color: "#7C2D12" }}>
+                  <div className="flex-1 min-w-[200px]">
+                    <div className="text-[13px] font-semibold">
+                      {okCount} of {pack.items.length} shots delivered — {failedCount} failed
+                    </div>
+                    {reasons.length > 0 && (
+                      <div className="text-[11.5px] mt-1 opacity-80">
+                        {reasons.join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                  <Button variant="accent" size="sm" disabled={busy} onClick={() => handleSurprise()}>
+                    <Sparkles size={12} /> Re-run pack
+                  </Button>
+                </div>
+              );
+            })()}
+
             {/* Per-platform sections */}
             {Object.keys(groupedByPlatform).map((platform) => {
               const items = groupedByPlatform[platform];

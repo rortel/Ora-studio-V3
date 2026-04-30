@@ -74,6 +74,35 @@ assert(
   `promptText spec no longer requires opening with PICKED STYLE descriptors — fix W is undone`,
 );
 
+// ── 6b. HARD NO-TEXT rule for type="product" shots (hallucination ban) ──
+// Niveau 1 fix that stops image-gen models from rendering mangled text
+// (e.g. "BiNiRcE", "TEMPÉrAMNT") inside product shots. Mirror of fix AA —
+// if any of these checks fail, the original class of bug returns.
+assert(
+  /HARD NO-TEXT RULE for type="product" shots — NON-NEGOTIABLE/.test(src),
+  `HARD NO-TEXT RULE missing — image-gen models will hallucinate text on product shots again`,
+);
+assert(
+  /promptText for type="product" shots MUST NOT request any rendered text strings/.test(src),
+  `Product shot text-ban prose missing — LLM will leak text vocabulary into product prompts`,
+);
+assert(
+  /text strings strictly capped at 1-3 ASCII words/.test(src),
+  `text-card length cap missing — long French strings will hallucinate`,
+);
+assert(
+  /NO accents, NO French diacritics/.test(src),
+  `text-card diacritics ban missing — accented text will be mangled by Ideogram`,
+);
+assert(
+  /For type='product' shots: NO text-based twists/.test(src),
+  `twistElement spec no longer bans text-based twists for product shots — they'll leak text into prompts`,
+);
+assert(
+  /do NOT request a rendered .* wordmark in type="product" shots/.test(src),
+  `Brand mark rule no longer bans wordmarks in product shots — hallucinated brand text returns`,
+);
+
 // ── 7. styleId-only requests are accepted (no vault, no brief) ──
 assert(
   /if \(!brandSummary && !brief && !styleDirective\)/.test(src),
