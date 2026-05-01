@@ -8,6 +8,7 @@ import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { Surface } from "../components/ora/Surface";
 import { bagel, COLORS, type Tone } from "../components/ora/tokens";
+import { trackEvent } from "../lib/analytics";
 
 type Billing = "monthly" | "yearly";
 type PublicPlan = "creator" | "studio" | "agency";
@@ -137,6 +138,10 @@ export function SubscribePage() {
     if (loading) return;
     setLoading(true);
     setError("");
+    // Funnel signal: user clicked the Stripe checkout CTA. Pairs with
+    // signup_completed → subscribe_clicked → (Stripe webhook) →
+    // subscribe_paid to compute the payment-conversion ratio.
+    trackEvent("subscribe_clicked", { plan: plan.serverCode, billing });
     try {
       const res = await fetch(apiUrl("/stripe/create-checkout-session"), {
         method: "POST",

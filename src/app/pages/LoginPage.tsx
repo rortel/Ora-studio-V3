@@ -6,6 +6,7 @@ import { OraLogo } from "../components/OraLogo";
 import { ArrowRight, Eye, EyeOff, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
+import { trackEvent } from "../lib/analytics";
 
 const ADMIN_EMAIL = "romainortel@gmail.com";
 
@@ -68,6 +69,8 @@ export function LoginPage() {
       }
       console.log("Signed in:", data.session?.user?.id);
       const userEmail = data.session?.user?.email || "";
+      // Funnel signal: a returning user successfully signed in.
+      trackEvent("login_completed", { method: "password" });
       navigate(postAuthTarget(userEmail));
     } catch (err) {
       console.error("Sign in exception:", err);
@@ -122,12 +125,11 @@ export function LoginPage() {
       }
 
       console.log("Signed up and in:", signInData.session?.user?.id);
-      // Post-signup landing: respect ?next if present (e.g. pricing CTA
-      // sent them here with next=/subscribe?plan=studio), otherwise drop
-      // them straight into /hub/surprise with their free trial credits
-      // so they can taste the product BEFORE being asked to pay. The
-      // forced /onboarding stop is gone — we let users hit the product
-      // first, onboarding surfaces as a nudge from the brand-lock panel.
+      // Funnel signal: a brand-new account just got created. The
+      // distinction between login_completed (returning user) and
+      // signup_completed (new user) is what powers the dashboard's
+      // "today's new signups" line.
+      trackEvent("signup_completed", { hasName: !!name });
       const userEmail = signInData.session?.user?.email || email;
       navigate(postAuthTarget(userEmail));
     } catch (err: any) {

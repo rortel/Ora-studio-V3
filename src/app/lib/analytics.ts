@@ -106,6 +106,31 @@ export function installAnalytics(): void {
   });
   trackEvent("page_view", { firstPaint: true });
 
+  // ── PAGE_LEAVE — dwell time per route ──
+  // We log when the user leaves a route (either to another route or by
+  // closing the tab). The duration tells us how long they actually
+  // engaged with each page — crucial for "what visitors like vs skip".
+  // Without this, /admin/analytics/summary can show top routes by hits
+  // but not by attention.
+  let routeEnteredAt = Date.now();
+  let currentRoute = location.pathname;
+  const fireLeave = (reason: "route_change" | "tab_hidden" | "unload") => {
+    const durationMs = Date.now() - routeEnteredAt;
+    if (durationMs < 100) return; // ignore double-fires + instant bounces
+    trackEvent("page_leave", {
+      route: currentRoute,
+      durationMs,
+      reason,
+    });
+  };
+  // Fire on route change (we update routeEnteredAt below).
+  // Fire on tab hidden (best signal for "user left").
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") fireLeave("tab_hidden");
+  });
+  // Fire on actual unload — uses sendBeacon-style keepalive in trackEvent.
+  window.addEventListener("pagehide", () => fireLeave("unload"));
+
   // SPA route changes (history.pushState / popstate). React-router uses
   // history under the hood, so we patch pushState/replaceState.
   const originalPush = history.pushState.bind(history);
@@ -113,7 +138,11 @@ export function installAnalytics(): void {
   let lastTrackedRoute = location.pathname;
   const trackRouteChange = () => {
     if (location.pathname !== lastTrackedRoute) {
+      // Fire leave for the previous route BEFORE we update state.
+      fireLeave("route_change");
       lastTrackedRoute = location.pathname;
+      currentRoute = location.pathname;
+      routeEnteredAt = Date.now();
       trackEvent("page_view", { firstPaint: false });
     }
   };

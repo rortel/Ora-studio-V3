@@ -53,7 +53,7 @@ interface SystemLog {
   timestamp: string;
 }
 
-type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "api-credits" | "emails" | "diagnostics";
+type AdminTab = "overview" | "users" | "logs" | "financial" | "costs" | "api-credits" | "emails" | "diagnostics" | "site-analytics";
 
 /* ═══════════════════════════════════
    COMPONENT
@@ -280,6 +280,7 @@ function AdminPageContent() {
     { id: "costs", label: "Costs", icon: CreditCard },
     { id: "api-credits", label: "API Credits", icon: Zap },
     { id: "emails", label: "Emails", icon: Mail },
+    { id: "site-analytics", label: "Site Analytics", icon: Eye },
     { id: "logs", label: "System Logs", icon: Activity },
     { id: "diagnostics", label: "Diagnostics", icon: AlertTriangle },
   ];
@@ -367,6 +368,7 @@ function AdminPageContent() {
         {tab === "emails" && <EmailTab adminPost={adminPost} users={users} />}
         {tab === "logs" && <LogsTab logs={logs} />}
         {tab === "diagnostics" && <DiagnosticsTab authToken={accessToken || publicAnonKey} />}
+        {tab === "site-analytics" && <SiteAnalyticsTab authToken={accessToken || publicAnonKey} />}
 
         {loading && !overview && (
           <div className="flex items-center justify-center py-20">
@@ -3352,6 +3354,226 @@ function LogEntry({ log, expanded = false }: { log: SystemLog; expanded?: boolea
           {JSON.stringify(log.details, null, 2)}
         </pre>
       )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// SITE ANALYTICS — visitor behaviour dashboard
+//
+// Reads /admin/analytics/summary (extended in PR feat(WW)) which aggregates
+// the in-house event stream into:
+//   - totalEvents, last24h, totalSessions, bounceRate
+//   - topEvents / topRoutes / topUsers   (engagement signals)
+//   - exitPages                            (where sessions end — drop-off)
+//   - dwellByRoute                         (median dwell ms per route)
+//   - funnel                               (sessions reaching each stage)
+//   - webVitals                            (LCP, CLS, INP, TTFB, FCP)
+//
+// All charts are inline SVG / styled divs — no recharts/d3 dependency.
+// Refresh button + auto-refresh every 60s while the tab is mounted.
+// ──────────────────────────────────────────────────────────────────────
+interface AnalyticsSummary {
+  totalEvents: number;
+  last24hEvents: number;
+  totalSessions: number;
+  bounceRate: number;
+  bouncedSessions: number;
+  topEvents: { key: string; count: number }[];
+  topUsers: { key: string; count: number }[];
+  topRoutes: { key: string; count: number }[];
+  exitPages: { key: string; count: number }[];
+  dwellByRoute: { route: string; medianMs: number; meanMs: number; samples: number }[];
+  funnel: { stage: string; sessions: number }[];
+  webVitals: Record<string, { p50: number; p75: number; p95: number; samples: number }>;
+}
+
+function SiteAnalyticsTab({ authToken }: { authToken: string }) {
+  const [data, setData] = useState<AnalyticsSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [lastFetched, setLastFetched] = useState<number | null>(null);
+
+  const fetchSummary = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API_BASE}/admin/analytics/summary`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const json = await r.json();
+      if (!r.ok || !json.success) throw new Error(json.error || `HTTP ${r.status}`);
+      setData(json.summary as AnalyticsSummary);
+      setLastFetched(Date.now());
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    fetchSummary();
+    // Auto-refresh every 60s — visitor analytics is the kind of thing
+    // you leave open in a side tab while you watch traffic land.
+    const id = setInterval(fetchSummary, 60_000);
+    return () => clearInterval(id);
+  }, [fetchSummary]);
+
+  // Format helpers — keep them local, this tab is the only consumer.
+  const fmtMs = (ms: number) => ms < 1000 ? `${ms}ms` : ms < 60_000 ? `${(ms / 1000).toFixed(1)}s` : `${(ms / 60_000).toFixed(1)}m`;
+  const pct = (n: number, total: number) => total > 0 ? Math.round((n / total) * 100) : 0;
+
+  if (loading && !data) {
+    return <div className="flex items-center justify-center py-20"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>;
+  }
+  if (error && !data) {
+    return <div className="p-6 rounded-xl border border-destructive/30 bg-destructive/5 text-destructive text-sm">{error}</div>;
+  }
+  if (!data) return null;
+
+  // Funnel stage labels — humanised version of the keys for the chart.
+  const STAGE_LABEL: Record<string, string> = {
+    "page_view@/": "1. Landed on /",
+    "pricing_view": "2. Viewed pricing",
+    "pricing_plan_clicked": "3. Picked a plan",
+    "signup_completed": "4. Signed up",
+    "subscribe_clicked": "5. Clicked checkout",
+  };
+  const funnelMax = Math.max(...data.funnel.map(s => s.sessions), 1);
+
+  // Routes that absorb the most attention (highest median dwell).
+  // We care about the median, not the mean — one tab-left-open ruins the mean.
+  const stickyRoutes = [...data.dwellByRoute].sort((a, b) => b.medianMs - a.medianMs).slice(0, 8);
+
+  return (
+    <div className="space-y-6">
+      {/* Header — refresh + freshness indicator */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Site Analytics</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            What pages visitors love, and where they leave. Last refreshed: {lastFetched ? new Date(lastFetched).toLocaleTimeString() : "—"}
+          </p>
+        </div>
+        <button onClick={fetchSummary} disabled={loading} className="text-xs px-3 py-1.5 rounded-lg border hover:bg-secondary transition-colors flex items-center gap-1.5" style={{ borderColor: "var(--border)" }}>
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+        </button>
+      </div>
+
+      {/* KPI strip — the four numbers any product person glances at first */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi label="Total events" value={data.totalEvents.toLocaleString()} />
+        <Kpi label="Events (24h)" value={data.last24hEvents.toLocaleString()} hint={data.last24hEvents > 0 ? "active" : "quiet"} />
+        <Kpi label="Sessions" value={data.totalSessions.toLocaleString()} />
+        <Kpi label="Bounce rate" value={`${data.bounceRate}%`} hint={`${data.bouncedSessions} bounces`} tone={data.bounceRate > 70 ? "warn" : "ok"} />
+      </div>
+
+      {/* Funnel — 5 critical transitions in the visitor journey */}
+      <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-semibold mb-1">Conversion funnel</h3>
+        <p className="text-xs text-muted-foreground mb-4">Sessions that reached each stage. Big drops = what to fix first.</p>
+        <div className="space-y-2">
+          {data.funnel.map((s, i) => {
+            const prev = i > 0 ? data.funnel[i - 1].sessions : data.funnel[0].sessions;
+            const dropPct = prev > 0 ? Math.round(((prev - s.sessions) / prev) * 100) : 0;
+            const widthPct = (s.sessions / funnelMax) * 100;
+            return (
+              <div key={s.stage} className="flex items-center gap-3">
+                <div className="w-44 text-xs text-muted-foreground shrink-0">{STAGE_LABEL[s.stage] || s.stage}</div>
+                <div className="flex-1 relative h-7 bg-secondary/30 rounded-md overflow-hidden">
+                  <div className="absolute inset-y-0 left-0 rounded-md transition-all" style={{ width: `${widthPct}%`, background: i === 0 ? "var(--primary)" : "var(--accent, #FF6B47)" }} />
+                  <div className="absolute inset-0 flex items-center px-2 text-xs font-medium">{s.sessions.toLocaleString()} sessions</div>
+                </div>
+                <div className="w-16 text-xs shrink-0 text-right">
+                  {i > 0 && <span className={dropPct > 50 ? "text-destructive" : "text-muted-foreground"}>−{dropPct}%</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Two columns: what they like (top routes by hits) + what holds attention (top routes by dwell) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+          <h3 className="text-sm font-semibold mb-1">Most visited pages</h3>
+          <p className="text-xs text-muted-foreground mb-4">By number of page views.</p>
+          <RankedList items={data.topRoutes.map(r => ({ label: r.key || "(empty)", value: r.count.toLocaleString() }))} />
+        </div>
+        <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+          <h3 className="text-sm font-semibold mb-1">Most engaging pages</h3>
+          <p className="text-xs text-muted-foreground mb-4">Median time spent per visit (ignores tab-left-open outliers).</p>
+          <RankedList items={stickyRoutes.map(r => ({ label: r.route || "(empty)", value: fmtMs(r.medianMs), sub: `${r.samples} visits` }))} />
+        </div>
+      </div>
+
+      {/* Drop-off — exit pages */}
+      <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-semibold mb-1">Where visitors leave</h3>
+        <p className="text-xs text-muted-foreground mb-4">Pages where the most sessions ended. Heavy hitters here are the rooms with the locked doors.</p>
+        <RankedList items={data.exitPages.map(r => ({
+          label: r.key || "(empty)",
+          value: r.count.toLocaleString(),
+          sub: `${pct(r.count, data.totalSessions)}% of all sessions`,
+        }))} />
+      </div>
+
+      {/* Top events — what's actually happening */}
+      <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-semibold mb-1">Event volume</h3>
+        <p className="text-xs text-muted-foreground mb-4">All events fired across the site. Includes page_view, page_leave, web_vital, plus any custom funnel signals.</p>
+        <RankedList items={data.topEvents.slice(0, 12).map(e => ({ label: e.key, value: e.count.toLocaleString() }))} />
+      </div>
+
+      {/* Web Vitals — performance signals */}
+      <div className="rounded-xl p-5 border bg-card" style={{ borderColor: "var(--border)" }}>
+        <h3 className="text-sm font-semibold mb-1">Performance (Web Vitals)</h3>
+        <p className="text-xs text-muted-foreground mb-4">Real-user measurements. Bad vitals = visitors leaving before the page even renders.</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Object.entries(data.webVitals).map(([metric, v]) => (
+            <div key={metric} className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs text-muted-foreground">{metric}</div>
+              <div className="text-lg font-semibold tabular-nums">{metric === "CLS" ? v.p75.toFixed(3) : `${Math.round(v.p75)}ms`}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">p75 · {v.samples} samples</div>
+            </div>
+          ))}
+          {Object.keys(data.webVitals).length === 0 && (
+            <div className="text-xs text-muted-foreground col-span-full">No Web Vitals captured yet.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "ok" | "warn" }) {
+  return (
+    <div className="rounded-xl p-4 border bg-card" style={{ borderColor: "var(--border)" }}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-2xl font-semibold tabular-nums mt-1">{value}</div>
+      {hint && <div className={`text-[11px] mt-0.5 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}>{hint}</div>}
+    </div>
+  );
+}
+
+function RankedList({ items }: { items: { label: string; value: string; sub?: string }[] }) {
+  if (items.length === 0) {
+    return <div className="text-xs text-muted-foreground">No data yet.</div>;
+  }
+  const max = items.length;
+  return (
+    <div className="space-y-1.5">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-center gap-3 group">
+          <div className="w-5 text-[10px] text-muted-foreground tabular-nums shrink-0">{i + 1}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs truncate" title={it.label}>{it.label}</div>
+            {it.sub && <div className="text-[10px] text-muted-foreground">{it.sub}</div>}
+          </div>
+          <div className="text-xs font-medium tabular-nums shrink-0">{it.value}</div>
+          <div className="w-1 h-5 rounded-full" style={{ background: "var(--accent, #FF6B47)", opacity: 1 - (i / (max + 2)) }} />
+        </div>
+      ))}
     </div>
   );
 }
