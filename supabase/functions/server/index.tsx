@@ -24985,7 +24985,6 @@ app.post("/pfm/connect/:platform", async (c) => {
     const rawPlatform = c.req.param("platform");
     const platform = PFM_PLATFORM_MAP[rawPlatform] || rawPlatform.toLowerCase();
     const pb = c.get?.("parsedBody") || {};
-    const redirectUrl = pb.redirectUrl || PFM_DEFAULT_CALLBACK;
     const connectionType = pb.connectionType;
 
     // Build platform_data with whatever per-platform options the user
@@ -25001,10 +25000,18 @@ app.post("/pfm/connect/:platform", async (c) => {
       platformData.instagram = { connection_type: connectionType || "facebook" };
     }
 
+    // NOTE on redirect URL:
+    // Quickstart Projects (the tier we're on, $10/mo Pro) reject any
+    // `redirect_url_override` field on the connect request — Post for
+    // Me forces you to set the redirect URL ONCE at the project level
+    // (their dashboard → Project → Project Redirect URL) and applies
+    // it to every OAuth flow. Trying to override per-request returns
+    // an error popup to the end user mid-OAuth, breaking the connect.
+    // We therefore omit redirect_url_override entirely; the admin must
+    // configure it server-side on the PfM dashboard once.
     const body: any = {
       platform,
       external_id: user.id, // ← THE multi-tenancy boundary
-      redirect_url_override: redirectUrl,
     };
     if (Object.keys(platformData).length > 0) body.platform_data = platformData;
 
