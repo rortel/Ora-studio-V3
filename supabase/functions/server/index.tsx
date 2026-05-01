@@ -24889,6 +24889,457 @@ app.post("/campaign/deploy-batch", async (c) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// POST FOR ME — Unified social publishing API (replaces Zernio)
+//
+// Why we're migrating: Zernio's API leaks across tenants by default
+// (no native external_id), required custom Page/Org selection flows,
+// silent OAuth landing on zernio.com, async status fields that broke
+// our UI gate. Patching it cost us PRs #101 → #110 in one night.
+//
+// Post for Me solves all of these natively:
+//   - external_id field on every account → strict per-user scoping
+//     enforced server-side, no cross-tenant leak possible
+//   - One SocialAccount per Facebook Page (auto), no custom selector
+//   - LinkedIn personal/organization picked upfront via connection_type
+//   - Webhooks fire on account/post events → no polling
+//   - Direct redirect_url_override → user lands on our domain post-OAuth
+//
+// Cohabitation strategy: this block sits ALONGSIDE the Zernio code
+// (above) so the migration is a 3-PR sequence:
+//   1. (this PR) Add /pfm/* endpoints — Zernio still in use, nothing breaks
+//   2. Switch PublishModal to /pfm/*
+//   3. Migrate ProfilePage / CalendarPage / CampaignLab
+//   4. Delete the Zernio block entirely
+//
+// Tier: Pro $10/mo, Quickstart credentials (no Meta App Review needed).
+// We pass external_id=user.id on every connect so each Ora user sees
+// only their own SocialAccounts in the listing — no profile/fan-out
+// gymnastics needed.
+// ══════════════════════════════════════════════════════════════
+
+const PFM_BASE = "https://api.postforme.dev/v1";
+const pfmHeaders = (): Record<string, string> => {
+  const key = Deno.env.get("POSTFORME_API_KEY");
+  if (!key) throw new Error("POSTFORME_API_KEY not configured");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${key}` };
+};
+
+// ORA platform label → Post for Me slug. Matches what the UI sends.
+const PFM_PLATFORM_MAP: Record<string, string> = {
+  Instagram: "instagram", instagram: "instagram",
+  Facebook: "facebook", facebook: "facebook",
+  LinkedIn: "linkedin", linkedin: "linkedin",
+  "Twitter/X": "x", Twitter: "x", twitter: "x", X: "x", x: "x",
+  TikTok: "tiktok", tiktok: "tiktok",
+  YouTube: "youtube", youtube: "youtube",
+  Threads: "threads", threads: "threads",
+  Pinterest: "pinterest", pinterest: "pinterest",
+  Bluesky: "bluesky", bluesky: "bluesky",
+};
+
+// Default callback URL — same static page we used for Zernio. Lives in
+// /public/zernio-callback.html (excluded from SPA rewrite in vercel.json).
+// Post for Me appends `?connected=...&accountId=...` and the page
+// postMessages back to the opener.
+const PFM_DEFAULT_CALLBACK = "https://ora-studio.app/zernio-callback.html";
+
+// Normalize a Post for Me SocialAccountDto into the shape PublishModal
+// already expects. Keeps the client diff minimal during migration.
+function pfmAccountToOraShape(a: any) {
+  return {
+    _id: a.id,
+    id: a.id,
+    platform: a.platform,
+    username: a.username,
+    displayName: a.username,
+    profilePicture: a.profile_photo_url,
+    profilePhotoUrl: a.profile_photo_url,
+    status: a.status === "connected" ? "active" : (a.status || "active"),
+    external_id: a.external_id,
+    user_id: a.user_id,
+  };
+}
+
+// ── Helper: list every SocialAccount tied to this Ora user ──
+// Single source of truth used by both the listing endpoint AND the
+// authorisation guard in /pfm/publish.
+async function pfmListUserAccounts(userId: string): Promise<any[]> {
+  const url = `${PFM_BASE}/social-accounts?external_id=${encodeURIComponent(userId)}&limit=100`;
+  const res = await fetch(url, { headers: pfmHeaders(), signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) {
+    const text = await res.text();
+    console.log(`[pfm] list accounts HTTP ${res.status}: ${text.slice(0, 200)}`);
+    return [];
+  }
+  const json = await res.json().catch(() => ({}));
+  return Array.isArray(json?.data) ? json.data : [];
+}
+
+// POST /pfm/connect/:platform — Start an OAuth flow for the current user.
+// Body (optional): { redirectUrl, connectionType }
+//   connectionType: "personal" | "organization" for LinkedIn,
+//                   "instagram" | "facebook" for Instagram (auth provider).
+app.post("/pfm/connect/:platform", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const rawPlatform = c.req.param("platform");
+    const platform = PFM_PLATFORM_MAP[rawPlatform] || rawPlatform.toLowerCase();
+    const pb = c.get?.("parsedBody") || {};
+    const redirectUrl = pb.redirectUrl || PFM_DEFAULT_CALLBACK;
+    const connectionType = pb.connectionType;
+
+    // Build platform_data with whatever per-platform options the user
+    // has chosen. We only set the fields the doc requires for headless
+    // mode; everything else inherits Post for Me's defaults.
+    const platformData: any = {};
+    if (platform === "linkedin") {
+      platformData.linkedin = { connection_type: connectionType || "personal" };
+    } else if (platform === "instagram") {
+      // "instagram" = login with Instagram; "facebook" = login with Facebook
+      // (preferred for IG Business accounts hosted on Pages). Default to
+      // facebook because IG Business is what publishing requires anyway.
+      platformData.instagram = { connection_type: connectionType || "facebook" };
+    }
+
+    const body: any = {
+      platform,
+      external_id: user.id, // ← THE multi-tenancy boundary
+      redirect_url_override: redirectUrl,
+    };
+    if (Object.keys(platformData).length > 0) body.platform_data = platformData;
+
+    const res = await fetch(`${PFM_BASE}/social-accounts/auth-url`, {
+      method: "POST",
+      headers: pfmHeaders(),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await res.text();
+    let data: any; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+    if (!res.ok) {
+      console.log(`[pfm/connect] ${platform} HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return c.json({
+        success: false,
+        error: data?.error || data?.message || `HTTP ${res.status}`,
+      }, res.status);
+    }
+
+    console.log(`[pfm/connect] user=${user.id.slice(0, 8)}, platform=${platform}, ext=${user.id.slice(0, 8)}`);
+    return c.json({ success: true, authUrl: data.url, platform });
+  } catch (err) {
+    console.log(`[pfm/connect] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /pfm/accounts/list — List the current user's connected accounts.
+// CORS-safe: POST + text/plain + token in body, like /zernio/accounts/list.
+app.post("/pfm/accounts/list", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const raw = await pfmListUserAccounts(user.id);
+    const accounts = raw.map(pfmAccountToOraShape);
+    console.log(`[pfm/accounts/list] user=${user.id.slice(0, 8)}, ${accounts.length} accounts: ${accounts.map((a) => `${a.platform}/${a.status}`).join(", ")}`);
+    return c.json({ success: true, accounts });
+  } catch (err) {
+    console.log(`[pfm/accounts/list] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /pfm/disconnect — Disconnect a social account.
+// Body: { accountId }
+// Server-side ownership check: the account's external_id MUST equal the
+// requesting user's id, else we refuse with 403.
+app.post("/pfm/disconnect", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const accountId = body?.accountId;
+    if (!accountId) return c.json({ success: false, error: "accountId required" }, 400);
+
+    // Verify ownership BEFORE the disconnect call.
+    const checkRes = await fetch(`${PFM_BASE}/social-accounts/${encodeURIComponent(accountId)}`, {
+      headers: pfmHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (checkRes.status === 404) return c.json({ success: false, error: "Account not found" }, 404);
+    if (!checkRes.ok) return c.json({ success: false, error: `HTTP ${checkRes.status}` }, checkRes.status);
+    const account = await checkRes.json().catch(() => ({}));
+    if (account.external_id !== user.id) {
+      console.warn(`[pfm/disconnect] REJECTED cross-tenant: user=${user.id.slice(0, 8)}, accountId=${accountId}, owner=${(account.external_id || "").slice(0, 8)}`);
+      return c.json({ success: false, error: "Account doesn't belong to your profile" }, 403);
+    }
+
+    const res = await fetch(`${PFM_BASE}/social-accounts/${encodeURIComponent(accountId)}/disconnect`, {
+      method: "POST",
+      headers: pfmHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      return c.json({ success: false, error: `HTTP ${res.status}: ${text.slice(0, 200)}` }, res.status);
+    }
+
+    console.log(`[pfm/disconnect] user=${user.id.slice(0, 8)}, account=${accountId} (${account.platform})`);
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[pfm/disconnect] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /pfm/publish — Publish or schedule a post to N social accounts.
+// Body: {
+//   caption: string,
+//   hashtags?: string,
+//   imageUrl?: string,
+//   videoUrl?: string,
+//   accountIds: string[],          // must all belong to the user
+//   scheduledAt?: string,           // ISO 8601, omit = post now
+//   platformConfigurations?: object,// per-platform overrides (optional)
+//   accountConfigurations?: object[], // per-account overrides (optional)
+//   calendarEventId?: string,        // for KV linking, parity with Zernio
+// }
+//
+// SECURITY: every accountId is cross-checked against the user's
+// profile-scoped account list. Mismatch → 403, no upstream call. Same
+// hard-guard as PR #108 (deploy security), but enforced via Post for
+// Me's external_id field rather than our own KV cache.
+app.post("/pfm/publish", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const {
+      caption, hashtags, imageUrl, videoUrl,
+      accountIds, scheduledAt,
+      platformConfigurations, accountConfigurations,
+      calendarEventId,
+    } = body || {};
+
+    if (!Array.isArray(accountIds) || accountIds.length === 0) {
+      return c.json({ success: false, error: "accountIds (non-empty array) required" }, 400);
+    }
+    if (!caption && !platformConfigurations && !accountConfigurations) {
+      return c.json({ success: false, error: "caption or per-platform/per-account config required" }, 400);
+    }
+
+    // Cross-tenant guard: confirm every accountId is owned by this user.
+    const userAccounts = await pfmListUserAccounts(user.id);
+    const ownedIds = new Set<string>(userAccounts.map((a: any) => a.id));
+    const invalid = (accountIds as string[]).filter((id) => !ownedIds.has(id));
+    if (invalid.length > 0) {
+      console.warn(`[pfm/publish] REJECTED cross-tenant accountIds: user=${user.id.slice(0, 8)}, invalid=${invalid.join(",")}`);
+      await reportServerError({
+        message: `pfm/publish rejected: client-supplied accountIds not in user's profile`,
+        route: "/pfm/publish",
+        userId: user.id,
+        severity: "error",
+        context: { invalidAccountIds: invalid, userAccountIds: Array.from(ownedIds) },
+      }).catch(() => {});
+      return c.json({
+        success: false,
+        error: "One or more accounts don't belong to your profile. Reconnect them from the publish modal.",
+        needsConnect: true,
+        invalidAccountIds: invalid,
+      }, 403);
+    }
+
+    // Re-sign storage URLs (re-uses the helper added by PR #101).
+    // Critical for scheduled posts — Post for Me fetches the media at
+    // posting time, not scheduling time, so a 7-day signed URL would
+    // expire before a post scheduled 8 days out.
+    const [freshImageUrl, freshVideoUrl] = await Promise.all([
+      refreshSupabaseSignedUrl(imageUrl),
+      refreshSupabaseSignedUrl(videoUrl),
+    ]);
+
+    const fullCaption = [caption || "", hashtags || ""].filter(Boolean).join("\n\n").slice(0, 5000);
+    const media: any[] = [];
+    if (freshImageUrl) media.push({ url: freshImageUrl });
+    if (freshVideoUrl) media.push({ url: freshVideoUrl });
+
+    const postBody: any = {
+      caption: fullCaption,
+      social_accounts: accountIds,
+      external_id: user.id, // tag the post with the user for our own audits
+    };
+    if (media.length > 0) postBody.media = media;
+    if (scheduledAt) postBody.scheduled_at = scheduledAt;
+    if (platformConfigurations) postBody.platform_configurations = platformConfigurations;
+    if (Array.isArray(accountConfigurations) && accountConfigurations.length > 0) {
+      postBody.account_configurations = accountConfigurations;
+    }
+
+    const res = await fetch(`${PFM_BASE}/social-posts`, {
+      method: "POST",
+      headers: pfmHeaders(),
+      body: JSON.stringify(postBody),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const responseText = await res.text();
+    let data: any; try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
+
+    if (!res.ok) {
+      const errMsg = (Array.isArray(data?.error) ? data.error[0] : data?.error)
+        || data?.message
+        || `HTTP ${res.status}: ${responseText.slice(0, 200)}`;
+      console.log(`[pfm/publish] failed: ${errMsg}`);
+      await reportServerError({
+        message: `pfm/publish failed: ${errMsg}`,
+        route: "/pfm/publish",
+        userId: user.id,
+        severity: "error",
+        context: { accountIds, scheduled: !!scheduledAt, captionLen: fullCaption.length, response: data },
+      }).catch(() => {});
+      return c.json({ success: false, error: errMsg }, res.status);
+    }
+
+    // Update calendar event if provided (parity with Zernio's flow)
+    if (calendarEventId) {
+      try {
+        const ev = await kv.get(calendarEventId);
+        if (ev) {
+          await kv.set(calendarEventId, {
+            ...ev,
+            status: scheduledAt ? "scheduled" : (data.status || "processing"),
+            deployedAt: new Date().toISOString(),
+            pfmPostId: data.id || null,
+          });
+        }
+      } catch (e) { console.log(`[pfm/publish] calendar update failed: ${e}`); }
+    }
+
+    console.log(`[pfm/publish] user=${user.id.slice(0, 8)}, postId=${data.id}, status=${data.status}, accounts=${accountIds.length} (${Date.now() - t0}ms)`);
+    return c.json({
+      success: true,
+      postId: data.id,
+      status: data.status,
+      scheduledAt: data.scheduled_at,
+    });
+  } catch (err) {
+    console.log(`[pfm/publish] error (${Date.now() - t0}ms): ${err}`);
+    return c.json({ success: false, error: `Publish failed: ${err}` }, 500);
+  }
+});
+
+// POST /pfm/webhook — Receive event notifications from Post for Me.
+//
+// Subscribed events (registered once via /pfm/setup-webhook below):
+//   social.account.created  → user just finished OAuth → log + cache invalidate
+//   social.account.updated  → token refresh / status change
+//   social.post.result.created → a post finished publishing per-account
+//
+// Security: Post for Me sends a header `Post-For-Me-Webhook-Secret`
+// equal to the secret returned at webhook creation. We compare against
+// POSTFORME_WEBHOOK_SECRET env var.
+app.post("/pfm/webhook", async (c) => {
+  try {
+    const incoming = c.req.header("post-for-me-webhook-secret")
+      || c.req.header("Post-For-Me-Webhook-Secret")
+      || "";
+    const expected = Deno.env.get("POSTFORME_WEBHOOK_SECRET") || "";
+    if (!expected) {
+      console.warn(`[pfm/webhook] POSTFORME_WEBHOOK_SECRET not configured — accepting unverified payload`);
+    } else if (incoming !== expected) {
+      console.warn(`[pfm/webhook] bad signature, rejecting`);
+      return c.json({ success: false, error: "invalid signature" }, 401);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const eventType: string = body?.event_type || "";
+    const data: any = body?.data || {};
+    console.log(`[pfm/webhook] ${eventType}: ext=${(data.external_id || "").slice(0, 8)}, id=${data.id || data.post_id || ""}`);
+
+    if (eventType === "social.account.created" || eventType === "social.account.updated") {
+      // No persistent cache for accounts (we always fetch live), so
+      // nothing to invalidate. Log it and let the client re-fetch on
+      // its next /pfm/accounts/list call.
+      try {
+        await kv.set(`pfm:account-event:${data.id}`, {
+          eventType, externalId: data.external_id, platform: data.platform,
+          status: data.status, receivedAt: new Date().toISOString(),
+        });
+      } catch (e) { console.log(`[pfm/webhook] kv set (account) failed: ${e}`); }
+    }
+
+    if (eventType === "social.post.result.created") {
+      // Persist per-account result so the UI can reflect success/failure
+      // without polling /v1/social-post-results explicitly.
+      try {
+        await kv.set(`pfm:result:${data.post_id}:${data.social_account_id}`, {
+          ...data, receivedAt: new Date().toISOString(),
+        });
+      } catch (e) { console.log(`[pfm/webhook] kv set (result) failed: ${e}`); }
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.log(`[pfm/webhook] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// POST /pfm/setup-webhook — Admin-only, idempotent. Registers our
+// /pfm/webhook URL with Post for Me and stores the returned secret in
+// POSTFORME_WEBHOOK_SECRET (the user must copy it into Supabase
+// Secrets manually after running this once).
+//
+// Why not auto-store: secrets need to land in Supabase Edge Function
+// Secrets to be available as Deno.env.get(...). We can't write to that
+// from inside a function. Output is meant to be read once and pasted.
+app.post("/pfm/setup-webhook", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const profile = await kv.get(`user:${user.id}`);
+    const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+    if (!isAdmin) return c.json({ success: false, error: "admin only" }, 403);
+
+    const callbackUrl = "https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79/pfm/webhook";
+    const eventTypes = ["social.account.created", "social.account.updated", "social.post.result.created"];
+
+    // List existing webhooks first — avoid duplicates if the admin
+    // re-runs this endpoint.
+    const listRes = await fetch(`${PFM_BASE}/webhooks?url=${encodeURIComponent(callbackUrl)}`, {
+      headers: pfmHeaders(), signal: AbortSignal.timeout(10_000),
+    });
+    const listJson = await listRes.json().catch(() => ({}));
+    const existing = (Array.isArray(listJson?.data) ? listJson.data : [])
+      .find((w: any) => w?.url === callbackUrl);
+    if (existing) {
+      return c.json({
+        success: true,
+        alreadyExists: true,
+        webhookId: existing.id,
+        secretInstruction: "If you don't already have POSTFORME_WEBHOOK_SECRET in Supabase Secrets, delete this webhook on Post for Me's dashboard and re-run /pfm/setup-webhook to get a fresh secret.",
+      });
+    }
+
+    const createRes = await fetch(`${PFM_BASE}/webhooks`, {
+      method: "POST",
+      headers: pfmHeaders(),
+      body: JSON.stringify({ url: callbackUrl, event_types: eventTypes }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const created = await createRes.json().catch(() => ({}));
+    if (!createRes.ok) return c.json({ success: false, error: created?.error || `HTTP ${createRes.status}` }, createRes.status);
+
+    return c.json({
+      success: true,
+      webhookId: created.id,
+      secret: created.secret,
+      eventTypes: created.event_types,
+      action: `Copy 'secret' into Supabase Edge Function Secrets as POSTFORME_WEBHOOK_SECRET, then redeploy.`,
+    });
+  } catch (err) {
+    console.log(`[pfm/setup-webhook] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // ANALYTICS
 // ══════════════════════════════════════════════════════════════
 
