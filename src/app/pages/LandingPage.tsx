@@ -7,6 +7,7 @@ import { Button } from "../components/ora/Button";
 import { AppTabs } from "../components/AppTabs";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { API_BASE } from "../lib/supabase";
+import { trackEvent } from "../lib/analytics";
 import heroVideo from "../../assets/hero-video.mp4";
 
 interface ShowcaseAsset {
@@ -733,7 +734,7 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
                   </li>
                 ))}
               </ul>
-              <Link to={primaryHref}>
+              <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "pricing_panel", plan: t.name, dest: primaryHref, authed: !!user })}>
                 <button className="w-full h-11 rounded-full mono-label transition-transform hover:scale-[1.02]" style={{
                   background: t.highlight ? "#FF6B47" : "rgba(17,17,17,0.06)",
                   color: t.highlight ? "#FFFFFF" : COLORS.ink,
@@ -835,7 +836,7 @@ export function LandingPage() {
         subtitle={<>6 posts ready for Instagram, LinkedIn, Facebook, TikTok. We make them. We publish them. You do something else.</>}
         cta={
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"}>
+            <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"} onClick={() => trackEvent("cta_click", { location: "ship_section", dest: user ? "/hub/surprise" : "/login?mode=signup", authed: !!user })}>
               <Button variant="accent" size="lg">
                 {user ? "Open Ora" : "Try it. No card."} <ArrowRight size={16} />
               </Button>
@@ -944,7 +945,7 @@ export function LandingPage() {
             Join the brands who've stopped briefing Figma. Pick a plan, ship your first pack tonight.
           </p>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Link to={primaryHref}>
+            <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "footer_cta", dest: primaryHref, authed: !!user })}>
               <Button variant="accent" size="lg">
                 Pick a plan <ArrowRight size={16} />
               </Button>

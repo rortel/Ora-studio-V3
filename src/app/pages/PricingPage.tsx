@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { motion } from "motion/react";
 import { ArrowRight } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { bagel, COLORS } from "../components/ora/tokens";
+import { trackEvent } from "../lib/analytics";
 
 type Billing = "monthly" | "yearly";
 
@@ -74,6 +75,13 @@ priceMonthly: 199,
 export function PricingPage() {
   const { user } = useAuth();
   const [billing, setBilling] = useState<Billing>("monthly");
+
+  // Funnel signal: someone reached the pricing page. Combined with
+  // the auto page_view, this lets the dashboard distinguish "just
+  // landed on /pricing" from "actually engaged with billing toggle".
+  useEffect(() => {
+    trackEvent("pricing_view", { authed: !!user });
+  }, [user]);
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
@@ -181,7 +189,7 @@ export function PricingPage() {
           land on. Swap plans anytime.
         </p>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          <Link to={user ? "/subscribe?plan=studio" : "/login?next=/subscribe?plan=studio"}>
+          <Link to={user ? "/subscribe?plan=studio" : "/login?next=/subscribe?plan=studio"} onClick={() => trackEvent("pricing_plan_clicked", { plan: "studio", authed: !!user })}>
             <Button variant="accent" size="lg">
               Get Studio — €49/mo <ArrowRight size={16} />
             </Button>
@@ -253,7 +261,7 @@ function PlanCard({ plan, billing, authed, index }: { plan: PlanDef; billing: Bi
       </ul>
 
       {/* CTA */}
-      <Link to={href}>
+      <Link to={href} onClick={() => trackEvent("pricing_plan_clicked", { plan: plan.code, billing, authed })}>
         <Button
           variant={plan.highlight ? "accent" : "ink"}
           size="lg"

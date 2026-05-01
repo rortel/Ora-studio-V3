@@ -378,13 +378,45 @@ app.get("/admin/analytics/summary", async (c) => {
     if (!Array.isArray(all)) return c.json({ success: true, summary: {} });
     const events = all as any[];
 
-    // Aggregate by event name
+    // Bucket helpers — we now compute MUCH more than top-N counts so the
+    // /admin/analytics dashboard can answer "what do visitors like?" and
+    // "where do they drop off?" without re-running queries.
     const byEvent: Record<string, number> = {};
     const byUser: Record<string, number> = {};
     const byRoute: Record<string, number> = {};
     const vitals: Record<string, number[]> = {};
     let last24h = 0;
     const oneDayAgo = Date.now() - 24 * 3600 * 1000;
+
+    // Per-route dwell time (from page_leave events — comes with durationMs).
+    // Surface average AND median to the dashboard so a single 30-min outlier
+    // doesn't poison the average.
+    const dwellByRoute: Record<string, number[]> = {};
+
+    // Per-session route history. Used to detect:
+    //   - Bounce (sessions with exactly 1 page_view)
+    //   - Exit pages (the LAST route before the session went silent)
+    //   - Funnel progression (which step did each session reach)
+    type SessionState = {
+      pageViews: number;
+      lastRoute: string;
+      lastTs: number;
+      reachedFunnel: Set<string>;
+    };
+    const sessions: Record<string, SessionState> = {};
+
+    // Funnel definition — order matters. Each subsequent step is only
+    // counted for sessions that already hit the previous one.
+    // Stages chosen to mirror the 5 critical transitions in the visitor
+    // journey: landing → pricing → signup → subscribe → first gen.
+    const FUNNEL_STAGES = [
+      "page_view@/",                  // 1. visitor arrived
+      "pricing_view",                 // 2. reached pricing
+      "pricing_plan_clicked",         // 3. picked a plan
+      "signup_completed",             // 4. created account
+      "subscribe_clicked",            // 5. clicked Stripe checkout
+    ];
+
     for (const e of events) {
       byEvent[e.event] = (byEvent[e.event] || 0) + 1;
       if (e.userId && e.userId !== "anon") byUser[e.userId] = (byUser[e.userId] || 0) + 1;
@@ -393,13 +425,62 @@ app.get("/admin/analytics/summary", async (c) => {
         const ts = new Date(e.ts).getTime();
         if (ts > oneDayAgo) last24h += 1;
       } catch {}
+
       // Web Vitals percentiles
       if (e.event === "web_vital" && e.props?.metric && typeof e.props?.value === "number") {
         const m = String(e.props.metric);
         if (!vitals[m]) vitals[m] = [];
         vitals[m].push(e.props.value);
       }
+
+      // Dwell time per route (only from page_leave with positive duration).
+      if (e.event === "page_leave" && e.props?.route && typeof e.props?.durationMs === "number" && e.props.durationMs >= 100) {
+        const route = String(e.props.route);
+        if (!dwellByRoute[route]) dwellByRoute[route] = [];
+        // Cap at 10 min — anything longer is almost certainly a tab left
+        // open and would skew the median.
+        dwellByRoute[route].push(Math.min(e.props.durationMs, 10 * 60 * 1000));
+      }
+
+      // Build per-session state for bounce/exit/funnel.
+      const sid = e.sessionId || "";
+      if (sid) {
+        if (!sessions[sid]) {
+          sessions[sid] = { pageViews: 0, lastRoute: "", lastTs: 0, reachedFunnel: new Set() };
+        }
+        const s = sessions[sid];
+        if (e.event === "page_view") {
+          s.pageViews += 1;
+          if (e.route) s.lastRoute = e.route;
+          // Stage 1 of the funnel — landed on root.
+          if (e.route === "/") s.reachedFunnel.add("page_view@/");
+        }
+        try { s.lastTs = Math.max(s.lastTs, new Date(e.ts).getTime()); } catch {}
+        // Track funnel events directly.
+        for (const stage of FUNNEL_STAGES) {
+          if (stage === e.event) s.reachedFunnel.add(stage);
+        }
+      }
     }
+
+    // Bounce rate: sessions whose pageViews <= 1.
+    const sessionList = Object.values(sessions);
+    const totalSessions = sessionList.length;
+    const bouncedSessions = sessionList.filter(s => s.pageViews <= 1).length;
+    const bounceRate = totalSessions > 0 ? Math.round((bouncedSessions / totalSessions) * 100) : 0;
+
+    // Exit pages — count of sessions whose LAST page_view was on each route.
+    const exitByRoute: Record<string, number> = {};
+    for (const s of sessionList) {
+      if (s.lastRoute) exitByRoute[s.lastRoute] = (exitByRoute[s.lastRoute] || 0) + 1;
+    }
+
+    // Funnel — count of sessions that reached each stage.
+    const funnel = FUNNEL_STAGES.map(stage => ({
+      stage,
+      sessions: sessionList.filter(s => s.reachedFunnel.has(stage)).length,
+    }));
+
     const sortDesc = (obj: Record<string, number>, n = 10) =>
       Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => ({ key: k, count: v }));
     const percentile = (arr: number[], p: number) => {
@@ -417,14 +498,32 @@ app.get("/admin/analytics/summary", async (c) => {
         samples: values.length,
       };
     }
+    // Dwell summary per route — median is the headline number, mean is
+    // for context, samples is the confidence indicator.
+    const dwellSummary = Object.entries(dwellByRoute)
+      .map(([route, durations]) => ({
+        route,
+        medianMs: percentile(durations, 0.5),
+        meanMs: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length),
+        samples: durations.length,
+      }))
+      .sort((a, b) => b.samples - a.samples)
+      .slice(0, 20);
+
     return c.json({
       success: true,
       summary: {
         totalEvents: events.length,
         last24hEvents: last24h,
+        totalSessions,
+        bounceRate,           // 0-100
+        bouncedSessions,
         topEvents: sortDesc(byEvent, 20),
         topUsers: sortDesc(byUser, 10),
         topRoutes: sortDesc(byRoute, 10),
+        exitPages: sortDesc(exitByRoute, 10),
+        dwellByRoute: dwellSummary,
+        funnel,
         webVitals: vitalsSummary,
       },
     });
