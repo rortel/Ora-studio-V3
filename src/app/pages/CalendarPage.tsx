@@ -49,8 +49,8 @@ interface CalendarEvent {
   headline?: string;
   imageUrl?: string;
   videoUrl?: string;
-  zernioPostId?: string;
-  zernioPostUrl?: string;
+  pfmPostId?: string;
+  pfmPostUrl?: string;
   deployedAt?: string;
 }
 
@@ -146,7 +146,10 @@ function CalendarPageContent() {
     setSocialLoading(true);
     try {
       const token = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/zernio/accounts/list`, {
+      // /pfm/accounts/list — Post for Me (PRs #111/#112). Multi-tenant
+      // native via external_id; same shape as before so no other changes
+      // needed in CalendarPage.
+      const res = await fetch(`${API_BASE}/pfm/accounts/list`, {
         method: "POST",
         headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
         body: JSON.stringify({ _token: token }),
@@ -164,12 +167,13 @@ function CalendarPageContent() {
     setConnectingPlatform(platform);
     try {
       const token = await getAuthHeader();
-      const qp = new URLSearchParams({ redirectUrl: window.location.origin + "/hub/calendar" });
-      if (token) qp.set("_token", token);
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}?${qp.toString()}`, {
+      // /pfm/connect/:platform with our static callback page — the page
+      // postMessages back to the opener, the popup self-closes.
+      const redirectUrl = `${window.location.origin}/zernio-callback.html`;
+      const res = await fetch(`${API_BASE}/pfm/connect/${platform}`, {
         method: "POST",
         headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
-        body: JSON.stringify({ _token: token }),
+        body: JSON.stringify({ _token: token, redirectUrl }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) {
@@ -247,7 +251,7 @@ function CalendarPageContent() {
       let data: any;
       try { data = JSON.parse(text); } catch { data = { success: false, error: `Server error (HTTP ${res.status})` }; }
       if (data.success) {
-        setEvents(prev => prev.map(ev => ev.id === eventId ? { ...ev, status: data.status as ContentStatus, zernioPostId: data.zernioPostId } : ev));
+        setEvents(prev => prev.map(ev => ev.id === eventId ? { ...ev, status: data.status as ContentStatus, pfmPostId: data.postId } : ev));
         toast.success(data.status === "scheduled" ? t("calendar.scheduledSuccess") : t("calendar.publishedSuccess"));
       } else if (data.needsConnect) {
         toast.error(t("calendar.connectPlatformFirst").replace("{platform}", data.platform));
@@ -302,7 +306,7 @@ function CalendarPageContent() {
         const resultMap = new Map(data.results.map((r: any) => [r.eventId, r]));
         setEvents(prev => prev.map(ev => {
           const result = resultMap.get(ev.id) as any;
-          if (result) return { ...ev, status: result.success ? result.status as ContentStatus : "failed", zernioPostId: result.zernioPostId || ev.zernioPostId };
+          if (result) return { ...ev, status: result.success ? result.status as ContentStatus : "failed", pfmPostId: result.postId || ev.pfmPostId };
           return ev;
         }));
         const failed = data.results.filter((r: any) => !r.success).length;
@@ -793,8 +797,8 @@ function CalendarPageContent() {
                                               <CheckCircle2 size={11} /> {t("calendar.statusPublished")}
                                             </span>
                                           )}
-                                          {event.zernioPostUrl && (
-                                            <a href={event.zernioPostUrl} target="_blank" rel="noopener noreferrer"
+                                          {event.pfmPostUrl && (
+                                            <a href={event.pfmPostUrl} target="_blank" rel="noopener noreferrer"
                                               className="flex items-center gap-1 px-2 py-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
                                               style={{ fontSize: "11px", border: "1px solid var(--border)" }}>
                                               <ExternalLink size={10} /> {t("calendar.viewPost")}

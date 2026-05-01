@@ -716,7 +716,10 @@ function SocialAccountsSection() {
     setLoading(true);
     const token = auth.getAuthHeader();
     // POST with _token in body — JWT is >8KB, too large for URL query or HTTP header
-    fetch(`${API_BASE}/zernio/accounts/list`, {
+    // Migrated to /pfm/* (Post for Me) — see PRs #111/#112. Multi-tenant
+    // is enforced server-side via external_id=user.id, no per-user fan-out
+    // gymnastics, no zernio.com mid-OAuth branding.
+    fetch(`${API_BASE}/pfm/accounts/list`, {
       method: "POST",
       headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
       body: JSON.stringify({ _token: token }),
@@ -733,10 +736,15 @@ function SocialAccountsSection() {
     setConnecting(platform);
     try {
       const token = auth.getAuthHeader();
-      const res = await fetch(`${API_BASE}/zernio/connect/${platform}`, {
+      // /pfm/connect/:platform with our own callback page as redirect.
+      // The /zernio-callback.html static page is provider-agnostic —
+      // just postMessages back to the opener and self-closes after the
+      // OAuth provider redirects to it with success params.
+      const redirectUrl = `${window.location.origin}/zernio-callback.html`;
+      const res = await fetch(`${API_BASE}/pfm/connect/${platform}`, {
         method: "POST",
         headers: { ...makeHeaders(), "Content-Type": "text/plain" },
-        body: JSON.stringify({ _token: token, redirectUrl: `${API_BASE}/zernio/callback` }),
+        body: JSON.stringify({ _token: token, redirectUrl }),
       });
       const data = await res.json();
       if (!data.success || !data.authUrl) {
@@ -756,17 +764,21 @@ function SocialAccountsSection() {
     } catch { setConnecting(null); }
   }, [makeHeaders, fetchAccounts]);
 
-  const handleDisconnect = useCallback(async (platform: string, accountId?: string) => {
-    setDisconnecting(platform);
+  const handleDisconnect = useCallback(async (_platform: string, accountId?: string) => {
+    setDisconnecting(_platform);
     try {
-      const res = await fetch(`${API_BASE}/zernio/disconnect`, {
+      // /pfm/disconnect needs the accountId — Post for Me's per-account
+      // model (one connection per Page/handle) means platform is no
+      // longer enough to identify what to disconnect.
+      if (!accountId) { setDisconnecting(null); return; }
+      const res = await fetch(`${API_BASE}/pfm/disconnect`, {
         method: "POST",
         headers: { ...makeHeaders(), "Content-Type": "text/plain" },
-        body: JSON.stringify({ _token: auth.getAuthHeader(), platform, accountId }),
+        body: JSON.stringify({ _token: auth.getAuthHeader(), accountId }),
       });
       const data = await res.json();
       if (data.success) {
-        setAccounts(prev => prev.filter((a: any) => a.platform !== platform));
+        setAccounts(prev => prev.filter((a: any) => a._id !== accountId));
       }
     } catch (err) { console.error("[SocialAccounts] Disconnect error:", err); }
     finally { setDisconnecting(null); }
