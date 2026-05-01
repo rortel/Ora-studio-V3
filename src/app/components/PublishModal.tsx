@@ -130,7 +130,10 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
 
   const refreshAccounts = useCallback(async () => {
     setLoadingAccounts(true);
-    const res = await serverPost("/zernio/accounts/list", {});
+    // /pfm/accounts/list — Post for Me backend (PR #111). Filters
+    // server-side by external_id=user.id, so no cross-tenant leak
+    // possible by construction.
+    const res = await serverPost("/pfm/accounts/list", {});
     if (res?.success && Array.isArray(res.accounts)) {
       setAccounts(res.accounts);
     }
@@ -167,16 +170,14 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     const platformSlug = Object.entries(PLATFORM_BY_SLUG).find(([, v]) => v === oraLabel)?.[0];
     if (!platformSlug) return;
     setConnectingPlatform(oraLabel);
-    // White-label OAuth: send Zernio our own callback page as
-    // redirect_url. Without this, Zernio defaults to its own hosted
-    // dashboard (zernio.com/signin) and end-customer "client" users see
-    // Zernio branding mid-OAuth — visible in the screenshot from
-    // ora-studio.app session 30/04. /zernio-callback.html ships in
-    // public/, is excluded from the SPA rewrite in vercel.json, and
-    // already handles the LinkedIn-org / Facebook-page selection step
-    // plus posts back to the opener via window.postMessage.
+    // /pfm/connect/:platform — Post for Me backend (PR #111).
+    // redirect_url_override sends the user back to OUR domain after
+    // OAuth, so they never see postforme.dev's UI in the address bar.
+    // The same /zernio-callback.html static page is reused (it just
+    // postMessages back to the opener and self-closes — provider-
+    // agnostic, no Zernio-specific logic in there).
     const redirectUrl = `${window.location.origin}/zernio-callback.html`;
-    const res = await serverPost(`/zernio/connect/${platformSlug}`, { redirectUrl });
+    const res = await serverPost(`/pfm/connect/${platformSlug}`, { redirectUrl });
     if (!(res?.success && res.authUrl)) {
       setConnectingPlatform(null);
       alert(res?.error || (isFr ? "Erreur de connexion" : "Connection error"));
@@ -185,31 +186,20 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
 
     const popup = window.open(res.authUrl, "social_oauth", "width=600,height=700");
 
-    // Connection-completion detection that survives Cross-Origin-Opener-Policy.
-    // OAuth provider pages (Zernio + the upstream socials) ship COOP headers
-    // that block popup.closed reads on the opener — the field stays false
-    // forever and the console fills with "policy would block the window.closed
-    // call". Result: connectingPlatform stayed stuck even after the user
-    // finished the OAuth flow successfully on the backend.
-    //
-    // Strategy:
-    //   1. Listen for postMessage from the OAuth callback (instant resolve
-    //      when our callback page sends it; no-op if it doesn't).
-    //   2. Poll /zernio/accounts/list every 3s and finish the moment the
-    //      target platform shows up connected — this is the path that
-    //      actually fires today.
-    //   3. Best-effort try popup.closed inside try/catch as a tertiary hint.
-    //   4. Hard 5-min cap so abandoned flows don't poll forever.
+    // Connection-completion detection that survives COOP. OAuth provider
+    // pages set Cross-Origin-Opener-Policy → popup.closed always returns
+    // false → the previous polling-only loop never resolved. Three
+    // signals in priority order:
+    //   1. postMessage from /zernio-callback.html (instant)
+    //   2. Backend poll on /pfm/accounts/list every 3s — finishes when
+    //      the connected account appears on the user's profile
+    //   3. Best-effort popup.closed inside try/catch (tertiary hint)
+    //   4. Hard 5-min cap so abandoned flows don't loop forever
     const startedAt = Date.now();
     const HARD_TIMEOUT_MS = 5 * 60 * 1000;
     const POLL_MS = 3000;
     let timer: ReturnType<typeof setInterval> | null = null;
     const onMessage = (e: MessageEvent) => {
-      // Accept both the legacy literal "zernio:connected" shape and the
-      // actual shape emitted by /public/zernio-callback.html
-      // (`{ type: "zernio-oauth-complete", platform, status }`). The two
-      // were never aligned — the listener missed every real callback,
-      // which is why the modal stayed stuck even when OAuth succeeded.
       const data = e.data as any;
       const ok = (typeof data === "string" && data.startsWith("zernio:connected"))
         || (data && typeof data === "object" && (
@@ -230,7 +220,7 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
       let popupClosed = false;
       try { popupClosed = !!popup?.closed; } catch { /* COOP-blocked, ignore */ }
       try {
-        const fresh = await serverPost("/zernio/accounts/list", {});
+        const fresh = await serverPost("/pfm/accounts/list", {});
         if (fresh?.success && Array.isArray(fresh.accounts)) {
           const hit = fresh.accounts.find((a: SocialAccount) =>
             (a.status === "connected" || a.status === "active")
@@ -340,22 +330,37 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
         }
       }
 
-      const res = await serverPost("/campaign/deploy", {
-        platform,
+      // /pfm/publish — Post for Me backend (PR #111). Per-account call
+      // keeps the existing per-platform UI loop and outcome tiles
+      // unchanged. Each iteration cross-checks the accountId against
+      // the user's profile-scoped list server-side (PR #111 hard-guard,
+      // parity with Zernio PR #108) so a stale or hand-crafted body
+      // can never reach a tenant other than the requester.
+      const res = await serverPost("/pfm/publish", {
         caption: captionText,
         hashtags: hashtagsText,
         imageUrl: platformImageUrl,
         videoUrl: asset.videoUrl,
         scheduledAt: scheduledAtISO,
-        accountId,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Paris",
+        accountIds: [accountId],
       }, 60_000);
+
+      // Map PfM status (`processed | scheduled | processing | draft`)
+      // to the user-facing status the modal already shows. PfM creates
+      // posts asynchronously — actual platform results land via webhook
+      // (PR #111 /pfm/webhook), so the immediate response just confirms
+      // the post was accepted into the queue.
+      const ok = !!res?.success;
+      let displayStatus: string;
+      if (!ok) displayStatus = "failed";
+      else if (scheduledAtISO) displayStatus = "scheduled";
+      else displayStatus = "published";
 
       outcomes.push({
         platform,
-        status: res?.status || (res?.success ? "published" : "failed"),
-        url: res?.zernioPostUrl || undefined,
-        error: res?.success ? undefined : (res?.error || "Unknown error"),
+        status: displayStatus,
+        url: undefined, // platform URL only known after webhook fires
+        error: ok ? undefined : (res?.error || "Unknown error"),
       });
       setResults([...outcomes]);
     }
