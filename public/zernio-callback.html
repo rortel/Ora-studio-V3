@@ -52,6 +52,22 @@ h2{font-size:17px;font-weight:600;margin-bottom:4px}
     <div class="success-icon">&#10003;</div>
     <h2>Account Connected</h2>
     <p class="subtitle">You can close this window.</p>
+
+    <!-- Debug section — temporary aid while Post for Me support is
+         investigating why OAuth completions don't materialise as
+         SocialAccounts. Shows the full callback URL with a copy
+         button + suppresses the 2s auto-close so the admin has time
+         to inspect/copy before the popup goes away.
+
+         Hide via ?debug=0 in the URL once the issue is resolved.
+         Removal can wait — costs nothing in production for end users
+         (it just lengthens the success screen by a few lines). -->
+    <div id="debugBox" style="margin-top:18px;padding:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;text-align:left">
+      <div style="font-size:11px;color:#7A7572;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em">Callback URL (debug)</div>
+      <div id="debugUrl" style="font-size:11px;color:#E8E4DF;word-break:break-all;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;line-height:1.4;max-height:120px;overflow:auto;padding:8px;background:rgba(0,0,0,0.25);border-radius:4px"></div>
+      <button id="copyUrlBtn" style="margin-top:10px;padding:8px 14px;border:none;border-radius:6px;background:#C8A97E;color:#1a1918;font-size:12px;font-weight:600;cursor:pointer;width:100%">Copy URL</button>
+      <div id="copyStatus" style="font-size:11px;color:#5E6AD2;margin-top:6px;text-align:center;min-height:14px"></div>
+    </div>
   </div>
 </div>
 
@@ -68,12 +84,42 @@ h2{font-size:17px;font-weight:600;margin-bottom:4px}
   var userProfile;
   try { userProfile = JSON.parse(userProfileRaw); } catch(e) { userProfile = {}; }
 
+  // Debug helper: surface the full callback URL with a copy button on
+  // EVERY render path so the admin can grab it for Post for Me support
+  // even when the success card auto-shows. The success-path also stops
+  // auto-closing the window — give the admin time to click "Copy URL".
+  function attachDebugUrl(suppressAutoClose) {
+    var fullUrl = window.location.href;
+    var urlEl = document.getElementById("debugUrl");
+    if (urlEl) urlEl.textContent = fullUrl;
+    var btn = document.getElementById("copyUrlBtn");
+    var statusEl = document.getElementById("copyStatus");
+    if (btn) {
+      btn.onclick = function() {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(fullUrl).then(function() {
+            if (statusEl) statusEl.textContent = "Copied to clipboard.";
+          }).catch(function() {
+            if (statusEl) statusEl.textContent = "Couldn't access clipboard. Select the URL above manually.";
+          });
+        } else if (statusEl) {
+          statusEl.textContent = "Clipboard unavailable. Select the URL above manually.";
+        }
+      };
+    }
+    return suppressAutoClose;
+  }
+
   // No selection needed — already connected
   if (!step) {
     document.getElementById("loadingCard").classList.add("hidden");
     document.getElementById("successCard").classList.remove("hidden");
     try { window.opener.postMessage({ type: "zernio-oauth-complete", platform: platform, status: "success" }, "*"); } catch(e) {}
-    setTimeout(function() { window.close(); }, 2000);
+    var suppress = attachDebugUrl(true);
+    // While debug is on we DON'T auto-close — admin needs the window
+    // open long enough to click Copy URL. Drop this back to
+    // `setTimeout(..., 2000)` once Post for Me's OAuth bug is fixed.
+    if (!suppress) setTimeout(function() { window.close(); }, 2000);
     return;
   }
 
