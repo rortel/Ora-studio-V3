@@ -25346,6 +25346,60 @@ app.post("/pfm/setup-webhook", async (c) => {
   }
 });
 
+// POST /pfm/debug/raw — Admin-only diagnostic. Lists EVERY social
+// account visible under the configured POSTFORME_API_KEY, with no
+// external_id filter. Surfaces (a) whether our key is on the right
+// project at all, (b) which external_id values PfM persisted, so we
+// can compare with the requesting user.id and spot mismatches.
+//
+// Returns:
+//   apiKeyPrefix: first 12 chars of POSTFORME_API_KEY for sanity
+//   totalAccounts: how many accounts the key can see (any project)
+//   accounts: array of { id, platform, username, external_id,
+//                        status, profile_photo_url } (truncated for
+//                        readability, no tokens)
+app.post("/pfm/debug/raw", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const profile = await kv.get(`user:${user.id}`);
+    const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+    if (!isAdmin) return c.json({ success: false, error: "admin only" }, 403);
+
+    const apiKey = Deno.env.get("POSTFORME_API_KEY") || "";
+    const apiKeyPrefix = apiKey.slice(0, 12);
+
+    // No filter — list everything the key has access to.
+    const res = await fetch(`${PFM_BASE}/social-accounts?limit=100`, {
+      headers: pfmHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await res.text();
+    let parsed: any; try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
+    const list = Array.isArray(parsed?.data) ? parsed.data : [];
+
+    return c.json({
+      success: true,
+      apiKeyPrefix,
+      requestingUserId: user.id,
+      pfmStatus: res.status,
+      totalAccounts: list.length,
+      accounts: list.map((a: any) => ({
+        id: a.id,
+        platform: a.platform,
+        username: a.username,
+        external_id: a.external_id,
+        status: a.status,
+        profile_photo_url: a.profile_photo_url,
+        user_id: a.user_id,
+      })),
+      rawIfNoData: list.length === 0 ? text.slice(0, 600) : undefined,
+    });
+  } catch (err) {
+    console.log(`[pfm/debug/raw] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 // ANALYTICS
 // ══════════════════════════════════════════════════════════════
