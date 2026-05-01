@@ -1901,7 +1901,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   // ── Refresh connected social accounts (must be defined before the useEffect / handleConnectPlatform that consume it) ──
   const refreshSocialAccounts = useCallback(() => {
     setSocialAccountsLoading(true);
-    serverGet("/zernio/accounts/list")
+    serverGet("/pfm/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
           setSocialAccounts(data.accounts);
@@ -1917,7 +1917,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     if (phase !== "results" || socialAccountsLoadedRef.current) return;
     socialAccountsLoadedRef.current = true;
     setSocialAccountsLoading(true);
-    serverGet("/zernio/accounts/list")
+    serverGet("/pfm/accounts/list")
       .then(data => {
         if (data.success && data.accounts) {
           setSocialAccounts(data.accounts);
@@ -1931,11 +1931,12 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const handleConnectPlatform = useCallback(async (platform: string) => {
     setConnectingPlatform(platform);
     try {
-      // Get OAuth URL from our backend (provisions a publishing profile if needed)
-      const token = getAuthToken();
-      const qp = new URLSearchParams({ redirectUrl: window.location.origin + "/hub" });
-      if (token) qp.set("_token", token);
-      const data = await serverGet(`/zernio/connect/${platform}?${qp.toString()}`);
+      // /pfm/connect/:platform — Post for Me (PRs #111/#112). Our static
+      // /zernio-callback.html receives the OAuth redirect and posts back
+      // to the opener. Provider-agnostic page, kept under the same name
+      // (cleanup PR can rename if we care).
+      const redirectUrl = `${window.location.origin}/zernio-callback.html`;
+      const data = await serverPost(`/pfm/connect/${platform}`, { redirectUrl });
       if (!data.success || !data.authUrl) {
         toast.error(data.error || t("studio.connectFailed").replace("{platform}", platform));
         setConnectingPlatform(null);
@@ -2166,27 +2167,44 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
       const matchingEvent = calendarEvents.find(ev =>
         ev.channel === asset.platform || ev.title?.toLowerCase().includes(asset.platform.toLowerCase())
       );
-      const data = await serverPost("/campaign/deploy", {
-        platform: asset.platform,
-        caption: asset.caption || asset.copy || "",
+
+      // Skip non-social channels — Email/Web aren't published via PfM.
+      if (asset.platform === "Email" || asset.platform === "Web") {
+        setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "skipped" }));
+        toast(`${asset.label}: ${asset.platform} not supported by social publishing`);
+        return;
+      }
+
+      // Resolve the connected account for this platform. PfM uses "x"
+      // for Twitter where ORA uses "twitter" — accept either alias.
+      const platformSlug = PLATFORM_SLUG_BY_LABEL[asset.platform] || asset.platform.toLowerCase();
+      const pfmSlug = platformSlug === "twitter" ? "x" : platformSlug;
+      const account = socialAccounts.find((a: any) =>
+        (a.platform === platformSlug || a.platform === pfmSlug)
+        && (a.status === "connected" || a.status === "active")
+      );
+      if (!account) {
+        setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
+        toast.error(t("studio.noAccountConnected").replace("{platform}", asset.platform), { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(platformSlug) } });
+        return;
+      }
+
+      const data = await serverPost("/pfm/publish", {
+        caption: asset.caption || asset.copy || asset.headline || "",
         hashtags: asset.hashtags || "",
-        headline: asset.headline || "",
         imageUrl: asset.imageUrl || undefined,
         videoUrl: asset.videoUrl || undefined,
         scheduledAt: scheduledAt || undefined,
+        accountIds: [account._id || account.id],
         calendarEventId: matchingEvent?.id || undefined,
       }, 35_000);
 
-      if (data.status === "skipped") {
-        setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "skipped" }));
-        toast(`${asset.label}: ${data.reason || "Skipped"}`);
-      } else if (data.success) {
-        const status = data.status === "scheduled" ? "scheduled" : "deployed";
+      if (data.success) {
+        const status = scheduledAt ? "scheduled" : "deployed";
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: status }));
         toast.success(t("studio.deploySuccess").replace("{label}", asset.label).replace("{status}", status === "scheduled" ? t("studio.statusScheduled") : t("studio.statusPublished")).replace("{platform}", asset.platform));
       } else if (data.needsConnect) {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
-        const platformSlug = PLATFORM_SLUG_BY_LABEL[asset.platform] || asset.platform.toLowerCase();
         toast.error(t("studio.noAccountConnected").replace("{platform}", asset.platform), { action: { label: `Connect ${asset.platform}`, onClick: () => handleConnectPlatform(platformSlug) } });
       } else {
         setDeployingAssets(prev => ({ ...prev, [asset.formatId]: "error" }));
@@ -2232,25 +2250,58 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
 
     try {
       readyAssets.forEach(a => setDeployingAssets(prev => ({ ...prev, [a.formatId]: "deploying" })));
-      const data = await serverPost("/campaign/deploy-batch", { deployments, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }, 60_000);
-      if (data.success && data.results) {
-        for (const r of data.results) {
-          setDeployingAssets(prev => ({
-            ...prev,
-            [r.formatId]: r.status === "skipped" ? "skipped" : r.success ? (r.status === "scheduled" ? "scheduled" : "deployed") : "error",
-          }));
+
+      // Post for Me has no batch endpoint — and it doesn't need one.
+      // /pfm/publish takes accountIds[] natively but each deployment
+      // here can have a different caption/media/scheduledAt, so they
+      // are genuinely separate posts. Loop client-side; the network
+      // calls run in parallel via Promise.all so total wall time is
+      // capped at the slowest single post (not the sum).
+      const results = await Promise.all(deployments.map(async (dep) => {
+        if (dep.platform === "Email" || dep.platform === "Web") {
+          return { formatId: dep.formatId, platform: dep.platform, success: true, status: "skipped", reason: `${dep.platform} not supported` };
         }
-        const skipped = data.results.filter((r: any) => r.status === "skipped").length;
-        const failed = data.results.filter((r: any) => !r.success && r.status !== "skipped").length;
-        const needConnect = data.results.filter((r: any) => r.needsConnect).length;
-        let msg = `${data.successCount}/${data.totalCount} assets deployed`;
-        if (skipped > 0) msg += ` (${skipped} skipped: Email/Web)`;
-        if (needConnect > 0) msg += ` -- ${needConnect} need social account connection`;
-        toast.success(msg);
-      } else {
-        toast.error(data.error || t("studio.batchDeployFailed"));
-        readyAssets.forEach(a => setDeployingAssets(prev => ({ ...prev, [a.formatId]: "error" })));
+        const platformSlug = PLATFORM_SLUG_BY_LABEL[dep.platform] || dep.platform.toLowerCase();
+        const pfmSlug = platformSlug === "twitter" ? "x" : platformSlug;
+        const account = socialAccounts.find((a: any) =>
+          (a.platform === platformSlug || a.platform === pfmSlug)
+          && (a.status === "connected" || a.status === "active")
+        );
+        if (!account) {
+          return { formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: `No ${dep.platform} account connected`, needsConnect: true };
+        }
+        try {
+          const r = await serverPost("/pfm/publish", {
+            caption: dep.caption || dep.headline || "",
+            hashtags: dep.hashtags || "",
+            imageUrl: dep.imageUrl || undefined,
+            videoUrl: dep.videoUrl || undefined,
+            scheduledAt: dep.scheduledAt || undefined,
+            accountIds: [account._id || account.id],
+            calendarEventId: dep.calendarEventId || undefined,
+          }, 35_000);
+          if (r.success) {
+            return { formatId: dep.formatId, platform: dep.platform, success: true, status: dep.scheduledAt ? "scheduled" : "deployed" };
+          }
+          return { formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: r.error || "Unknown error", needsConnect: r.needsConnect };
+        } catch (err: any) {
+          return { formatId: dep.formatId, platform: dep.platform, success: false, status: "failed", error: err?.message || String(err) };
+        }
+      }));
+
+      for (const r of results) {
+        setDeployingAssets(prev => ({
+          ...prev,
+          [r.formatId]: r.status === "skipped" ? "skipped" : r.success ? (r.status === "scheduled" ? "scheduled" : "deployed") : "error",
+        }));
       }
+      const successCount = results.filter(r => r.success && r.status !== "skipped").length;
+      const skipped = results.filter(r => r.status === "skipped").length;
+      const needConnect = results.filter((r: any) => r.needsConnect).length;
+      let msg = `${successCount}/${results.length} assets deployed`;
+      if (skipped > 0) msg += ` (${skipped} skipped: Email/Web)`;
+      if (needConnect > 0) msg += ` -- ${needConnect} need social account connection`;
+      toast.success(msg);
     } catch (err: any) {
       console.error("[CampaignLab] Batch deploy error:", err);
       toast.error(t("studio.batchDeployFailed"));
