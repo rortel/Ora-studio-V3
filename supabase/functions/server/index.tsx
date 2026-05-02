@@ -4542,6 +4542,128 @@ app.post("/auth/signup", async (c) => {
   }
 });
 
+// POST /auth/delete-account — GDPR-compliant account deletion.
+//
+// Order matters:
+//   1. Cancel any active Stripe subscription (immediate, no proration).
+//      A failure here is logged but does NOT block deletion — user must
+//      always be able to leave, even if Stripe is flaky.
+//   2. Disconnect every connected social account on Post for Me. Same
+//      rationale: failure logged, doesn't block.
+//   3. Delete every KV key namespaced under user.id (`user:`, `calendar:`,
+//      `campaign:`, `vault:`, `deploy:`, `pfm:`, etc.). We enumerate
+//      known prefixes rather than scan the whole KV — a stray bug in a
+//      future module that doesn't namespace by user.id would leave orphan
+//      data, but we'd rather miss-delete than wipe another user.
+//   4. Delete the Supabase auth record. Once this succeeds the user is
+//      effectively gone — their JWT won't validate on the next request.
+//
+// Confirmation: the client must send `confirm: "DELETE"` in the body
+// (case-insensitive). Without it we 400 — defensive against accidental
+// XHR replays.
+app.post("/auth/delete-account", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const confirm: string = String(body.confirm || "").toUpperCase().trim();
+    if (confirm !== "DELETE") {
+      return c.json({ success: false, error: "Confirmation required: send { confirm: \"DELETE\" }" }, 400);
+    }
+
+    const profile = await kv.get(`user:${user.id}`);
+    const log: string[] = [];
+
+    // 1. Stripe — cancel active subscription if any
+    if (STRIPE_SECRET_KEY && profile?.stripeCustomerId) {
+      try {
+        const subs = await stripeRequest(`/customers/${profile.stripeCustomerId}/subscriptions?status=active&limit=10`, {}, "GET");
+        const activeSubs = (subs?.data || []).filter((s: any) => s.status === "active" || s.status === "trialing");
+        for (const sub of activeSubs) {
+          await stripeRequest(`/subscriptions/${sub.id}`, {}, "DELETE");
+          log.push(`stripe:sub_canceled:${sub.id}`);
+        }
+      } catch (e) { log.push(`stripe:error:${String(e).slice(0, 80)}`); }
+    }
+
+    // 2. Post for Me — disconnect every social account belonging to this user.
+    //    PfM filters server-side by external_id=user.id so this scopes correctly.
+    try {
+      const pfmKey = Deno.env.get("POSTFORME_API_KEY");
+      if (pfmKey) {
+        const listRes = await fetch(`${PFM_BASE}/social-accounts?external_id=${encodeURIComponent(user.id)}&limit=100`, {
+          headers: pfmHeaders(), signal: AbortSignal.timeout(10_000),
+        });
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const accounts = Array.isArray(listData?.data) ? listData.data : [];
+          for (const acc of accounts) {
+            try {
+              await fetch(`${PFM_BASE}/social-accounts/${encodeURIComponent(acc.id)}/disconnect`, {
+                method: "POST", headers: pfmHeaders(), signal: AbortSignal.timeout(8_000),
+              });
+              log.push(`pfm:disconnected:${acc.id}`);
+            } catch (e) { log.push(`pfm:disconnect_error:${acc.id}:${String(e).slice(0, 40)}`); }
+          }
+        }
+      }
+    } catch (e) { log.push(`pfm:error:${String(e).slice(0, 80)}`); }
+
+    // 3. KV cleanup. Enumerate the known per-user prefixes used across the
+    // codebase. Add new prefixes here when new modules introduce them.
+    const userPrefixes = [
+      `user:${user.id}`,             // exact key, not a prefix
+      `calendar:${user.id}:`,
+      `campaign:${user.id}:`,
+      `vault:${user.id}`,
+      `deploy:${user.id}:`,
+      `pfm:profile:${user.id}`,
+      `zernio:profile:${user.id}`,
+      `zernio:accounts:${user.id}`,
+      `flow:${user.id}:`,
+      `brand-score:${user.id}:`,
+      `analysis:${user.id}:`,
+      `playlist:${user.id}:`,
+      `event:${user.id}:`,
+    ];
+    let kvDeleted = 0;
+    for (const prefix of userPrefixes) {
+      try {
+        if (prefix.endsWith(":")) {
+          const items = await kv.getByPrefix(prefix) as any[];
+          for (const item of (items || [])) {
+            if (item?.id) { await kv.del(item.id); kvDeleted++; }
+          }
+        } else {
+          await kv.del(prefix); kvDeleted++;
+        }
+      } catch (e) { log.push(`kv:error:${prefix}:${String(e).slice(0, 40)}`); }
+    }
+    log.push(`kv:deleted:${kvDeleted}`);
+
+    // 4. Supabase auth record — last step. Past this point the JWT is dead.
+    try {
+      const sb = supabaseAdmin();
+      const { error } = await sb.auth.admin.deleteUser(user.id);
+      if (error) {
+        log.push(`auth:error:${error.message}`);
+        return c.json({ success: false, error: `Auth deletion failed: ${error.message}`, log }, 500);
+      }
+      log.push(`auth:deleted`);
+    } catch (e) {
+      log.push(`auth:exception:${String(e).slice(0, 80)}`);
+      return c.json({ success: false, error: "Auth deletion failed", log }, 500);
+    }
+
+    await logEvent("account_deleted", { userId: user.id, email: user.email, durationMs: Date.now() - t0 }).catch(() => {});
+    console.log(`[/auth/delete-account] user=${user.id.slice(0, 8)} email=${user.email} ${Date.now() - t0}ms log=${log.join("|")}`);
+    return c.json({ success: true, message: "Account deleted", log });
+  } catch (err) {
+    console.log(`[/auth/delete-account] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /auth/me — preferred: user token in body._token (avoids CORS issues)
 app.post("/auth/me", async (c) => {
   const t0 = Date.now();
