@@ -706,13 +706,13 @@ export const figmaProPackTemplates: TemplateDefinition[] = [
 ];
 
 // ══════════════════════════════════════════════════════════════
-// LINKEDIN POST (1200×628 → 1.91:1) — 4 templates
+// LANDSCAPE POST (1200×628 → 1.91:1) — 4 templates
 // ══════════════════════════════════════════════════════════════
 
-export const figmaLinkedInTemplates: TemplateDefinition[] = [
-  // ── LinkedIn 01: Split panel ──
+export const figmaLandscapeTemplates: TemplateDefinition[] = [
+  // ── Landscape 01: Split panel ──
   {
-    id: "figma-linkedin-01", name: "LinkedIn Split", formatId: "linkedin-post",
+    id: "figma-linkedin-01", name: "Landscape Split", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "corporate",
     source: "builtin",
     layers: [
@@ -725,9 +725,9 @@ export const figmaLinkedInTemplates: TemplateDefinition[] = [
     ],
   },
 
-  // ── LinkedIn 02: Bottom gradient ──
+  // ── Landscape 02: Bottom gradient ──
   {
-    id: "figma-linkedin-02", name: "LinkedIn Cinematic", formatId: "linkedin-post",
+    id: "figma-linkedin-02", name: "Landscape Cinematic", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "bold",
     source: "builtin",
     layers: [
@@ -739,9 +739,9 @@ export const figmaLinkedInTemplates: TemplateDefinition[] = [
     ],
   },
 
-  // ── LinkedIn 03: Corner badge ──
+  // ── Landscape 03: Corner badge ──
   {
-    id: "figma-linkedin-03", name: "LinkedIn Badge", formatId: "linkedin-post",
+    id: "figma-linkedin-03", name: "Landscape Badge", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "editorial",
     source: "builtin",
     layers: [
@@ -753,9 +753,9 @@ export const figmaLinkedInTemplates: TemplateDefinition[] = [
     ],
   },
 
-  // ── LinkedIn 04: Dark overlay ──
+  // ── Landscape 04: Dark overlay ──
   {
-    id: "figma-linkedin-04", name: "LinkedIn Overlay", formatId: "linkedin-post",
+    id: "figma-linkedin-04", name: "Landscape Overlay", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "minimal",
     source: "builtin",
     layers: [
@@ -772,13 +772,13 @@ export const figmaLinkedInTemplates: TemplateDefinition[] = [
 ];
 
 // ══════════════════════════════════════════════════════════════
-// B2B LINKEDIN ADS (1200×628) — 5 templates
+// B2B ADS (1200×628) — 5 templates
 // ══════════════════════════════════════════════════════════════
 
-export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
+export const figmaB2BTemplates: TemplateDefinition[] = [
   // ── B2B 01: Split professional ──
   {
-    id: "figma-b2b-01", name: "B2B Professional", formatId: "linkedin-post",
+    id: "figma-b2b-01", name: "B2B Professional", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "corporate",
     source: "builtin",
     layers: [
@@ -793,7 +793,7 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
 
   // ── B2B 02: Gradient + stats ──
   {
-    id: "figma-b2b-02", name: "B2B Impact", formatId: "linkedin-post",
+    id: "figma-b2b-02", name: "B2B Impact", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "bold",
     source: "builtin",
     layers: [
@@ -809,7 +809,7 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
 
   // ── B2B 03: Full overlay ──
   {
-    id: "figma-b2b-03", name: "B2B Showcase", formatId: "linkedin-post",
+    id: "figma-b2b-03", name: "B2B Showcase", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "editorial",
     source: "builtin",
     layers: [
@@ -826,7 +826,7 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
 
   // ── B2B 04: Corner badge ──
   {
-    id: "figma-b2b-04", name: "B2B Badge", formatId: "linkedin-post",
+    id: "figma-b2b-04", name: "B2B Badge", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "minimal",
     source: "builtin",
     layers: [
@@ -840,7 +840,7 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
 
   // ── B2B 05: Right panel ──
   {
-    id: "figma-b2b-05", name: "B2B Right Panel", formatId: "linkedin-post",
+    id: "figma-b2b-05", name: "B2B Right Panel", formatId: "facebook-post",
     aspectRatio: "1.91:1", canvasWidth: 1200, canvasHeight: 628, category: "corporate",
     source: "builtin",
     layers: [
@@ -860,7 +860,7 @@ export const figmaB2BLinkedInTemplates: TemplateDefinition[] = [
 [figmaInstagramPostTemplates, figmaProductPostTemplates, figmaInstagramStoryTemplates,
  figmaBundleTemplates, figmaSkincareTemplates, figmaFlyerTemplates,
  figmaFashionAdTemplates, figmaFashionPostTemplates, figmaProPackTemplates,
- figmaLinkedInTemplates, figmaB2BLinkedInTemplates].forEach(arr => {
+ figmaLandscapeTemplates, figmaB2BTemplates].forEach(arr => {
   for (let i = 0; i < arr.length; i++) {
     if (THUMBNAILS.has(arr[i].id)) {
       arr[i] = { ...arr[i], referenceImageUrl: `/templates/${arr[i].id}.png` };

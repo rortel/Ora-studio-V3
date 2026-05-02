@@ -11,8 +11,6 @@ import { getFigmaSvgTemplateById, compositeFigmaSvgTemplate } from "./figmaSvgEn
 
 // ── Format → template format mapping (campaign format IDs → template formatId) ──
 const FORMAT_TO_TEMPLATE: Record<string, string> = {
-  "linkedin-post": "linkedin-post",
-  "linkedin-carousel": "linkedin-post",
   "instagram-post": "instagram-post",
   "instagram-carousel": "instagram-post",
   "instagram-story": "instagram-story",

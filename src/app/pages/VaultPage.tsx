@@ -5,7 +5,7 @@ import {
   Globe, Upload, Loader2, Check, X, Plus,
   Palette, Users, Target, Megaphone, Sparkles,
   Camera, Type, FileText, ArrowRight, RefreshCw,
-  Instagram, Linkedin, Twitter, Facebook, Youtube,
+  Instagram, Twitter, Facebook, Youtube,
   Building2, ShoppingBag, Eye, Paintbrush, Image as ImageIcon,
   Layers, ChevronDown, Shield, Save, BookOpen, Compass, MessageSquare, Send,
   Trophy, Trash2,
@@ -1150,7 +1150,7 @@ function VaultPageContent() {
   };
 
   const socialIcons: Record<string, any> = {
-    instagram: Instagram, linkedin: Linkedin, twitter: Twitter, x: Twitter,
+    instagram: Instagram, twitter: Twitter, x: Twitter,
     facebook: Facebook, youtube: Youtube,
   };
 

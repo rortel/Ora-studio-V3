@@ -17,7 +17,6 @@
 const PACK_TO_CALENDAR_CHANNEL: Record<string, string> = {
   "instagram-feed": "Instagram",
   "instagram-story": "Instagram",
-  "linkedin": "LinkedIn",
   "facebook": "Facebook",
   "tiktok": "TikTok",
   "twitter": "Twitter/X",
@@ -29,7 +28,6 @@ const PACK_TO_CALENDAR_CHANNEL: Record<string, string> = {
 // sensible default — not a one-size-fits-all 09:00.
 const CHANNEL_OPTIMAL_HOUR: Record<string, number> = {
   Instagram: 18,  // 18:00 — evening scroll peak
-  LinkedIn: 9,    // 09:00 — pre-meeting feed check
   Facebook: 13,   // 13:00 — lunch break
   TikTok: 19,     // 19:00 — prime-time discovery
   "Twitter/X": 12, // 12:00 — midday news cycle
@@ -38,10 +36,10 @@ const CHANNEL_OPTIMAL_HOUR: Record<string, number> = {
 
 // Channels where we should avoid weekends entirely (B2B platforms get
 // near-zero engagement on Sat/Sun, so we push to the next weekday).
-const WEEKDAY_ONLY_CHANNELS = new Set(["LinkedIn"]);
+const WEEKDAY_ONLY_CHANNELS = new Set<string>();
 
 export interface PackAssetForSchedule {
-  platform: string;     // e.g. "instagram-feed", "linkedin"
+  platform: string;     // e.g. "instagram-feed"
   imageUrl?: string;
   videoUrl?: string;
   caption?: string;

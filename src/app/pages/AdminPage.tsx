@@ -2116,7 +2116,7 @@ const TEMPLATE_BLOCKS: Record<string, { subject: string; blocks: EmailBlock[] }>
       { id: "nl2", type: "text", content: "Bonjour **{{name}}**,\n\nDécouvrez les dernières fonctionnalités et inspirations pour vos créations." } as TextBlock,
       { id: "nl3", type: "image", src: "https://ora-studio.app/brand/email-hero-news.jpg", alt: "Nouveautés ORA Studio" } as ImageBlock,
       { id: "nl4", type: "heading", level: "h2", content: "🚀 Nouvelles fonctionnalités" } as HeadingBlock,
-      { id: "nl5", type: "columns", left: "**Génération vidéo**\nCréez des vidéos courtes à partir d'un simple brief. Parfait pour vos réseaux sociaux.", right: "**Templates campagne**\nDes modèles prêts à l'emploi pour LinkedIn, Instagram, newsletters et plus encore." } as ColumnsBlock,
+      { id: "nl5", type: "columns", left: "**Génération vidéo**\nCréez des vidéos courtes à partir d'un simple brief. Parfait pour vos réseaux sociaux.", right: "**Templates campagne**\nDes modèles prêts à l'emploi pour Instagram, Facebook, newsletters et plus encore." } as ColumnsBlock,
       { id: "nl6", type: "divider" } as DividerBlock,
       { id: "nl7", type: "heading", level: "h2", content: "🎨 Inspiration du mois" } as HeadingBlock,
       { id: "nl8", type: "text", content: "Nos artisans décorateurs ont créé des campagnes exceptionnelles ce mois-ci. Voici notre sélection des plus belles réalisations." } as TextBlock,

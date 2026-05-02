@@ -18,7 +18,7 @@ import type { VideoProject, TrackItem } from "../lib/video-editor/types";
    Video Assembler — Conversational AI video creation
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-type VideoFormat = "reel" | "story" | "linkedin" | "youtube-short" | "feed";
+type VideoFormat = "reel" | "story" | "youtube-short" | "feed";
 
 interface Scene {
   id: string;
@@ -55,7 +55,6 @@ interface ChatMessage {
 const FORMAT_OPTIONS: { id: VideoFormat; label: string; icon: string; dimensions: string; duration: string }[] = [
   { id: "reel", label: "Reel / TikTok", icon: "📱", dimensions: "9:16", duration: "15-30s" },
   { id: "story", label: "Story", icon: "⏱", dimensions: "9:16", duration: "15s" },
-  { id: "linkedin", label: "LinkedIn", icon: "💼", dimensions: "16:9", duration: "30-60s" },
   { id: "youtube-short", label: "YouTube Short", icon: "▶", dimensions: "9:16", duration: "60s" },
   { id: "feed", label: "Feed Post", icon: "📐", dimensions: "1:1", duration: "15-30s" },
 ];

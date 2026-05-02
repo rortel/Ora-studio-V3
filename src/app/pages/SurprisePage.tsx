@@ -40,7 +40,6 @@ const CREATIVITY = [
 const PLATFORM_OPTIONS = [
   { id: "instagram-feed",  label: "Instagram Feed",  emoji: "📸" },
   { id: "instagram-story", label: "Instagram Story", emoji: "🎬" },
-  { id: "linkedin",        label: "LinkedIn",        emoji: "💼" },
   { id: "facebook",        label: "Facebook",        emoji: "👥" },
   { id: "tiktok",          label: "TikTok",          emoji: "🎵" },
 ];
@@ -50,7 +49,6 @@ const PLATFORM_OPTIONS = [
 const DEFAULT_PLATFORM_FORMAT: Record<string, "image" | "film"> = {
   "instagram-feed":  "image",
   "instagram-story": "film",
-  "linkedin":        "image",
   "facebook":        "image",
   "tiktok":          "film",
 };
@@ -97,7 +95,7 @@ function SurpriseContent() {
   // toggle selection, tap the small inline icon to flip image ↔ film.
   type PickedPlatform = { id: string; format: "image" | "film" };
   const [platformPicks, setPlatformPicks] = useState<PickedPlatform[]>(
-    ["instagram-feed", "instagram-story", "linkedin", "tiktok"].map((id) => ({
+    ["instagram-feed", "instagram-story", "facebook", "tiktok"].map((id) => ({
       id, format: DEFAULT_PLATFORM_FORMAT[id] || "image",
     }))
   );

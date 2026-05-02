@@ -169,7 +169,7 @@ function generateMockPreviews(type: ContentType, prompt: string, models: AIModel
           kind: "text",
           excerpt: [
             `In an era where brand consistency defines market leadership, the ability to maintain a unified voice across every touchpoint becomes not just an advantage — it becomes the standard.`,
-            `Your brand speaks in one voice. Whether it's a LinkedIn post or a billboard, the message adapts to the medium while the essence remains untouched. That's not automation — that's intelligence.`,
+            `Your brand speaks in one voice. Whether it's an Instagram post or a billboard, the message adapts to the medium while the essence remains untouched. That's not automation — that's intelligence.`,
             `The gap between strategy and execution has never been wider. Until now. With AI-driven content orchestration, every piece of communication carries the full weight of your brand identity.`,
             `Brand amplification isn't about being louder. It's about being clearer. Every channel, every format, every word — calibrated to resonate with precision.`,
           ][i % 4],
@@ -2523,7 +2523,7 @@ function GenerateView({ generations, isGenerating, contentType, activeModels, on
 function getSuggestions(type: ContentType): string[] {
   switch (type) {
     case "image": return ["Brand pattern", "Abstract header", "Social visual", "Ad creative", "Icon set"];
-    case "text": return ["LinkedIn post", "Email copy", "Ad headline", "Blog intro", "Tagline"];
+    case "text": return ["Instagram post", "Email copy", "Ad headline", "Blog intro", "Tagline"];
     case "code": return ["API integration", "React component", "Data pipeline", "Auth flow", "Landing page"];
     case "film": return ["Product teaser", "Brand intro", "Story ad", "Explainer clip", "Logo reveal"];
     case "sound": return ["Background ambient", "Jingle", "Podcast intro", "Notification", "Voiceover"];

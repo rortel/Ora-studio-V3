@@ -6,7 +6,7 @@ import {
   ImageIcon, FileText, Film, Music, Code2, ArrowUpDown,
   Check, X, Pencil, ChevronRight, Loader2, BookOpen,
   Plus, Grid3x3, List, Rocket, Eye, FolderInput, Sparkles,
-  Instagram, Linkedin, Facebook, Camera, Clapperboard,
+  Instagram, Facebook, Camera, Clapperboard,
   Twitter, Youtube, ExternalLink, Copy, ChevronDown, ChevronUp,
   Upload, RefreshCw, Share2, Clock, CheckCircle2, Star,
 } from "lucide-react";
@@ -197,7 +197,6 @@ function getCampaignData(item: LibraryItem) {
 function getPlatformIcon(p: string) {
   const lower = p.toLowerCase();
   if (lower.includes("instagram")) return Instagram;
-  if (lower.includes("linkedin")) return Linkedin;
   if (lower.includes("facebook")) return Facebook;
   if (lower.includes("twitter") || lower.includes("x")) return Twitter;
   if (lower.includes("youtube")) return Youtube;
@@ -207,7 +206,6 @@ function getPlatformIcon(p: string) {
 function getPlatformColor(p: string) {
   const lower = p.toLowerCase();
   if (lower.includes("instagram")) return "#666666";
-  if (lower.includes("linkedin")) return "#666666";
   if (lower.includes("facebook")) return "#666666";
   if (lower.includes("twitter") || lower.includes("x")) return "#666666";
   if (lower.includes("youtube")) return "#666666";
@@ -276,7 +274,7 @@ function LibraryPageContent() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const navigate = useNavigate();
   const [repurposeItem, setRepurposeItem] = useState<LibraryItem | null>(null);
-  const [repurposeFormats, setRepurposeFormats] = useState<string[]>(["linkedin-post", "instagram-caption", "newsletter-intro"]);
+  const [repurposeFormats, setRepurposeFormats] = useState<string[]>(["instagram-caption", "facebook-post", "newsletter-intro"]);
   const [repurposing, setRepurposing] = useState(false);
   const [repurposeResult, setRepurposeResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -698,7 +696,6 @@ function LibraryPageContent() {
 
   // Repurpose formats
   const REPURPOSE_FORMATS = [
-    { id: "linkedin-post", label: "LinkedIn Post", icon: "\u{1F4BC}" },
     { id: "instagram-caption", label: "Instagram Caption", icon: "\u{1F4F8}" },
     { id: "newsletter-intro", label: "Newsletter", icon: "\u{1F4E7}" },
     { id: "twitter-thread", label: "Thread X/Twitter", icon: "\u{1F426}" },

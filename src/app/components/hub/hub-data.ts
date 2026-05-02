@@ -66,7 +66,7 @@ export function generateMockPreviews(type: ContentType, prompt: string, models: 
           kind: "text",
           excerpt: [
             "In an era where brand consistency defines market leadership, the ability to maintain a unified voice across every touchpoint becomes not just an advantage — it becomes the standard.",
-            "Your brand speaks in one voice. Whether it's a LinkedIn post or a billboard, the message adapts to the medium while the essence remains untouched. That's not automation — that's intelligence.",
+            "Your brand speaks in one voice. Whether it's an Instagram post or a billboard, the message adapts to the medium while the essence remains untouched. That's not automation — that's intelligence.",
             "The gap between strategy and execution has never been wider. Until now. With AI-driven content orchestration, every piece of communication carries the full weight of your brand identity.",
             "Brand amplification isn't about being louder. It's about being clearer. Every channel, every format, every word — calibrated to resonate with precision.",
           ][i % 4],
@@ -102,8 +102,8 @@ export function generateMockPreviews(type: ContentType, prompt: string, models: 
 
 export const mockLibrary: LibraryItem[] = [
   { id: "lib-1", type: "image", model: aiModels.image[0], prompt: "Abstract brand pattern for Q2 campaign", timestamp: "Yesterday", saved: true, selected: false, tags: ["brand", "Q2"], preview: { kind: "image", palette: palettes[0], label: "Brand Pattern — Q2" } },
-  { id: "lib-2", type: "text", model: aiModels.text[0], prompt: "LinkedIn announcement copy", timestamp: "Yesterday", saved: true, selected: false, tags: ["linkedin", "launch"], preview: { kind: "text", excerpt: "We're excited to announce a new chapter in brand intelligence. ORA Studio brings 15 AI agents together to ensure every word carries your brand's DNA.", wordCount: 234 } },
-  { id: "lib-3", type: "code", model: aiModels.code[2], prompt: "API integration for content pipeline", timestamp: "2 days ago", saved: true, selected: false, tags: ["api", "integration"], preview: { kind: "code", language: "TypeScript", snippet: "const ora = new ORAClient({ apiKey });\nconst campaign = await ora.campaigns.create({\n  brief: \"Q2 product launch\",\n  formats: [\"email\", \"linkedin\", \"ad\"],\n});", lines: 5 } },
+  { id: "lib-2", type: "text", model: aiModels.text[0], prompt: "Instagram announcement copy", timestamp: "Yesterday", saved: true, selected: false, tags: ["instagram", "launch"], preview: { kind: "text", excerpt: "We're excited to announce a new chapter in brand intelligence. ORA Studio brings 15 AI agents together to ensure every word carries your brand's DNA.", wordCount: 234 } },
+  { id: "lib-3", type: "code", model: aiModels.code[2], prompt: "API integration for content pipeline", timestamp: "2 days ago", saved: true, selected: false, tags: ["api", "integration"], preview: { kind: "code", language: "TypeScript", snippet: "const ora = new ORAClient({ apiKey });\nconst campaign = await ora.campaigns.create({\n  brief: \"Q2 product launch\",\n  formats: [\"email\", \"instagram\", \"ad\"],\n});", lines: 5 } },
   { id: "lib-4", type: "film", model: aiModels.film[1], prompt: "15s product teaser for social", timestamp: "3 days ago", saved: true, selected: false, tags: ["social", "teaser"], preview: { kind: "film", duration: "0:15", frames: palettes[2], fps: 30 } },
   { id: "lib-5", type: "sound", model: aiModels.sound[0], prompt: "Ambient background for brand video", timestamp: "4 days ago", saved: true, selected: false, tags: ["ambient", "video"], preview: { kind: "sound", waveform: Array.from({ length: 48 }, (_, j) => 10 + Math.sin(j * 0.3) * 14 + Math.random() * 6), duration: "0:45", bpm: 90 } },
   { id: "lib-6", type: "image", model: aiModels.image[2], prompt: "Minimal visual for email header", timestamp: "5 days ago", saved: true, selected: false, tags: ["email", "header"], preview: { kind: "image", palette: palettes[3], label: "Email Header Visual" } },
@@ -122,7 +122,7 @@ export function getPlaceholder(type: ContentType): string {
 export function getSuggestions(type: ContentType): string[] {
   switch (type) {
     case "image": return ["Brand pattern", "Abstract header", "Social visual", "Ad creative", "Icon set"];
-    case "text": return ["LinkedIn post", "Email copy", "Ad headline", "Blog intro", "Tagline"];
+    case "text": return ["Instagram post", "Email copy", "Ad headline", "Blog intro", "Tagline"];
     case "code": return ["API integration", "React component", "Data pipeline", "Auth flow", "Landing page"];
     case "film": return ["Product teaser", "Brand intro", "Story ad", "Explainer clip", "Logo reveal"];
     case "sound": return ["Background ambient", "Jingle", "Podcast intro", "Notification", "Voiceover"];

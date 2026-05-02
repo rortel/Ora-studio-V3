@@ -616,11 +616,11 @@ export const FIGMA_SVG_TEMPLATES: FigmaSvgTemplate[] = [
     },
   },
 
-  // ═══ B2B LinkedIn Ads (1080×1080) ═══
+  // ═══ B2B Square Ads (1080×1080) ═══
   {
     id: "figma-svg-b2b-01",
-    name: "B2B LinkedIn — Product Demo",
-    formatId: "linkedin-post",
+    name: "B2B Square — Product Demo",
+    formatId: "facebook-post",
     canvasWidth: 1080, canvasHeight: 1080,
     category: "corporate",
     placeholders: {
@@ -634,8 +634,8 @@ export const FIGMA_SVG_TEMPLATES: FigmaSvgTemplate[] = [
   },
   {
     id: "figma-svg-b2b-02",
-    name: "B2B LinkedIn — Full Visual",
-    formatId: "linkedin-post",
+    name: "B2B Square — Full Visual",
+    formatId: "facebook-post",
     canvasWidth: 1080, canvasHeight: 1080,
     category: "corporate",
     placeholders: {
@@ -646,8 +646,8 @@ export const FIGMA_SVG_TEMPLATES: FigmaSvgTemplate[] = [
   },
   {
     id: "figma-svg-b2b-03",
-    name: "B2B LinkedIn — Stats & Metrics",
-    formatId: "linkedin-post",
+    name: "B2B Square — Stats & Metrics",
+    formatId: "facebook-post",
     canvasWidth: 1080, canvasHeight: 1080,
     category: "corporate",
     placeholders: {
@@ -678,12 +678,10 @@ export function getFigmaSvgTemplatesForFormat(formatId: string): FigmaSvgTemplat
     "instagram-post": ["instagram-post"],
     "instagram-carousel": ["instagram-post"],
     "instagram-story": ["instagram-story"],
-    "facebook-post": ["instagram-post", "linkedin-post"],
+    "facebook-post": ["instagram-post", "facebook-post"],
     "facebook-story": ["instagram-story"],
-    "facebook-ad": ["instagram-post"],
-    "linkedin-post": ["linkedin-post"],
-    "linkedin-carousel": ["linkedin-post"],
-    "twitter-post": ["linkedin-post"],
+    "facebook-ad": ["instagram-post", "facebook-post"],
+    "twitter-post": ["instagram-post", "facebook-post"],
     "tiktok-image": ["instagram-story"],
   };
   const allowed = formatMap[formatId] || [formatId];

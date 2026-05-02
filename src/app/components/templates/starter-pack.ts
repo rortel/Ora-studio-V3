@@ -45,12 +45,12 @@ const accent = (id: string, x: number, y: number, w: number, h: number, fill = "
 });
 
 // ══════════════════════════════════════════════════════════════
-// LINKEDIN POST — 5 new templates
+// LANDSCAPE POST — 5 new templates (1.91:1, Facebook landscape)
 // ══════════════════════════════════════════════════════════════
 
-const linkedinPostStarterPack: TemplateDefinition[] = [
+const landscapePostStarterPack: TemplateDefinition[] = [
   {
-    id: "lp-magazine", name: "Magazine", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    id: "lp-magazine", name: "Magazine", formatId: "facebook-post", aspectRatio: "1.91:1",
     canvasWidth: 1200, canvasHeight: 628, category: "magazine",
     layers: [
       bg,
@@ -62,7 +62,7 @@ const linkedinPostStarterPack: TemplateDefinition[] = [
     ],
   },
   {
-    id: "lp-corporate", name: "Corporate", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    id: "lp-corporate", name: "Corporate", formatId: "facebook-post", aspectRatio: "1.91:1",
     canvasWidth: 1200, canvasHeight: 628, category: "corporate",
     layers: [
       bg,
@@ -74,7 +74,7 @@ const linkedinPostStarterPack: TemplateDefinition[] = [
     ],
   },
   {
-    id: "lp-neon", name: "Neon", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    id: "lp-neon", name: "Neon", formatId: "facebook-post", aspectRatio: "1.91:1",
     canvasWidth: 1200, canvasHeight: 628, category: "neon",
     layers: [
       bg,
@@ -85,7 +85,7 @@ const linkedinPostStarterPack: TemplateDefinition[] = [
     ],
   },
   {
-    id: "lp-vintage", name: "Vintage", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    id: "lp-vintage", name: "Vintage", formatId: "facebook-post", aspectRatio: "1.91:1",
     canvasWidth: 1200, canvasHeight: 628, category: "vintage",
     layers: [
       bg,
@@ -97,7 +97,7 @@ const linkedinPostStarterPack: TemplateDefinition[] = [
     ],
   },
   {
-    id: "lp-playful", name: "Playful", formatId: "linkedin-post", aspectRatio: "1.91:1",
+    id: "lp-playful", name: "Playful", formatId: "facebook-post", aspectRatio: "1.91:1",
     canvasWidth: 1200, canvasHeight: 628, category: "playful",
     layers: [
       bg,
@@ -500,7 +500,7 @@ const xPostStarterPack: TemplateDefinition[] = [
 // ── Export all starter pack templates ──
 
 export const STARTER_PACK_TEMPLATES: TemplateDefinition[] = [
-  ...linkedinPostStarterPack,
+  ...landscapePostStarterPack,
   ...instagramPostStarterPack,
   ...instagramStoryStarterPack,
   ...facebookAdStarterPack,

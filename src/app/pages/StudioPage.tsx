@@ -5,7 +5,7 @@ import {
   Send, Sparkles, ImageIcon, FileText, Music, Film, Mic, Square, Paperclip,
   Loader2, Download, Columns2, RefreshCw, Rocket,
   Play, ArrowRight, Wand2, Palette, ChevronLeft, ChevronRight, X,
-  Linkedin, Instagram, Facebook, Twitter, Youtube, Clapperboard,
+  Instagram, Facebook, Twitter, Youtube, Clapperboard,
   BookOpen, LayoutGrid, Megaphone, Smartphone, Target, Check,
   ChevronDown, Lightbulb, Package, Globe, Languages,
   Calendar, Save, Pencil, CheckCircle2, Clock, Camera, Settings,
@@ -2382,7 +2382,7 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
 
   // Platform colors
   const platformColor: Record<string, string> = {
-    linkedin: "#0A66C2", instagram: "#E4405F", facebook: "#1877F2",
+    instagram: "#E4405F", facebook: "#1877F2",
     twitter: "#1DA1F2", tiktok: "#000000", youtube: "#FF0000",
     pinterest: "#E60023", email: "#6B7280", press: "#374151",
     blog: "#059669", landing: "#7C3AED",
@@ -2501,10 +2501,10 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
                   {post.slides && post.slides.length > 0 ? (() => {
                     const currentSlide = slideIdx[idx] ?? 0;
                     const slide = post.slides![currentSlide];
-                    const isLinkedin = post.platform.toLowerCase() === "linkedin" || post.platform.toLowerCase() === "facebook";
+                    const isOverlayPlatform = post.platform.toLowerCase() === "facebook";
                     return (
                       <div className="space-y-2">
-                        {/* Slide image with overlay text for LinkedIn */}
+                        {/* Slide image with overlay text for Facebook */}
                         <div className="relative rounded-lg overflow-hidden" style={{ aspectRatio: "1" }}>
                           {slide?.imageUrl ? (
                             <img src={slide.imageUrl} className="w-full h-full object-cover" alt="" />
@@ -2513,8 +2513,8 @@ function CampaignCarousel({ posts, logoUrl, onEdit, onEditVisual, onRemix, onMor
                               <Loader2 size={20} className="animate-spin text-muted-foreground" />
                             </div>
                           )}
-                          {/* LinkedIn/Facebook: text overlay on image */}
-                          {isLinkedin && (slide?.headline || slide?.body) && (
+                          {/* Facebook: text overlay on image */}
+                          {isOverlayPlatform && (slide?.headline || slide?.body) && (
                             <div className="absolute inset-0 flex flex-col justify-end p-6"
                               style={{ background: "linear-gradient(transparent 30%, rgba(0,0,0,0.75) 100%)" }}>
                               {slide?.headline && (
@@ -3060,14 +3060,13 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVers
     // --- Platform detection: parse text into platform sections ---
     const PLATFORM_META: Record<string, { icon: typeof Instagram; color: string; label: string }> = {
       instagram: { icon: Instagram, color: "#E1306C", label: "Instagram" },
-      linkedin: { icon: Linkedin, color: "#0A66C2", label: "LinkedIn" },
       facebook: { icon: Facebook, color: "#1877F2", label: "Facebook" },
       twitter: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
       x: { icon: Twitter, color: "#1DA1F2", label: "X (Twitter)" },
     };
 
     const parsePlatformSections = (text: string): { platform: string | null; content: string }[] => {
-      const platformRegex = /^(Instagram|LinkedIn|Facebook|Twitter|X)\s*[:\-–—]/gim;
+      const platformRegex = /^(Instagram|Facebook|Twitter|X)\s*[:\-–—]/gim;
       const matches: { index: number; platform: string }[] = [];
       let m;
       while ((m = platformRegex.exec(text)) !== null) {
@@ -3337,11 +3336,6 @@ function ResultCard({ result, onCompare, onFinalize, onEdit, onRemix, onMoreVers
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 const CONFIG_FORMATS = [
-  { id: "linkedin-post", label: "Post", platform: "LinkedIn", icon: Linkedin, type: "image" as const },
-  { id: "linkedin-carousel", label: "Carousel", platform: "LinkedIn", icon: LayoutGrid, type: "image" as const },
-  { id: "linkedin-video", label: "Video", platform: "LinkedIn", icon: Film, type: "video" as const },
-  { id: "linkedin-text", label: "Text Post", platform: "LinkedIn", icon: FileText, type: "text" as const },
-  { id: "linkedin-article", label: "Article", platform: "LinkedIn", icon: BookOpen, type: "text" as const },
   { id: "instagram-post", label: "Post", platform: "Instagram", icon: Instagram, type: "image" as const },
   { id: "instagram-carousel", label: "Carousel", platform: "Instagram", icon: LayoutGrid, type: "image" as const },
   { id: "instagram-story", label: "Story", platform: "Instagram", icon: Smartphone, type: "image" as const },
@@ -3362,7 +3356,6 @@ const CONFIG_FORMATS = [
 ];
 
 const CONFIG_PLATFORMS = [
-  { name: "LinkedIn", icon: Linkedin },
   { name: "Instagram", icon: Instagram },
   { name: "Facebook", icon: Facebook },
   { name: "TikTok", icon: Clapperboard },
@@ -3516,7 +3509,6 @@ const LANGUAGE_OPTIONS = [
 type FinalizerStep = "review" | "schedule" | "save";
 
 const CHANNEL_OPTIONS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "twitter", label: "Twitter/X", icon: Twitter },
@@ -4258,19 +4250,18 @@ function CampaignConfigPanel({ params, products, vault, onGenerate, onCancel, se
   const [selectedProduct, setSelectedProduct] = useState<string>(params.productId || "");
   const [objective, setObjective] = useState(params.objective || "awareness");
   // Deduce networks from formats passed by chat
-  const initialFormats = params.formats || ["linkedin-post", "instagram-post", "facebook-post"];
+  const initialFormats = params.formats || ["instagram-post", "facebook-post"];
   const deduceNetworks = (fmts: string[]) => {
     const nets = new Set<string>();
     for (const f of fmts) {
-      if (f.startsWith("linkedin")) nets.add("LinkedIn");
-      else if (f.startsWith("instagram")) nets.add("Instagram");
+      if (f.startsWith("instagram")) nets.add("Instagram");
       else if (f.startsWith("facebook")) nets.add("Facebook");
       else if (f.startsWith("twitter")) nets.add("Twitter");
       else if (f.startsWith("tiktok")) nets.add("TikTok");
       else if (f.startsWith("youtube")) nets.add("YouTube");
       else if (f.startsWith("pinterest")) nets.add("Pinterest");
     }
-    return nets.size > 0 ? Array.from(nets) : ["LinkedIn", "Instagram", "Facebook"];
+    return nets.size > 0 ? Array.from(nets) : ["Instagram", "Facebook"];
   };
   const [selectedNetworks, setSelectedNetworks] = useState<string[]>(deduceNetworks(initialFormats));
   const [selectedFormats, setSelectedFormats] = useState<string[]>(initialFormats);
