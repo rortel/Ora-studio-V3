@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
+import { InstagramSetupGuide } from "./InstagramSetupGuide";
 
 /**
  * PublishModal — shared publish flow for ComparePage, LibraryPage, EditorPage.
@@ -106,6 +107,7 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
   const [publishing, setPublishing] = useState(false);
   const [results, setResults] = useState<{ platform: string; status: string; url?: string; error?: string }[]>([]);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
+  const [showInstaGuide, setShowInstaGuide] = useState(false);
 
   const getAuthHeader = useCallback(() => accessToken || null, [accessToken]);
 
@@ -501,8 +503,16 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
                   <Instagram size={10} style={{ color: "var(--muted-foreground)", marginTop: 2, flexShrink: 0 }} />
                   <div style={{ fontSize: 10, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
                     {isFr
-                      ? "Instagram nécessite un compte Business lié à une Page Facebook (exigence Meta, ~3 min)."
-                      : "Instagram requires a Business account linked to a Facebook Page (Meta requirement, ~3 min)."}
+                      ? "Instagram nécessite un compte Business lié à une Page Facebook (exigence Meta, ~3 min). "
+                      : "Instagram requires a Business account linked to a Facebook Page (Meta requirement, ~3 min). "}
+                    <button
+                      type="button"
+                      onClick={() => setShowInstaGuide(true)}
+                      className="underline cursor-pointer"
+                      style={{ color: "var(--foreground)", fontWeight: 600 }}
+                    >
+                      {isFr ? "Voir le guide" : "See guide"}
+                    </button>
                   </div>
                 </div>
               )}
@@ -745,5 +755,10 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
     </AnimatePresence>
   );
 
-  return createPortal(modalContent, document.body);
+  return (
+    <>
+      {createPortal(modalContent, document.body)}
+      <InstagramSetupGuide open={showInstaGuide} onClose={() => setShowInstaGuide(false)} />
+    </>
+  );
 }

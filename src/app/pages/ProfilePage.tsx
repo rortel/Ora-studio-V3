@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
+import { InstagramSetupGuide } from "../components/InstagramSetupGuide";
 import { useI18n } from "../lib/i18n";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
@@ -706,6 +707,7 @@ function SocialAccountsSection() {
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [showInstaGuide, setShowInstaGuide] = useState(false);
 
   const makeHeaders = useCallback(() => {
     return { Authorization: `Bearer ${publicAnonKey}` } as Record<string, string>;
@@ -811,7 +813,15 @@ function SocialAccountsSection() {
                   )}
                   {!connected && p.id === "instagram" && (
                     <span className="block mt-0.5" style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
-                      {t("profile.instagramRequirement")}
+                      {t("profile.instagramRequirement")}{" "}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setShowInstaGuide(true); }}
+                        className="underline cursor-pointer"
+                        style={{ color: "var(--foreground)", fontWeight: 500 }}
+                      >
+                        {t("profile.instagramSeeGuide")}
+                      </button>
                     </span>
                   )}
                 </div>
@@ -849,6 +859,7 @@ function SocialAccountsSection() {
       <p className="mt-2" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
         {t("profile.socialAccountsDesc")}
       </p>
+      <InstagramSetupGuide open={showInstaGuide} onClose={() => setShowInstaGuide(false)} />
     </div>
   );
 }
