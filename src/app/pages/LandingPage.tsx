@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "motion/react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Globe2, Lightbulb, Sparkles, Wand2, CalendarDays, Send } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { AppTabs } from "../components/AppTabs";
@@ -209,6 +209,110 @@ function MethodPanel({
         {/* Mockup column */}
         <div className="flex items-center justify-center w-full">
           {children}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * FullFlowSection — concrete 6-step walkthrough that complements the
+ * cinematic Drop/Pick/Done panels with the gritty middle: customize,
+ * schedule, track. Designed for non-marketers who want the literal
+ * checklist of what they'll be doing.
+ *
+ * Each step is a small white card with: numbered badge, lucide icon,
+ * 3-word title, 1-sentence body. Same coral/cream palette as the rest
+ * of the landing — no parallax, no auto-animation: the visitor reads at
+ * their own pace.
+ */
+function FullFlowSection({ authed }: { authed: boolean }) {
+  const steps = [
+    { icon: Globe2,       title: "Brand Vault",  body: "Paste your website URL. 30 seconds later, Ora knows your colours, fonts, voice, photo style — your whole vibe. You only do this once." },
+    { icon: Lightbulb,    title: "Suggest",      body: "We propose three campaign ideas tailored to what you sell, this season. You click one. No briefing, no blank page." },
+    { icon: Sparkles,     title: "Generate",     body: "Image, 5s video, carousel, story or reel — pick the format that fits. We make six variations sized for every platform." },
+    { icon: Wand2,        title: "Customize",    body: "Drop your logo. Add a punchy text overlay (we reformulate what you wrote in better English or French)." },
+    { icon: CalendarDays, title: "Schedule",     body: "Drop posts on a calendar. We auto-suggest the best hour for each network based on your audience." },
+    { icon: Send,         title: "Publish",      body: "One click. Posts go live on Instagram, Facebook, TikTok. Likes & comments come back into Ora — no need to check three apps." },
+  ];
+
+  return (
+    <section
+      className="relative w-full"
+      style={{ background: COLORS.cream, borderTop: `1px solid ${COLORS.line}` }}
+    >
+      <div className="max-w-[1400px] mx-auto px-6 md:px-12 lg:px-16 py-24 md:py-32">
+        {/* Header */}
+        <div className="max-w-[820px] mb-14 md:mb-20">
+          <div className="mono-label mb-5 flex items-center gap-2" style={{ color: COLORS.muted }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: COLORS.coral }} />
+            <span>The full flow · 6 steps</span>
+          </div>
+          <h2 className="leading-[0.95] mb-6" style={{ ...bagel, fontSize: "clamp(44px, 6vw, 88px)", color: COLORS.ink }}>
+            From <span style={{ color: COLORS.coral }}>your URL</span><br/>to live posts.
+          </h2>
+          <p className="body-tight text-[16px] md:text-[18px] max-w-xl" style={{ color: COLORS.muted }}>
+            Six concrete steps. No marketing background needed. If you can post a photo to your phone, you can run a brand on Ora.
+          </p>
+        </div>
+
+        {/* Steps grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+          {steps.map((step, i) => {
+            const Icon = step.icon;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
+                className="relative rounded-2xl p-7"
+                style={{
+                  background: "#FFFFFF",
+                  border: `1px solid ${COLORS.line}`,
+                  boxShadow: "0 1px 2px rgba(17,17,17,0.03)",
+                }}
+              >
+                {/* Number + icon row */}
+                <div className="flex items-center justify-between mb-5">
+                  <span
+                    className="inline-flex items-center justify-center w-7 h-7 rounded-full tabular-nums"
+                    style={{ background: COLORS.ink, color: "#FFFFFF", fontSize: 12, fontWeight: 700 }}
+                  >
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style={{ background: "rgba(255,92,57,0.08)" }}>
+                    <Icon size={18} style={{ color: COLORS.coral }} />
+                  </div>
+                </div>
+                {/* Title */}
+                <div className="mb-2" style={{ ...bagel, fontSize: 24, color: COLORS.ink, lineHeight: 1.05 }}>
+                  {step.title}
+                </div>
+                {/* Body */}
+                <p className="body-tight text-[14px] leading-relaxed" style={{ color: COLORS.muted }}>
+                  {step.body}
+                </p>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="mt-14 md:mt-20 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <Link
+            to={authed ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"}
+            onClick={() => trackEvent("cta_click", { location: "full_flow", dest: authed ? "/hub/surprise" : "/login?mode=signup", authed })}
+          >
+            <Button variant="accent" size="lg">
+              {authed ? "Open Ora" : "Try the flow — no card"} <ArrowRight size={16} />
+            </Button>
+          </Link>
+          <span className="mono-label" style={{ color: COLORS.subtle }}>
+            6 posts on the house · cancel anytime
+          </span>
         </div>
       </div>
     </section>
@@ -872,6 +976,16 @@ export function LandingPage() {
       >
         <ShipMockup assets={showcase.slice(0, 6).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
       </MethodPanel>
+
+      {/* ═══ Panel 4.5 — STEP-BY-STEP FLOW ═══
+       *   The cinematic Drop / Pick / Done panels above sell the *promise*.
+       *   This denser, numbered grid sells the *mechanism*. Lets a small-
+       *   commerce visitor follow finger-by-finger what actually happens
+       *   between the moment they paste their URL and the moment posts
+       *   land on Instagram. Different visual treatment from the cinematic
+       *   panels (smaller, denser, no parallax) so the two sections don't
+       *   compete — they complement. */}
+      <FullFlowSection authed={!!user} />
 
       {/* ═══ Panel 5 — DELTA (split timers on dark canvas) ═══
        *   Full 100vh like the others but instead of a single media, two
