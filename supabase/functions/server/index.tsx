@@ -10373,11 +10373,11 @@ app.post("/analyze/surprise-me", async (c) => {
     // pick an "asset type" anymore — the platforms they choose determine the
     // image/film mix.
     const PLATFORM_FORMAT: Record<string, "image" | "film"> = {
-      "instagram-feed":  "image",
-      "instagram-story": "film",
-      "linkedin":        "image",
-      "facebook":        "image",
-      "tiktok":          "film",
+      "instagram-feed":     "image",
+      "instagram-story":    "image",  // Story default flipped to image — most small-commerce stories are static visuals with overlay text, not video
+      "instagram-carousel": "image",  // Carousel is always image (every slide)
+      "facebook":           "image",
+      "tiktok":             "film",
     };
     // mediaType is an OPTIONAL global override:
     //   - "film"     → force every shot to be filmed (legacy "Images + Films")
@@ -10397,9 +10397,12 @@ app.post("/analyze/surprise-me", async (c) => {
           ) as Record<string, "image" | "film">
         : {};
 
-    // Carousel isn't a pipeline yet.
+    // mediaType="carousel" is now obsolete — carousel is a platform choice
+    // (instagram-carousel) instead of a global mediaType. Old clients sending
+    // carousel still get a clean error, but new clients should pick the
+    // platform directly.
     if (mediaType === "carousel") {
-      return c.json({ success: false, error: "carousel generation is not available yet." }, 400);
+      return c.json({ success: false, error: "Carousel is now a platform choice — pick \"Instagram Carousel\" in Networks instead of mediaType=carousel." }, 400);
     }
 
     // ── Creativity presets ──
@@ -10463,11 +10466,15 @@ app.post("/analyze/surprise-me", async (c) => {
     //   - LinkedIn / Facebook 1:1 — feed-friendly, no mobile-feed crop
     //     (16:9 used to be common but gets center-cropped on phone feeds)
     const ALL_PLATFORMS = [
-      { id: "instagram-feed",  aspectRatio: "1:1",  label: "Instagram Feed",  copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
-      { id: "instagram-story", aspectRatio: "9:16", label: "Instagram Story", copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
-      { id: "linkedin",        aspectRatio: "1:1",  label: "LinkedIn",        copyHint: "editorial, professional, headline-friendly composition, mobile-feed safe" },
-      { id: "facebook",        aspectRatio: "1:1",  label: "Facebook",        copyHint: "social-share composition, mobile-feed safe" },
-      { id: "tiktok",          aspectRatio: "9:16", label: "TikTok",          copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
+      { id: "instagram-feed",     aspectRatio: "1:1",  label: "Instagram Feed",     copyHint: "leave the bottom-center 20% relatively clean for caption overlay" },
+      { id: "instagram-story",    aspectRatio: "9:16", label: "Instagram Story",    copyHint: "leave the top 15% and bottom 15% clean for UI and headline" },
+      // Carousel = a single narrative split across multiple slides. Each
+      // shot the planner emits for this platform becomes one slide. The
+      // planner is instructed (below) to produce slide-1..slide-N as a
+      // continuous story sharing palette/mood. carouselSlides=5 by default.
+      { id: "instagram-carousel", aspectRatio: "1:1",  label: "Instagram Carousel", copyHint: "one slide of a 5-slide narrative carousel — slides share consistent palette, lighting and mood; each slide shows a different angle/moment of the same story", carouselSlides: 5 },
+      { id: "facebook",           aspectRatio: "1:1",  label: "Facebook",           copyHint: "social-share composition, mobile-feed safe" },
+      { id: "tiktok",             aspectRatio: "9:16", label: "TikTok",             copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
     ];
     // Resolve the platform subset the caller asked for (default: all 5).
     const chosenPlatformIds = requestedPlatforms.length > 0
@@ -10478,13 +10485,21 @@ app.post("/analyze/surprise-me", async (c) => {
     }
     // Distribute the requested assetCount across chosen platforms round-robin.
     // Default total 8 with the old distribution when no assetCount passed.
-    const totalShots = requestedCount > 0 ? requestedCount : 8;
+    // For carousel platforms, "count" = number of CAROUSELS (each = N slides),
+    // and the credit accounting (effectiveTotalShots) multiplies count by
+    // the platform's carouselSlides so users are charged per slide.
+    const requestedTotal = requestedCount > 0 ? requestedCount : 8;
     const PLATFORMS = ALL_PLATFORMS
       .filter((p) => chosenPlatformIds.includes(p.id))
       .map((p) => ({ ...p, count: 0 }));
-    for (let i = 0; i < totalShots; i++) {
+    for (let i = 0; i < requestedTotal; i++) {
       PLATFORMS[i % PLATFORMS.length].count += 1;
     }
+    // Total shots actually generated (carousels expand to N slides each).
+    const totalShots = PLATFORMS.reduce((sum, p) => {
+      const slides = (p as any).carouselSlides || 1;
+      return sum + p.count * slides;
+    }, 0);
 
     // ── Pre-flight credits check ──
     // One campaign asset = 1 credit (matches the pricing page: "60 assets /
@@ -10517,7 +10532,19 @@ app.post("/analyze/surprise-me", async (c) => {
     }
 
     // ── Concept + shot list via LLM ──
-    const platformBrief = PLATFORMS.map((p) => `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`).join("\n");
+    // For carousel platforms, the per-platform "count" represents one
+    // CAROUSEL (= 5 slides), not one shot. We tell the planner to emit N
+    // shots labeled slide-1..slide-5 per carousel and to share narrative
+    // continuity across them. The jobs builder later marks them as a
+    // single carousel group via carouselGroupId.
+    const platformBrief = PLATFORMS.map((p) => {
+      const carouselSlides = (p as any).carouselSlides;
+      if (carouselSlides && p.count > 0) {
+        const totalSlides = p.count * carouselSlides;
+        return `- ${p.id} (${p.aspectRatio}) × ${p.count} carousel${p.count === 1 ? "" : "s"} = ${totalSlides} slides total: ${p.copyHint}\n  CAROUSEL RULES: each carousel = ${carouselSlides} slides. Label them 'slide-1' through 'slide-${carouselSlides}'. Slides MUST share consistent palette/lighting/mood (a continuous narrative — not random shots). Slide 1 = strongest hook (close-up, bold composition). Slides 2-${carouselSlides - 1} = different angles/moments/details of the same story (lifestyle scene, detail shot, in-context use, before/after, etc.). Slide ${carouselSlides} = closer/CTA-friendly composition (clean negative space, product hero). Group all slides for one carousel consecutively in the shots array.`;
+      }
+      return `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`;
+    }).join("\n");
     const conceptSystem = `You are Ora — a senior creative director composing a full social-media campaign pack. Brand, product and tone matter; respect them but push the concept.
 
 CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
@@ -10646,10 +10673,20 @@ OUTPUT JSON:
       // 'product' = Photoroom Studio composite (preserves user's photo)
       // 'text-card' = Ideogram text-card (typography-led, no photo preserve)
       type: "product" | "text-card";
+      // Carousel grouping — set when platform is *-carousel. All slides
+      // sharing the same carouselGroupId belong to the same carousel and
+      // should be rendered as one swipeable group on the frontend.
+      carouselGroupId?: string;
+      carouselSlideIndex?: number;
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
-    for (const sh of concept.shots.slice(0, 16)) {
+    // Per-platform carousel grouping counter — every N consecutive carousel
+    // shots for the same platform get the same carouselGroupId so the
+    // frontend can render them as a single swipeable carousel.
+    const carouselGroupCounters: Record<string, { groupNum: number; slidesInGroup: number }> = {};
+    // Allow up to 24 shots in case of carousels (5 carousels × 5 slides = 25 — capped at 24).
+    for (const sh of concept.shots.slice(0, 24)) {
       const platform = String(sh?.platform || "").trim();
       const preset   = PLATFORMS.find((p) => p.id === platform);
       if (!preset) continue;
@@ -10671,11 +10708,30 @@ OUTPUT JSON:
       // explicit AND a non-film shot (text-cards aren't animated).
       const type: "product" | "text-card" = (sh?.type === "text-card" && format !== "film") ? "text-card" : "product";
       if (!promptText) continue;
+
+      // Carousel grouping: assign every `carouselSlides` consecutive shots
+      // for a carousel platform to the same group. Caption is stored only
+      // on slide 1 — the others share it via the group reference.
+      const carouselSlides = (preset as any).carouselSlides as number | undefined;
+      let carouselGroupId: string | undefined;
+      let carouselSlideIndex: number | undefined;
+      if (carouselSlides) {
+        const counter = carouselGroupCounters[preset.id] ||= { groupNum: 1, slidesInGroup: 0 };
+        if (counter.slidesInGroup >= carouselSlides) {
+          counter.groupNum++;
+          counter.slidesInGroup = 0;
+        }
+        carouselGroupId = `${preset.id}-c${counter.groupNum}`;
+        carouselSlideIndex = counter.slidesInGroup;
+        counter.slidesInGroup++;
+      }
+
       const brandPrefix = (ctx as any)?.brandName || (ctx as any)?.company_name || "ora";
-      const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}_${ratioSlug(preset.aspectRatio)}`;
+      const slideSuffix = carouselGroupId ? `_${carouselGroupId}_s${(carouselSlideIndex ?? 0) + 1}` : "";
+      const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}${slideSuffix}_${ratioSlug(preset.aspectRatio)}`;
       const fileName      = `${baseName}.jpg`;
       const videoFileName = `${baseName}.mp4`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format, type });
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format, type, carouselGroupId, carouselSlideIndex });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -10731,6 +10787,9 @@ OUTPUT JSON:
       twistElement?: string; caption?: string; motion?: string;
       status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
       error?: string; provider?: string; videoProvider?: string;
+      // Carousel grouping passed through from job → item so frontend can
+      // render slides as a single swipeable carousel.
+      carouselGroupId?: string; carouselSlideIndex?: number;
     }> = [];
     // Wall-clock budget for the entire still phase. Supabase Edge gateway
     // cuts off around 150s; we leave 30s headroom for film generation +
@@ -10760,6 +10819,7 @@ OUTPUT JSON:
             label: job.label, fileName: job.fileName,
             twistElement: job.twistElement, caption: job.caption,
             status: "failed", error: "Time budget exceeded — please re-run",
+            carouselGroupId: job.carouselGroupId, carouselSlideIndex: job.carouselSlideIndex,
           });
         }
         break;
@@ -10944,7 +11004,17 @@ OUTPUT JSON:
         }
         return result;
       }));
-      items.push(...batchRes);
+      // Pass carousel grouping info from job → item so the frontend can
+      // render carousel slides as one swipeable group. The map preserves
+      // result shape from tryOnce; we only enrich with carousel fields.
+      const enrichedBatchRes = batchRes.map((res, idx) => {
+        const job = batch[idx];
+        if (job?.carouselGroupId !== undefined) {
+          return { ...res, carouselGroupId: job.carouselGroupId, carouselSlideIndex: job.carouselSlideIndex };
+        }
+        return res;
+      });
+      items.push(...enrichedBatchRes);
       // Brief pause between batches to let the runtime release blob
       // memory from the just-completed batch before the next one
       // allocates new blobs. Without this, peak memory accumulates

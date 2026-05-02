@@ -38,22 +38,27 @@ const CREATIVITY = [
 ];
 
 const PLATFORM_OPTIONS = [
-  { id: "instagram-feed",  label: "Instagram Feed",  emoji: "📸" },
-  { id: "instagram-story", label: "Instagram Story", emoji: "🎬" },
-  { id: "linkedin",        label: "LinkedIn",        emoji: "💼" },
-  { id: "facebook",        label: "Facebook",        emoji: "👥" },
-  { id: "tiktok",          label: "TikTok",          emoji: "🎵" },
+  { id: "instagram-feed",     label: "Instagram Feed",     emoji: "📸" },
+  { id: "instagram-story",    label: "Instagram Story",    emoji: "🎬" },
+  { id: "instagram-carousel", label: "Instagram Carousel", emoji: "🖼️" },
+  { id: "facebook",           label: "Facebook",           emoji: "👥" },
+  { id: "tiktok",             label: "TikTok",             emoji: "🎵" },
 ];
 
 /** Default format suggested per platform — matches the server's PLATFORM_FORMAT.
- *  The user can flip any selected platform's format by tapping the inline icon. */
+ *  The user can flip any selected platform's format by tapping the inline icon.
+ *  Carousel platforms are always image (no film toggle). */
 const DEFAULT_PLATFORM_FORMAT: Record<string, "image" | "film"> = {
-  "instagram-feed":  "image",
-  "instagram-story": "film",
-  "linkedin":        "image",
-  "facebook":        "image",
-  "tiktok":          "film",
+  "instagram-feed":     "image",
+  "instagram-story":    "image",  // small-commerce stories are mostly static images with overlay
+  "instagram-carousel": "image",  // carousels are always image (every slide)
+  "facebook":           "image",
+  "tiktok":             "film",
 };
+
+/** Platforms that don't support the image/film toggle — they're locked to one type.
+ *  Currently: carousel (always image, multi-slide). */
+const FORMAT_LOCKED_PLATFORMS = new Set<string>(["instagram-carousel"]);
 
 const PLATFORM_META: Record<string, { label: string; emoji: string }> = Object.fromEntries(
   PLATFORM_OPTIONS.map((p) => [p.id, { label: p.label, emoji: p.emoji }]),
@@ -65,6 +70,10 @@ interface PackItem {
   twistElement?: string; caption?: string;
   status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
   error?: string; provider?: string; videoProvider?: string;
+  // Carousel grouping — set by server when platform is *-carousel.
+  // Items sharing the same carouselGroupId belong to one carousel and are
+  // rendered as a single swipeable group in the result UI.
+  carouselGroupId?: string; carouselSlideIndex?: number;
 }
 interface Pack {
   campaignName: string; campaignSlug: string;
@@ -737,7 +746,7 @@ function SurpriseContent() {
                     >
                       <span>{p.emoji}</span> {p.label.replace("Instagram ", "IG ")}
                     </button>
-                    {on && (
+                    {on && !FORMAT_LOCKED_PLATFORMS.has(p.id) && (
                       <button
                         onClick={() => togglePlatformFormat(p.id)}
                         className="inline-flex items-center justify-center w-9 text-[15px] hover:bg-white/10"
@@ -1151,7 +1160,7 @@ function SurpriseContent() {
                         <button onClick={() => togglePlatform(p.id)} className="inline-flex items-center gap-1.5 px-3 text-[12.5px]">
                           <span>{p.emoji}</span> {p.label.replace("Instagram ", "IG ")}
                         </button>
-                        {on && (
+                        {on && !FORMAT_LOCKED_PLATFORMS.has(p.id) && (
                           <button onClick={() => togglePlatformFormat(p.id)} className="inline-flex items-center justify-center w-8 text-[14px] hover:bg-white/10"
                                   style={{ borderLeft: `1px solid rgba(255,255,255,0.18)` }}
                                   title={`Switch to ${pick?.format === "film" ? "image" : "film"}`}>
@@ -1374,10 +1383,25 @@ function SurpriseContent() {
                     <span className="text-[12px]" style={{ color: MUTED }}>· {items.length}</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-                    {items.map((it, localIdx) => {
+                    {/* Carousel slides are sorted together so they appear
+                        adjacent in the grid. Each slide gets a "Slide N/M"
+                        badge so the user understands they belong to a single
+                        swipeable post on Instagram. */}
+                    {[...items].sort((a, b) => {
+                      const ag = a.carouselGroupId || "";
+                      const bg = b.carouselGroupId || "";
+                      if (ag !== bg) return ag.localeCompare(bg);
+                      return (a.carouselSlideIndex ?? 0) - (b.carouselSlideIndex ?? 0);
+                    }).map((it, localIdx) => {
                       const globalIdx = flatItems.indexOf(it);
                       const ok = it.status === "ok";
                       const clickable = ok && (it.imageUrl || it.videoUrl);
+                      // Carousel grouping context — count slides in this group
+                      // from the platform items array (not the sorted view).
+                      const carouselTotal = it.carouselGroupId
+                        ? items.filter(x => x.carouselGroupId === it.carouselGroupId).length
+                        : 0;
+                      const slideNum = (it.carouselSlideIndex ?? 0) + 1;
                       return (
                       <div key={localIdx} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                         <div
@@ -1450,6 +1474,13 @@ function SurpriseContent() {
                                style={{ background: "rgba(255,255,255,0.9)", color: TEXT, backdropFilter: "blur(6px)", border: `1px solid rgba(255,255,255,0.4)` }}
                                title="Creative twist">
                             ✨ {it.twistElement}
+                          </div>
+                        )}
+                        {it.carouselGroupId && carouselTotal > 0 && (
+                          <div className="absolute bottom-2 left-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono tabular-nums"
+                               style={{ background: PINK, color: "#fff" }}
+                               title={`Carousel slide ${slideNum} of ${carouselTotal} — these slides ship together as one Instagram post`}>
+                            🖼️ slide {slideNum}/{carouselTotal}
                           </div>
                         )}
                         {it.caption && (
