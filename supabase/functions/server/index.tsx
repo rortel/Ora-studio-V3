@@ -4542,6 +4542,82 @@ app.post("/auth/signup", async (c) => {
   }
 });
 
+// POST /auth/purge-metadata-bloat — emergency fix for users whose Supabase
+// JWT has grown so large it exceeds proxy/gateway limits (8-16 KB typical
+// HTTP header cap), causing every API call to fail with 502 or CORS errors.
+//
+// Cause: legacy code paths wrote full campaign payloads (including base64
+// SVG/PNG image data URLs) into auth.users.user_metadata.ora_activity.
+// Supabase signs the entire user_metadata into the JWT on every refresh,
+// so once polluted the token bloats forever.
+//
+// Fix: strip the offending keys from user_metadata, keeping only safe
+// scalars (name, avatar_url, full_name, picture, sub, etc.). The user's
+// next token refresh produces a slim JWT and everything works again.
+//
+// Authenticated users can purge their OWN metadata. Admins can purge
+// anyone via { targetUserId } in the body.
+app.post("/auth/purge-metadata-bloat", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json().catch(() => ({}));
+    const profile = await kv.get(`user:${user.id}`);
+    const isAdmin = user.email.toLowerCase() === ADMIN_EMAIL || profile?.role === "admin";
+
+    const targetUserId = (isAdmin && body?.targetUserId) ? String(body.targetUserId) : user.id;
+
+    const sb = supabaseAdmin();
+    const { data: existing, error: getErr } = await sb.auth.admin.getUserById(targetUserId);
+    if (getErr || !existing?.user) {
+      return c.json({ success: false, error: `User not found: ${getErr?.message || targetUserId}` }, 404);
+    }
+
+    const meta = (existing.user.user_metadata || {}) as Record<string, any>;
+    const beforeSize = JSON.stringify(meta).length;
+
+    // Allow-list approach: keep only known-safe scalars; drop everything else
+    // including ora_activity, embedded campaigns, base64 image data, etc.
+    const SAFE_KEYS = new Set([
+      "name", "full_name", "given_name", "family_name", "preferred_username",
+      "avatar_url", "picture", "email", "email_verified",
+      "phone_verified", "provider_id", "sub", "iss", "role",
+      "locale", "language",
+    ]);
+    const cleanMeta: Record<string, any> = {};
+    const removedKeys: string[] = [];
+    for (const [k, v] of Object.entries(meta)) {
+      if (SAFE_KEYS.has(k)) {
+        cleanMeta[k] = v;
+      } else {
+        removedKeys.push(k);
+      }
+    }
+
+    const { error: updateErr } = await sb.auth.admin.updateUserById(targetUserId, {
+      user_metadata: cleanMeta,
+    });
+    if (updateErr) {
+      return c.json({ success: false, error: `Update failed: ${updateErr.message}` }, 500);
+    }
+
+    const afterSize = JSON.stringify(cleanMeta).length;
+    const savedBytes = beforeSize - afterSize;
+    console.log(`[/auth/purge-metadata-bloat] user=${targetUserId.slice(0, 8)} before=${beforeSize}B after=${afterSize}B saved=${savedBytes}B removed=[${removedKeys.join(",")}] ${Date.now() - t0}ms`);
+
+    return c.json({
+      success: true,
+      message: `Purged ${savedBytes} bytes from user_metadata. Sign out and back in to refresh your JWT.`,
+      beforeSize, afterSize, savedBytes,
+      removedKeys,
+      requiresReauth: savedBytes > 0,
+    });
+  } catch (err) {
+    console.log(`[/auth/purge-metadata-bloat] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /auth/delete-account — GDPR-compliant account deletion.
 //
 // Order matters:
