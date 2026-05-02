@@ -5,6 +5,7 @@ import {
   User, LogOut, Shield, Zap, CreditCard, BarChart3, Eye,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
+import { CreditPacksModal } from "./CreditPacksModal";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
 import { PHASE_1_ONLY } from "../lib/phase";
@@ -56,6 +57,7 @@ export function AppSidebar() {
   ];
   const mobileNavItems = allMobileNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [showPacks, setShowPacks] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   // Credit calculations
@@ -161,9 +163,12 @@ export function AppSidebar() {
             >
               <Zap size={15} style={{ color: "#FFFFFF" }} strokeWidth={2} />
             </button>
-            {/* Credit count below */}
+            {/* Credit count below — opens the credit packs top-up modal.
+             *  The Zap icon above goes to /subscribe (plan upgrade); this
+             *  number gives the contextual top-up path: same destination
+             *  the user wants when they hit a credit ceiling mid-flow. */}
             <button
-              onClick={() => navigate("/subscribe")}
+              onClick={() => setShowPacks(true)}
               className="cursor-pointer"
               style={{
                 fontSize: "9px",
@@ -172,7 +177,7 @@ export function AppSidebar() {
                 lineHeight: 1,
                 letterSpacing: "0.02em",
               }}
-              title={`${remainingCredits} ${t("sidebar.credits").toLowerCase()}`}
+              title={`${remainingCredits} ${t("sidebar.credits").toLowerCase()} — ${t("subscribe.creditPacksTitle")}`}
             >
               {remainingCredits}
             </button>
@@ -273,6 +278,8 @@ export function AppSidebar() {
           </AnimatePresence>
         </div>
       </aside>
+
+      <CreditPacksModal open={showPacks} onClose={() => setShowPacks(false)} />
 
       {/* ═══ MOBILE BOTTOM TAB BAR ═══ */}
       <nav
