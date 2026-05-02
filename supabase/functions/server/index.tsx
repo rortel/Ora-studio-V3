@@ -10300,6 +10300,162 @@ app.post("/admin/style-catalog/seed", async (c) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// CONCEPT VARIATION — context-pack injected into the planner prompt
+// so concepts don't repeat. Three signals:
+//   1. Calendar (season + nearest "marronnier" — recurring annual event)
+//   2. Angle archetype rotation (random pick from a pool of 14)
+//   3. Recent-concepts dedup (last N campaigns this user generated)
+// ══════════════════════════════════════════════════════════════
+
+/** French-market marronniers calendar — events worth anchoring a campaign
+ *  on if they fall within ±30 days. Date format: { month: 1-12, day }. For
+ *  movable feasts (Easter, Mother's Day FR, Black Friday) we approximate
+ *  with the typical week — the LLM only needs a reason to vary, not legal
+ *  precision. Add freely; longer list = richer rotation. */
+const MARRONNIERS_FR: Array<{ month: number; day: number; label: string; angle: string }> = [
+  { month: 1,  day: 6,  label: "Galette des rois",    angle: "convivialité, partage, tradition" },
+  { month: 1,  day: 10, label: "Soldes d'hiver",       angle: "promo, urgence, déstockage" },
+  { month: 2,  day: 2,  label: "Chandeleur",           angle: "gourmandise, partage" },
+  { month: 2,  day: 14, label: "Saint-Valentin",       angle: "romantisme, cadeau, couple" },
+  { month: 3,  day: 1,  label: "Fête des grand-mères", angle: "tendresse, intergénérationnel, cadeau" },
+  { month: 3,  day: 20, label: "Printemps",             angle: "renaissance, fleurs, fraîcheur, lumière" },
+  { month: 4,  day: 1,  label: "Poisson d'avril",       angle: "humour, légèreté, surprise" },
+  { month: 4,  day: 15, label: "Pâques",                angle: "famille, chocolat, brunch, renouveau" },
+  { month: 5,  day: 1,  label: "Fête du travail / muguet", angle: "porte-bonheur, mai, traditions" },
+  { month: 5,  day: 26, label: "Fête des mères (FR)",   angle: "gratitude, cadeau, tendresse" },
+  { month: 6,  day: 16, label: "Fête des pères",        angle: "complicité, cadeau, paternité" },
+  { month: 6,  day: 21, label: "Fête de la musique / été", angle: "festif, plein-air, été qui démarre" },
+  { month: 6,  day: 26, label: "Soldes d'été",          angle: "promo, urgence, été" },
+  { month: 7,  day: 14, label: "14 juillet",            angle: "patriote, festif, feu d'artifice" },
+  { month: 7,  day: 20, label: "Plein été / vacances",  angle: "plage, road trip, farniente, BBQ" },
+  { month: 8,  day: 25, label: "Rentrée prep",          angle: "back-to-school, préparation, équipement" },
+  { month: 9,  day: 1,  label: "Rentrée scolaire",      angle: "rentrée, fournitures, organisation" },
+  { month: 9,  day: 22, label: "Automne",                angle: "couleurs chaudes, cocooning, récolte" },
+  { month: 10, day: 31, label: "Halloween",              angle: "pop, déguisement, frisson, orange-noir" },
+  { month: 11, day: 1,  label: "Toussaint",              angle: "fleurs, mémoire, automne tardif" },
+  { month: 11, day: 28, label: "Black Friday",           angle: "promo agressive, urgence, déstockage massif" },
+  { month: 12, day: 1,  label: "Décembre / pré-Noël",    angle: "calendrier de l'avent, listes de cadeaux, hygge" },
+  { month: 12, day: 25, label: "Noël",                   angle: "famille, magie, cadeaux, hiver" },
+  { month: 12, day: 31, label: "Nouvel An",              angle: "fête, paillettes, bonnes résolutions" },
+];
+
+/** Angle archetypes — visual/narrative families the planner can lean on
+ *  to vary one run from the next. Each carries a 1-line creative prompt
+ *  the LLM can riff on. We sample 2 per run + tell the LLM "pick one or
+ *  blend two of these as your campaign's visual signature". */
+const ANGLE_ARCHETYPES = [
+  { id: "hero-closeup",      hint: "extreme close-up hero shot — product fills 70%+ of the frame, shallow depth of field, every texture visible" },
+  { id: "lifestyle-moment",  hint: "candid lifestyle scene — product in actual use by a real person, natural light, unposed feeling" },
+  { id: "behind-scenes",     hint: "behind-the-scenes / making-of vibe — workshop, kitchen, atelier; raw and authentic" },
+  { id: "macro-detail",      hint: "macro detail of one specific feature — stitching, texture, surface, ingredient — almost abstract" },
+  { id: "in-context-use",    hint: "product mid-use, hands-on, action freeze — the moment the product actually delivers value" },
+  { id: "before-after",      hint: "before/after diptych or sequential transformation — show the change the product creates" },
+  { id: "flat-lay",          hint: "top-down flat-lay composition — product surrounded by complementary objects/ingredients on a clean surface" },
+  { id: "portrait-with",     hint: "portrait of a person with the product — character-driven, eye contact, brand-fit persona" },
+  { id: "group-shot",        hint: "group shot of multiple variants/colours/sizes — abundance, choice, family of products" },
+  { id: "texture-material",  hint: "texture/material study — focus on what the product feels like, surface play under directional light" },
+  { id: "action-motion",     hint: "freeze-frame of motion — splash, dust, fabric in wind, ingredients falling — kinetic energy" },
+  { id: "atmospheric",       hint: "product placed in an atmospheric environment — fog, golden hour, blue hour, dramatic weather" },
+  { id: "minimal-negative",  hint: "minimal composition with bold negative space — product offset, large empty zones for breathing room" },
+  { id: "editorial-magazine",hint: "editorial magazine spread vibe — bold composition, side-lighting, asymmetric framing, marble/concrete surfaces" },
+];
+
+interface ConceptContextPack {
+  todayIso: string;
+  month: number;
+  season: "winter" | "spring" | "summer" | "fall";
+  marronniers: Array<{ daysAway: number; label: string; angle: string }>;
+  archetypes: Array<{ id: string; hint: string }>;
+  recentConcepts: string[];
+}
+
+async function buildConceptContextPack(userId: string): Promise<ConceptContextPack> {
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const season: ConceptContextPack["season"] =
+    month >= 3 && month <= 5 ? "spring" :
+    month >= 6 && month <= 8 ? "summer" :
+    month >= 9 && month <= 11 ? "fall" : "winter";
+
+  // Marronniers within ±30 days (favor upcoming over past).
+  const todayMs = now.getTime();
+  const yearMs = 365 * 24 * 3600 * 1000;
+  const marronniers = MARRONNIERS_FR.map((m) => {
+    const candidate = new Date(now.getFullYear(), m.month - 1, m.day);
+    let diff = candidate.getTime() - todayMs;
+    // If date already passed by more than 7 days, look at next year's occurrence.
+    if (diff < -7 * 24 * 3600 * 1000) diff = candidate.getTime() + yearMs - todayMs;
+    return { daysAway: Math.round(diff / (24 * 3600 * 1000)), label: m.label, angle: m.angle };
+  })
+  .filter((m) => m.daysAway >= -7 && m.daysAway <= 35)
+  .sort((a, b) => Math.abs(a.daysAway) - Math.abs(b.daysAway))
+  .slice(0, 2);
+
+  // Pick 2 random angle archetypes.
+  const shuffled = [...ANGLE_ARCHETYPES].sort(() => Math.random() - 0.5).slice(0, 2);
+
+  // Recent concepts — last 10 campaign concepts from this user. Each prior
+  // run persists campaignName under campaign:${user.id}:${slug}, so a
+  // prefix scan + sort gives us the names cheaply.
+  let recentConcepts: string[] = [];
+  try {
+    const past = await kv.getByPrefix(`campaign:${userId}:`) as any[];
+    recentConcepts = (past || [])
+      .filter((c) => c?.campaignName)
+      .sort((a, b) => String(b?.createdAt || "").localeCompare(String(a?.createdAt || "")))
+      .slice(0, 10)
+      .map((c) => String(c.campaignName));
+  } catch (err) {
+    console.log(`[buildConceptContextPack] recent concepts skipped: ${err}`);
+  }
+
+  return {
+    todayIso: now.toISOString().slice(0, 10),
+    month,
+    season,
+    marronniers,
+    archetypes: shuffled,
+    recentConcepts,
+  };
+}
+
+/** Render the context-pack as a Markdown block to inject into the planner
+ *  system prompt. Designed to read like a creative brief addendum — short,
+ *  scannable, with imperatives the LLM can follow without confusion. */
+function renderConceptContextBlock(ctx: ConceptContextPack): string {
+  const seasonLabel = { winter: "hiver", spring: "printemps", summer: "été", fall: "automne" }[ctx.season];
+  const marronniersBlock = ctx.marronniers.length === 0
+    ? "no notable event in the next 30 days — lean fully on the season + archetypes"
+    : ctx.marronniers.map((m) => {
+        const tense = m.daysAway < 0 ? `${Math.abs(m.daysAway)} days ago` : m.daysAway === 0 ? "today" : `in ${m.daysAway} days`;
+        return `- ${m.label} (${tense}) — angle: ${m.angle}`;
+      }).join("\n");
+  const archetypesBlock = ctx.archetypes.map((a) => `- [${a.id}] ${a.hint}`).join("\n");
+  const recentBlock = ctx.recentConcepts.length === 0
+    ? "no prior campaigns — you have full creative latitude"
+    : ctx.recentConcepts.map((n) => `- ${n}`).join("\n");
+
+  return `RUN CONTEXT (use these to vary this campaign from the user's previous ones — DO NOT ignore):
+
+DATE: ${ctx.todayIso} — season is ${seasonLabel} (month ${ctx.month}/12).
+
+MARRONNIERS WITHIN ±30 DAYS:
+${marronniersBlock}
+
+ANGLE ARCHETYPES TO LEAN ON (pick one or blend two as the campaign's visual signature — do not default to generic studio packshots):
+${archetypesBlock}
+
+RECENT CAMPAIGNS BY THIS USER (avoid repeating themes / titles / angles from these):
+${recentBlock}
+
+VARIATION RULES — NON-NEGOTIABLE:
+1. The campaignName MUST be different from any title in RECENT CAMPAIGNS above (don't add a number suffix — pick a genuinely new angle).
+2. Pull at least ONE concrete element from the season or the nearest marronnier into the concept (a seasonal cue, a holiday tie-in, a temporal hook). Skip only if the brief explicitly contradicts (e.g. "no holiday content" in the user prompt).
+3. The shot list MUST visibly express AT LEAST ONE of the angle archetypes above — don't fall back to generic packshot grids.
+4. The brand vault still wins on palette/voice/photo style — variation is in concept and composition, not in brand identity.`;
+}
+
 app.post("/analyze/surprise-me", async (c) => {
   const t0 = Date.now();
   try {
@@ -10531,6 +10687,19 @@ app.post("/analyze/surprise-me", async (c) => {
       console.log(`[surprise-me] credits pre-check skipped: ${err}`);
     }
 
+    // ── Context-pack for concept variation (season + marronnier + angle
+    // archetypes + recent-campaign dedup). Best-effort: if the helper
+    // throws (e.g. KV slow), we generate without context — the run still
+    // succeeds, just with the old "everything looks similar" risk.
+    let contextBlock = "";
+    try {
+      const ctxPack = await buildConceptContextPack(user.id);
+      contextBlock = renderConceptContextBlock(ctxPack);
+      console.log(`[surprise-me] context-pack: marronniers=[${ctxPack.marronniers.map(m => m.label).join(",")}] archetypes=[${ctxPack.archetypes.map(a => a.id).join(",")}] recent=${ctxPack.recentConcepts.length}`);
+    } catch (err) {
+      console.log(`[surprise-me] context-pack build failed: ${err} — continuing without`);
+    }
+
     // ── Concept + shot list via LLM ──
     // For carousel platforms, the per-platform "count" represents one
     // CAROUSEL (= 5 slides), not one shot. We tell the planner to emit N
@@ -10549,7 +10718,7 @@ app.post("/analyze/surprise-me", async (c) => {
 
 CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 
-HARD RULES:
+${contextBlock ? contextBlock + "\n\n" : ""}HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
 - HARD NO-TEXT RULE for type="product" shots — NON-NEGOTIABLE. Image-gen models hallucinate text (mangled letters, missing accents, wrong case). To protect brand quality, the promptText for type="product" shots MUST NOT request any rendered text strings, wordmarks, billboard copy, neon signs spelling words, headline overlays, magazine cover titles, posters with words, signage with text, garment text/tags, screen text, sticker text, or speech bubbles. The product's own native packaging text (preserved from the reference photo) is the only text allowed — and it stays implicit (the model preserves it from image_ref, you don't re-describe it). Magazine-style energy in a type="product" shot must come from SATURATED COLOUR FIELDS, OVERSIZED GRAPHIC SHAPES (not letters), BOLD COMPOSITIONAL ASYMMETRY, and SALE-BAND COLOUR BLOCKS (without rendered text). Reserve all text rendering for type="text-card" shots where the model is expected to handle typography.
