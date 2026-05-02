@@ -496,6 +496,16 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
                   ? "Vert = connecté · Cliquez + pour connecter un compte"
                   : "Green = connected · Click + to connect an account"}
               </div>
+              {selectedPlatforms.includes("Instagram") && !((connectedByPlatform["Instagram"] || []).length > 0) && (
+                <div className="flex items-start gap-1.5 mt-2 px-2 py-1.5 rounded" style={{ background: "var(--secondary)", border: "1px solid var(--border)" }}>
+                  <Instagram size={10} style={{ color: "var(--muted-foreground)", marginTop: 2, flexShrink: 0 }} />
+                  <div style={{ fontSize: 10, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
+                    {isFr
+                      ? "Instagram nécessite un compte Business lié à une Page Facebook (exigence Meta, ~3 min)."
+                      : "Instagram requires a Business account linked to a Facebook Page (Meta requirement, ~3 min)."}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Auto-reframe toggle (images only) */}

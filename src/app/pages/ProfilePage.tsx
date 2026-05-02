@@ -798,9 +798,9 @@ function SocialAccountsSection() {
           const isConnecting = connecting === p.id;
           const Icon = p.icon;
           return (
-            <div key={p.id} className={`flex items-center justify-between px-5 py-3 ${i < SOCIAL_PLATFORMS.length - 1 ? "border-b" : ""}`} style={{ borderColor: "var(--border)" }}>
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: `${p.color}12` }}>
+            <div key={p.id} className={`flex items-start justify-between px-5 py-3 ${i < SOCIAL_PLATFORMS.length - 1 ? "border-b" : ""}`} style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-start gap-3 pr-3">
+                <div className="w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${p.color}12` }}>
                   <Icon size={14} style={{ color: p.color }} />
                 </div>
                 <div>
@@ -808,6 +808,11 @@ function SocialAccountsSection() {
                   {connected && (
                     <span className="block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>
                       {connected.username ? `@${connected.username}` : t("profile.connected")}
+                    </span>
+                  )}
+                  {!connected && p.id === "instagram" && (
+                    <span className="block mt-0.5" style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
+                      {t("profile.instagramRequirement")}
                     </span>
                   )}
                 </div>
