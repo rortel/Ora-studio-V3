@@ -1,6 +1,7 @@
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
+import { PostMetricsBadge } from "../components/PostMetricsBadge";
 import { useI18n } from "../lib/i18n";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
@@ -795,6 +796,9 @@ function CalendarPageContent() {
                                             <span className="flex items-center gap-1 px-2 py-1 rounded-md" style={{ fontSize: "11px", fontWeight: 600, background: "rgba(17,17,17,0.08)", color: "#666666" }}>
                                               <CheckCircle2 size={11} /> {t("calendar.statusPublished")}
                                             </span>
+                                          )}
+                                          {event.status === "published" && event.pfmPostId && (
+                                            <PostMetricsBadge pfmPostId={event.pfmPostId} variant="verbose" />
                                           )}
                                           {event.pfmPostUrl && (
                                             <a href={event.pfmPostUrl} target="_blank" rel="noopener noreferrer"

@@ -25457,6 +25457,108 @@ app.post("/pfm/setup-webhook", async (c) => {
 //   accounts: array of { id, platform, username, external_id,
 //                        status, profile_photo_url } (truncated for
 //                        readability, no tokens)
+// POST /pfm/post-metrics — Per-post engagement (likes/comments/views).
+//
+// MVP design: calls GET /social-posts/{id} on PfM and tries every common
+// shape (analytics / metrics / stats / insights at the root, on results[],
+// on platform_data[]). Also folds in any data already received via
+// `social.post.result.created` webhooks (stored at pfm:result:*).
+//
+// 1h KV cache so refreshing the Calendar page doesn't pound PfM/Meta.
+// Authorization: pfmPostId must appear on a calendar:${user.id}:* event,
+// which guarantees ownership without a separate post index. The
+// `_availableFields` diagnostic is kept in the response so we can see
+// what PfM actually exposes — if it's null and Meta has the data, the
+// next step is a direct Graph API path with the stored access token.
+app.post("/pfm/post-metrics", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get?.("parsedBody") || await c.req.json();
+    const pfmPostId: string = body.pfmPostId;
+    if (!pfmPostId) return c.json({ success: false, error: "pfmPostId required" }, 400);
+
+    const events = await kv.getByPrefix(`calendar:${user.id}:`) as any[];
+    const owns = (events || []).some((e: any) => e?.pfmPostId === pfmPostId);
+    if (!owns) {
+      console.warn(`[pfm/post-metrics] denied: user=${user.id.slice(0, 8)} post=${pfmPostId} not in calendar`);
+      return c.json({ success: false, error: "post not found in your calendar" }, 403);
+    }
+
+    const cacheKey = `pfm:metrics:${pfmPostId}`;
+    const cached = await kv.get(cacheKey);
+    if (cached?.fetchedAt && Date.now() - new Date(cached.fetchedAt).getTime() < 60 * 60 * 1000) {
+      return c.json({ success: true, ...cached, cached: true });
+    }
+
+    const res = await fetch(`${PFM_BASE}/social-posts/${encodeURIComponent(pfmPostId)}`, {
+      headers: pfmHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await res.text();
+    let data: any; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+    if (!res.ok) {
+      console.log(`[pfm/post-metrics] PfM ${res.status}: ${text.slice(0, 200)}`);
+      return c.json({ success: false, error: `PfM error ${res.status}`, _raw: text.slice(0, 500) }, 502);
+    }
+
+    const candidates: any[] = [
+      data?.analytics, data?.metrics, data?.stats, data?.insights,
+      data?.data?.analytics, data?.data?.metrics,
+      ...(Array.isArray(data?.results) ? data.results.map((r: any) => r.analytics || r.metrics) : []),
+      ...(Array.isArray(data?.platform_data) ? data.platform_data.map((p: any) => p.analytics || p.metrics) : []),
+    ].filter(Boolean);
+
+    const merged: { likes?: number; comments?: number; shares?: number; views?: number; reach?: number; saves?: number } = {};
+    const fold = (a: any) => {
+      if (!a || typeof a !== "object") return;
+      const num = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0;
+      const likes = num(a.likes ?? a.reactions ?? a.favorites);
+      const comments = num(a.comments ?? a.replies);
+      const shares = num(a.shares ?? a.reposts ?? a.retweets);
+      const views = num(a.views ?? a.impressions ?? a.video_views ?? a.videoViews);
+      const reach = num(a.reach ?? a.uniqueImpressions);
+      const saves = num(a.saves ?? a.bookmarks);
+      if (likes) merged.likes = (merged.likes || 0) + likes;
+      if (comments) merged.comments = (merged.comments || 0) + comments;
+      if (shares) merged.shares = (merged.shares || 0) + shares;
+      if (views) merged.views = (merged.views || 0) + views;
+      if (reach) merged.reach = (merged.reach || 0) + reach;
+      if (saves) merged.saves = (merged.saves || 0) + saves;
+    };
+    candidates.forEach(fold);
+
+    const webhookResults = await kv.getByPrefix(`pfm:result:${pfmPostId}:`) as any[];
+    (webhookResults || []).forEach((r: any) => fold(r?.analytics || r?.metrics));
+
+    const hasMetrics = Object.values(merged).some((v) => v != null && v > 0);
+
+    const flatKeys: string[] = [];
+    const walk = (obj: any, prefix = "") => {
+      if (!obj || typeof obj !== "object" || flatKeys.length >= 60) return;
+      for (const [k, v] of Object.entries(obj)) {
+        flatKeys.push(prefix + k);
+        if (v && typeof v === "object" && !Array.isArray(v)) walk(v, prefix + k + ".");
+      }
+    };
+    walk(data);
+
+    const payload = {
+      pfmPostId,
+      metrics: hasMetrics ? merged : null,
+      hasMetrics,
+      fetchedAt: new Date().toISOString(),
+      _availableFields: flatKeys.slice(0, 60),
+    };
+    await kv.set(cacheKey, payload);
+    console.log(`[pfm/post-metrics] user=${user.id.slice(0, 8)} post=${pfmPostId} hasMetrics=${hasMetrics}`);
+    return c.json({ success: true, ...payload, cached: false });
+  } catch (err) {
+    console.log(`[pfm/post-metrics] error: ${err}`);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 app.post("/pfm/debug/raw", async (c) => {
   try {
     const user = await requireAuth(c);
