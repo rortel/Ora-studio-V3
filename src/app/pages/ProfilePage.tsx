@@ -813,15 +813,7 @@ function SocialAccountsSection() {
                   )}
                   {!connected && p.id === "instagram" && (
                     <span className="block mt-0.5" style={{ fontSize: "11px", color: "var(--muted-foreground)", lineHeight: 1.4 }}>
-                      {t("profile.instagramRequirement")}{" "}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setShowInstaGuide(true); }}
-                        className="underline cursor-pointer"
-                        style={{ color: "var(--foreground)", fontWeight: 500 }}
-                      >
-                        {t("profile.instagramSeeGuide")}
-                      </button>
+                      {t("profile.instagramRequirement")}
                     </span>
                   )}
                 </div>

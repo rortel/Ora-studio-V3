@@ -503,16 +503,8 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
                   <Instagram size={10} style={{ color: "var(--muted-foreground)", marginTop: 2, flexShrink: 0 }} />
                   <div style={{ fontSize: 10, color: "var(--muted-foreground)", lineHeight: 1.4 }}>
                     {isFr
-                      ? "Instagram nécessite un compte Business lié à une Page Facebook (exigence Meta, ~3 min). "
-                      : "Instagram requires a Business account linked to a Facebook Page (Meta requirement, ~3 min). "}
-                    <button
-                      type="button"
-                      onClick={() => setShowInstaGuide(true)}
-                      className="underline cursor-pointer"
-                      style={{ color: "var(--foreground)", fontWeight: 600 }}
-                    >
-                      {isFr ? "Voir le guide" : "See guide"}
-                    </button>
+                      ? "Instagram nécessite un compte Business lié à une Page Facebook (exigence Meta, ~3 min)."
+                      : "Instagram requires a Business account linked to a Facebook Page (Meta requirement, ~3 min)."}
                   </div>
                 </div>
               )}
