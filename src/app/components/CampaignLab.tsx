@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Sparkles, Upload, Link2, X, Check, Loader2, Eye, Save,
-  Instagram, Linkedin, Facebook, Film,
+  Instagram, Facebook, Film,
   Image as ImageIcon, FileText, AlertCircle, Download,
   RefreshCw, Shield, Users, MessageSquare,
   Palette, Type, BookOpen, Camera,
@@ -122,11 +122,6 @@ interface CampaignLabProps {
    ═══════════════════════════════════ */
 
 const FORMAT_OPTIONS: FormatOption[] = [
-  // ── LinkedIn ──
-  { id: "linkedin-post", label: "LinkedIn Post", platform: "LinkedIn", icon: Linkedin, type: "image", aspectRatio: "1.91:1", description: "1200x628 + caption" },
-  { id: "linkedin-carousel", label: "LinkedIn Carousel", platform: "LinkedIn", icon: LayoutGrid, type: "image", aspectRatio: "1:1", description: "1080x1080 multi-slide" },
-  { id: "linkedin-video", label: "LinkedIn Video", platform: "LinkedIn", icon: Film, type: "video", aspectRatio: "16:9", description: "1920x1080 video" },
-  { id: "linkedin-text", label: "LinkedIn Text Post", platform: "LinkedIn", icon: FileText, type: "text", aspectRatio: "3:2", description: "Text-only thought leadership" },
   // ── Instagram ──
   { id: "instagram-post", label: "Instagram Post", platform: "Instagram", icon: Instagram, type: "image", aspectRatio: "1:1", description: "1080x1080 + caption" },
   { id: "instagram-carousel", label: "Instagram Carousel", platform: "Instagram", icon: LayoutGrid, type: "image", aspectRatio: "1:1", description: "1080x1080 multi-slide" },
@@ -150,20 +145,16 @@ const FORMAT_OPTIONS: FormatOption[] = [
   { id: "pinterest-pin", label: "Pinterest Pin", platform: "Pinterest", icon: ImageIcon, type: "image", aspectRatio: "2:3", description: "1000x1500 pin" },
   // ── Blog / Articles ──
   { id: "blog-article", label: "Blog Article (SEO)", platform: "Web", icon: BookOpen, type: "text", aspectRatio: "3:2", description: "Full SEO article 800-1500 words" },
-  { id: "linkedin-article", label: "LinkedIn Article", platform: "LinkedIn", icon: BookOpen, type: "text", aspectRatio: "3:2", description: "Long-form LinkedIn article 600-1200 words" },
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
-  Instagram: "#666666", LinkedIn: "#666666", Facebook: "#666666",
+  Instagram: "#666666", Facebook: "#666666",
   "Twitter/X": "#666666", TikTok: "#666666", YouTube: "#666666",
   Pinterest: "#666666", Web: "#666666",
 };
 
 /* ── Per-format diversity suffixes to avoid visual repetition across formats ── */
 const FORMAT_DIVERSITY: Record<string, string> = {
-  "linkedin-post": "Wide landscape composition, professional corporate environment, cool neutral tones, clean negative space on right third.",
-  "linkedin-carousel": "Square crop centered subject, editorial grid feel, muted desaturated palette, structured layout.",
-  "linkedin-video": "Smooth dolly-in motion, boardroom or modern workspace setting, natural window light.",
   "instagram-post": "Square crop, vibrant warm tones, lifestyle context, soft bokeh background, golden-hour warmth.",
   "instagram-carousel": "Square crop, alternating close-up and wide establishing shots, cohesive color story across slides.",
   "instagram-story": "Vertical 9:16 framing, dramatic top-to-bottom composition, bold saturated colors, dynamic angle.",
@@ -180,19 +171,17 @@ const FORMAT_DIVERSITY: Record<string, string> = {
   "youtube-short": "Vertical 9:16, fast-reveal cinematic motion, dramatic lighting, attention-grabbing first frame.",
   "pinterest-pin": "Tall 2:3 portrait, aspirational lifestyle flat-lay or styled vignette, soft natural palette, Pinterest-aesthetic.",
   "blog-article": "",
-  "linkedin-article": "",
 };
 
 // Maps ORA platform display names → backend platform slugs.
 const PLATFORM_SLUG_BY_LABEL: Record<string, string> = {
-  LinkedIn: "linkedin", Instagram: "instagram", Facebook: "facebook",
+  Instagram: "instagram", Facebook: "facebook",
   "Twitter/X": "twitter", Twitter: "twitter", TikTok: "tiktok",
   YouTube: "youtube", Pinterest: "pinterest",
 };
 
 // Group formats by platform for UI display
 const PLATFORM_GROUPS = [
-  { platform: "LinkedIn", icon: Linkedin },
   { platform: "Instagram", icon: Instagram },
   { platform: "Facebook", icon: Facebook },
   { platform: "TikTok", icon: Clapperboard },
@@ -204,7 +193,6 @@ const PLATFORM_GROUPS = [
 
 // Platforms available for social connection
 const CONNECTABLE_PLATFORMS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#666666" },
   { id: "instagram", label: "Instagram", icon: Instagram, color: "#666666" },
   { id: "facebook", label: "Facebook", icon: Facebook, color: "#666666" },
   { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#666666" },
@@ -359,7 +347,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const [language, setLanguage] = useState("auto");
   const [campaignStartDate, setCampaignStartDate] = useState("");
   const [campaignDuration, setCampaignDuration] = useState("");
-  const [selectedFormats, setSelectedFormats] = useState<string[]>(["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"]);
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(["instagram-post", "instagram-story", "facebook-post", "instagram-reel"]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [scanningUrl, setScanningUrl] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<{ name: string; description: string; price?: string; currency?: string; category?: string; features?: string[] } | null>(null);
@@ -1985,7 +1973,6 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     // Best posting times per platform (day-of-week preferences + time slots)
     // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
     const platformSchedule: Record<string, { days: number[]; times: string[] }> = {
-      LinkedIn:    { days: [2, 3, 4], times: ["09:00", "10:00", "11:00"] },
       Instagram:   { days: [1, 3, 5], times: ["12:00", "18:00", "20:00"] },
       Facebook:    { days: [2, 4, 6], times: ["13:00", "15:00", "19:00"] },
       "Twitter/X": { days: [1, 2, 3, 4, 5], times: ["08:00", "12:30", "17:00"] },
@@ -1996,7 +1983,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
     };
 
     const calChannelColors: Record<string, string> = {
-      LinkedIn: "#666666", Instagram: "#666666", Facebook: "#666666",
+      Instagram: "#666666", Facebook: "#666666",
       Email: "#666666", "Twitter/X": "#666666", TikTok: "#666666",
       YouTube: "#666666", Pinterest: "#666666",
     };
@@ -2334,47 +2321,47 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
   const OBJECTIVE_TIPS: Record<string, { tip: string; suggestedFormats: string[]; suggestedTone: string }> = {
     "Brand Awareness": {
       tip: "Focus on visual storytelling and broad reach. Prioritize video and carousel formats for maximum impressions. Use aspirational messaging.",
-      suggestedFormats: ["instagram-post", "instagram-reel", "linkedin-post", "facebook-video", "youtube-short", "tiktok-video"],
+      suggestedFormats: ["instagram-post", "instagram-reel", "facebook-video", "youtube-short", "tiktok-video"],
       suggestedTone: "Inspirational",
     },
     "Lead Generation": {
-      tip: "Lead with a clear value proposition and strong CTA. Gated content works well. Facebook/LinkedIn ads perform best for B2B leads.",
-      suggestedFormats: ["linkedin-post", "facebook-ad", "instagram-post", "twitter-post", "linkedin-text"],
+      tip: "Lead with a clear value proposition and strong CTA. Gated content works well. Facebook ads perform best for B2B leads.",
+      suggestedFormats: ["facebook-ad", "instagram-post", "twitter-post"],
       suggestedTone: "Professional",
     },
     "Product Launch": {
       tip: "Build anticipation with teaser content, then reveal. Use countdown mechanics. Multi-format cascade creates buzz across channels.",
-      suggestedFormats: ["instagram-story", "instagram-reel", "linkedin-post", "facebook-post", "tiktok-video", "twitter-post", "youtube-short"],
+      suggestedFormats: ["instagram-story", "instagram-reel", "facebook-post", "tiktok-video", "twitter-post", "youtube-short"],
       suggestedTone: "Bold & Confident",
     },
     "Engagement & Community": {
       tip: "Ask questions, share stories, use polls. Conversational content drives comments. Carousel and text posts get highest engagement.",
-      suggestedFormats: ["linkedin-text", "instagram-carousel", "facebook-post", "twitter-text", "tiktok-video"],
+      suggestedFormats: ["instagram-carousel", "facebook-post", "twitter-text", "tiktok-video"],
       suggestedTone: "Casual & Friendly",
     },
     "Conversion & Sales": {
       tip: "Lead with benefits, social proof, and urgency. Direct response copy with clear CTAs. A/B test ad variations.",
-      suggestedFormats: ["facebook-ad", "instagram-post", "instagram-story", "linkedin-post", "twitter-post", "pinterest-pin"],
+      suggestedFormats: ["facebook-ad", "instagram-post", "instagram-story", "twitter-post", "pinterest-pin"],
       suggestedTone: "Bold & Confident",
     },
     "Thought Leadership": {
-      tip: "Share unique insights, data, and expert perspectives. Long-form content positions authority. LinkedIn is your primary channel.",
-      suggestedFormats: ["linkedin-article", "linkedin-text", "blog-article", "linkedin-carousel", "linkedin-post", "twitter-text"],
+      tip: "Share unique insights, data, and expert perspectives. Long-form content positions authority.",
+      suggestedFormats: ["blog-article", "twitter-text", "instagram-carousel"],
       suggestedTone: "Professional",
     },
     "Event Promotion": {
       tip: "Create urgency with dates and limited spots. Visual countdown content works well. Cross-platform reminders increase attendance.",
-      suggestedFormats: ["instagram-story", "linkedin-post", "facebook-post", "twitter-post", "instagram-post"],
+      suggestedFormats: ["instagram-story", "facebook-post", "twitter-post", "instagram-post"],
       suggestedTone: "Bold & Confident",
     },
     "Recruitment": {
-      tip: "Show culture, team stories, and growth opportunities. Authentic behind-the-scenes content attracts talent. LinkedIn is essential.",
-      suggestedFormats: ["linkedin-post", "linkedin-text", "instagram-post", "instagram-story", "facebook-post", "tiktok-video"],
+      tip: "Show culture, team stories, and growth opportunities. Authentic behind-the-scenes content attracts talent.",
+      suggestedFormats: ["instagram-post", "instagram-story", "facebook-post", "tiktok-video"],
       suggestedTone: "Casual & Friendly",
     },
     "Retention & Loyalty": {
       tip: "Celebrate customers, share tips and exclusive content. Personalized messaging increases retention. Email and social reinforce each other.",
-      suggestedFormats: ["linkedin-post", "instagram-post", "facebook-post", "instagram-carousel"],
+      suggestedFormats: ["instagram-post", "facebook-post", "instagram-carousel"],
       suggestedTone: "Casual & Friendly",
     },
   };
@@ -3964,7 +3951,7 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                     const MONTHS_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                     const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
                     const channelColors: Record<string, string> = {
-                      LinkedIn: "#666666", Instagram: "#666666", Facebook: "#666666",
+                      Instagram: "#666666", Facebook: "#666666",
                       Email: "#666666", "Twitter/X": "#666666", TikTok: "#666666",
                       YouTube: "#666666", Pinterest: "#666666", Web: "#666666",
                     };
@@ -4341,10 +4328,10 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                 {(selectedAsset.caption || selectedAsset.copy) && (
                   <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <span style={{ fontSize: "10px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 }}>
-                      {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? "Article" : selectedAsset.type === "text" ? "Body Copy" : "Caption"}
+                      {selectedAsset.formatId === "blog-article" ? "Article" : selectedAsset.type === "text" ? "Body Copy" : "Caption"}
                     </span>
                     <div style={{ fontSize: "14px", color: "var(--foreground)", lineHeight: 1.7, whiteSpace: "pre-wrap" }}
-                      dangerouslySetInnerHTML={(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article")
+                      dangerouslySetInnerHTML={selectedAsset.formatId === "blog-article"
                         ? { __html: (selectedAsset.caption || selectedAsset.copy || "")
                             .replace(/^### (.+)$/gm, '<h3 style="font-size:15px;font-weight:600;color:var(--foreground);margin:20px 0 8px">$1</h3>')
                             .replace(/^## (.+)$/gm, '<h2 style="font-size:17px;font-weight:700;color:var(--foreground);margin:24px 0 10px">$1</h2>')
@@ -4355,9 +4342,9 @@ export function CampaignLab({ onAssetComplete, onSaveAssetToLibrary, initialProd
                         : undefined
                       }
                     >
-                      {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") ? undefined : (selectedAsset.caption || selectedAsset.copy)}
+                      {selectedAsset.formatId === "blog-article" ? undefined : (selectedAsset.caption || selectedAsset.copy)}
                     </div>
-                    {(selectedAsset.formatId === "blog-article" || selectedAsset.formatId === "linkedin-article") && (
+                    {selectedAsset.formatId === "blog-article" && (
                       <div className="flex items-center gap-3 mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
                         <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
                           {((selectedAsset.caption || selectedAsset.copy || "").split(/\s+/).length)} words

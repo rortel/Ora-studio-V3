@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { createPortal } from "react-dom";
 import {
   X, Send, Clock, Loader2, CheckCircle2, AlertCircle,
-  Instagram, Linkedin, Facebook, Twitter, Youtube, Plus, ExternalLink,
+  Instagram, Facebook, Twitter, Youtube, Plus, ExternalLink,
   Sparkles, PenLine, Crop,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,7 +40,6 @@ interface PublishModalProps {
 // ORA platform labels → backend /campaign/deploy expects these exact strings
 const PLATFORMS = [
   { id: "Instagram", label: "Instagram", icon: Instagram },
-  { id: "LinkedIn",  label: "LinkedIn",  icon: Linkedin  },
   { id: "Facebook",  label: "Facebook",  icon: Facebook  },
   { id: "Twitter/X", label: "X / Twitter", icon: Twitter },
   { id: "TikTok",    label: "TikTok",    icon: Youtube   },
@@ -49,7 +48,6 @@ const PLATFORMS = [
 
 const PLATFORM_BY_SLUG: Record<string, string> = {
   instagram: "Instagram",
-  linkedin: "LinkedIn",
   facebook: "Facebook",
   twitter: "Twitter/X",
   tiktok: "TikTok",
@@ -59,7 +57,6 @@ const PLATFORM_BY_SLUG: Record<string, string> = {
 // Native ratio per platform — used by /editor/reframe
 const PLATFORM_RATIO: Record<string, string> = {
   Instagram: "4:5",   // feed portrait
-  LinkedIn:  "16:9",
   Facebook:  "16:9",
   "Twitter/X": "16:9",
   TikTok:    "9:16",
@@ -518,8 +515,8 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
                   </div>
                   <div style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
                     {isFr
-                      ? "IG 4:5 · LinkedIn 16:9 · TikTok 9:16 · (via éditeur IA)"
-                      : "IG 4:5 · LinkedIn 16:9 · TikTok 9:16 · (via AI editor)"}
+                      ? "IG 4:5 · Facebook 16:9 · TikTok 9:16 · (via éditeur IA)"
+                      : "IG 4:5 · Facebook 16:9 · TikTok 9:16 · (via AI editor)"}
                   </div>
                 </div>
               </label>

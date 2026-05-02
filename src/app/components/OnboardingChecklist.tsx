@@ -198,7 +198,7 @@ export function OnboardingChecklist() {
                       Publish to socials
                     </div>
                     <div className="text-[11px] mt-0.5" style={{ color: "rgba(17,17,17,0.45)" }}>
-                      Coming soon — auto-publish to Instagram, LinkedIn, Facebook, TikTok.
+                      Coming soon — auto-publish to Instagram, Facebook, TikTok.
                     </div>
                   </div>
                 </li>

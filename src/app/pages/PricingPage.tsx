@@ -32,7 +32,7 @@ priceMonthly: 19,
       "60 posts / month",
       "Images + 5s videos",
       "Captions written for you",
-      "Instagram · LinkedIn · Facebook · TikTok",
+      "Instagram · Facebook · TikTok",
       "Auto-publish, one click",
       "Logo + text overlay editor",
     ],
@@ -157,7 +157,7 @@ export function PricingPage() {
           {[
             { title: "Brand Vault", body: "Studio and Agency learn your colours, your tone, your voice. Every post comes back on-brand. Creator works from a one-line brief." },
             { title: "What you get", body: "60 / 200 / 1 000 posts a month, ready to publish. Image or 5s video, captions written, sized for every platform." },
-            { title: "Team & API",  body: "Agency unlocks 3 seats, up to 5 brands in one account, and API access. Every plan posts straight to Instagram, LinkedIn, Facebook, TikTok." },
+            { title: "Team & API",  body: "Agency unlocks 3 seats, up to 5 brands in one account, and API access. Every plan posts straight to Instagram, Facebook, TikTok." },
           ].map((c, i) => (
             <div
               key={c.title}

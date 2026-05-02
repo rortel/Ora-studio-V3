@@ -23,7 +23,6 @@ function platformLabel(p: string): string {
   const s = (p || "").toLowerCase();
   if (s.includes("instagram-story"))  return "ig story";
   if (s.includes("instagram"))        return "ig feed";
-  if (s.includes("linkedin"))         return "linkedin";
   if (s.includes("facebook"))         return "facebook";
   if (s.includes("tiktok"))           return "tiktok";
   return p || "asset";
@@ -566,7 +565,6 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
   const TILES = [
     { platform: "IG · Feed",   dim: "1080×1080", gradient: "linear-gradient(135deg, #FFB088 0%, #FF5C39 100%)" },
     { platform: "IG · Story",  dim: "1080×1920", gradient: "linear-gradient(160deg, #F4C542 0%, #EC8926 100%)" },
-    { platform: "LinkedIn",    dim: "1200×1200", gradient: "linear-gradient(140deg, #1D4ED8 0%, #111111 100%)" },
     { platform: "TikTok",      dim: "1080×1920", gradient: "linear-gradient(145deg, #111111 0%, #FF5C39 100%)" },
     { platform: "Facebook",    dim: "1200×1200", gradient: "linear-gradient(135deg, #7C5CE0 0%, #1D4ED8 100%)" },
     { platform: "IG · Reel",   dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
@@ -672,7 +670,7 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
     {
       code: "creator", name: "Creator", price: 19, assets: 60,
       tagline: "You sell things on the side. We post for you.",
-      features: ["60 posts / month", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
+      features: ["60 posts / month", "Captions written for you", "IG · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
       highlight: false,
     },
     {
@@ -833,7 +831,7 @@ export function LandingPage() {
         imageSrc={mediaHero.imageSrc}
         eyebrow="v2.4 · 2,847 brands · 127,493 posts published"
         title={<>Drop a photo.<br/><span style={{ color: "#FF6B47" }}>We post for you.</span></>}
-        subtitle={<>6 posts ready for Instagram, LinkedIn, Facebook, TikTok. We make them. We publish them. You do something else.</>}
+        subtitle={<>6 posts ready for Instagram, Facebook, TikTok. We make them. We publish them. You do something else.</>}
         cta={
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"} onClick={() => trackEvent("cta_click", { location: "ship_section", dest: user ? "/hub/surprise" : "/login?mode=signup", authed: !!user })}>
@@ -870,7 +868,7 @@ export function LandingPage() {
       <MethodPanel
         eyebrow="03 / 03 · we publish"
         title={<>Done.</>}
-        subtitle={<>Six posts, image + 5s film, sized for every platform. One click and they're live on Instagram, LinkedIn, Facebook, TikTok.</>}
+        subtitle={<>Six posts, image + 5s film, sized for every platform. One click and they're live on Instagram, Facebook, TikTok.</>}
       >
         <ShipMockup assets={showcase.slice(0, 6).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
       </MethodPanel>

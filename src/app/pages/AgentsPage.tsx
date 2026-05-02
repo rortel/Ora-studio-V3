@@ -83,7 +83,7 @@ const agents: AgentDef[] = [
     layer: "creation",
     color: "#666666",
     expertise: ["Copywriting", "Brand voice", "Storytelling", "Headlines", "CTAs", "Hooks"],
-    description: "15 years at Publicis, BETC, Wieden+Kennedy. Respects vault tone scores to the decimal -- formality, warmth, boldness, technicality, humor. Platform-native rules for LinkedIn, Instagram, Twitter, Email, Blog, Video.",
+    description: "15 years at Publicis, BETC, Wieden+Kennedy. Respects vault tone scores to the decimal -- formality, warmth, boldness, technicality, humor. Platform-native rules for Instagram, Facebook, TikTok, Twitter, Email, Blog, Video.",
     signature: "If a competitor could use this exact text, I rewrite.",
   },
   {
@@ -133,7 +133,7 @@ const agents: AgentDef[] = [
     layer: "optimization",
     color: "#666666",
     expertise: ["Social media", "Platform algorithms", "Content adaptation"],
-    description: "Ex We Are Social, VaynerMedia. Same message, different expression. Adapts formality per platform (LinkedIn +1, Instagram -1, TikTok -2), respects character limits, hashtag counts, and platform-native conventions.",
+    description: "Ex We Are Social, VaynerMedia. Same message, different expression. Adapts formality per platform (Facebook +1, Instagram -1, TikTok -2), respects character limits, hashtag counts, and platform-native conventions.",
     signature: "Same message, different expression. Never copy-paste across platforms.",
   },
   {
@@ -143,7 +143,7 @@ const agents: AgentDef[] = [
     layer: "optimization",
     color: "#111111",
     expertise: ["Hashtag strategy", "Trend detection", "Publishing timing"],
-    description: "Generates 4-tier hashtag sets: brand-owned (1-2), niche-sector (5-10), trending-timely (2-3), and community-used (2-3). Per-platform counts (LinkedIn 3-5, Instagram 20-30, X 1-2). Optimal posting windows per platform.",
+    description: "Generates 4-tier hashtag sets: brand-owned (1-2), niche-sector (5-10), trending-timely (2-3), and community-used (2-3). Per-platform counts (Instagram 20-30, TikTok 4-6, X 1-2). Optimal posting windows per platform.",
     signature: "Relevance over reach. Platform-specific counts, not blanket hashtags.",
   },
   {
@@ -153,7 +153,7 @@ const agents: AgentDef[] = [
     layer: "optimization",
     color: "#111111",
     expertise: ["Content repurposing", "Multi-channel", "Format adaptation", "Shockwave"],
-    description: "Creates a SHOCKWAVE from one piece: 1 newsletter, 5 LinkedIn posts (different angles), 3 Instagram formats (carousel/single/story), 3 tweets, 1 video script, 1 blog outline. Each piece stands alone. Each piece is brand-compliant.",
+    description: "Creates a SHOCKWAVE from one piece: 1 newsletter, 5 Facebook posts (different angles), 3 Instagram formats (carousel/single/story), 3 tweets, 1 video script, 1 blog outline. Each piece stands alone. Each piece is brand-compliant.",
     signature: "From 1 input, produce everything. Each piece stands alone.",
   },
   {
@@ -208,7 +208,7 @@ const routingExamples = [
   { message: "Is this post on-brand?", agent: "Compliance Guard", confidence: 90 },
   { message: "Cascade this to every platform", agent: "Campaign Multiplier", confidence: 95 },
   { message: "What should we post this week?", agent: "Strategic Planner", confidence: 85 },
-  { message: "Adapt this for LinkedIn", agent: "Social Optimizer", confidence: 85 },
+  { message: "Adapt this for Facebook", agent: "Social Optimizer", confidence: 85 },
   { message: "Optimize this blog post for SEO", agent: "SEO Strategist", confidence: 95 },
   { message: "Who is our target audience really?", agent: "Audience Analyst", confidence: 85 },
   { message: "Best hashtags and posting time?", agent: "Hashtag & Timing", confidence: 90 },

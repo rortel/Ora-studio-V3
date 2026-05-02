@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { downloadAsset } from "../lib/asset-persistence";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, Clock,
-  Check, FileText, Calendar, Linkedin, Mail,
+  Check, FileText, Calendar, Mail,
   MessageSquare, Image, Loader2, Trash2, Video, Hash,
   Type, Eye, Play, Send, Download, AlertCircle, Rocket,
   ExternalLink, CheckCircle2, Instagram, Facebook, Twitter, Youtube, Clapperboard, RefreshCw,
@@ -17,7 +17,6 @@ import {
 
 // Platforms available for social connection
 const CAL_CONNECTABLE_PLATFORMS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "facebook", label: "Facebook", icon: Facebook },
   { id: "twitter", label: "Twitter/X", icon: Twitter },
@@ -63,13 +62,13 @@ const statusStyles: Record<string, { bg: string; text: string }> = {
   failed: { bg: "rgba(212,24,61,0.08)", text: "#d4183d" },
 };
 
-const channelIconMap: Record<string, typeof Linkedin> = {
-  LinkedIn: Linkedin, Email: Mail, "Twitter/X": MessageSquare, Instagram: Image,
+const channelIconMap: Record<string, typeof Mail> = {
+  Email: Mail, "Twitter/X": MessageSquare, Instagram: Image,
   Facebook: MessageSquare, TikTok: Video, YouTube: Play, Pinterest: Image,
 };
 
 const channelColors: Record<string, string> = {
-  LinkedIn: "#666666", Email: "#666666", "Twitter/X": "#666666", Instagram: "#666666",
+  Email: "#666666", "Twitter/X": "#666666", Instagram: "#666666",
   Facebook: "#666666", TikTok: "#666666", YouTube: "#666666", Pinterest: "#666666",
 };
 
@@ -92,7 +91,7 @@ function CalendarPageContent() {
   const [loading, setLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newChannel, setNewChannel] = useState("LinkedIn");
+  const [newChannel, setNewChannel] = useState("Instagram");
   const [newTime, setNewTime] = useState("09:00");
   const [creating, setCreating] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);

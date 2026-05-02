@@ -25,8 +25,8 @@ export function PulseIcon({ size = 24, className = "" }: { size?: number; classN
 
 export function DiffusionDiagram({ className = "" }: { className?: string }) {
   const targets = [
-    { label: "LinkedIn", x: 88, y: 5 }, { label: "Instagram", x: 95, y: 20 }, { label: "TikTok", x: 96, y: 38 },
-    { label: "Facebook", x: 95, y: 55 }, { label: "Stories", x: 93, y: 72 }, { label: "Reels", x: 88, y: 88 },
+    { label: "Instagram", x: 95, y: 8 }, { label: "TikTok", x: 96, y: 25 },
+    { label: "Facebook", x: 95, y: 45 }, { label: "Stories", x: 93, y: 65 }, { label: "Reels", x: 88, y: 88 },
   ];
   return (
     <div className={`relative w-full max-w-[560px] h-[280px] ${className}`}>
