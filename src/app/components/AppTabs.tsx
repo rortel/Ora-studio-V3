@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router";
-import { Sparkles, FolderOpen, Wand2, BookOpen, BarChart3, Zap } from "lucide-react";
+import { Sparkles, FolderOpen, Wand2, BookOpen, Zap } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { COLORS } from "./ora/tokens";
 
@@ -15,11 +15,15 @@ const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNod
   { id: "library",   label: "Library",     href: "/hub/library",   icon: <FolderOpen size={14} /> },
   { id: "edit",      label: "Edit",        href: "/hub/editor",    icon: <Wand2 size={14} /> },
   { id: "vault",     label: "Vault",       href: "/hub/vault",     icon: <BookOpen size={14} /> },
-  // Analytics surfaces post-performance metrics (engagement,
-  // reach, AI insights) that are already wired server-side. The page is
-  // RouteGuard-gated to Starter+; we render the tab for everyone and
-  // let the page itself handle the upgrade nudge for free-tier users.
-  { id: "analytics", label: "Analytics",   href: "/hub/analytics", icon: <BarChart3 size={14} /> },
+  // Analytics tab hidden from client navigation pending real engagement
+  // tracking. The current /hub/analytics page only surfaces Ora-internal
+  // production stats (campaigns started, brand health, generation volume)
+  // — useful internally but useless for a small-commerce owner who wants
+  // "is this post working?". The route + page code stay so admins can
+  // still hit /hub/analytics directly, and so the eventual rebuild around
+  // PostMetricsBadge data has a home. Re-add this tab once /pfm/post-metrics
+  // is validated to return real likes/comments across providers.
+  // { id: "analytics", label: "Analytics",   href: "/hub/analytics", icon: <BarChart3 size={14} /> },
 ];
 
 /**
