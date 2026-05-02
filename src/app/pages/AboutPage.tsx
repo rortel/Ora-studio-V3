@@ -94,8 +94,8 @@ export function AboutPage() {
                 icon: Shield, color: "#1D4ED8", bg: "#EEF2FF",
                 title: isFr ? "On poste pour toi" : "We post for you",
                 body: isFr
-                  ? "Instagram, LinkedIn, Facebook, TikTok — un clic et c'est en ligne. Pas de copier-coller, pas d'app à ouvrir l'une après l'autre."
-                  : "Instagram, LinkedIn, Facebook, TikTok — one click and it's live. No copy-paste, no flipping between apps.",
+                  ? "Instagram, Facebook, TikTok — un clic et c'est en ligne. Pas de copier-coller, pas d'app à ouvrir l'une après l'autre."
+                  : "Instagram, Facebook, TikTok — one click and it's live. No copy-paste, no flipping between apps.",
               },
             ].map(({ icon: Icon, color, bg, title, body }) => (
               <div

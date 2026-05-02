@@ -28,7 +28,7 @@ const defaultWeeklyData = [
 ];
 
 const defaultFormatPerformance = [
-  { format: "LinkedIn", pieces: 0, avgScore: 0 },
+  { format: "Instagram", pieces: 0, avgScore: 0 },
   { format: "Email", pieces: 0, avgScore: 0 },
   { format: "SMS", pieces: 0, avgScore: 0 },
   { format: "Newsletter", pieces: 0, avgScore: 0 },

@@ -1,6 +1,13 @@
 /**
  * Campaign Templates — shared definitions for Campaign Lab
  * Defines available templates, their formats, and metadata.
+ *
+ * LinkedIn was removed from the platform set per the focus call: Ora's
+ * strength is brand-locked visual generation (4:5, 1:1, 9:16), which
+ * doesn't match LinkedIn's text-heavy long-form preference. Removing it
+ * simplifies onboarding and reduces support load. The "Professional"
+ * template was rebuilt around Facebook + Instagram carousel for B2B
+ * authority instead.
  */
 
 export interface FormatDef {
@@ -24,12 +31,11 @@ export interface CampaignTemplate {
 }
 
 export const ALL_FORMATS: Record<string, FormatDef> = {
-  "linkedin-post":     { id: "linkedin-post",     platform: "LinkedIn",  formatName: "LinkedIn Post",     type: "image", aspectRatio: "16:9",  dimensions: "1200x627" },
   "instagram-post":    { id: "instagram-post",    platform: "Instagram", formatName: "Instagram Post",    type: "image", aspectRatio: "1:1",   dimensions: "1080x1080" },
   "instagram-story":   { id: "instagram-story",   platform: "Instagram", formatName: "Instagram Story",   type: "image", aspectRatio: "9:16",  dimensions: "1080x1920" },
+  "instagram-carousel":{ id: "instagram-carousel",platform: "Instagram", formatName: "Instagram Carousel",type: "image", aspectRatio: "1:1",   dimensions: "1080x1080" },
   "facebook-post":     { id: "facebook-post",     platform: "Facebook",  formatName: "Facebook Post",     type: "image", aspectRatio: "16:9",  dimensions: "1200x630" },
   "instagram-reel":    { id: "instagram-reel",    platform: "Instagram", formatName: "Instagram Reel",    type: "video", aspectRatio: "9:16",  dimensions: "1080x1920" },
-  "linkedin-video":    { id: "linkedin-video",    platform: "LinkedIn",  formatName: "LinkedIn Video",    type: "video", aspectRatio: "16:9",  dimensions: "1920x1080" },
   "tiktok-video":      { id: "tiktok-video",      platform: "TikTok",    formatName: "TikTok Video",      type: "video", aspectRatio: "9:16",  dimensions: "1080x1920" },
   "x-post":            { id: "x-post",            platform: "X",         formatName: "X Post",            type: "image", aspectRatio: "16:9",  dimensions: "1200x675" },
   "pinterest-pin":     { id: "pinterest-pin",     platform: "Pinterest", formatName: "Pinterest Pin",     type: "image", aspectRatio: "2:3",   dimensions: "1000x1500" },
@@ -42,16 +48,16 @@ export const TEMPLATES: CampaignTemplate[] = [
     name: "Full Blast",
     description: "All platforms, all formats. Maximum social reach.",
     icon: "Zap",
-    badge: "6 formats",
-    formats: ["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"],
+    badge: "5 formats",
+    formats: ["instagram-post", "instagram-story", "facebook-post", "instagram-reel", "tiktok-video"],
   },
   {
     id: "product-launch",
     name: "Product Launch",
     description: "Tease, reveal, convert. Full social coverage.",
     icon: "Rocket",
-    badge: "6 formats",
-    formats: ["linkedin-post", "instagram-post", "instagram-story", "facebook-post", "instagram-reel", "linkedin-video"],
+    badge: "5 formats",
+    formats: ["instagram-post", "instagram-story", "facebook-post", "instagram-reel", "tiktok-video"],
   },
   {
     id: "social-only",
@@ -64,26 +70,26 @@ export const TEMPLATES: CampaignTemplate[] = [
   {
     id: "professional",
     name: "Professional",
-    description: "B2B authority. LinkedIn + Facebook focused.",
+    description: "B2B authority. Facebook + Instagram carousel focused.",
     icon: "Briefcase",
     badge: "3 formats",
-    formats: ["linkedin-post", "linkedin-video", "facebook-post"],
+    formats: ["facebook-post", "instagram-carousel", "instagram-post"],
   },
   {
     id: "video-first",
     name: "Video First",
-    description: "Motion-driven storytelling. Reels, Videos, TikTok.",
+    description: "Motion-driven storytelling. Reels + TikTok.",
     icon: "Film",
-    badge: "3 formats",
-    formats: ["instagram-reel", "linkedin-video", "tiktok-video"],
+    badge: "2 formats",
+    formats: ["instagram-reel", "tiktok-video"],
   },
   {
     id: "awareness",
     name: "Awareness",
     description: "Maximize brand visibility. Image-first, multi-platform.",
     icon: "Eye",
-    badge: "5 formats",
-    formats: ["instagram-post", "facebook-post", "linkedin-post", "instagram-story", "x-post"],
+    badge: "4 formats",
+    formats: ["instagram-post", "facebook-post", "instagram-story", "x-post"],
   },
   {
     id: "custom",
@@ -96,7 +102,6 @@ export const TEMPLATES: CampaignTemplate[] = [
 ];
 
 export const PLATFORM_COLORS: Record<string, string> = {
-  LinkedIn:  "#666666",
   Instagram: "#666666",
   Facebook:  "#666666",
   TikTok:    "#666666",
@@ -106,7 +111,6 @@ export const PLATFORM_COLORS: Record<string, string> = {
 };
 
 export const PLATFORM_ICONS: Record<string, string> = {
-  LinkedIn:  "in",
   Instagram: "Ig",
   Facebook:  "Fb",
   TikTok:    "Tk",

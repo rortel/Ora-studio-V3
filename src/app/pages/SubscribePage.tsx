@@ -35,7 +35,7 @@ const PLANS: Record<PublicPlan, PlanDef> = {
     features: [
       "60 posts / month",
       "Images + 5s videos + captions",
-      "Instagram · LinkedIn · Facebook · TikTok",
+      "Instagram · Facebook · TikTok",
       "Auto-publish, one click",
       "Library downloads (ZIP)",
       "Logo + text overlay editor",

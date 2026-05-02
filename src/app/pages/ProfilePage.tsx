@@ -14,7 +14,7 @@ import {
   GitBranch, Zap, ChevronRight, Crown, AlertCircle,
   FolderOpen, Globe, Palette, BookOpen, Eye,
   Calendar, TrendingUp, Layers, PenTool,
-  Linkedin, Instagram, Facebook, Twitter, Plus, Loader2, Send, RefreshCw,
+  Instagram, Facebook, Twitter, Plus, Loader2, Send, RefreshCw,
 } from "lucide-react";
 
 /* ═══════════════════════════════════
@@ -124,7 +124,7 @@ const planData: Record<PlanTier, PlanDetails> = {
     storageUsed: 0,
     storageMax: 5,
     renewalDate: "--",
-    features: ["60 posts / month", "Images + 5s videos", "Captions written for you", "IG · LinkedIn · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
+    features: ["60 posts / month", "Images + 5s videos", "Captions written for you", "IG · Facebook · TikTok", "Auto-publish, one click", "Logo + text overlay editor"],
     lockedFeatures: ["Brand Vault — read your site", "Multi-brand", "Team seats", "API access"],
   },
   pro: {
@@ -167,7 +167,7 @@ const mockLibraryFree: LibraryAsset[] = [
 
 const mockLibraryAgency: LibraryAsset[] = [
   { id: "a1", type: "image", name: "Q2 Campaign — Hero Visual", date: "Today", source: "studio" },
-  { id: "a2", type: "text", name: "LinkedIn post — Product Launch", date: "Today", source: "remix" },
+  { id: "a2", type: "text", name: "Instagram post — Product Launch", date: "Today", source: "remix" },
   { id: "a3", type: "code", name: "Email template — April NL", date: "Yesterday", source: "studio" },
   { id: "a4", type: "film", name: "15s Social Teaser", date: "Yesterday", source: "hub" },
   { id: "a5", type: "sound", name: "Podcast intro jingle", date: "2 days ago", source: "hub" },
@@ -185,7 +185,7 @@ const mockActivityFree: ActivityItem[] = [
 const mockActivityAgency: ActivityItem[] = [
   { id: "act1", action: "Ran flow", detail: "Product Launch Campaign — 4 steps completed", timestamp: "32m ago", icon: GitBranch, iconColor: "var(--ora-signal)" },
   { id: "act2", action: "Remixed content", detail: "Competitor ad → 4 brand-compliant formats", timestamp: "1h ago", icon: RefreshCcw, iconColor: "#666666" },
-  { id: "act3", action: "Exported campaign", detail: "Q2 Launch — LinkedIn + Email + Ad + Stories", timestamp: "2h ago", icon: Download, iconColor: "#666666" },
+  { id: "act3", action: "Exported campaign", detail: "Q2 Launch — Instagram + Email + Ad + Stories", timestamp: "2h ago", icon: Download, iconColor: "#666666" },
   { id: "act4", action: "Brand score: 96/100", detail: "Newsletter copy validated by Compliance Guard", timestamp: "3h ago", icon: Shield, iconColor: "#666666" },
   { id: "act5", action: "Generated visuals", detail: "4 variants via AI Hub (Flux Pro, DALL-E 3)", timestamp: "Yesterday", icon: ImageIcon, iconColor: "var(--ora-signal)" },
   { id: "act6", action: "Updated Brand Vault", detail: "Added 12 new approved terms", timestamp: "Yesterday", icon: BookOpen, iconColor: "#999999" },
@@ -694,7 +694,6 @@ function LibraryTab({ library, isSubscriber }: { library: LibraryAsset[]; isSubs
    ═══════════════════════════════════ */
 
 const SOCIAL_PLATFORMS = [
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin, color: "#666666" },
   { id: "instagram", label: "Instagram", icon: Instagram, color: "#666666" },
   { id: "facebook", label: "Facebook", icon: Facebook, color: "#666666" },
   { id: "twitter", label: "Twitter/X", icon: Twitter, color: "#666666" },

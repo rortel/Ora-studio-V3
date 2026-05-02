@@ -30,11 +30,11 @@ import {
    resizes the canvas to exactly that platform's native spec.
    ────────────────────────────────────────────────────────────── */
 const FORMATS = [
-  { id: "square",      label: "1:1 Square",   w: 1080, h: 1080, hint: "IG Feed · LinkedIn" },
+  { id: "square",      label: "1:1 Square",   w: 1080, h: 1080, hint: "IG Feed · Facebook" },
   { id: "portrait",    label: "4:5 Portrait", w: 1080, h: 1350, hint: "IG Portrait" },
   { id: "story",       label: "9:16 Story",   w: 1080, h: 1920, hint: "IG Story · TikTok · Reels" },
-  { id: "wide",        label: "16:9 Wide",    w: 1920, h: 1080, hint: "LinkedIn Cover · YouTube" },
-  { id: "landscape",   label: "1.91:1",       w: 1200, h: 628,  hint: "OG card · LinkedIn post" },
+  { id: "wide",        label: "16:9 Wide",    w: 1920, h: 1080, hint: "YouTube · Facebook Cover" },
+  { id: "landscape",   label: "1.91:1",       w: 1200, h: 628,  hint: "OG card · Facebook post" },
 ] as const;
 
 type FormatId = typeof FORMATS[number]["id"];

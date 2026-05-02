@@ -324,8 +324,8 @@ interface CampaignPostVariant {
 
 interface CarouselSlide {
   slideNumber: number;
-  headline?: string;    // LinkedIn/Facebook: text overlay
-  body?: string;        // LinkedIn/Facebook: text overlay
+  headline?: string;    // Facebook: text overlay
+  body?: string;        // Facebook: text overlay
   imagePrompt?: string; // Prompt for this slide's image
   imageUrl?: string;    // Generated image URL
 }
@@ -344,7 +344,7 @@ interface CampaignPost {
   price?: string;
   features?: string[];
   aspectRatio?: string;
-  slides?: CarouselSlide[]; // Carousel slides (linkedin-carousel, instagram-carousel, etc.)
+  slides?: CarouselSlide[]; // Carousel slides (instagram-carousel, etc.)
   variants?: CampaignPostVariant[];
   selectedVariant?: number;
 }
@@ -755,7 +755,7 @@ export function StudioPage() {
           break;
         }
         case "generate-campaign": {
-          const { brief, formats = ["linkedin-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory, templateSelections, versionCount: reqVersions = 1 } = action.params;
+          const { brief, formats = ["instagram-post"], targetAudience, objective, toneOfVoice, contentAngle, keyMessages, callToAction, language = "auto", textModels: txtModels = ["gpt-4o"], imageModels: imgModels = ["photon-1"], videoModels: vidModels = ["ora-motion"], videoDuration: vidDuration = "5", productId, productUrl, visualStyle: campaignVisualStyle, startDate: campaignStartDate, duration: campaignDuration, theme: campaignTheme, templateCategory: tplCategory, templateSelections, versionCount: reqVersions = 1 } = action.params;
           const versionCount = Math.max(1, Math.min(7, typeof reqVersions === "number" ? reqVersions : parseInt(reqVersions, 10) || 1));
 
           // Build product context for the brief if a product is selected
@@ -2042,7 +2042,6 @@ export function StudioPage() {
 const SOCIAL_PLATFORMS_STUDIO = [
   { id: "instagram", label: "Instagram", icon: Instagram },
   { id: "facebook", label: "Facebook", icon: Facebook },
-  { id: "linkedin", label: "LinkedIn", icon: Linkedin },
   { id: "twitter", label: "X", icon: Twitter },
 ];
 
