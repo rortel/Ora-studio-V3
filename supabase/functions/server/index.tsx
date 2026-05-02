@@ -10541,7 +10541,16 @@ app.post("/analyze/surprise-me", async (c) => {
       const carouselSlides = (p as any).carouselSlides;
       if (carouselSlides && p.count > 0) {
         const totalSlides = p.count * carouselSlides;
-        return `- ${p.id} (${p.aspectRatio}) × ${p.count} carousel${p.count === 1 ? "" : "s"} = ${totalSlides} slides total: ${p.copyHint}\n  CAROUSEL RULES: each carousel = ${carouselSlides} slides. Label them 'slide-1' through 'slide-${carouselSlides}'. Slides MUST share consistent palette/lighting/mood (a continuous narrative — not random shots). Slide 1 = strongest hook (close-up, bold composition). Slides 2-${carouselSlides - 1} = different angles/moments/details of the same story (lifestyle scene, detail shot, in-context use, before/after, etc.). Slide ${carouselSlides} = closer/CTA-friendly composition (clean negative space, product hero). Group all slides for one carousel consecutively in the shots array.`;
+        return `- ${p.id} (${p.aspectRatio}) × ${p.count} carousel${p.count === 1 ? "" : "s"} = ${totalSlides} slides total: ${p.copyHint}
+  CAROUSEL RULES (NON-NEGOTIABLE — read carefully):
+  • Each carousel = ${carouselSlides} slides. Label them 'slide-1' through 'slide-${carouselSlides}'. Group all slides for one carousel consecutively in the shots array.
+  • SCENE CONSISTENCY — all slides MUST show the product at the SAME relative scale (product occupies a similar % of the frame, ±15%). Same lens family (don't jump from extreme close-up to wide environment). Same lighting (golden hour stays golden hour across slides — no day/night mixing). Same palette family. Slide 1 establishes the canonical scale; slides 2-${carouselSlides} respect it.
+  • SLIDE ROLES:
+    - Slide 1 = HOOK with TEXT OVERLAY. Image is a clean photo (no rendered text). overlayText = a punchy headline 3-7 words that grabs attention. overlayPosition='center' or 'top'. overlayStyle='headline'.
+    - Slides 2 to ${carouselSlides - 1} = VALUE/STORY photos with optional small overlay. Each shot tells a different angle/moment of the same story (lifestyle scene, product detail, in-context use, before/after). overlayText optional — when present, 4-10 words highlighting one benefit. overlayPosition typically 'bottom'. overlayStyle='value-prop'.
+    - Slide ${carouselSlides} = CTA with TEXT OVERLAY. Clean composition with negative space at bottom. overlayText = direct call to action 2-5 words (e.g. 'Tap to shop', 'Disponible aujourd'hui', 'Comment SIZE'). overlayPosition='bottom'. overlayStyle='cta'.
+  • IMAGE PROMPTS for carousel slides MUST be clean photos with NO rendered text whatsoever — text overlays are rendered separately by the frontend on top of the image, so the image-gen models must NOT bake any letters, signs, billboards, posters, or wordmarks into the photo. The hard NO-TEXT RULE applies even more strictly here.
+  • OUTPUT FIELDS (in addition to the standard shot schema): every carousel shot MUST include "overlayText" (string, the editable text), "overlayPosition" ('top'|'center'|'bottom'), "overlayStyle" ('headline'|'value-prop'|'cta'|'caption'). Use empty string for overlayText on slides that should have no overlay.`;
       }
       return `- ${p.id} (${p.aspectRatio}) × ${p.count}: ${p.copyHint}`;
     }).join("\n");
@@ -10605,8 +10614,11 @@ OUTPUT JSON:
       "subject": "ultra-specific subject in frame in ENGLISH",
       "twistElement": "3-8 word label for the visual twist of THIS shot in ENGLISH. Pick ANY type fitting the creativity level: photographic ('low angle golden hour', 'top-down marble counter', 'blue-hour cobblestone'), graphic ('navy gradient wash', 'thin crocodile-green frame', 'oversized brand-colour ribbon', 'vintage tricolour grain'), or surreal at level 4 ('floating brand-colour spheres', 'scale-distorted brand-colour wave', 'mixed-media brand-collage'). REQUIRED: every graphic/surreal twist MUST name the BRAND COLOUR or BRAND TYPOGRAPHIC FEEL it uses (e.g. 'navy gradient wash', not 'gradient wash'; 'tricolour ribbon', not 'ribbon overlay'). For type='product' shots: NO text-based twists (banned: 'oversized typography overlay', 'magazine-cover title', 'neon sign with words', 'billboard headline', 'sale tag with text'). Use colour blocks, ribbons, frames, shapes — NOT letters.",
       "promptText": "for type='product': final generation prompt 60-130 words${styleDirective ? ` that MUST open with the PICKED STYLE descriptors (lighting/surfaces/palette/mood from the style lock) and then weave` : ` weaving`} scene + subject + brand DA + platform framing + copyHint + the twistElement. Product stays photo-real. STRICT: contains NO rendered text, NO wordmarks, NO signage with words, NO billboards/posters/magazine-cover titles, NO neon signs spelling words, NO headlines, NO speech bubbles. See HARD NO-TEXT RULE above. Magazine energy comes from saturated colour fields, oversized graphic shapes (not letters), and sale-band colour blocks without rendered text. — for type='text-card': describe the typography poster Ideogram should generate — text strings strictly capped at 1-3 ASCII words (NO accents, NO French diacritics like é/è/à/ç — image-gen models mangle them; if the source word is French, transliterate or pick an English equivalent), brand palette colours by name, font feel${styleDirective ? ` (consistent with the picked style — Editorial = serif gravitas, Magazine = condensed bold display, Minimal = thin centred sans, etc.)` : ` (bold sans, classic serif, condensed display)`}, background${styleDirective ? ` consistent with the picked style's surface/palette guidance` : ` (solid colour, gradient, minimal pattern)`}. NO photo composition needed. Example good text-cards: 'NEW DROP', 'SALE -20%', 'OPENING FRIDAY'. Example BAD: 'Le BBQ avec du tempérament' (too long, French accents), 'GRAND OUVERTURE' (too long).",
-      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type."${withCaption ? `,
-      "caption": "long-form on-platform caption text in ${lang === "fr" ? "French" : "English"} that ACTIVELY SELLS THE PRODUCT. Required structure: (1) HOOK — first sentence grabs attention with a concrete detail, surprise, or question (no 'discover the new...' clichés). (2) BENEFIT BLOCK — 2-4 sentences naming the product by name + its specific value prop (what problem does it solve, why this is different from alternatives, who it's for). Use the product's actual material/cut/colour/feature. NO abstract praise like 'elegant' or 'iconic'. (3) CTA — one direct call to action ('shop now', 'pre-order', 'tap the link', 'comment SIZE for stock'). (4) Hashtags — 3-7 relevant tags, brand + category + 1-2 trending, ONLY on instagram-feed, instagram-story, tiktok, or facebook (never linkedin). LENGTH PER PLATFORM: instagram-feed 80-150 words, instagram-story 30-60 words (more concise — story is fleeting), tiktok 30-80 words (punchy, trending energy), linkedin 100-200 words (professional, thought-leadership angle, no hashtags), facebook 80-150 words (conversational). TONE PER PLATFORM: instagram-feed = warm + visual; instagram-story = casual urgent ('out today', 'last 24h'); tiktok = trend-aware, punchy, slangy ok; linkedin = professional, expertise frame ('here's what most people miss about X'); facebook = community + storytelling. NEVER use the BANNED VOCABULARY listed above (elegance, timeless, iconic, etc.) — those signal nothing. The caption must make a real human want to click."` : ""}
+      "motion": "short motion brief in ENGLISH (10-30 words) describing how this shot would move IF it were animated — camera move (slow push-in, orbit, rack focus), subject motion (wind, steam, particles), atmosphere (lightleak, parallax). The product stays identical to the first frame; only the world moves. Used only on film-format shots; ignored otherwise. Set to '' for text-card type.",
+      "overlayText": "FOR CAROUSEL SLIDES ONLY — the editable text rendered as HTML overlay on top of this slide's image. Slide 1 = 3-7 word headline hook. Slides 2..N-1 = 4-10 word value prop (or empty). Last slide = 2-5 word CTA. Use the same language as the rest of the campaign (${lang === "fr" ? "French" : "English"}). Empty string '' for non-carousel shots OR carousel slides that should have no overlay.",
+      "overlayPosition": "FOR CAROUSEL SLIDES ONLY — 'top' | 'center' | 'bottom'. Hook headlines = 'center' or 'top'. Value props = 'bottom'. CTA = 'bottom'. Empty string '' for non-carousel shots.",
+      "overlayStyle": "FOR CAROUSEL SLIDES ONLY — 'headline' | 'value-prop' | 'cta' | 'caption'. Drives typography weight on the frontend. Empty string '' for non-carousel shots."${withCaption ? `,
+      "caption": "long-form on-platform caption text in ${lang === "fr" ? "French" : "English"} that ACTIVELY SELLS THE PRODUCT. Required structure: (1) HOOK — first sentence grabs attention with a concrete detail, surprise, or question (no 'discover the new...' clichés). (2) BENEFIT BLOCK — 2-4 sentences naming the product by name + its specific value prop (what problem does it solve, why this is different from alternatives, who it's for). Use the product's actual material/cut/colour/feature. NO abstract praise like 'elegant' or 'iconic'. (3) CTA — one direct call to action ('shop now', 'pre-order', 'tap the link', 'comment SIZE for stock'). (4) Hashtags — 3-7 relevant tags, brand + category + 1-2 trending, ONLY on instagram-feed, instagram-story, tiktok, or facebook. LENGTH PER PLATFORM: instagram-feed 80-150 words, instagram-story 30-60 words (more concise — story is fleeting), tiktok 30-80 words (punchy, trending energy), facebook 80-150 words (conversational). NEVER use the BANNED VOCABULARY listed above (elegance, timeless, iconic, etc.) — those signal nothing. The caption must make a real human want to click. For carousel platforms, this caption is the SHARED post caption (not per-slide) — only emit it on slide-1; subsequent slides for the same carousel set caption to ''."` : ""}
     }
     // exactly ${totalShots} shots, honoring the per-platform counts above
   ]
@@ -10678,6 +10690,14 @@ OUTPUT JSON:
       // should be rendered as one swipeable group on the frontend.
       carouselGroupId?: string;
       carouselSlideIndex?: number;
+      // V2: editable text overlay for carousel slides. Image is generated
+      // CLEAN (no rendered text) and the overlay is rendered as HTML on
+      // top by the frontend, so the user can edit inline without
+      // regenerating the image. overlayText carries the actual copy;
+      // overlayPosition/overlayStyle are layout/typography hints.
+      overlayText?: string;
+      overlayPosition?: "top" | "center" | "bottom";
+      overlayStyle?: "headline" | "value-prop" | "cta" | "caption";
     };
     const ratioSlug = (r: string) => r.replace(/[/:]/g, "x");
     const jobs: Job[] = [];
@@ -10703,6 +10723,10 @@ OUTPUT JSON:
       const promptText   = String(sh?.promptText || "").trim();
       const caption      = withCaption ? String(sh?.caption || "").trim() : "";
       const motion       = format === "film" ? String(sh?.motion || "").trim() : "";
+      // V2 carousel overlay fields — only meaningful when this is a carousel slide.
+      const rawOverlayText     = String(sh?.overlayText || "").trim();
+      const rawOverlayPosition = String(sh?.overlayPosition || "").trim();
+      const rawOverlayStyle    = String(sh?.overlayStyle || "").trim();
       // Default to 'product' when LLM omits the type — keeps the existing
       // pipeline behaviour for legacy shot lists. text-card needs to be
       // explicit AND a non-film shot (text-cards aren't animated).
@@ -10731,7 +10755,16 @@ OUTPUT JSON:
       const baseName = `${slug(brandPrefix)}_${campaignSlug}_${preset.id}_${label}${slideSuffix}_${ratioSlug(preset.aspectRatio)}`;
       const fileName      = `${baseName}.jpg`;
       const videoFileName = `${baseName}.mp4`;
-      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format, type, carouselGroupId, carouselSlideIndex });
+      // Sanitise overlay fields — only attach to carousel slides; reject
+      // unknown enum values so the frontend doesn't have to guard.
+      const overlayText = carouselGroupId ? rawOverlayText : undefined;
+      const overlayPosition = carouselGroupId && (["top", "center", "bottom"] as const).includes(rawOverlayPosition as any)
+        ? (rawOverlayPosition as "top" | "center" | "bottom")
+        : (carouselGroupId ? "bottom" : undefined);
+      const overlayStyle = carouselGroupId && (["headline", "value-prop", "cta", "caption"] as const).includes(rawOverlayStyle as any)
+        ? (rawOverlayStyle as "headline" | "value-prop" | "cta" | "caption")
+        : (carouselGroupId ? "value-prop" : undefined);
+      jobs.push({ platform: preset.id, aspectRatio: preset.aspectRatio, label, scene, subject, twistElement, promptText, caption, fileName, videoFileName, motion, format, type, carouselGroupId, carouselSlideIndex, overlayText, overlayPosition, overlayStyle });
     }
     if (jobs.length === 0) {
       return c.json({ success: false, error: "Concept returned no usable shots" }, 502);
@@ -10787,9 +10820,11 @@ OUTPUT JSON:
       twistElement?: string; caption?: string; motion?: string;
       status: "ok" | "failed"; imageUrl?: string; videoUrl?: string;
       error?: string; provider?: string; videoProvider?: string;
-      // Carousel grouping passed through from job → item so frontend can
-      // render slides as a single swipeable carousel.
+      // Carousel grouping + V2 editable overlay passed through from job → item.
       carouselGroupId?: string; carouselSlideIndex?: number;
+      overlayText?: string;
+      overlayPosition?: "top" | "center" | "bottom";
+      overlayStyle?: "headline" | "value-prop" | "cta" | "caption";
     }> = [];
     // Wall-clock budget for the entire still phase. Supabase Edge gateway
     // cuts off around 150s; we leave 30s headroom for film generation +
@@ -10820,6 +10855,7 @@ OUTPUT JSON:
             twistElement: job.twistElement, caption: job.caption,
             status: "failed", error: "Time budget exceeded — please re-run",
             carouselGroupId: job.carouselGroupId, carouselSlideIndex: job.carouselSlideIndex,
+            overlayText: job.overlayText, overlayPosition: job.overlayPosition, overlayStyle: job.overlayStyle,
           });
         }
         break;
@@ -11004,13 +11040,21 @@ OUTPUT JSON:
         }
         return result;
       }));
-      // Pass carousel grouping info from job → item so the frontend can
-      // render carousel slides as one swipeable group. The map preserves
-      // result shape from tryOnce; we only enrich with carousel fields.
+      // Pass carousel grouping + overlay fields from job → item so the
+      // frontend can render carousel slides as one swipeable group with
+      // editable text on top. The map preserves result shape from tryOnce;
+      // we only enrich with carousel fields.
       const enrichedBatchRes = batchRes.map((res, idx) => {
         const job = batch[idx];
         if (job?.carouselGroupId !== undefined) {
-          return { ...res, carouselGroupId: job.carouselGroupId, carouselSlideIndex: job.carouselSlideIndex };
+          return {
+            ...res,
+            carouselGroupId: job.carouselGroupId,
+            carouselSlideIndex: job.carouselSlideIndex,
+            overlayText: job.overlayText,
+            overlayPosition: job.overlayPosition,
+            overlayStyle: job.overlayStyle,
+          };
         }
         return res;
       });

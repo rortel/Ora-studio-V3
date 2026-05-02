@@ -74,6 +74,12 @@ interface PackItem {
   // Items sharing the same carouselGroupId belong to one carousel and are
   // rendered as a single swipeable group in the result UI.
   carouselGroupId?: string; carouselSlideIndex?: number;
+  // V2: editable text overlay rendered as HTML on top of the slide image.
+  // Image is generated CLEAN (no rendered text) so the user can edit
+  // inline without regenerating. Local edits live in editedOverlays state.
+  overlayText?: string;
+  overlayPosition?: "top" | "center" | "bottom";
+  overlayStyle?: "headline" | "value-prop" | "cta" | "caption";
 }
 interface Pack {
   campaignName: string; campaignSlug: string;
@@ -171,6 +177,11 @@ function SurpriseContent() {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<"idle" | "concept" | "generating" | "done">("idle");
   const [pack, setPack] = useState<Pack | null>(null);
+  // V2 carousel: per-slide overlay text edits (keyed by fileName since each
+  // slide has a unique filename). When a user edits the inline overlay, the
+  // edit lives here and takes precedence over the LLM-generated text from
+  // the server. Survives the lifetime of the result view; reset on new pack.
+  const [editedOverlays, setEditedOverlays] = useState<Record<string, string>>({});
   // Request ID for the in-flight generation. Used by GenerationProgress to
   // poll /analyze/surprise-me-progress and replace the time-windowed phase
   // approximation with the real backend phase.
@@ -473,6 +484,7 @@ function SurpriseContent() {
     setBusy(true);
     setStage("concept");
     setPack(null);
+    setEditedOverlays({}); // wipe carousel overlay edits from previous run
     // Generate a per-run request id the backend uses as the progress KV
     // key. Browsers from ~2022 expose crypto.randomUUID; we fall back to a
     // timestamp+random combo for older runtimes (and for SSR safety).
@@ -1453,8 +1465,22 @@ function SurpriseContent() {
                               </button>
                             </div>
                           )}
+                          {/* V2 carousel: editable text overlay on top of the
+                              clean photo. The user can click the text to edit
+                              inline; edits live in editedOverlays state and
+                              survive without regenerating the image. */}
+                          {ok && it.carouselGroupId && (it.overlayText !== undefined) && (
+                            <SlideOverlay
+                              imageReady={!!it.imageUrl}
+                              fileName={it.fileName}
+                              text={editedOverlays[it.fileName] ?? it.overlayText ?? ""}
+                              position={it.overlayPosition || "bottom"}
+                              styleHint={it.overlayStyle || "value-prop"}
+                              onChange={(next) => setEditedOverlays(prev => ({ ...prev, [it.fileName]: next }))}
+                            />
+                          )}
                           {clickable && (
-                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
                                  style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 100%)" }}>
                               <span className="inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-[11.5px] font-medium"
                                     style={{ background: "rgba(255,255,255,0.95)", color: TEXT, backdropFilter: "blur(8px)", letterSpacing: "0.02em" }}>
@@ -1961,5 +1987,77 @@ function Tag({ label, value }: { label: string; value: string }) {
     <span className="px-2.5 h-7 rounded-full inline-flex items-center" style={{ background: "#F3F4F6", color: MUTED }}>
       {label}: <b className="ml-1" style={{ color: TEXT }}>{value}</b>
     </span>
+  );
+}
+
+/**
+ * SlideOverlay — V2 inline-editable text overlay for carousel slides.
+ *
+ * Renders the LLM-generated overlayText (or the user's edit) on top of
+ * the clean slide image. Click the text to edit inline; blur saves to
+ * parent state. Typography is driven by `styleHint`:
+ *   headline  → big bold display font (slide 1 hook)
+ *   value-prop → medium weight (slides 2..N-1)
+ *   cta        → bold uppercase, accent color (last slide)
+ *   caption    → smaller muted text
+ *
+ * Position comes from `position`: top|center|bottom (with flex anchors).
+ * The overlay sits OVER the image with a soft gradient backdrop for
+ * legibility regardless of the photo's contrast.
+ */
+function SlideOverlay({
+  imageReady, fileName, text, position, styleHint, onChange,
+}: {
+  imageReady: boolean;
+  fileName: string;
+  text: string;
+  position: "top" | "center" | "bottom";
+  styleHint: "headline" | "value-prop" | "cta" | "caption";
+  onChange: (next: string) => void;
+}) {
+  if (!imageReady) return null;
+  const positionClass =
+    position === "top"    ? "items-start pt-[8%]"
+    : position === "center" ? "items-center"
+    : "items-end pb-[8%]";
+  const gradient =
+    position === "top"    ? "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 60%)"
+    : position === "center" ? "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.15) 100%)"
+    : "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 60%)";
+  const styleProps =
+    styleHint === "headline"
+      ? { fontSize: "clamp(20px, 4vw, 36px)", fontWeight: 800, lineHeight: 1.05, letterSpacing: "-0.01em", textTransform: "none" as const }
+    : styleHint === "cta"
+      ? { fontSize: "clamp(15px, 2.6vw, 22px)", fontWeight: 800, lineHeight: 1.2, letterSpacing: "0.04em", textTransform: "uppercase" as const }
+    : styleHint === "caption"
+      ? { fontSize: "clamp(11px, 1.6vw, 14px)", fontWeight: 500, lineHeight: 1.3, letterSpacing: "0", textTransform: "none" as const }
+    /* value-prop */
+      : { fontSize: "clamp(15px, 2.4vw, 22px)", fontWeight: 700, lineHeight: 1.2, letterSpacing: "-0.005em", textTransform: "none" as const };
+  return (
+    <div
+      className={`absolute inset-0 flex justify-center px-[6%] pointer-events-none ${positionClass}`}
+      style={{ background: text ? gradient : "transparent" }}
+    >
+      <div
+        contentEditable
+        suppressContentEditableWarning
+        onClick={(e) => e.stopPropagation()}
+        onBlur={(e) => onChange(e.currentTarget.textContent || "")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); }
+        }}
+        className="pointer-events-auto cursor-text outline-none rounded-md px-3 py-1.5 text-center transition-colors hover:bg-white/5 focus:bg-white/10 max-w-[88%]"
+        style={{
+          color: "#FFFFFF",
+          textShadow: "0 2px 12px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5)",
+          fontFamily: styleHint === "headline" ? `"Bagel Fat One", "Inter", sans-serif` : `"Inter", sans-serif`,
+          ...styleProps,
+        }}
+        title="Click to edit text"
+        data-slide={fileName}
+      >
+        {text || "Tap to add text"}
+      </div>
+    </div>
   );
 }
