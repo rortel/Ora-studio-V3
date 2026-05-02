@@ -10376,7 +10376,10 @@ app.post("/analyze/surprise-me", async (c) => {
       "instagram-feed":     "image",
       "instagram-story":    "image",  // Story default flipped to image — most small-commerce stories are static visuals with overlay text, not video
       "instagram-carousel": "image",  // Carousel is always image (every slide)
+      "instagram-reel":     "film",   // Reel is intrinsically motion — film-only
       "facebook":           "image",
+      "facebook-story":     "image",
+      "facebook-carousel":  "image",  // Same as IG carousel — image only
       "tiktok":             "film",
     };
     // mediaType is an OPTIONAL global override:
@@ -10473,7 +10476,16 @@ app.post("/analyze/surprise-me", async (c) => {
       // planner is instructed (below) to produce slide-1..slide-N as a
       // continuous story sharing palette/mood. carouselSlides=5 by default.
       { id: "instagram-carousel", aspectRatio: "1:1",  label: "Instagram Carousel", copyHint: "one slide of a 5-slide narrative carousel — slides share consistent palette, lighting and mood; each slide shows a different angle/moment of the same story", carouselSlides: 5 },
+      // Reel = vertical video specifically optimized for the Reels feed.
+      // Same 9:16 ratio as Story but the planner treats it as motion-first
+      // (the format=film default forces the film generation path).
+      { id: "instagram-reel",     aspectRatio: "9:16", label: "Instagram Reel",     copyHint: "vertical 9:16 motion clip — strong opening hook in first 1-2 seconds, leave bottom 20% clean for UI/captions" },
       { id: "facebook",           aspectRatio: "1:1",  label: "Facebook",           copyHint: "social-share composition, mobile-feed safe" },
+      // Facebook also supports stories and carousels with similar specs to
+      // their IG counterparts. Distinct platform IDs so the planner emits
+      // FB-specific copy (more conversational, longer captions vs IG).
+      { id: "facebook-story",     aspectRatio: "9:16", label: "Facebook Story",     copyHint: "vertical Facebook story — leave top/bottom 15% clean, conversational tone" },
+      { id: "facebook-carousel",  aspectRatio: "1:1",  label: "Facebook Carousel",  copyHint: "one slide of a 5-slide Facebook narrative carousel — slides share consistent palette/lighting/mood; conversational tone vs IG's visual-only", carouselSlides: 5 },
       { id: "tiktok",             aspectRatio: "9:16", label: "TikTok",             copyHint: "punchy vertical, leave the bottom 20% clean for UI overlay" },
     ];
     // Resolve the platform subset the caller asked for (default: all 5).

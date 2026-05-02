@@ -41,24 +41,34 @@ const PLATFORM_OPTIONS = [
   { id: "instagram-feed",     label: "Instagram Feed",     emoji: "📸" },
   { id: "instagram-story",    label: "Instagram Story",    emoji: "🎬" },
   { id: "instagram-carousel", label: "Instagram Carousel", emoji: "🖼️" },
+  { id: "instagram-reel",     label: "Instagram Reel",     emoji: "🎥" },
   { id: "facebook",           label: "Facebook",           emoji: "👥" },
+  { id: "facebook-story",     label: "Facebook Story",     emoji: "📖" },
+  { id: "facebook-carousel",  label: "Facebook Carousel",  emoji: "🗂️" },
   { id: "tiktok",             label: "TikTok",             emoji: "🎵" },
 ];
 
 /** Default format suggested per platform — matches the server's PLATFORM_FORMAT.
  *  The user can flip any selected platform's format by tapping the inline icon.
- *  Carousel platforms are always image (no film toggle). */
+ *  Carousel/reel platforms are locked to one type (no film toggle). */
 const DEFAULT_PLATFORM_FORMAT: Record<string, "image" | "film"> = {
   "instagram-feed":     "image",
   "instagram-story":    "image",  // small-commerce stories are mostly static images with overlay
   "instagram-carousel": "image",  // carousels are always image (every slide)
+  "instagram-reel":     "film",   // reel = motion-first by definition
   "facebook":           "image",
+  "facebook-story":     "image",
+  "facebook-carousel":  "image",  // FB carousel = same shape as IG carousel
   "tiktok":             "film",
 };
 
-/** Platforms that don't support the image/film toggle — they're locked to one type.
- *  Currently: carousel (always image, multi-slide). */
-const FORMAT_LOCKED_PLATFORMS = new Set<string>(["instagram-carousel"]);
+/** Platforms that don't support the image/film toggle — format is intrinsic.
+ *  Carousel = always image (multi-slide). Reel = always film (motion-first). */
+const FORMAT_LOCKED_PLATFORMS = new Set<string>([
+  "instagram-carousel",
+  "facebook-carousel",
+  "instagram-reel",
+]);
 
 const PLATFORM_META: Record<string, { label: string; emoji: string }> = Object.fromEntries(
   PLATFORM_OPTIONS.map((p) => [p.id, { label: p.label, emoji: p.emoji }]),
