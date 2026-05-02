@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -1405,25 +1405,55 @@ function SurpriseContent() {
                     <span className="text-[12px]" style={{ color: MUTED }}>· {items.length}</span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-                    {/* Carousel slides are sorted together so they appear
-                        adjacent in the grid. Each slide gets a "Slide N/M"
-                        badge so the user understands they belong to a single
-                        swipeable post on Instagram. */}
-                    {[...items].sort((a, b) => {
-                      const ag = a.carouselGroupId || "";
-                      const bg = b.carouselGroupId || "";
-                      if (ag !== bg) return ag.localeCompare(bg);
-                      return (a.carouselSlideIndex ?? 0) - (b.carouselSlideIndex ?? 0);
-                    }).map((it, localIdx) => {
-                      const globalIdx = flatItems.indexOf(it);
-                      const ok = it.status === "ok";
-                      const clickable = ok && (it.imageUrl || it.videoUrl);
-                      // Carousel grouping context — count slides in this group
-                      // from the platform items array (not the sorted view).
-                      const carouselTotal = it.carouselGroupId
-                        ? items.filter(x => x.carouselGroupId === it.carouselGroupId).length
-                        : 0;
-                      const slideNum = (it.carouselSlideIndex ?? 0) + 1;
+                    {/* Render units: a single item OR a carousel group rendered
+                        as ONE swipeable tile. Carousels mirror Instagram's
+                        actual UX (one card with horizontal snap scrolling +
+                        dots) so the user understands at a glance "this is a
+                        single post with 5 slides", not five separate creatives. */}
+                    {(() => {
+                      const sorted = [...items].sort((a, b) => {
+                        const ag = a.carouselGroupId || "";
+                        const bg = b.carouselGroupId || "";
+                        if (ag !== bg) return ag.localeCompare(bg);
+                        return (a.carouselSlideIndex ?? 0) - (b.carouselSlideIndex ?? 0);
+                      });
+                      const seenGroups = new Set<string>();
+                      const units: Array<{ kind: "single"; item: PackItem } | { kind: "carousel"; groupId: string; slides: PackItem[] }> = [];
+                      for (const it of sorted) {
+                        if (it.carouselGroupId) {
+                          if (seenGroups.has(it.carouselGroupId)) continue;
+                          seenGroups.add(it.carouselGroupId);
+                          units.push({
+                            kind: "carousel",
+                            groupId: it.carouselGroupId,
+                            slides: sorted.filter(x => x.carouselGroupId === it.carouselGroupId),
+                          });
+                        } else {
+                          units.push({ kind: "single", item: it });
+                        }
+                      }
+                      return units.map((unit, unitIdx) => {
+                        if (unit.kind === "carousel") {
+                          return (
+                            <CarouselTile
+                              key={unit.groupId}
+                              slides={unit.slides}
+                              flatItems={flatItems}
+                              setLightboxIndex={setLightboxIndex}
+                              editedOverlays={editedOverlays}
+                              setEditedOverlays={setEditedOverlays}
+                              setPublishTarget={setPublishTarget}
+                              navigate={navigate}
+                            />
+                          );
+                        }
+                        const it = unit.item;
+                        const localIdx = unitIdx;
+                        const globalIdx = flatItems.indexOf(it);
+                        const ok = it.status === "ok";
+                        const clickable = ok && (it.imageUrl || it.videoUrl);
+                        const carouselTotal = 0;
+                        const slideNum = 0;
                       return (
                       <div key={localIdx} className="rounded-2xl overflow-hidden relative group" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
                         <div
@@ -1574,7 +1604,8 @@ function SurpriseContent() {
                         </div>
                       </div>
                       );
-                    })}
+                    });
+                    })()}
                   </div>
                 </section>
               );
@@ -1997,6 +2028,212 @@ function Tag({ label, value }: { label: string; value: string }) {
     <span className="px-2.5 h-7 rounded-full inline-flex items-center" style={{ background: "#F3F4F6", color: MUTED }}>
       {label}: <b className="ml-1" style={{ color: TEXT }}>{value}</b>
     </span>
+  );
+}
+
+/**
+ * CarouselTile — render a carousel group as ONE Instagram-style swipeable card.
+ *
+ * Mirrors how Instagram actually shows carousels: one card with horizontal
+ * scroll-snap + dots indicator + a single caption + one set of actions for
+ * the whole post. Replaces the prior approach of rendering each slide as
+ * a separate adjacent tile, which made carousels read as "five separate
+ * creatives" instead of one multi-slide post.
+ *
+ * Each slide inside the carousel still carries its editable text overlay
+ * (from V2). The Publish button currently publishes slide 1 only — full
+ * multi-asset publish to Post for Me is the next phase (PublishModal
+ * needs to accept asset arrays).
+ */
+function CarouselTile({
+  slides, flatItems, setLightboxIndex, editedOverlays, setEditedOverlays, setPublishTarget, navigate,
+}: {
+  slides: PackItem[];
+  flatItems: PackItem[];
+  setLightboxIndex: (idx: number) => void;
+  editedOverlays: Record<string, string>;
+  setEditedOverlays: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setPublishTarget: (t: any) => void;
+  navigate: (path: string, opts?: any) => void;
+}) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  // Track which slide is centered in the scroll-snap container. Updates
+  // the dots indicator + the active slide pointer for the action buttons.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const idx = Math.round(el.scrollLeft / el.clientWidth);
+      if (idx !== activeSlide && idx >= 0 && idx < slides.length) setActiveSlide(idx);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [activeSlide, slides.length]);
+
+  const goToSlide = (idx: number) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTo({ left: idx * el.clientWidth, behavior: "smooth" });
+  };
+
+  const total = slides.length;
+  const ratio = slides[0]?.aspectRatio || "1:1";
+  const captionItem = slides[0]; // caption only on slide 0
+  const currentSlide = slides[activeSlide];
+  const allReady = slides.every(s => s.status === "ok" && s.imageUrl);
+
+  return (
+    <div className="rounded-2xl overflow-hidden relative" style={{ background: "#fff", border: `1px solid ${BORDER}` }}>
+      {/* Slides scroller — horizontal scroll-snap, mobile-native swipe */}
+      <div className="relative">
+        <div
+          ref={scrollerRef}
+          className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide"
+          style={{ scrollBehavior: "smooth", scrollSnapType: "x mandatory" }}
+        >
+          {slides.map((s, idx) => {
+            const ok = s.status === "ok";
+            const globalIdx = flatItems.indexOf(s);
+            return (
+              <div key={s.fileName} className="shrink-0 w-full snap-center relative" style={{ scrollSnapAlign: "center" }}>
+                {ok && s.imageUrl ? (
+                  <img
+                    src={s.imageUrl}
+                    alt={s.fileName}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-auto block cursor-zoom-in"
+                    style={{ aspectRatio: ratio.replace(":", " / ") }}
+                    onClick={() => setLightboxIndex(globalIdx)}
+                  />
+                ) : (
+                  <div className="w-full flex items-center justify-center"
+                    style={{ aspectRatio: ratio.replace(":", " / "), background: "#FFF5F0" }}>
+                    <div className="text-[11px] font-mono uppercase tracking-wider px-3 text-center" style={{ color: "#B91C1C" }}>
+                      slide {idx + 1} failed — {(s.error || "no image").slice(0, 60)}
+                    </div>
+                  </div>
+                )}
+                {/* Editable overlay text per slide */}
+                {ok && s.overlayText !== undefined && (
+                  <SlideOverlay
+                    imageReady={!!s.imageUrl}
+                    fileName={s.fileName}
+                    text={editedOverlays[s.fileName] ?? s.overlayText ?? ""}
+                    position={s.overlayPosition || "bottom"}
+                    styleHint={s.overlayStyle || "value-prop"}
+                    onChange={(next) => setEditedOverlays(prev => ({ ...prev, [s.fileName]: next }))}
+                  />
+                )}
+                {/* Slide counter top-right */}
+                <div className="absolute top-2 right-2 px-2 h-6 rounded-full inline-flex items-center text-[10.5px] font-mono tabular-nums"
+                  style={{ background: "rgba(0,0,0,0.55)", color: "#fff", backdropFilter: "blur(6px)" }}>
+                  {idx + 1}/{total}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Nav arrows (desktop) — hidden on mobile where swipe is native */}
+        {activeSlide > 0 && (
+          <button
+            onClick={() => goToSlide(activeSlide - 1)}
+            className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full items-center justify-center cursor-pointer"
+            style={{ background: "rgba(255,255,255,0.92)", color: TEXT, backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
+            aria-label="Previous slide"
+          >
+            <ChevronLeft size={16} />
+          </button>
+        )}
+        {activeSlide < total - 1 && (
+          <button
+            onClick={() => goToSlide(activeSlide + 1)}
+            className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full items-center justify-center cursor-pointer"
+            style={{ background: "rgba(255,255,255,0.92)", color: TEXT, backdropFilter: "blur(8px)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
+            aria-label="Next slide"
+          >
+            <ChevronRight size={16} />
+          </button>
+        )}
+
+        {/* Dots indicator — Instagram-native pattern */}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full"
+          style={{ background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)" }}>
+          {slides.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => goToSlide(idx)}
+              className="w-1.5 h-1.5 rounded-full transition-all"
+              style={{
+                background: idx === activeSlide ? "#fff" : "rgba(255,255,255,0.45)",
+                width: idx === activeSlide ? 14 : 6,
+              }}
+              aria-label={`Go to slide ${idx + 1}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Caption (single, from slide 0) */}
+      {captionItem?.caption && (
+        <div className="px-3 pt-3 pb-1 text-[12.5px] leading-snug" style={{ color: TEXT }}>
+          {captionItem.caption}
+          <button
+            onClick={() => { navigator.clipboard.writeText(captionItem.caption!); toast.success("Caption copied"); }}
+            className="ml-1 text-[11px] hover:underline align-middle"
+            style={{ color: MUTED }}
+            aria-label="Copy caption"
+          >
+            copy
+          </button>
+        </div>
+      )}
+
+      {/* Actions row — applies to the carousel as a whole */}
+      <div className="px-3 py-2 flex items-center gap-1 flex-wrap">
+        <span className="text-[11px] font-mono flex-1 min-w-0" style={{ color: MUTED }}>
+          🖼️ Carousel · {total} slides
+        </span>
+        {allReady && (
+          <>
+            <button
+              onClick={() => {
+                // Download every slide as a separate file (sequenced so the
+                // browser's download manager doesn't block batch downloads).
+                slides.forEach((s, idx) => {
+                  if (s.imageUrl) setTimeout(() => downloadAsset(s.imageUrl!, s.fileName, "image"), idx * 250);
+                });
+                toast.success(`Downloading ${total} slides...`);
+              }}
+              className="shrink-0 h-7 px-2.5 rounded-full hover:bg-black/5 flex items-center justify-center gap-1 text-[11px]"
+              aria-label="Download all slides" title="Download all slides as separate JPGs">
+              <Download size={11} /> All
+            </button>
+            <button
+              onClick={() => {
+                if (!currentSlide?.imageUrl) return;
+                // Currently publishes the active slide only — full carousel
+                // publish to Post for Me requires PublishModal to accept
+                // asset arrays. Tracked separately.
+                setPublishTarget({
+                  imageUrl: currentSlide.imageUrl,
+                  videoUrl: currentSlide.videoUrl,
+                  defaultCaption: captionItem?.caption || "",
+                });
+                toast.info(`Publishing slide ${activeSlide + 1} only — multi-slide publish coming soon`);
+              }}
+              className="shrink-0 h-7 px-2.5 rounded-full flex items-center justify-center gap-1 text-[11px]"
+              style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
+              aria-label="Publish active slide" title="Publish the active slide (multi-slide publish coming soon)">
+              <Send size={11} /> Publish
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
