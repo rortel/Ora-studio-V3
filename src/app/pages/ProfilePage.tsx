@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
+import { DeleteAccountModal } from "../components/DeleteAccountModal";
 import { useI18n } from "../lib/i18n";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
@@ -859,6 +860,7 @@ function SocialAccountsSection() {
 
 function SettingsTab({ isSubscriber, authEmail, userName, userCompany }: { isSubscriber: boolean; authEmail?: string; userName?: string; userCompany?: string }) {
   const { t } = useI18n();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const sections = [
     {
       title: t("profile.settingsProfile"),
@@ -909,10 +911,11 @@ function SettingsTab({ isSubscriber, authEmail, userName, userCompany }: { isSub
               <p style={{ fontSize: "13px", color: "var(--foreground)" }}>{t("profile.deleteAccount")}</p>
               <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{t("profile.deleteAccountDesc")}</p>
             </div>
-            <button className="px-3 py-1.5 rounded-md border text-destructive hover:bg-destructive/5 cursor-pointer transition-colors" style={{ borderColor: "rgba(212,24,61,0.2)", fontSize: "11px", fontWeight: 500 }}>{t("profile.deleteBtn")}</button>
+            <button onClick={() => setShowDeleteModal(true)} className="px-3 py-1.5 rounded-md border text-destructive hover:bg-destructive/5 cursor-pointer transition-colors" style={{ borderColor: "rgba(212,24,61,0.2)", fontSize: "11px", fontWeight: 500 }}>{t("profile.deleteBtn")}</button>
           </div>
         </div>
       </div>
+      <DeleteAccountModal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} />
     </div>
   );
 }
