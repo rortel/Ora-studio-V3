@@ -17373,40 +17373,124 @@ app.post("/vault/analyze", async (c) => {
 
     // ── Helper: fetch HTML ──
     async function fetchHtml(pageUrl: string): Promise<string> {
+      const realisticUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+      // 1. Jina (fast, cached, free tier)
       const jinaKey = Deno.env.get("JINA_API_KEY");
       if (jinaKey) {
         try {
-          const res = await fetch(`https://r.jina.ai/${pageUrl}`, {
+          const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
             headers: { Authorization: `Bearer ${jinaKey}`, Accept: "text/html", "X-No-Cache": "true", "X-Return-Format": "html", "X-Proxy": "auto" },
-          });
+          }, 12_000);
           if (res.ok) { const h = await res.text(); if (h.length > 200) return h; }
         } catch (e) { console.log(`[vault] Jina HTML fail ${pageUrl}: ${e}`); }
       }
+
+      // 2. Firecrawl (handles JS-rendered SPAs)
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (firecrawlKey) {
+        try {
+          const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${firecrawlKey}` },
+            body: JSON.stringify({ url: pageUrl, formats: ["rawHtml", "html"], waitFor: 2500, timeout: 15000 }),
+          }, 20_000);
+          if (res.ok) {
+            const data = await res.json();
+            const h = data.data?.rawHtml || data.data?.html || "";
+            if (h.length > 200) { console.log(`[vault] Firecrawl HTML ok ${pageUrl} (${h.length} chars)`); return h; }
+          } else {
+            console.log(`[vault] Firecrawl HTML status ${res.status} for ${pageUrl}`);
+          }
+        } catch (e) { console.log(`[vault] Firecrawl HTML fail ${pageUrl}: ${e}`); }
+      }
+
+      // 3. ScrapingBee (premium proxy + JS rendering — handles bot-protected sites)
+      const scrapingbeeKey = Deno.env.get("SCRAPINGBEE_API_KEY");
+      if (scrapingbeeKey) {
+        try {
+          const params = new URLSearchParams({ api_key: scrapingbeeKey, url: pageUrl, render_js: "true", premium_proxy: "true", block_ads: "true", wait: "2500" });
+          const res = await fetchWithTimeout(`https://app.scrapingbee.com/api/v1/?${params}`, { method: "GET" }, 25_000);
+          if (res.ok) {
+            const h = await res.text();
+            if (h.length > 200) { console.log(`[vault] ScrapingBee HTML ok ${pageUrl} (${h.length} chars)`); return h; }
+          } else {
+            console.log(`[vault] ScrapingBee HTML status ${res.status} for ${pageUrl}`);
+          }
+        } catch (e) { console.log(`[vault] ScrapingBee HTML fail ${pageUrl}: ${e}`); }
+      }
+
+      // 4. Direct fetch with realistic UA (last resort)
       try {
-        const res = await fetch(pageUrl, { headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" }, redirect: "follow" });
+        const res = await fetchWithTimeout(pageUrl, {
+          headers: {
+            "User-Agent": realisticUA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+          },
+          redirect: "follow",
+        }, 12_000);
         if (res.ok) return await res.text();
       } catch (e) { console.log(`[vault] Direct fail ${pageUrl}: ${e}`); }
       return "";
     }
 
-    // ── Helper: get clean text via Jina ──
+    // ── Helper: get clean text via Jina, with Firecrawl/ScrapingBee fallback ──
     async function fetchJinaText(pageUrl: string): Promise<string> {
+      // 1. Jina
       const jinaKey = Deno.env.get("JINA_API_KEY");
-      if (!jinaKey) return "";
-      const tJina = Date.now();
-      try {
-        const res = await fetch(`https://r.jina.ai/${pageUrl}`, {
-          headers: { Authorization: `Bearer ${jinaKey}`, Accept: "application/json", "X-No-Cache": "true", "X-Proxy": "auto", "X-Target-Selector": "body" },
-        });
-        if (res.ok) {
-          logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: getProviderCost("jina/reader", "text"), revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: true }).catch(() => {});
-          const d = await res.json(); return d.data?.content || d.data?.text || d.content || "";
+      if (jinaKey) {
+        const tJina = Date.now();
+        try {
+          const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+            headers: { Authorization: `Bearer ${jinaKey}`, Accept: "application/json", "X-No-Cache": "true", "X-Proxy": "auto", "X-Target-Selector": "body" },
+          }, 12_000);
+          if (res.ok) {
+            logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: getProviderCost("jina/reader", "text"), revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: true }).catch(() => {});
+            const d = await res.json();
+            const txt = d.data?.content || d.data?.text || d.content || "";
+            if (txt.length > 50) return txt;
+          } else {
+            logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
+          }
+        } catch (e) {
+          console.log(`[vault] Jina text fail ${pageUrl}: ${e}`);
+          logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
         }
-        logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
-      } catch (e) {
-        console.log(`[vault] Jina text fail ${pageUrl}: ${e}`);
-        logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
       }
+
+      // 2. Firecrawl markdown (handles JS-rendered SPAs)
+      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
+      if (firecrawlKey) {
+        try {
+          const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${firecrawlKey}` },
+            body: JSON.stringify({ url: pageUrl, formats: ["markdown"], onlyMainContent: true, waitFor: 2500, timeout: 15000 }),
+          }, 20_000);
+          if (res.ok) {
+            const data = await res.json();
+            const md = data.data?.markdown || data.data?.content || "";
+            if (md.length > 50) { console.log(`[vault] Firecrawl text ok ${pageUrl} (${md.length} chars)`); return md; }
+          }
+        } catch (e) { console.log(`[vault] Firecrawl text fail ${pageUrl}: ${e}`); }
+      }
+
+      // 3. ScrapingBee (text-stripped from premium-proxy render)
+      const scrapingbeeKey = Deno.env.get("SCRAPINGBEE_API_KEY");
+      if (scrapingbeeKey) {
+        try {
+          const params = new URLSearchParams({ api_key: scrapingbeeKey, url: pageUrl, render_js: "true", premium_proxy: "true", block_ads: "true", wait: "2500" });
+          const res = await fetchWithTimeout(`https://app.scrapingbee.com/api/v1/?${params}`, { method: "GET" }, 25_000);
+          if (res.ok) {
+            let html = await res.text();
+            html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ");
+            const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+            if (text.length > 50) { console.log(`[vault] ScrapingBee text ok ${pageUrl} (${text.length} chars)`); return text; }
+          }
+        } catch (e) { console.log(`[vault] ScrapingBee text fail ${pageUrl}: ${e}`); }
+      }
+
       return "";
     }
 
@@ -17525,14 +17609,33 @@ app.post("/vault/analyze", async (c) => {
             batch.map(async (path) => {
               const subUrl = `${baseUrl.origin}${path}`;
               try {
-                // Fetch HTML directly (faster than Jina for sub-pages)
-                const subHtmlRes = await fetch(subUrl, {
-                  headers: { "User-Agent": "Mozilla/5.0 (compatible; ORA-Bot/1.0)" },
-                  signal: AbortSignal.timeout(6000),
-                  redirect: "follow",
-                });
-                if (!subHtmlRes.ok) return "";
-                const subHtml = await subHtmlRes.text();
+                // Fetch HTML with realistic UA first (fast, free)
+                let subHtml = "";
+                try {
+                  const subHtmlRes = await fetch(subUrl, {
+                    headers: {
+                      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                      "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+                    },
+                    signal: AbortSignal.timeout(6000),
+                    redirect: "follow",
+                  });
+                  if (subHtmlRes.ok) subHtml = await subHtmlRes.text();
+                } catch {}
+
+                // If direct fetch was blocked or thin, fall back to Jina (cheap)
+                if (subHtml.length < 200) {
+                  const jinaKey = Deno.env.get("JINA_API_KEY");
+                  if (jinaKey) {
+                    try {
+                      const jr = await fetchWithTimeout(`https://r.jina.ai/${subUrl}`, {
+                        headers: { Authorization: `Bearer ${jinaKey}`, Accept: "text/html", "X-Return-Format": "html", "X-Proxy": "auto" },
+                      }, 10_000);
+                      if (jr.ok) subHtml = await jr.text();
+                    } catch {}
+                  }
+                }
                 if (subHtml.length < 200) return "";
 
                 // Extract visual data (colors, fonts, social, logo, images)
