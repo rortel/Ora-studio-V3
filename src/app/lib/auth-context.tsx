@@ -111,9 +111,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const signingOut = useRef(false);
   const currentUserIdRef = useRef<string | null>(null);
+  // Tracks the last token we fetched a profile for. Prevents duplicate
+  // profile fetches when Supabase fires INITIAL_SESSION + TOKEN_REFRESHED
+  // events for the same session, which used to thrash the network during
+  // long-running flows (Surprise Me polling, Campaign Lab generation).
+  const lastFetchedTokenRef = useRef<string | null>(null);
 
   const clearAuthState = useCallback(() => {
     currentUserIdRef.current = null;
+    lastFetchedTokenRef.current = null;
     setUser(null);
     setProfile(null);
     setAccessToken(null);
@@ -189,25 +195,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [normalizeProfile]);
 
   const refreshProfile = useCallback(async () => {
-    if (accessToken && !signingOut.current) await fetchProfile(accessToken);
+    if (accessToken && !signingOut.current) {
+      // Caller explicitly asked for a fresh profile (e.g. after a
+      // generation that consumed credits). Mark this token as fetched
+      // so the next onAuthStateChange dedup check is correct.
+      lastFetchedTokenRef.current = accessToken;
+      await fetchProfile(accessToken);
+    }
   }, [accessToken, fetchProfile]);
 
   useEffect(() => {
     let mounted = true;
 
+    // Hydrate from the persisted session once. onAuthStateChange will also
+    // fire INITIAL_SESSION right after subscribing, so we use
+    // `lastFetchedTokenRef` below to skip the duplicate profile fetch.
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted || signingOut.current) return;
       if (data.session?.user) {
         const u = data.session.user;
+        const tok = data.session.access_token;
         currentUserIdRef.current = u.id;
         setUser({
           id: u.id,
           email: u.email ?? "",
           name: (u.user_metadata as any)?.name ?? (u.user_metadata as any)?.full_name ?? "",
         });
-        setAccessToken(data.session.access_token);
+        setAccessToken(tok);
+        lastFetchedTokenRef.current = tok;
         // Wait for profile before marking loading as done
-        await fetchProfile(data.session.access_token);
+        await fetchProfile(tok);
       }
       if (mounted) setIsLoading(false);
     });
@@ -222,27 +239,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (session?.user) {
-        const u = session.user;
-        const previousUserId = currentUserIdRef.current;
-        const userChanged = previousUserId !== null && previousUserId !== u.id;
-        
-        if (userChanged) {
-          console.log("[Auth] User changed from", previousUserId, "to", u.id, "-- clearing stale profile");
-          setProfile(null);
-        }
-        
-        currentUserIdRef.current = u.id;
-        setUser({
-          id: u.id,
-          email: u.email ?? "",
-          name: (u.user_metadata as any)?.name ?? (u.user_metadata as any)?.full_name ?? "",
-        });
-        setAccessToken(session.access_token);
-        fetchProfile(session.access_token);
-      } else {
+      if (!session?.user) {
         clearAuthState();
+        if (mounted) setIsLoading(false);
+        return;
       }
+
+      const u = session.user;
+      const tok = session.access_token;
+      const previousUserId = currentUserIdRef.current;
+      const userChanged = previousUserId !== null && previousUserId !== u.id;
+
+      if (userChanged) {
+        console.log("[Auth] User changed from", previousUserId, "to", u.id, "-- clearing stale profile");
+        setProfile(null);
+        lastFetchedTokenRef.current = null;
+      }
+
+      currentUserIdRef.current = u.id;
+      setUser({
+        id: u.id,
+        email: u.email ?? "",
+        name: (u.user_metadata as any)?.name ?? (u.user_metadata as any)?.full_name ?? "",
+      });
+      // Only update accessToken state when the value actually changed.
+      // Re-setting the same string would still rerun any consumer effect
+      // that depends on `accessToken` (Surprise Me progress poller),
+      // canceling and restarting the interval on every TOKEN_REFRESHED.
+      setAccessToken((prev) => (prev === tok ? prev : tok));
+
+      // Decide whether a profile refetch is warranted. TOKEN_REFRESHED
+      // produces a new JWT for the same user — no profile data has
+      // changed, so we keep the existing one. INITIAL_SESSION right
+      // after mount is a duplicate of the getSession() bootstrap above
+      // (we already fetched for this exact token).
+      const isTokenRefresh = event === "TOKEN_REFRESHED";
+      const alreadyFetched = lastFetchedTokenRef.current === tok;
+      const shouldFetch = userChanged || (!isTokenRefresh && !alreadyFetched);
+
+      if (shouldFetch) {
+        lastFetchedTokenRef.current = tok;
+        fetchProfile(tok);
+      } else {
+        console.log(`[Auth] skipping profile fetch (event=${event}, userChanged=${userChanged}, alreadyFetched=${alreadyFetched})`);
+      }
+
       if (mounted) setIsLoading(false);
     });
 
