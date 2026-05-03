@@ -32122,35 +32122,59 @@ app.post("/products/scrape-url", async (c) => {
     let jinaImages: string[] = [];
 
     if (jinaKey) {
-      try {
-        console.log(`[products/scrape-url] Fetching via Jina Reader...`);
-        const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
-          method: "GET",
-          headers: {
+      // Two-pass Jina (same chain as /vault/analyze):
+      //   1. Browser engine — renders JS-heavy SPAs (Shopify, Wix, Squarespace,
+      //      heavy product pages with client-side hydration). Slower but works
+      //      on bot-protected sites.
+      //   2. Default engine — fast path for static/SSR pages (most WordPress
+      //      and lightweight Shopify themes). Used as fallback when browser
+      //      engine fails or returns thin content.
+      const tryJina = async (mode: "browser" | "default"): Promise<{ markdown: string; images: string[] } | null> => {
+        try {
+          const headers: Record<string, string> = {
             Authorization: `Bearer ${jinaKey}`,
             Accept: "application/json",
             "X-No-Cache": "true",
-            "X-Proxy": "auto",
-          },
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (jinaRes.ok) {
-          const jinaData = await jinaRes.json();
-          html = jinaData.data?.content || jinaData.data?.text || jinaData.content || "";
-          // Jina returns images in structured data — these are typically the
-          // content-relevant images (not chrome/nav), which is exactly what
-          // we want as a high-confidence seed for the scoring pass below.
-          const jinaImgs = jinaData.data?.images || [];
-          if (Array.isArray(jinaImgs)) {
-            for (const img of jinaImgs) {
-              const imgUrl = typeof img === "string" ? img : img?.url || img?.src;
-              if (imgUrl && imgUrl.startsWith("http")) jinaImages.push(imgUrl);
+            "X-Timeout": "20",
+          };
+          if (mode === "browser") headers["X-Engine"] = "browser";
+          const t0 = Date.now();
+          const res = await fetch(`https://r.jina.ai/${url}`, {
+            method: "GET",
+            headers,
+            signal: AbortSignal.timeout(mode === "browser" ? 25_000 : 12_000),
+          });
+          if (!res.ok) {
+            console.log(`[products/scrape-url] Jina(${mode}) status ${res.status} in ${Date.now() - t0}ms`);
+            return null;
+          }
+          const data = await res.json();
+          const md = data.data?.content || data.data?.text || data.content || "";
+          const imgs: string[] = [];
+          const arr = data.data?.images || [];
+          if (Array.isArray(arr)) {
+            for (const img of arr) {
+              const u = typeof img === "string" ? img : img?.url || img?.src;
+              if (u && u.startsWith("http")) imgs.push(u);
             }
           }
-          console.log(`[products/scrape-url] Jina: ${html.length} chars, ${jinaImages.length} structured images`);
+          console.log(`[products/scrape-url] Jina(${mode}): ${md.length} chars, ${imgs.length} images in ${Date.now() - t0}ms`);
+          return { markdown: md, images: imgs };
+        } catch (e) {
+          console.log(`[products/scrape-url] Jina(${mode}) error: ${e}`);
+          return null;
         }
-      } catch (jinaErr) {
-        console.log(`[products/scrape-url] Jina fetch failed: ${jinaErr}`);
+      };
+
+      let result = await tryJina("browser");
+      if (!result || result.markdown.length < 100) {
+        if (result) console.log(`[products/scrape-url] Jina(browser) thin (${result.markdown.length} chars), trying default engine`);
+        const fallback = await tryJina("default");
+        if (fallback && fallback.markdown.length > (result?.markdown.length || 0)) result = fallback;
+      }
+      if (result) {
+        html = result.markdown;
+        jinaImages = result.images;
       }
     }
 
