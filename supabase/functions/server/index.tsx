@@ -10819,16 +10819,17 @@ ${contextBlock ? contextBlock + "\n\n" : ""}HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
 ${(() => {
-  // INTENT LOCK — when the user picked one of the product-promoting intents
-  // (Promo / Lancement / Témoignage), 100 % of shots MUST be type="product".
-  // Without this rule, the planner happily emits text-cards like "NEW DROP"
-  // typography, which is useless without the actual product visible. The
-  // detection key is the rich English string written by the chip on the
-  // client (see SurprisePage INTENTS).
+  // PRODUCT-IN-EVERY-SHOT RULE — when the merchant gave us a product photo
+  // OR a product-promoting intent (Promo/Lancement/Témoignage), the product
+  // MUST appear in every shot. Templates (Magazine, Editorial, Studio…) are
+  // RESPECTED — but their typography/graphic treatments are framed AROUND
+  // the product, never instead of it. A pure "NEW DROP" poster with no
+  // product visible is useless to a merchant promoting a specific item.
   const productIntents = ["Promotion:", "Product launch:", "Customer testimonial"];
   const isProductIntent = !!brief && productIntents.some(p => brief.includes(p));
-  if (!isProductIntent) return "";
-  return `- INTENT LOCK (NON-NEGOTIABLE): the user picked a product-promoting intent (Promo / Lancement / Témoignage — see brief). EVERY shot in this pack MUST be type="product". ZERO type="text-card" shots. A "NEW DROP" typography poster without the product visible is useless to a merchant promoting a specific item. If no productImageUrl is provided, still produce type="product" shots — use lifestyle/scene/abstract product imagery that visually anchors what the brief describes (e.g. a denim jacket on a wooden chair, a perfume bottle on a marble counter, a plate of pasta on a wooden table). The product (or a clear stand-in for it) MUST be the visual hero of every shot.`;
+  const hasProductPhoto = !!productRef;
+  if (!hasProductPhoto && !isProductIntent) return "";
+  return `- PRODUCT-IN-EVERY-SHOT RULE (NON-NEGOTIABLE): ${hasProductPhoto ? "the merchant provided a product photo." : "the merchant picked a product-promoting intent (Promo / Lancement / Témoignage)."} EVERY shot in this pack — including type="text-card" — MUST show the product as the visual hero. Templates and styles (Magazine, Editorial, Studio, etc.) are respected; their typography/graphic treatments overlay or frame the product, they NEVER replace it. A pure typography poster with "no other elements" is FORBIDDEN when a product context exists. Concretely: a Magazine "NEW DROP" shot must show the actual product with the headline overlaid, not a typo-only card. ${!hasProductPhoto ? "Without an explicit productImageUrl, render a credible scene/lifestyle/packshot of the product TYPE described in the brief (e.g. 'a denim double-button top on a wooden chair') and overlay the typography on top." : "The product reference photo (productImageUrl) is the visual anchor — every promptText must instruct the model to keep the product photo-real and prominently visible, even when the picked style emphasises typography."}`;
 })()}
 - HARD NO-TEXT RULE for type="product" shots — NON-NEGOTIABLE. Image-gen models hallucinate text (mangled letters, missing accents, wrong case). To protect brand quality, the promptText for type="product" shots MUST NOT request any rendered text strings, wordmarks, billboard copy, neon signs spelling words, headline overlays, magazine cover titles, posters with words, signage with text, garment text/tags, screen text, sticker text, or speech bubbles. The product's own native packaging text (preserved from the reference photo) is the only text allowed — and it stays implicit (the model preserves it from image_ref, you don't re-describe it). Magazine-style energy in a type="product" shot must come from SATURATED COLOUR FIELDS, OVERSIZED GRAPHIC SHAPES (not letters), BOLD COMPOSITIONAL ASYMMETRY, and SALE-BAND COLOUR BLOCKS (without rendered text). Reserve all text rendering for type="text-card" shots where the model is expected to handle typography.
 ${styleDirective ? `- PICKED STYLE LOCK (NON-NEGOTIABLE): the user picked a specific aesthetic from the gallery (see PICKED STYLE in CONTEXT). EVERY shot's promptText MUST open with that style's signature descriptors — its lighting, surfaces, palette cues, mood vocabulary — BEFORE the scene-specific details. Honour the "Avoid:" clauses verbatim. This style overrides any conflicting brand mood/photo-style guidance from the brand vault. If the picked style is "Editorial" (cinematic, marble, side-lighting), do NOT propose bright daylight studio shots even if the brand vault says "clean studio". The style wins.` : ""}
