@@ -10849,6 +10849,25 @@ ${(() => {
   if (!hasProductPhoto && !isProductIntent) return "";
   return `- PRODUCT-IN-EVERY-SHOT RULE (NON-NEGOTIABLE): ${hasProductPhoto ? "the merchant provided a product photo." : "the merchant picked a product-promoting intent (Promo / Lancement / Témoignage)."} EVERY shot in this pack — including type="text-card" — MUST show the product as the visual hero. Templates and styles (Magazine, Editorial, Studio, etc.) are respected; their typography/graphic treatments overlay or frame the product, they NEVER replace it. A pure typography poster with "no other elements" is FORBIDDEN when a product context exists. Concretely: a Magazine "NEW DROP" shot must show the actual product with the headline overlaid, not a typo-only card. ${!hasProductPhoto ? "Without an explicit productImageUrl, render a credible scene/lifestyle/packshot of the product TYPE described in the brief (e.g. 'a denim double-button top on a wooden chair') and overlay the typography on top." : "The product reference photo (productImageUrl) is the visual anchor — every promptText must instruct the model to keep the product photo-real and prominently visible, even when the picked style emphasises typography."}`;
 })()}
+${(() => {
+  // PROMO-VISIBILITY RULE — when the merchant picked the "Promo" intent
+  // (and usually a discount chip like "−20 %"), the OFFER must be visible
+  // at a glance on EVERY shot. Until this rule was added, the planner
+  // routed promo briefs into generic lifestyle scenes that didn't surface
+  // any sale signal, defeating the whole point of the intent.
+  if (!brief || !brief.includes("Promotion:")) return "";
+  // Try to extract the discount fragment ("20% off", "30% off", "Buy one
+  // get one free", "Free shipping", "This week only") so the rule can
+  // name the exact offer the planner has to honour.
+  const discountMatch = brief.match(/\b(\d{1,2}% off|Buy one get one free|Free shipping|This (?:week|weekend) only)\b/i);
+  const discountWord = discountMatch ? discountMatch[1] : "the offer named in the brief";
+  return `- PROMO-VISIBILITY RULE (NON-NEGOTIABLE): the merchant picked a Promo intent. The offer (${discountWord}) MUST surface at a glance on every shot:
+  • Every type='product' shot MUST include a SALE-BAND COLOUR BLOCK as the twistElement — a saturated rectangle/diagonal stripe in a brand-palette colour covering ~15-25% of the frame at a corner or edge. NO rendered text inside the band (NO-TEXT RULE still applies); the band is the visual signal "promo is live", text comes from the carousel overlay layer or a text-card.
+  • At least ONE type='text-card' shot in the pack MUST render the discount itself in 1-3 ASCII characters/words: when the offer is a percentage, the text-card is exactly that percentage written as ASCII (e.g. "-20%", "-30%", "-50%"); when the offer is BOGO or free shipping, use "BOGO" or "FREE SHIP". This is the headline of the pack — make the discount the hero of that one card.
+  • Carousel HOOK slides (slide-1) MUST surface the offer in the overlayText (e.g. "20% off this week", "−30% — final days"). Carousel CTA slides (last slide) MUST repeat the offer + an action verb in the overlayText (e.g. "Shop the sale · ends Sunday", "Get 20% off — link in bio").
+  • CAPTIONS for promo shots MUST mention the offer + a deadline or reason-to-act in the first 2 sentences. No abstract "discover our new collection" phrasings — name the discount.
+  • Promo packshots prefer plain backdrops (white seamless, saturated brand-colour wall, kraft paper) over busy lifestyle scenes — the offer is the message, the scene is supporting cast. Reserve at most 1-2 lifestyle shots in the pack; the rest are clean packshots that let the SALE-BAND read.`;
+})()}
 - HARD NO-TEXT RULE for type="product" shots — NON-NEGOTIABLE. Image-gen models hallucinate text (mangled letters, missing accents, wrong case). To protect brand quality, the promptText for type="product" shots MUST NOT request any rendered text strings, wordmarks, billboard copy, neon signs spelling words, headline overlays, magazine cover titles, posters with words, signage with text, garment text/tags, screen text, sticker text, or speech bubbles. The product's own native packaging text (preserved from the reference photo) is the only text allowed — and it stays implicit (the model preserves it from image_ref, you don't re-describe it). Magazine-style energy in a type="product" shot must come from SATURATED COLOUR FIELDS, OVERSIZED GRAPHIC SHAPES (not letters), BOLD COMPOSITIONAL ASYMMETRY, and SALE-BAND COLOUR BLOCKS (without rendered text). Reserve all text rendering for type="text-card" shots where the model is expected to handle typography.
 ${styleDirective ? `- PICKED STYLE LOCK (NON-NEGOTIABLE): the user picked a specific aesthetic from the gallery (see PICKED STYLE in CONTEXT). EVERY shot's promptText MUST open with that style's signature descriptors — its lighting, surfaces, palette cues, mood vocabulary — BEFORE the scene-specific details. Honour the "Avoid:" clauses verbatim. This style overrides any conflicting brand mood/photo-style guidance from the brand vault. If the picked style is "Editorial" (cinematic, marble, side-lighting), do NOT propose bright daylight studio shots even if the brand vault says "clean studio". The style wins.` : ""}
 - EVERY shot MUST carry a concrete twist fitting the creativity level (see CREATIVITY LEVEL hint above). The twist can be ANY of: photographic levers (lighting, framing, composition, mood, environment), graphic levers (overlay, prop, scale play, frame, vintage grain), or surreal levers at level 4 (floating elements, scale distortion, dream-logic objects). Randomize across the pack so no two shots use the same lever.
@@ -11209,14 +11228,46 @@ OUTPUT JSON:
             // vague but the planner generated a "model wearing X" scene).
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
+            // Apparel pre-pass: when the merchant picked Promo intent OR the
+            // shot label looks packshot-y (hero, sale, packshot, tile, card,
+            // promo, catalogue), route through Photoroom Ghost Mannequin.
+            // It locks the garment silhouette pixel-for-pixel from the
+            // reference (fixes the "sleeveless ↔ sleeves" drift we kept
+            // seeing across carousel slides) and composites a clean AI
+            // background in the same call — exactly what a sale packshot
+            // wants. Lifestyle / editorial apparel shots still flow through
+            // Ideogram Remix below to get a fresh wearer in scene.
+            const isPromoIntent = !!brief && brief.includes("Promotion:");
+            const labelLower = (job.label || "").toLowerCase();
+            const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog|studio|minimal)\b/.test(labelLower);
+            if (jobIsApparel && (isPromoIntent || isPackshotLabel)) {
+              const ghostBgPrompt = productDescription
+                ? `${job.scene.slice(0, 200)} — clean studio scene appropriate for ${productDescription.slice(0, 150)}`
+                : job.scene.slice(0, 250);
+              const ghost = await runPhotoroomGhostMannequin({
+                productImageUrl: productRef,
+                bgPrompt: ghostBgPrompt,
+                aspectRatio: job.aspectRatio,
+                userId: user.id,
+                campaignSlug,
+              });
+              if (ghost) {
+                const persisted = await persistOne(ghost.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || ghost.imageUrl, provider: ghost.provider };
+              }
+              console.log(`[surprise-me] ghost-mannequin failed for ${job.label}, falling through to remix path`);
+            }
+
             // Three subject kinds need image-conditioned regeneration (Remix)
             // instead of cutout+composite (Photoroom):
             //   • apparel — a garment cutout floats without a body
             //   • place   — you don't cut a room out of its background
             //   • person  — face/portrait preservation is regen, not paste
             //   • service — before/after photos are scenes, not products
-            // For all of these, Ideogram Remix at image_weight=90 preserves
-            // the subject while regenerating the surrounding scene.
+            // For all of these, Ideogram Remix at image_weight=95 preserves
+            // the subject while regenerating the surrounding scene. Bumped
+            // from 90 → 95 to fix silhouette drift on apparel (carousel
+            // slides ended up showing different garments).
             const useRemixPath = jobIsApparel || subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
             if (useRemixPath) {
               const subjectNoun = subjectKind === "place"   ? "space / venue"
@@ -11226,6 +11277,13 @@ OUTPUT JSON:
               const subjectAnchor = productDescription
                 ? `\n\nSUBJECT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
                 : "";
+              // Apparel-specific silhouette anchor — the most common drift
+              // mode is sleeve-length / neckline / hem changing across shots.
+              // Naming those features explicitly in the prompt forces the
+              // model to copy them from the reference instead of inventing.
+              const silhouetteAnchor = subjectKind === "product" && jobIsApparel
+                ? "\n\nSILHOUETTE LOCK (apparel): COPY FROM REFERENCE PHOTO — sleeve length (sleeveless / short / 3-4 / long), neckline shape (crew / V / scoop / collar / button-up), hem length (cropped / waist / hip / mid-thigh / knee / floor), closure (zip / button row / pullover), fit (slim / regular / oversized), fabric weight and texture. Any deviation from the reference on these features = REJECTED. The wearer changes, the garment is identical."
+                : "";
               const sceneRegenInstructions = subjectKind === "place"
                 ? "REGENERATE the lighting, season, time of day, and any people present around the locked space. Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo. Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm."
                 : subjectKind === "person"
@@ -11233,12 +11291,12 @@ OUTPUT JSON:
                 : subjectKind === "service"
                 ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
                 : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
-              const apparelPrompt = `SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
+              const apparelPrompt = `SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
                 aspectRatio: job.aspectRatio,
-                imageWeight: 90,
+                imageWeight: 95,
                 userId: user.id,
                 campaignSlug,
               });
