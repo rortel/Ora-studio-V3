@@ -10571,6 +10571,13 @@ app.post("/analyze/surprise-me", async (c) => {
     const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
     const productDescription = enrichedDescription || userDescription;
     const productPrice       = String(body?.productPrice || "").trim().slice(0, 40);
+    // subjectKind tells us what the photo represents and routes the pipeline
+    // accordingly. "place" / "person" / "service" skip Photoroom (cutout makes
+    // no sense on a room or a face) and use Ideogram Remix at high weight.
+    const subjectKind = (() => {
+      const raw = String(body?.subjectKind || "product").toLowerCase();
+      return ["product", "place", "person", "service"].includes(raw) ? raw : "product";
+    })() as "product" | "place" | "person" | "service";
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
     const lang       = body?.lang === "en" ? "en" : "fr";
@@ -11191,19 +11198,31 @@ OUTPUT JSON:
             // vague but the planner generated a "model wearing X" scene).
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
-            if (jobIsApparel) {
-              // Apparel path → Ideogram Remix at image_weight=90. Bumped
-              // from 82 toward maximum garment fidelity (industry standard
-              // for apparel virtual-try-on adjacent flows is 85-95). Trade-
-              // off accepted: scene variety drops slightly, product fidelity
-              // gains a lot — and product fidelity is what merchants pay
-              // for. The prompt leads with PRODUCT IDENTITY ANCHOR (verbatim)
-              // + REGENERATE WEARER + SCENE LOCK so we still get variety in
-              // the person/scene around the locked garment.
-              const productAnchor = productDescription
-                ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
+            // Three subject kinds need image-conditioned regeneration (Remix)
+            // instead of cutout+composite (Photoroom):
+            //   • apparel — a garment cutout floats without a body
+            //   • place   — you don't cut a room out of its background
+            //   • person  — face/portrait preservation is regen, not paste
+            //   • service — before/after photos are scenes, not products
+            // For all of these, Ideogram Remix at image_weight=90 preserves
+            // the subject while regenerating the surrounding scene.
+            const useRemixPath = jobIsApparel || subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
+            if (useRemixPath) {
+              const subjectNoun = subjectKind === "place"   ? "space / venue"
+                                : subjectKind === "person"  ? "person / portrait"
+                                : subjectKind === "service" ? "service result (before/after or finished work)"
+                                : "garment";
+              const subjectAnchor = productDescription
+                ? `\n\nSUBJECT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
                 : "";
-              const apparelPrompt = `PRODUCT FIDELITY IS NON-NEGOTIABLE. The garment in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nREGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.\n\nREAL-LIFE SCENE: build a coherent setting with real interaction (a real café with other people, a real city street with passers-by, a real home with believable props). Avoid floating-product compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: full-body or half-body composition, head fully visible with clear margin above, never crop the face/head, never crop the product.\n\n${job.promptText}`;
+              const sceneRegenInstructions = subjectKind === "place"
+                ? "REGENERATE the lighting, season, time of day, and any people present around the locked space. Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo. Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm."
+                : subjectKind === "person"
+                ? "REGENERATE the background and styling around the locked face/portrait. Keep the person's identity (face, hair, ethnicity, build) IDENTICAL to the source. Vary the setting: studio backdrop, candid lifestyle, on-location, branded environment."
+                : subjectKind === "service"
+                ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
+                : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
+              const apparelPrompt = `SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
@@ -11216,8 +11235,10 @@ OUTPUT JSON:
                 const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
               }
-              console.log(`[surprise-me] apparel ideogram failed for ${job.label}, falling back to Photoroom Studio composite`);
-              // fall through to Photoroom Studio path below
+              console.log(`[surprise-me] remix-path failed for ${job.label} (subjectKind=${subjectKind}, apparel=${jobIsApparel}), falling back to Photoroom Studio composite`);
+              // fall through to Photoroom Studio path below — only really
+              // useful for product/apparel; for place/person it's a poor
+              // approximation, but better than failing the shot entirely.
             }
 
             // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated).

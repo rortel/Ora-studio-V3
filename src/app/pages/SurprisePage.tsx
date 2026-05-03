@@ -157,6 +157,20 @@ function SurpriseContent() {
   // from typing for any product/dish/service that already has a website.
   const [productPageUrl, setProductPageUrl] = useState("");
   const [scanningProductUrl, setScanningProductUrl] = useState(false);
+  // Subject archetype — drives label adaptation + server-side pipeline routing.
+  //   product = boulanger/fleuriste/pâtissier/caviste/distributeur (Photoroom OK)
+  //   place   = restaurant/hôtel/spa/studio yoga (Ideogram Remix high-weight)
+  //   person  = coach/photographe/thérapeute/agent immo (Ideogram Remix high-weight)
+  //   service = coiffeur/jardinier/garagiste — result/before-after photo (Ideogram Remix high-weight)
+  type SubjectKind = "product" | "place" | "person" | "service";
+  const [subjectKind, setSubjectKind] = useState<SubjectKind>("product");
+  const SUBJECT_KINDS: { id: SubjectKind; label: string; photoLabel: string; descLabel: string; descPlaceholder: string; urlLabel: string }[] = [
+    { id: "product", label: "Produit",  photoLabel: "Photo de ton produit",         descLabel: "Quel produit ?",     descPlaceholder: "Polo lin · coupe relax · crème", urlLabel: "Ou colle l'URL de ta fiche produit" },
+    { id: "place",   label: "Lieu",     photoLabel: "Photo de ton lieu",            descLabel: "Quel lieu ?",        descPlaceholder: "Resto bistronomique · 30 couverts · terrasse", urlLabel: "Ou colle l'URL de ton site/Google Maps" },
+    { id: "person",  label: "Personne", photoLabel: "Photo de toi (ou portrait)",   descLabel: "Tu es qui ?",        descPlaceholder: "Coach business · 10 ans d'expé · Paris", urlLabel: "Ou colle l'URL de ton site/LinkedIn" },
+    { id: "service", label: "Service",  photoLabel: "Photo du résultat (avant/après ou réalisation)", descLabel: "Quel service ?", descPlaceholder: "Tonte de pelouse · jardin 200m² · 3h", urlLabel: "Ou colle l'URL de ta page service" },
+  ];
+  const subjectMeta = SUBJECT_KINDS.find(s => s.id === subjectKind) || SUBJECT_KINDS[0];
   // idle sub-view: "input" = product form, "angles" = the 3 suggestions
   // we show after the user clicks "Propose angles", "style" = the
   // StylePicker gallery (final step before generation — user picks a
@@ -361,6 +375,7 @@ function SurpriseContent() {
           productDescription: productDescription.trim() || undefined,
           enrichedDescription: enrichedDescription || undefined,
           productPrice: productPrice.trim() || undefined,
+          subjectKind,
         }),
         signal: AbortSignal.timeout(35_000),
       });
@@ -376,7 +391,7 @@ function SurpriseContent() {
     } finally {
       setAnglesLoading(false);
     }
-  }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice]);
+  }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice, subjectKind]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -499,6 +514,101 @@ function SurpriseContent() {
   ];
   const selectedIntent = INTENTS.find(i => i.value === ctxWhy)?.id || "";
 
+  // ── Pre-validated chip groups: zero typing, profession-aware ──
+  // Each (intent → key message) chip = a concrete shot directive. Each
+  // (subjectKind → CTA) chip = the right action verb for that profession.
+  // Selecting chips writes prescriptive English text into keyMessageChips
+  // and ctaChip, both forwarded to the planner via the brief composition.
+  type ChipOpt = { label: string; value: string };
+  const KEY_MESSAGES: Record<string, ChipOpt[]> = {
+    promo: [
+      { label: "−10 %",                 value: "10% off" },
+      { label: "−20 %",                 value: "20% off" },
+      { label: "−30 %",                 value: "30% off" },
+      { label: "−50 %",                 value: "50% off" },
+      { label: "1 acheté = 1 offert",   value: "Buy one get one free" },
+      { label: "Frais de port offerts", value: "Free shipping" },
+      { label: "Cette semaine",         value: "This week only" },
+      { label: "Ce week-end",           value: "This weekend only" },
+    ],
+    lancement: [
+      { label: "Nouveauté",             value: "Brand new product" },
+      { label: "Édition limitée",       value: "Limited edition" },
+      { label: "Pré-commande",          value: "Pre-order open" },
+      { label: "Best-seller revisité",  value: "Best-seller refreshed" },
+      { label: "Made in France",        value: "Made in France emphasis" },
+      { label: "Fait main",             value: "Handmade emphasis" },
+    ],
+    saison: [
+      { label: "Saint-Valentin",        value: "Saint-Valentine's Day moment" },
+      { label: "Fête des mères",        value: "Mother's Day moment" },
+      { label: "Fête des pères",        value: "Father's Day moment" },
+      { label: "Pâques",                value: "Easter moment" },
+      { label: "Été",                   value: "Summer collection moment" },
+      { label: "Rentrée",               value: "Back-to-school moment" },
+      { label: "Halloween",             value: "Halloween moment" },
+      { label: "Black Friday",          value: "Black Friday moment" },
+      { label: "Noël",                  value: "Christmas moment" },
+      { label: "Soldes",                value: "End-of-season sales (soldes)" },
+    ],
+    animer: [
+      { label: "Coulisses",             value: "Behind-the-scenes shot" },
+      { label: "Conseil",               value: "Quick tip / advice" },
+      { label: "Recette",               value: "Recipe / how-to" },
+      { label: "Histoire",              value: "Founder / craft story" },
+      { label: "Question",              value: "Open question to the audience" },
+    ],
+    preuve: [
+      { label: "Avis client",           value: "Customer review quote" },
+      { label: "Avant / après",         value: "Before / after comparison" },
+      { label: "Note Google",           value: "Google rating mention" },
+      { label: "Cas client",            value: "Customer case study" },
+    ],
+    annonce: [
+      { label: "Nouveaux horaires",     value: "New opening hours" },
+      { label: "Fermeture exceptionnelle", value: "Exceptional closure" },
+      { label: "Nouvelle adresse",      value: "New address / relocation" },
+      { label: "Service urgent",        value: "Urgent service available" },
+      { label: "Recrutement",           value: "We're hiring" },
+    ],
+  };
+  // CTA depends on the SUBJECT (you don't 'buy' a place, you 'book' it).
+  const CTAS: Record<SubjectKind, ChipOpt[]> = {
+    product: [
+      { label: "Acheter",               value: "CTA: Buy now" },
+      { label: "Commander",             value: "CTA: Order now" },
+      { label: "Voir le produit",       value: "CTA: See the product" },
+      { label: "Profiter de l'offre",   value: "CTA: Take the offer" },
+    ],
+    place: [
+      { label: "Réserver",              value: "CTA: Book now" },
+      { label: "Voir la carte",         value: "CTA: See the menu" },
+      { label: "Itinéraire",            value: "CTA: Get directions" },
+      { label: "Appeler",               value: "CTA: Call us" },
+    ],
+    person: [
+      { label: "Prendre RDV",           value: "CTA: Book an appointment" },
+      { label: "Me contacter",          value: "CTA: Contact me" },
+      { label: "Voir mon site",         value: "CTA: Visit my site" },
+      { label: "Réserver un appel",     value: "CTA: Book a call" },
+    ],
+    service: [
+      { label: "Demander un devis",     value: "CTA: Get a quote" },
+      { label: "Prendre RDV",           value: "CTA: Book an appointment" },
+      { label: "Me contacter",          value: "CTA: Contact us" },
+      { label: "Découvrir le service",  value: "CTA: Discover the service" },
+    ],
+  };
+  const [keyMessageChips, setKeyMessageChips] = useState<string[]>([]); // store values, multi-select up to 3
+  const [ctaChip, setCtaChip] = useState<string>(""); // single-select CTA value
+  const toggleKeyMessage = (val: string) => {
+    setKeyMessageChips(prev => {
+      if (prev.includes(val)) return prev.filter(v => v !== val);
+      if (prev.length >= 3) return [...prev.slice(1), val]; // cap at 3
+      return [...prev, val];
+    });
+  };
+
   // ── Scan a product/service URL (alternative or complement to the photo) ──
   // Hits the existing /products/scrape-url endpoint and auto-fills the two
   // optional fields (description + price). Photo path stays mandatory — URL
@@ -580,12 +690,27 @@ function SurpriseContent() {
         mediaType,
         videoDuration,
         withCaption,
+        // subjectKind drives server-side pipeline routing (place/person skip
+        // Photoroom cutout — irrelevant for spaces and faces — and use
+        // Ideogram Remix at high image_weight to preserve the subject).
+        subjectKind,
         brief: override?.brief || undefined,
-        context: override?.brief ? undefined : {
-          who: who.trim() || undefined,
-          what: what.trim() || undefined,
-          why: ctxWhy.trim() || undefined,
-        },
+        context: override?.brief ? undefined : (() => {
+          // Compose ctxWhy from intent + key message chips + CTA chip so the
+          // planner gets fully prescriptive guidance with zero free-text input
+          // from the user. The intent value (rich English) is the spine; the
+          // key messages append concrete facts (price, marronnier, etc.); the
+          // CTA appends the final action verb to use.
+          const parts: string[] = [];
+          if (ctxWhy.trim()) parts.push(ctxWhy.trim());
+          if (keyMessageChips.length > 0) parts.push(`Key facts to surface: ${keyMessageChips.join(" · ")}.`);
+          if (ctaChip) parts.push(ctaChip);
+          return {
+            who: who.trim() || undefined,
+            what: what.trim() || undefined,
+            why: parts.join(" ").slice(0, 800) || undefined,
+          };
+        })(),
         lang: "en",
       }, 240_000);
       if (!res?.success || !Array.isArray(res.items)) {
@@ -624,7 +749,7 @@ function SurpriseContent() {
       setBusy(false);
       setActiveRequestId(null);
     }
-  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, serverPost, refreshProfile, styleId]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId]);
 
   // ── Publish the entire pack to the Calendar ──────────────────────
   // Maps each ok asset → a draft Calendar event with an AI-suggested
@@ -1116,18 +1241,41 @@ function SurpriseContent() {
                   <span style={{ color: COLORS.coral }}>We post for you.</span>
                 </h1>
 
-                {/* 1. Product photos — first one mandatory, up to 5 angles for
-                    studio-grade fidelity. When 2+ uploaded, a vision pre-pass
-                    extracts a rich descriptor (colour, material, cut, details)
-                    that feeds every shot, killing single-photo drift. */}
+                {/* 0. Subject archetype — single chip row, drives every label
+                    + the server-side pipeline routing. Default is Produit. */}
+                <div className="mb-4">
+                  <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>
+                    Tu vends quoi ?
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {SUBJECT_KINDS.map((s) => {
+                      const on = subjectKind === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setSubjectKind(s.id)}
+                          className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
+                          style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 1. Photo upload — label adapts to subjectKind. First photo
+                    mandatory, up to 5 angles for studio-grade fidelity. When
+                    2+ uploaded, a vision pre-pass extracts a rich descriptor
+                    that feeds every shot. */}
                 {productPhotos.length === 0 ? (
                   <label className="mb-3 flex flex-col items-center justify-center gap-2 py-12 rounded-2xl cursor-pointer transition hover:bg-black/[0.02]"
                          style={{ background: "#fff", border: `2px dashed ${BORDER}` }}>
                     {uploadingProduct ? <Loader2 size={22} className="animate-spin" style={{ color: COLORS.coral }} /> : <Paperclip size={22} style={{ color: COLORS.coral }} />}
                     <span className="text-[15px] font-semibold" style={{ color: TEXT }}>
-                      {uploadingProduct ? "Uploading…" : "Drop a photo of what you sell"}
+                      {uploadingProduct ? "Uploading…" : subjectMeta.photoLabel}
                     </span>
-                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · 1 required, up to 5 angles for studio-grade fidelity</span>
+                    <span className="text-[12px]" style={{ color: MUTED }}>PNG, JPG, WebP · 1 required, up to 5 angles</span>
                     <input type="file" accept="image/*" className="hidden"
                            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadProductPhoto(f); e.target.value = ""; }} />
                   </label>
@@ -1203,7 +1351,7 @@ function SurpriseContent() {
                     saves the typing step. Auto-fills the two fields below. */}
                 <div className="mb-3">
                   <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
-                    Or paste a product page URL <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional shortcut)</span>
+                    {subjectMeta.urlLabel} <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(raccourci optionnel)</span>
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -1229,12 +1377,12 @@ function SurpriseContent() {
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
                   <div>
                     <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
-                      What is it?
+                      {subjectMeta.descLabel}
                     </label>
                     <input
                       value={productDescription}
                       onChange={(e) => setProductDescription(e.target.value)}
-                      placeholder="Linen polo · relaxed fit · cream"
+                      placeholder={subjectMeta.descPlaceholder}
                       className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
                       style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
                     />
@@ -1266,7 +1414,11 @@ function SurpriseContent() {
                       return (
                         <button
                           key={it.id}
-                          onClick={() => setCtxWhy(on ? "" : it.value)}
+                          onClick={() => {
+                            setCtxWhy(on ? "" : it.value);
+                            // Reset chip selections when intent changes — they're intent-specific.
+                            if (!on) { setKeyMessageChips([]); setCtaChip(""); }
+                          }}
                           className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
                           style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}
                         >
@@ -1276,6 +1428,58 @@ function SurpriseContent() {
                     })}
                   </div>
                 </div>
+
+                {/* 2.6 Key message — pre-validated chips (3 max). Adapts to the
+                    selected intent. Shown only once an intent is picked, so the
+                    user never faces an empty grid. Zero typing. */}
+                {selectedIntent && KEY_MESSAGES[selectedIntent] && (
+                  <div className="mb-6">
+                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>
+                      Message clé <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optionnel — jusqu'à 3)</span>
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {KEY_MESSAGES[selectedIntent].map((opt) => {
+                        const on = keyMessageChips.includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => toggleKeyMessage(opt.value)}
+                            className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
+                            style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2.7 CTA — single-select chip row. Adapts to subjectKind so
+                    the verb fits the profession ("Réserver" for a place,
+                    "Acheter" for a product, "Prendre RDV" for a person). */}
+                {selectedIntent && (
+                  <div className="mb-6">
+                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>
+                      Action visée <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optionnel — 1 max)</span>
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {CTAS[subjectKind].map((opt) => {
+                        const on = ctaChip === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setCtaChip(on ? "" : opt.value)}
+                            className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
+                            style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* 3. Networks — chips with image/film toggle (reused from custom brief UI) */}
                 <div className="flex flex-wrap items-center gap-2 mb-6">
