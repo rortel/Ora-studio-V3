@@ -152,6 +152,11 @@ function SurpriseContent() {
   // price are optional and get forwarded to the caption generator.
   const [productDescription, setProductDescription] = useState("");
   const [productPrice, setProductPrice] = useState("");
+  // Optional product page URL — when set, /products/scrape-url is called and
+  // its result auto-fills productDescription + productPrice. Saves the user
+  // from typing for any product/dish/service that already has a website.
+  const [productPageUrl, setProductPageUrl] = useState("");
+  const [scanningProductUrl, setScanningProductUrl] = useState(false);
   // idle sub-view: "input" = product form, "angles" = the 3 suggestions
   // we show after the user clicks "Propose angles", "style" = the
   // StylePicker gallery (final step before generation — user picks a
@@ -478,6 +483,56 @@ function SurpriseContent() {
     if (nextUrls.length < 2) setEnrichedDescription("");
     else refreshEnrichedDescription(nextUrls);
   }, [refreshEnrichedDescription]);
+
+  // ── Six SMB-friendly intents — French label, English directive ──
+  // Each chip writes a rich, prescriptive sentence into ctxWhy. The server
+  // already passes `why` as text into the planner, so no server change needed:
+  // the AI gets clearer guidance ("CTA must include the discount % + end
+  // date") instead of a vague "summer launch · winter campaign · awareness".
+  const INTENTS: { id: string; label: string; value: string }[] = [
+    { id: "promo",     label: "Promo",      value: "Promotion: time-limited offer. CTA must include the discount % or price + end date." },
+    { id: "lancement", label: "Lancement",  value: "Product launch: this product/service is brand new. Build excitement, focus on what's new and why it matters." },
+    { id: "saison",    label: "Saison",     value: "Seasonal moment: tie to current season/marronnier (Saint-Valentin, Fête des mères, Noël, rentrée, été, Black Friday). Use cultural cues. Warm, traditional tone." },
+    { id: "animer",    label: "Animer",     value: "Community engagement: behind-the-scenes, recipe, tip, story. Conversational. No hard sell." },
+    { id: "preuve",    label: "Témoignage", value: "Customer testimonial / social proof: lead with a real customer quote or review. Build trust. No corporate tone." },
+    { id: "annonce",   label: "Annonce",    value: "Practical announcement: clear factual info (hours, closure, urgent service, address change). Direct, no fluff." },
+  ];
+  const selectedIntent = INTENTS.find(i => i.value === ctxWhy)?.id || "";
+
+  // ── Scan a product/service URL (alternative or complement to the photo) ──
+  // Hits the existing /products/scrape-url endpoint and auto-fills the two
+  // optional fields (description + price). Photo path stays mandatory — URL
+  // is a shortcut, not a replacement, since visual ground truth still needs
+  // an image.
+  const scanProductUrl = useCallback(async () => {
+    const u = productPageUrl.trim();
+    if (!u) return;
+    if (!/^https?:\/\/.+\..+/.test(u)) {
+      toast.error("URL invalide (https://...)");
+      return;
+    }
+    setScanningProductUrl(true);
+    try {
+      const res = await serverPost("/products/scrape-url", { url: u }, 25_000);
+      if (res?.success && res.product) {
+        const p = res.product;
+        if (p.name && !productDescription.trim()) {
+          const desc = [p.name, p.description].filter(Boolean).join(" — ").slice(0, 200);
+          setProductDescription(desc);
+        }
+        if (p.price && p.currency && !productPrice.trim()) {
+          setProductPrice(`${p.price} ${p.currency}`);
+        }
+        toast.success(`Page lue : ${p.name || u}`);
+      } else {
+        toast.error(res?.error || "Impossible de lire cette page — essaie l'URL d'une fiche produit.");
+      }
+    } catch (err: any) {
+      toast.error(String(err?.message || err));
+    } finally {
+      setScanningProductUrl(false);
+    }
+  }, [productPageUrl, productDescription, productPrice, serverPost]);
 
   // Run a full surprise-me campaign. When called without arguments, every
   // parameter comes from the user's brief + picks. An `override` lets the
@@ -1142,6 +1197,35 @@ function SurpriseContent() {
                     shirt, cream"). Without it the angles default to generic
                     fashion tropes. Price stays optional and feeds the
                     caption only. */}
+                {/* 1.5 Optional product page URL — shortcut to fill description + price.
+                    For any merchant whose product/dish/service is already on a website
+                    (Shopify, Wix, Wordpress, restaurant menu, etc.), pasting the URL
+                    saves the typing step. Auto-fills the two fields below. */}
+                <div className="mb-3">
+                  <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                    Or paste a product page URL <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional shortcut)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={productPageUrl}
+                      onChange={(e) => setProductPageUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !scanningProductUrl) { e.preventDefault(); scanProductUrl(); } }}
+                      placeholder="https://..."
+                      className="flex-1 rounded-xl px-3 h-10 text-[14px] outline-none"
+                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                    />
+                    <button
+                      onClick={scanProductUrl}
+                      disabled={scanningProductUrl || !productPageUrl.trim()}
+                      className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl text-[13px] font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: INK, color: INK_TEXT, border: `1px solid ${INK}` }}
+                    >
+                      {scanningProductUrl ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      {scanningProductUrl ? "Lecture…" : "Scanner"}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
                   <div>
                     <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
@@ -1166,6 +1250,30 @@ function SurpriseContent() {
                       className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
                       style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
                     />
+                  </div>
+                </div>
+
+                {/* 2.5 Intent — six SMB-friendly chips. Single-select. Click toggles.
+                    The selected chip writes a rich directive into ctxWhy that the
+                    planner uses verbatim. No intent picked = AI infers from brief. */}
+                <div className="mb-6">
+                  <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-2" style={{ color: MUTED }}>
+                    Pourquoi ce post ? <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optionnel — Ora propose si vide)</span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {INTENTS.map((it) => {
+                      const on = selectedIntent === it.id;
+                      return (
+                        <button
+                          key={it.id}
+                          onClick={() => setCtxWhy(on ? "" : it.value)}
+                          className="inline-flex items-center px-3 h-9 rounded-full text-[13px] transition"
+                          style={{ background: on ? INK : "#fff", color: on ? INK_TEXT : TEXT, border: `1px solid ${on ? INK : BORDER}`, fontWeight: 500 }}
+                        >
+                          {it.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
