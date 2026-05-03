@@ -11140,12 +11140,34 @@ OUTPUT JSON:
         // predictable.
         const tryOnce = async (attempt: number): Promise<typeof items[number]> => {
           try {
-          // Text-card branch: Ideogram. Used for typography-led shots where
-          // text quality matters more than photo fidelity (quote, save-the-
-          // date, recruitment, promo tile, tip card). Always runs for
-          // shot.type === "text-card", regardless of whether a product
-          // photo was uploaded.
+          // Text-card branch.
+          //   • No productRef → pure Ideogram T2I (typography poster).
+          //   • With productRef → Ideogram Remix with image_weight=88 so the
+          //     real product pixels stay locked and Ideogram only adds the
+          //     typography overlay on top. This is the fix for "NEW DROP
+          //     poster with no product visible" — when a merchant uploaded a
+          //     photo, that photo MUST appear on every shot, even text-cards.
           if (job.type === "text-card") {
+            if (productRef) {
+              const productAnchor = productDescription
+                ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
+                : "";
+              const textCardWithProductPrompt = `PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
+              const card = await runIdeogramRemixOnRef({
+                productImageUrl: productRef,
+                prompt: textCardWithProductPrompt,
+                aspectRatio: job.aspectRatio,
+                imageWeight: 88,
+                userId: user.id,
+                campaignSlug,
+              });
+              if (card) {
+                const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: card.provider };
+              }
+              console.log(`[surprise-me] text-card+product remix failed for ${job.label}, falling back to text-only typography`);
+              // fall through to pure T2I below — better a clean typo than nothing
+            }
             const card = await runIdeogramTextCard({
               prompt: job.promptText,
               aspectRatio: job.aspectRatio,
@@ -11170,14 +11192,14 @@ OUTPUT JSON:
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
             if (jobIsApparel) {
-              // Apparel path → Ideogram Remix at image_weight=82. Bumped
-              // from 78 (which let products drift on cut/colour/logo)
-              // toward stricter fidelity. Trade-off accepted: scene
-              // variety drops slightly, product fidelity gains a lot —
-              // and product fidelity is what users pay for. The prompt
-              // leads with PRODUCT IDENTITY ANCHOR (verbatim) + REGENERATE
-              // WEARER + SCENE LOCK so we still get variety in the
-              // person/scene around the locked garment.
+              // Apparel path → Ideogram Remix at image_weight=90. Bumped
+              // from 82 toward maximum garment fidelity (industry standard
+              // for apparel virtual-try-on adjacent flows is 85-95). Trade-
+              // off accepted: scene variety drops slightly, product fidelity
+              // gains a lot — and product fidelity is what merchants pay
+              // for. The prompt leads with PRODUCT IDENTITY ANCHOR (verbatim)
+              // + REGENERATE WEARER + SCENE LOCK so we still get variety in
+              // the person/scene around the locked garment.
               const productAnchor = productDescription
                 ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
                 : "";
@@ -11186,7 +11208,7 @@ OUTPUT JSON:
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
                 aspectRatio: job.aspectRatio,
-                imageWeight: 82,
+                imageWeight: 90,
                 userId: user.id,
                 campaignSlug,
               });
