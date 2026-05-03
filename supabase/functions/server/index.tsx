@@ -17481,25 +17481,30 @@ app.post("/vault/analyze", async (c) => {
         }
       }
       // ── Logo fallback via public logo APIs ──
-      // The HTML regex misses heavy-SPA sites (Lacoste, Nike, etc.) that use
-      // inline <svg> for their logo instead of <img> — `extractFromHtml`
-      // flags hasHeaderSvgLogo=true for that case but doesn't produce a URL.
-      // It also misses sites we couldn't fetch HTML for at all (rawHtml
-      // shorter than 200 chars). Try Clearbit → Google favicon so every URL
-      // scan ends up with something renderable.
+      // Two failure modes the page-scraper can't fix on its own:
+      //   1. Heavy SPAs (Lacoste, Nike, Bershka) put their logo as inline <svg>,
+      //      so extractFromHtml never produces a URL even when it sees the logo.
+      //   2. Even when extractFromHtml returns *something*, it's often just the
+      //      favicon (score 2 — pixelated 32x32). That's worse than Clearbit's
+      //      clean PNG/SVG for any reasonably-known brand.
+      // Rule: only trust the scraped logo if the best candidate has score >= 6
+      //       (header-logo / a-logo / apple-touch-icon). Otherwise, ask Clearbit.
       preExtracted.meta = preExtracted.meta || {};
-      if (!preExtracted.meta.logoUrl) {
+      const bestScrapedScore = (preExtracted.meta.logoCandidates || [])[0]?.score || 0;
+      const trustScraped = !!preExtracted.meta.logoUrl && bestScrapedScore >= 6;
+      if (!trustScraped) {
         try {
           const host = new URL(url).hostname.replace(/^www\./, "");
           const clearbitUrl = `https://logo.clearbit.com/${host}`;
           const cbRes = await fetch(clearbitUrl, { method: "HEAD", signal: AbortSignal.timeout(5_000) }).catch(() => null);
           if (cbRes && cbRes.ok) {
             preExtracted.meta.logoUrl = clearbitUrl;
-            (preExtracted.meta.logoCandidates ||= []).push({ url: clearbitUrl, score: 3, source: "clearbit-fallback" });
-            console.log(`[vault/analyze] Logo fallback → Clearbit: ${clearbitUrl}`);
-          } else {
+            (preExtracted.meta.logoCandidates ||= []).unshift({ url: clearbitUrl, score: 7, source: "clearbit-fallback" });
+            console.log(`[vault/analyze] Logo fallback → Clearbit: ${clearbitUrl} (scraped best score was ${bestScrapedScore})`);
+          } else if (!preExtracted.meta.logoUrl) {
             // Google s2 favicon always returns 200, even for missing icons —
-            // it's the safety net rather than a real signal.
+            // it's the safety net rather than a real signal. Only used if the
+            // scraper found nothing AND Clearbit had no entry.
             const faviconUrl = `https://www.google.com/s2/favicons?sz=256&domain=${host}`;
             preExtracted.meta.logoUrl = faviconUrl;
             (preExtracted.meta.logoCandidates ||= []).push({ url: faviconUrl, score: 1, source: "google-favicon-fallback" });
