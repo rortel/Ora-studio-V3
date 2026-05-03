@@ -10818,6 +10818,18 @@ CREATIVITY LEVEL ${creativity}/4: ${creative.systemHint}
 ${contextBlock ? contextBlock + "\n\n" : ""}HARD RULES:
 - The product stays photo-real and recognizable in every shot. Never morph it, never stylize it into paint/illustration, never let the twist deform it.
 - Brand palette, mood and visual style stay locked as a DA fingerprint across the pack.
+${(() => {
+  // INTENT LOCK — when the user picked one of the product-promoting intents
+  // (Promo / Lancement / Témoignage), 100 % of shots MUST be type="product".
+  // Without this rule, the planner happily emits text-cards like "NEW DROP"
+  // typography, which is useless without the actual product visible. The
+  // detection key is the rich English string written by the chip on the
+  // client (see SurprisePage INTENTS).
+  const productIntents = ["Promotion:", "Product launch:", "Customer testimonial"];
+  const isProductIntent = !!brief && productIntents.some(p => brief.includes(p));
+  if (!isProductIntent) return "";
+  return `- INTENT LOCK (NON-NEGOTIABLE): the user picked a product-promoting intent (Promo / Lancement / Témoignage — see brief). EVERY shot in this pack MUST be type="product". ZERO type="text-card" shots. A "NEW DROP" typography poster without the product visible is useless to a merchant promoting a specific item. If no productImageUrl is provided, still produce type="product" shots — use lifestyle/scene/abstract product imagery that visually anchors what the brief describes (e.g. a denim jacket on a wooden chair, a perfume bottle on a marble counter, a plate of pasta on a wooden table). The product (or a clear stand-in for it) MUST be the visual hero of every shot.`;
+})()}
 - HARD NO-TEXT RULE for type="product" shots — NON-NEGOTIABLE. Image-gen models hallucinate text (mangled letters, missing accents, wrong case). To protect brand quality, the promptText for type="product" shots MUST NOT request any rendered text strings, wordmarks, billboard copy, neon signs spelling words, headline overlays, magazine cover titles, posters with words, signage with text, garment text/tags, screen text, sticker text, or speech bubbles. The product's own native packaging text (preserved from the reference photo) is the only text allowed — and it stays implicit (the model preserves it from image_ref, you don't re-describe it). Magazine-style energy in a type="product" shot must come from SATURATED COLOUR FIELDS, OVERSIZED GRAPHIC SHAPES (not letters), BOLD COMPOSITIONAL ASYMMETRY, and SALE-BAND COLOUR BLOCKS (without rendered text). Reserve all text rendering for type="text-card" shots where the model is expected to handle typography.
 ${styleDirective ? `- PICKED STYLE LOCK (NON-NEGOTIABLE): the user picked a specific aesthetic from the gallery (see PICKED STYLE in CONTEXT). EVERY shot's promptText MUST open with that style's signature descriptors — its lighting, surfaces, palette cues, mood vocabulary — BEFORE the scene-specific details. Honour the "Avoid:" clauses verbatim. This style overrides any conflicting brand mood/photo-style guidance from the brand vault. If the picked style is "Editorial" (cinematic, marble, side-lighting), do NOT propose bright daylight studio shots even if the brand vault says "clean studio". The style wins.` : ""}
 - EVERY shot MUST carry a concrete twist fitting the creativity level (see CREATIVITY LEVEL hint above). The twist can be ANY of: photographic levers (lighting, framing, composition, mood, environment), graphic levers (overlay, prop, scale play, frame, vintage grain), or surreal levers at level 4 (floating elements, scale distortion, dream-logic objects). Randomize across the pack so no two shots use the same lever.
