@@ -32108,9 +32108,14 @@ app.delete("/products/:id", async (c) => {
 // POST /products/scrape-url — scrape product info from a URL
 app.post("/products/scrape-url", async (c) => {
   try {
+    // The CORS-safe text/plain body has already been parsed by the middleware
+    // and stashed in c.get("parsedBody"). Calling c.req.json() here would
+    // re-read a consumed stream and Supabase wraps the resulting parse error
+    // as 422 Unprocessable Content. Mirror the proven pattern used by every
+    // other handler in this file.
     const user = await getUser(c);
-    const body = await c.req.json().catch(async () => JSON.parse(await c.req.text()));
-    const url = body.url || body._url;
+    const body = c.get?.("parsedBody") || await c.req.json().catch(() => ({}));
+    const url = body?.url || body?._url;
     if (!url) return c.json({ success: false, error: "url required" }, 400);
 
     console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
