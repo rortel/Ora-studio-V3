@@ -11189,7 +11189,8 @@ OUTPUT JSON:
               const productAnchor = productDescription
                 ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
                 : "";
-              const textCardWithProductPrompt = `PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
+              const styleHead = styleDirective ? `PICKED VISUAL STYLE (apply across this card's lighting, surfaces, palette, mood AND typography feel — non-negotiable): ${styleDirective.slice(0, 280)}\n\n` : "";
+              const textCardWithProductPrompt = `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
               const card = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: textCardWithProductPrompt,
@@ -11241,9 +11242,15 @@ OUTPUT JSON:
             const labelLower = (job.label || "").toLowerCase();
             const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog|studio|minimal)\b/.test(labelLower);
             if (jobIsApparel && (isPromoIntent || isPackshotLabel)) {
+              // The picked style (Editorial / Studio / Minimal / Magazine /
+              // UGC / Lifestyle) drives the BACKGROUND that Photoroom
+              // generates. Without this, Ghost Mannequin only sees
+              // job.scene which doesn't carry the style fingerprint and
+              // every pack ends up looking the same generic studio.
+              const styleHead = styleDirective ? `${styleDirective.slice(0, 240)}\n\n` : "";
               const ghostBgPrompt = productDescription
-                ? `${job.scene.slice(0, 200)} — clean studio scene appropriate for ${productDescription.slice(0, 150)}`
-                : job.scene.slice(0, 250);
+                ? `${styleHead}${job.scene.slice(0, 200)} — backdrop appropriate for ${productDescription.slice(0, 150)}`
+                : `${styleHead}${job.scene.slice(0, 250)}`;
               const ghost = await runPhotoroomGhostMannequin({
                 productImageUrl: productRef,
                 bgPrompt: ghostBgPrompt,
@@ -11291,7 +11298,15 @@ OUTPUT JSON:
                 : subjectKind === "service"
                 ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
                 : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
-              const apparelPrompt = `SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
+              // PICKED STYLE first — when the user picked Editorial / Studio
+              // / Minimal etc., the directive must dominate the image. The
+              // existing prompt stacks so many "REAL-LIFE SCENE / FIDELITY /
+              // FRAMING" anchors that the style gets drowned, which is why
+              // styled packs ended up looking generic. Putting it at the
+              // top forces the model to apply lighting/surface/palette
+              // BEFORE it interprets scene instructions.
+              const styleHead = styleDirective ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${styleDirective.slice(0, 280)}\n\n` : "";
+              const apparelPrompt = `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: apparelPrompt,
@@ -11315,9 +11330,10 @@ OUTPUT JSON:
             // the AI background generator places the product in a context
             // that matches the product's identity (a navy tracksuit doesn't
             // get a beige bohemian setting).
+            const styleHeadComposite = styleDirective ? `${styleDirective.slice(0, 240)}\n\n` : "";
             const compositePrompt = productDescription
-              ? `PRODUCT IDENTITY (preserve exactly): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
-              : job.promptText;
+              ? `${styleHeadComposite}PRODUCT IDENTITY (preserve exactly): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
+              : `${styleHeadComposite}${job.promptText}`;
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
               prompt: compositePrompt,
