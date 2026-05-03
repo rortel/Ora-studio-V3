@@ -17573,7 +17573,22 @@ app.post("/vault/analyze", async (c) => {
       }
 
       if (!textToAnalyze || textToAnalyze.length < 50) {
-        return c.json({ success: false, error: "Could not extract content from URL." }, 400);
+        // Heavy SPAs (Bershka, Nike, etc.) and bot-protected sites block scraping.
+        // Instead of failing with 400, fall back to whatever metadata we already
+        // pulled from <head> + Clearbit logo so the AI can still produce a
+        // best-effort DNA from title/description/OG/keywords + the URL itself.
+        const meta = preExtracted.meta || {};
+        const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })();
+        const fallbackParts = [
+          `URL: ${url}`,
+          `Domain: ${host}`,
+          meta.title ? `Title: ${meta.title}` : "",
+          meta.description ? `Description: ${meta.description}` : "",
+          meta.keywords ? `Keywords: ${meta.keywords}` : "",
+          meta.ogImage ? `OG Image: ${meta.ogImage}` : "",
+        ].filter(Boolean);
+        textToAnalyze = fallbackParts.join("\n");
+        console.log(`[vault/analyze] Scrape blocked/empty — proceeding with metadata-only fallback (${textToAnalyze.length} chars)`);
       }
     } else if (content) {
       textToAnalyze = content;
