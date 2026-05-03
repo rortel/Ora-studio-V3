@@ -17372,124 +17372,84 @@ app.post("/vault/analyze", async (c) => {
     }
 
     // ── Helper: fetch HTML ──
-    async function fetchHtml(pageUrl: string): Promise<string> {
-      const realisticUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-      // 1. Jina (fast, cached, free tier)
+    // ── Jina-only HTML fetch (deep scrape) ──
+    // mode "full"  → browser engine (renders JS-heavy SPAs like Bershka/Nike), 25s budget
+    // mode "fast"  → default engine only, 8s budget (used for the 20 deep-crawl sub-pages
+    //                so we stay within the global deep-scan budget)
+    async function fetchHtml(pageUrl: string, mode: "full" | "fast" = "full"): Promise<string> {
       const jinaKey = Deno.env.get("JINA_API_KEY");
-      if (jinaKey) {
+      if (!jinaKey) return "";
+
+      const baseHeaders: Record<string, string> = {
+        Authorization: `Bearer ${jinaKey}`,
+        Accept: "text/html",
+        "X-Return-Format": "html",
+        "X-No-Cache": "true",
+        "X-Timeout": "20",
+      };
+
+      if (mode === "full") {
         try {
           const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
-            headers: { Authorization: `Bearer ${jinaKey}`, Accept: "text/html", "X-No-Cache": "true", "X-Return-Format": "html", "X-Proxy": "auto" },
-          }, 12_000);
-          if (res.ok) { const h = await res.text(); if (h.length > 200) return h; }
-        } catch (e) { console.log(`[vault] Jina HTML fail ${pageUrl}: ${e}`); }
+            headers: { ...baseHeaders, "X-Engine": "browser" },
+          }, 25_000);
+          if (res.ok) { const h = await res.text(); if (h.length > 200) { console.log(`[vault] Jina(browser) HTML ${h.length} chars for ${pageUrl}`); return h; } }
+          else console.log(`[vault] Jina(browser) status ${res.status} for ${pageUrl}`);
+        } catch (e) { console.log(`[vault] Jina(browser) fail ${pageUrl}: ${e}`); }
       }
 
-      // 2. Firecrawl (handles JS-rendered SPAs)
-      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-      if (firecrawlKey) {
-        try {
-          const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${firecrawlKey}` },
-            body: JSON.stringify({ url: pageUrl, formats: ["rawHtml", "html"], waitFor: 2500, timeout: 15000 }),
-          }, 20_000);
-          if (res.ok) {
-            const data = await res.json();
-            const h = data.data?.rawHtml || data.data?.html || "";
-            if (h.length > 200) { console.log(`[vault] Firecrawl HTML ok ${pageUrl} (${h.length} chars)`); return h; }
-          } else {
-            console.log(`[vault] Firecrawl HTML status ${res.status} for ${pageUrl}`);
-          }
-        } catch (e) { console.log(`[vault] Firecrawl HTML fail ${pageUrl}: ${e}`); }
-      }
-
-      // 3. ScrapingBee (premium proxy + JS rendering — handles bot-protected sites)
-      const scrapingbeeKey = Deno.env.get("SCRAPINGBEE_API_KEY");
-      if (scrapingbeeKey) {
-        try {
-          const params = new URLSearchParams({ api_key: scrapingbeeKey, url: pageUrl, render_js: "true", premium_proxy: "true", block_ads: "true", wait: "2500" });
-          const res = await fetchWithTimeout(`https://app.scrapingbee.com/api/v1/?${params}`, { method: "GET" }, 25_000);
-          if (res.ok) {
-            const h = await res.text();
-            if (h.length > 200) { console.log(`[vault] ScrapingBee HTML ok ${pageUrl} (${h.length} chars)`); return h; }
-          } else {
-            console.log(`[vault] ScrapingBee HTML status ${res.status} for ${pageUrl}`);
-          }
-        } catch (e) { console.log(`[vault] ScrapingBee HTML fail ${pageUrl}: ${e}`); }
-      }
-
-      // 4. Direct fetch with realistic UA (last resort)
+      // Default engine fallback / fast mode
       try {
-        const res = await fetchWithTimeout(pageUrl, {
-          headers: {
-            "User-Agent": realisticUA,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
-          },
-          redirect: "follow",
-        }, 12_000);
-        if (res.ok) return await res.text();
-      } catch (e) { console.log(`[vault] Direct fail ${pageUrl}: ${e}`); }
+        const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+          headers: baseHeaders,
+        }, mode === "fast" ? 8_000 : 12_000);
+        if (res.ok) { const h = await res.text(); if (h.length > 200) return h; }
+      } catch (e) { console.log(`[vault] Jina(default) fail ${pageUrl}: ${e}`); }
+
       return "";
     }
 
-    // ── Helper: get clean text via Jina, with Firecrawl/ScrapingBee fallback ──
+    // ── Jina-only clean text fetch ──
     async function fetchJinaText(pageUrl: string): Promise<string> {
-      // 1. Jina
       const jinaKey = Deno.env.get("JINA_API_KEY");
-      if (jinaKey) {
-        const tJina = Date.now();
-        try {
-          const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
-            headers: { Authorization: `Bearer ${jinaKey}`, Accept: "application/json", "X-No-Cache": "true", "X-Proxy": "auto", "X-Target-Selector": "body" },
-          }, 12_000);
-          if (res.ok) {
-            logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: getProviderCost("jina/reader", "text"), revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: true }).catch(() => {});
-            const d = await res.json();
-            const txt = d.data?.content || d.data?.text || d.content || "";
-            if (txt.length > 50) return txt;
-          } else {
-            logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
-          }
-        } catch (e) {
-          console.log(`[vault] Jina text fail ${pageUrl}: ${e}`);
+      if (!jinaKey) return "";
+
+      const baseHeaders: Record<string, string> = {
+        Authorization: `Bearer ${jinaKey}`,
+        Accept: "application/json",
+        "X-No-Cache": "true",
+        "X-Target-Selector": "body",
+        "X-Timeout": "20",
+      };
+
+      // 1. Browser-rendered
+      const tJina = Date.now();
+      try {
+        const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, {
+          headers: { ...baseHeaders, "X-Engine": "browser" },
+        }, 25_000);
+        if (res.ok) {
+          logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: getProviderCost("jina/reader", "text"), revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: true }).catch(() => {});
+          const d = await res.json();
+          const txt = d.data?.content || d.data?.text || d.content || "";
+          if (txt.length > 50) return txt;
+        } else {
           logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
         }
+      } catch (e) {
+        console.log(`[vault] Jina(browser) text fail ${pageUrl}: ${e}`);
+        logCost({ type: "text", model: "jina-reader", provider: "jina/reader", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tJina, userId: user?.id || "anon", success: false }).catch(() => {});
       }
 
-      // 2. Firecrawl markdown (handles JS-rendered SPAs)
-      const firecrawlKey = Deno.env.get("FIRECRAWL_API_KEY");
-      if (firecrawlKey) {
-        try {
-          const res = await fetchWithTimeout("https://api.firecrawl.dev/v1/scrape", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${firecrawlKey}` },
-            body: JSON.stringify({ url: pageUrl, formats: ["markdown"], onlyMainContent: true, waitFor: 2500, timeout: 15000 }),
-          }, 20_000);
-          if (res.ok) {
-            const data = await res.json();
-            const md = data.data?.markdown || data.data?.content || "";
-            if (md.length > 50) { console.log(`[vault] Firecrawl text ok ${pageUrl} (${md.length} chars)`); return md; }
-          }
-        } catch (e) { console.log(`[vault] Firecrawl text fail ${pageUrl}: ${e}`); }
-      }
-
-      // 3. ScrapingBee (text-stripped from premium-proxy render)
-      const scrapingbeeKey = Deno.env.get("SCRAPINGBEE_API_KEY");
-      if (scrapingbeeKey) {
-        try {
-          const params = new URLSearchParams({ api_key: scrapingbeeKey, url: pageUrl, render_js: "true", premium_proxy: "true", block_ads: "true", wait: "2500" });
-          const res = await fetchWithTimeout(`https://app.scrapingbee.com/api/v1/?${params}`, { method: "GET" }, 25_000);
-          if (res.ok) {
-            let html = await res.text();
-            html = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ");
-            const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-            if (text.length > 50) { console.log(`[vault] ScrapingBee text ok ${pageUrl} (${text.length} chars)`); return text; }
-          }
-        } catch (e) { console.log(`[vault] ScrapingBee text fail ${pageUrl}: ${e}`); }
-      }
+      // 2. Default engine
+      try {
+        const res = await fetchWithTimeout(`https://r.jina.ai/${pageUrl}`, { headers: baseHeaders }, 12_000);
+        if (res.ok) {
+          const d = await res.json();
+          const txt = d.data?.content || d.data?.text || d.content || "";
+          if (txt.length > 50) return txt;
+        }
+      } catch (e) { console.log(`[vault] Jina(default) text fail ${pageUrl}: ${e}`); }
 
       return "";
     }
@@ -17558,6 +17518,10 @@ app.post("/vault/analyze", async (c) => {
       if (deep && textToAnalyze.length > 50) {
         console.log(`[vault/analyze] Deep scan: crawling sub-pages...`);
         const baseUrl = new URL(url);
+        const deepStart = Date.now();
+        // Hard ceiling so deep crawl never blows the edge function timeout (60s).
+        // We keep ~20s for the AI call afterwards.
+        const DEEP_BUDGET_MS = 35_000;
 
         // Priority paths — most likely to contain brand-relevant info
         const priorityPaths = [
@@ -17604,38 +17568,18 @@ app.post("/vault/analyze", async (c) => {
         // Crawl in parallel batches of 5 to avoid rate limits
         const batchSize = 5;
         for (let i = 0; i < pathsToTry.length; i += batchSize) {
+          if (Date.now() - deepStart > DEEP_BUDGET_MS) {
+            console.log(`[vault/analyze] Deep budget reached (${Date.now() - deepStart}ms) — stopping at ${i}/${pathsToTry.length} pages`);
+            break;
+          }
           const batch = pathsToTry.slice(i, i + batchSize);
           const subResults = await Promise.allSettled(
             batch.map(async (path) => {
               const subUrl = `${baseUrl.origin}${path}`;
               try {
-                // Fetch HTML with realistic UA first (fast, free)
-                let subHtml = "";
-                try {
-                  const subHtmlRes = await fetch(subUrl, {
-                    headers: {
-                      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                      "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
-                    },
-                    signal: AbortSignal.timeout(6000),
-                    redirect: "follow",
-                  });
-                  if (subHtmlRes.ok) subHtml = await subHtmlRes.text();
-                } catch {}
-
-                // If direct fetch was blocked or thin, fall back to Jina (cheap)
-                if (subHtml.length < 200) {
-                  const jinaKey = Deno.env.get("JINA_API_KEY");
-                  if (jinaKey) {
-                    try {
-                      const jr = await fetchWithTimeout(`https://r.jina.ai/${subUrl}`, {
-                        headers: { Authorization: `Bearer ${jinaKey}`, Accept: "text/html", "X-Return-Format": "html", "X-Proxy": "auto" },
-                      }, 10_000);
-                      if (jr.ok) subHtml = await jr.text();
-                    } catch {}
-                  }
-                }
+                // Sub-pages: Jina default engine only ("fast" mode) so the deep crawl
+                // stays inside the global budget. Browser engine is reserved for the homepage.
+                const subHtml = await fetchHtml(subUrl, "fast");
                 if (subHtml.length < 200) return "";
 
                 // Extract visual data (colors, fonts, social, logo, images)

@@ -1508,9 +1508,29 @@ function VaultPageContent() {
 
                 <div className="flex items-center gap-2.5 shrink-0">
                   {vault.confidence_score > 0 && (
-                    <div className="flex items-baseline gap-1 px-3 py-1.5 rounded-xl"
-                      style={{ background: "rgba(17,17,17,0.08)", border: "1px solid rgba(17,17,17,0.15)" }}>
-                      <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--accent)" }}>{vault.confidence_score}</span>
+                    <div
+                      title={
+                        vault.confidence_score < 50
+                          ? "Scan incomplet — complète les champs vides manuellement pour de meilleures générations"
+                          : vault.confidence_score < 75
+                          ? "Scan correct — quelques champs à affiner pour des générations plus fidèles"
+                          : "Scan riche — DNA prête pour générer"
+                      }
+                      className="flex items-baseline gap-1 px-3 py-1.5 rounded-xl"
+                      style={{
+                        background: vault.confidence_score < 50 ? "rgba(220,38,38,0.08)" : "rgba(17,17,17,0.08)",
+                        border: vault.confidence_score < 50 ? "1px solid rgba(220,38,38,0.25)" : "1px solid rgba(17,17,17,0.15)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "16px",
+                          fontWeight: 600,
+                          color: vault.confidence_score < 50 ? "rgb(220,38,38)" : "var(--accent)",
+                        }}
+                      >
+                        {vault.confidence_score}
+                      </span>
                       <span style={{ fontSize: "10px", color: "rgba(17,17,17,0.6)", fontWeight: 500 }}>/100</span>
                     </div>
                   )}
