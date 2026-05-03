@@ -1517,6 +1517,17 @@ const PROVIDER_COSTS: Record<string, number> = {
   // Image — Photoroom (primary compositing path)
   "photoroom-studio": 0.020, "photoroom/studio": 0.020,
   "photoroom-cutout": 0.005, "photoroom/cutout": 0.005,
+  // Image — Photoroom Plus extras (per /v2/edit call, billed by Photoroom)
+  "photoroom-ghost-mannequin": 0.025, "photoroom/ghost-mannequin": 0.025,
+  "photoroom-virtual-model":   0.030, "photoroom/virtual-model":   0.030,
+  "photoroom-flat-lay":        0.020, "photoroom/flat-lay":        0.020,
+  "photoroom-upscale-fast":    0.020, "photoroom/upscale-fast":    0.020,
+  "photoroom-upscale-slow":    0.040, "photoroom/upscale-slow":    0.040,
+  "photoroom-beautify":        0.015, "photoroom/beautify":        0.015,
+  "photoroom-expand":          0.015, "photoroom/expand":          0.015,
+  "photoroom-uncrop":          0.015, "photoroom/uncrop":          0.015,
+  "photoroom-text-removal":    0.010, "photoroom/text-removal":    0.010,
+  "photoroom-relight":         0.020, "photoroom/relight":         0.020,
   // Video — FAL
   "fal/ltx-video": 0.080, "fal/minimax-video": 0.100, "fal/luma-dream-machine": 0.120,
   // Video — Replicate
@@ -11914,9 +11925,13 @@ OUTPUT JSON:
 async function photoroomExtractCutout(productImageUrl: string, photoroomKey: string): Promise<{ pngBlob: Blob }> {
   // Photoroom /v2/edit with only removeBackground=true and export.format=png (no bg generation)
   // Returns a PNG with transparent background — the product pixels are 100% preserved.
+  // textRemoval.mode=ai.artificial strips post-processed text (watermarks, sale
+  // bands, brand overlays) often baked into scraped catalogue / stock photos
+  // before they hit the compositor.
   const params = new URLSearchParams();
   params.set("imageUrl", productImageUrl);
   params.set("removeBackground", "true");
+  params.set("textRemoval.mode", "ai.artificial");
   params.set("export.format", "png");
   const url = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
   const res = await fetch(url, { headers: { "x-api-key": photoroomKey } });
@@ -11993,6 +12008,12 @@ async function runPixelPerfectComposite(opts: {
       params.set("removeBackground", "true");
       params.set("background.prompt", String(prompt).slice(0, 400));
       params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+      // Explicit soft-shadow grounds the product in the new scene. Without
+      // it the AI bg model decides whether to drop a shadow on its own,
+      // which sometimes lands a floating cutout on a otherwise-photoreal
+      // backdrop. ai.soft is the most forgiving across packshot styles.
+      params.set("shadow.mode", "ai.soft");
+      params.set("textRemoval.mode", "ai.artificial");
       params.set("outputSize", outputSize);
       params.set("padding", "0.08");
       params.set("ignorePaddingAndSnapOnCroppedSides", "false");
@@ -12095,6 +12116,216 @@ async function runPixelPerfectComposite(opts: {
 
   console.log(`[composite] all strategies failed in ${Date.now() - t0}ms`);
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHOTOROOM PLUS — extra capabilities (Ghost Mannequin, Beautify,
+// Upscale, Expand) wired as standalone helpers so they can be called
+// from dedicated endpoints or composed into bigger pipelines later.
+// All return { imageUrl, provider, latencyMs } | null.
+// ═══════════════════════════════════════════════════════════════════
+
+// Shared upload-and-sign helper for the new Photoroom outputs.
+async function uploadPhotoroomBytesAndSign(
+  bytes: ArrayBuffer,
+  contentType: string,
+  prefix: string,
+  userId: string | null,
+): Promise<string | null> {
+  try {
+    const sb = supabaseAdmin();
+    const ext = contentType.includes("png") ? "png" : contentType.includes("jpeg") ? "jpg" : "webp";
+    const fileName = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const storagePath = `generated/${userId || "anon"}/${fileName}`;
+    const { error: upErr } = await sb.storage
+      .from("make-cad57f79-media")
+      .upload(storagePath, new Uint8Array(bytes), { contentType, upsert: true });
+    if (upErr) {
+      console.log(`[photoroom-plus] upload error: ${upErr.message}`);
+      return null;
+    }
+    const { data: signed } = await sb.storage
+      .from("make-cad57f79-media")
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+    return signed?.signedUrl || null;
+  } catch (err) {
+    console.log(`[photoroom-plus] upload exception: ${err}`);
+    return null;
+  }
+}
+
+// Ghost Mannequin — invisible-mannequin treatment for apparel / soft goods.
+// Photoroom infers garment shape and removes the wearer (or the mannequin)
+// while keeping fabric drape and silhouette intact. Optionally composites
+// an AI background in the same call (background.prompt provided).
+async function runPhotoroomGhostMannequin(opts: {
+  productImageUrl: string;
+  bgPrompt?: string;
+  aspectRatio?: string;
+  userId: string | null;
+  campaignSlug?: string;
+}): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
+  const t0 = Date.now();
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return null;
+  const arSizeMap: Record<string, string> = {
+    "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+    "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+    "2:3": "800x1200", "3:2": "1200x800",
+  };
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", opts.productImageUrl);
+    params.set("ghostMannequin.mode", "ai.auto");
+    if (opts.bgPrompt) {
+      params.set("background.prompt", String(opts.bgPrompt).slice(0, 400));
+      params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+      params.set("shadow.mode", "ai.soft");
+    } else {
+      params.set("background.color", "FFFFFF");
+    }
+    params.set("outputSize", arSizeMap[opts.aspectRatio || "1:1"] || "1080x1080");
+    params.set("padding", "0.06");
+    params.set("export.format", "webp");
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: {
+        "x-api-key": photoroomKey,
+        "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
+      },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[ghost-mannequin] ${res.status}: ${b.slice(0, 200)}`);
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    const url = await uploadPhotoroomBytesAndSign(buf, "image/webp", "ghost-mannequin", opts.userId);
+    if (!url) return null;
+    const latencyMs = Date.now() - t0;
+    logCost({ type: "image", model: "photoroom-ghost-mannequin", provider: "photoroom-ghost-mannequin", costUsd: getProviderCost("photoroom-ghost-mannequin", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: opts.userId || "anon", success: true, campaignSlug: opts.campaignSlug }).catch(() => {});
+    return { imageUrl: url, provider: "photoroom-ghost-mannequin", latencyMs };
+  } catch (err) {
+    console.log(`[ghost-mannequin] error: ${err}`);
+    return null;
+  }
+}
+
+// Beautify — packshot-grade polish on a product photo (smooth edges, even
+// lighting, clean backdrop). beautify.mode=ai.food specialises on food.
+async function runPhotoroomBeautify(opts: {
+  imageUrl: string;
+  mode?: "ai.auto" | "ai.food";
+  userId: string | null;
+}): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
+  const t0 = Date.now();
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return null;
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", opts.imageUrl);
+    params.set("beautify.mode", opts.mode || "ai.auto");
+    params.set("export.format", "webp");
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[beautify] ${res.status}: ${b.slice(0, 200)}`);
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    const url = await uploadPhotoroomBytesAndSign(buf, "image/webp", "beautify", opts.userId);
+    if (!url) return null;
+    const latencyMs = Date.now() - t0;
+    logCost({ type: "image", model: "photoroom-beautify", provider: "photoroom-beautify", costUsd: getProviderCost("photoroom-beautify", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: opts.userId || "anon", success: true }).catch(() => {});
+    return { imageUrl: url, provider: "photoroom-beautify", latencyMs };
+  } catch (err) {
+    console.log(`[beautify] error: ${err}`);
+    return null;
+  }
+}
+
+// AI Upscale — 4× resolution boost. ai.fast trades quality for speed,
+// ai.slow goes through a heavier model for crisper detail.
+async function runPhotoroomUpscale(opts: {
+  imageUrl: string;
+  mode?: "ai.fast" | "ai.slow";
+  userId: string | null;
+}): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
+  const t0 = Date.now();
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return null;
+  const mode = opts.mode || "ai.fast";
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", opts.imageUrl);
+    params.set("upscale.mode", mode);
+    params.set("export.format", "webp");
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[upscale] ${res.status}: ${b.slice(0, 200)}`);
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    const url = await uploadPhotoroomBytesAndSign(buf, "image/webp", "upscale", opts.userId);
+    if (!url) return null;
+    const latencyMs = Date.now() - t0;
+    const costKey = mode === "ai.slow" ? "photoroom-upscale-slow" : "photoroom-upscale-fast";
+    logCost({ type: "image", model: costKey, provider: costKey, costUsd: getProviderCost(costKey, "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: opts.userId || "anon", success: true }).catch(() => {});
+    return { imageUrl: url, provider: costKey, latencyMs };
+  } catch (err) {
+    console.log(`[upscale] error: ${err}`);
+    return null;
+  }
+}
+
+// AI Expand — generates pixels around the existing image to fill a new
+// aspect ratio. Use this instead of a hard crop when you need to push a
+// 1:1 hero into a 16:9 banner without losing the subject.
+async function runPhotoroomExpand(opts: {
+  imageUrl: string;
+  aspectRatio: string;
+  userId: string | null;
+}): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
+  const t0 = Date.now();
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return null;
+  const arSizeMap: Record<string, string> = {
+    "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+    "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+    "2:3": "800x1200", "3:2": "1200x800",
+  };
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", opts.imageUrl);
+    params.set("expand.mode", "ai.auto");
+    params.set("outputSize", arSizeMap[opts.aspectRatio] || "1080x1080");
+    params.set("export.format", "webp");
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: { "x-api-key": photoroomKey },
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[expand] ${res.status}: ${b.slice(0, 200)}`);
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    const url = await uploadPhotoroomBytesAndSign(buf, "image/webp", "expand", opts.userId);
+    if (!url) return null;
+    const latencyMs = Date.now() - t0;
+    logCost({ type: "image", model: "photoroom-expand", provider: "photoroom-expand", costUsd: getProviderCost("photoroom-expand", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: opts.userId || "anon", success: true }).catch(() => {});
+    return { imageUrl: url, provider: "photoroom-expand", latencyMs };
+  } catch (err) {
+    console.log(`[expand] error: ${err}`);
+    return null;
+  }
 }
 
 // Ideogram v3 text-card generation. Used for text-heavy graphic posts where
@@ -13102,6 +13333,84 @@ app.post("/images/harmonize", async (c) => {
   } catch (err) {
     console.error(`[harmonize] Error:`, err);
     return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ── Photoroom Plus: Ghost Mannequin (apparel invisible-mannequin shot) ──
+// Body: { imageUrl, bgPrompt?, aspectRatio? }
+// Returns the garment with the wearer/mannequin removed and an optional
+// AI-generated background. If bgPrompt is omitted, the result lands on
+// a clean white backdrop (catalogue-style packshot).
+app.post("/images/ghost-mannequin", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, bgPrompt, aspectRatio } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+    const out = await runPhotoroomGhostMannequin({
+      productImageUrl: imageUrl,
+      bgPrompt: bgPrompt || undefined,
+      aspectRatio: aspectRatio || "1:1",
+      userId: user.id,
+    });
+    if (!out) return c.json({ success: false, error: "Ghost Mannequin failed" }, 502);
+    return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// ── Photoroom Plus: Beautify (packshot polish) ──
+// Body: { imageUrl, mode? = "ai.auto" | "ai.food" }
+app.post("/images/beautify", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, mode } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+    const m = mode === "ai.food" ? "ai.food" : "ai.auto";
+    const out = await runPhotoroomBeautify({ imageUrl, mode: m, userId: user.id });
+    if (!out) return c.json({ success: false, error: "Beautify failed" }, 502);
+    return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// ── Photoroom Plus: AI Upscale (4× resolution) ──
+// Body: { imageUrl, mode? = "ai.fast" | "ai.slow" }
+// ai.fast ≈ 5-10s, ai.slow ≈ 30-60s with crisper detail.
+app.post("/images/upscale", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, mode } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+    const m = mode === "ai.slow" ? "ai.slow" : "ai.fast";
+    const out = await runPhotoroomUpscale({ imageUrl, mode: m, userId: user.id });
+    if (!out) return c.json({ success: false, error: "Upscale failed" }, 502);
+    return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// ── Photoroom Plus: AI Expand (extend canvas to a new aspect ratio) ──
+// Body: { imageUrl, aspectRatio }
+// Use this when reframing a 1:1 hero into 16:9 or 9:16 without cropping
+// the subject. The new pixels are AI-generated to match the existing scene.
+app.post("/images/expand", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, aspectRatio } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+    if (!aspectRatio) return c.json({ success: false, error: "No aspectRatio" }, 400);
+    const out = await runPhotoroomExpand({ imageUrl, aspectRatio, userId: user.id });
+    if (!out) return c.json({ success: false, error: "Expand failed" }, 502);
+    return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
   }
 });
 
