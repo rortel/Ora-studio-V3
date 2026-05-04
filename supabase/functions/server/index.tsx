@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T18:30Z — v679-carousel-publish");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T20:30Z — v680-strip-typography-style");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -12512,21 +12512,58 @@ interface ShotPromptJob {
   promptText: string;
 }
 
+// Style directives sometimes embed typography vocabulary (Magazine =
+// "oversized condensed display typography", Minimal = "thin centred
+// sans", Editorial = "magazine-cover gravitas"). When this directive
+// is injected at the TOP of a product-shot prompt, image models read
+// the typography cue and render hallucinated letterforms even though
+// our NO-TEXT cap at the END forbids it — the conflicting signals
+// produce gibberish ("Bel Choub", "EESN 91Chona", "VALE" instead of
+// SALE). For PRODUCT shots we strip those vocab tokens so the visual
+// style still applies but the model has zero text license. Text-cards
+// keep the raw directive because they're SUPPOSED to render text.
+function stripTypographyFromStyle(directive: string): string {
+  if (!directive) return "";
+  return directive
+    .replace(/oversized condensed display typography/gi, "oversized graphic blocks")
+    .replace(/condensed sans|condensed display sans/gi, "graphic blocks")
+    .replace(/display sans|display typography/gi, "graphic blocks")
+    .replace(/sans serif|sans-serif/gi, "geometric shapes")
+    .replace(/thin centred sans|thin centered sans/gi, "minimal centred shapes")
+    .replace(/typewriter|letterforms?/gi, "graphic shapes")
+    .replace(/wordmark|wordmarks/gi, "logo shapes")
+    .replace(/magazine[- ]cover gravitas/gi, "cinematic editorial gravitas")
+    .replace(/headline typography|headline\b/gi, "colour band")
+    .replace(/typography/gi, "graphic blocks")
+    .replace(/typo\b/gi, "graphic block");
+}
+
 function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: ShotPromptCtx): string {
   switch (category) {
     case "ghost-mannequin": {
       // Photoroom v2/edit background.prompt — describes only what goes
       // BEHIND the locked garment. Style first, then scene, then product
-      // descriptor for surface/palette appropriateness.
-      const styleHead = ctx.styleDirective ? `${ctx.styleDirective.slice(0, 240)}\n\n` : "";
+      // descriptor for surface/palette appropriateness. Typography vocab
+      // stripped because Photoroom's bg model also hallucinates letters
+      // when prompted with "magazine typography" cues.
+      const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
+      const styleHead = cleanStyle ? `${cleanStyle.slice(0, 240)}\n\n` : "";
       return ctx.productDescription
-        ? `${styleHead}${job.scene.slice(0, 200)} — backdrop appropriate for ${ctx.productDescription.slice(0, 150)}`
-        : `${styleHead}${job.scene.slice(0, 250)}`;
+        ? `${styleHead}${job.scene.slice(0, 200)} — backdrop appropriate for ${ctx.productDescription.slice(0, 150)} — NO rendered text or letters in the background`
+        : `${styleHead}${job.scene.slice(0, 250)} — NO rendered text or letters in the background`;
     }
     case "apparel-remix":
     case "regen-with-subject": {
-      const styleHead = ctx.styleDirective
-        ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${ctx.styleDirective.slice(0, 280)}\n\n`
+      // Strip typography vocabulary from the style directive — it's a
+      // PRODUCT shot, never a typography canvas. Magazine/Minimal/
+      // Editorial all sneak typo cues into their directive that the
+      // image model reads as "render text" and produces gibberish
+      // letterforms ("Bel Choub", "EESN 91Chona"). Cleaned directive
+      // keeps the visual aesthetic (saturated fields, split layouts,
+      // oversized blocks) without the text license.
+      const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
+      const styleHead = cleanStyle
+        ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${cleanStyle.slice(0, 280)}\n\n`
         : "";
       const subjectNoun = ctx.subjectKind === "place"   ? "space / venue"
                         : ctx.subjectKind === "person"  ? "person / portrait"
@@ -12552,7 +12589,7 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       // has very little headroom to invent typography and produces
       // garbled letters ("BEUNULA UIL FLAGONA", "1oeliideroays") when
       // asked. Text overlays are added by a separate downstream layer.
-      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — overrides any typography / headline / magazine / sign / wordmark / sale-tag / billboard / price-label / brand-name / poster cue that may appear above. This image MUST contain ZERO rendered letters or words. Garbled or hallucinated letterforms = REJECTED. Text and headlines are added by a separate overlay layer downstream — render only the product, the wearer (if any), and the scene. Any element that wants a label = render it as a clean coloured shape, band, or block instead.";
+      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — overrides any typography / headline / magazine / sign / wordmark / sale-tag / billboard / price-label / brand-name / poster cue that may appear above. This image MUST contain ZERO rendered letters or words. SPECIFICALLY FORBIDDEN: garbled brand names like 'BEL CHOUB' / 'BEA CHOU'S', mangled SALE words like 'VALE' / 'SALIE' / 'SALE', random gibberish letters like 'EESN 91CHONA' / 'NAIN SDU ELOCORO', any text on shoe boxes, on walls behind the product, on banners, on price tags, on logos, on the garment itself. Garbled or hallucinated letterforms = REJECTED. Text and headlines are added by a separate overlay layer downstream — render only the product, the wearer (if any), and the scene. Any element that wants a label = render it as a clean coloured shape, band, or block instead.";
       // SINGLE-GARMENT cap — the model sometimes invents a second pair of
       // pants (oversized prop being held by a phantom hand), a second
       // jacket draped over a chair, an extra shirt floating in the
@@ -12565,11 +12602,12 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
     case "studio-composite": {
       // Photoroom Studio AI bg.prompt — full scene description with
       // product identity anchor so the bg matches (a navy tracksuit
-      // doesn't get a beige bohemian setting).
-      const styleHead = ctx.styleDirective ? `${ctx.styleDirective.slice(0, 240)}\n\n` : "";
-      // Same NO-TEXT cap as apparel-remix — Photoroom Studio's AI bg
-      // model can also bake garbled text when asked.
-      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — render ZERO letters or words in the background. Hallucinated text = REJECTED. Use coloured shapes / bands / blocks for any element that might want a label.";
+      // doesn't get a beige bohemian setting). Typography vocab
+      // stripped from style — Photoroom's AI bg also hallucinates
+      // garbled text when given "typography" cues.
+      const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
+      const styleHead = cleanStyle ? `${cleanStyle.slice(0, 240)}\n\n` : "";
+      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — render ZERO letters, words, brand names, sale tags, signs, billboards, or labels of any kind in the image. Hallucinated text (even partial like 'BEL CHOU' or 'VALE') = REJECTED. Use coloured shapes / bands / blocks for any element that might want a label.";
       return ctx.productDescription
         ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${job.promptText}${noTextCap}`
         : `${styleHead}${job.promptText}${noTextCap}`;
