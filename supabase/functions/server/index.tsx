@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T13:55Z — v674-scrape-fast");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T14:10Z — v675-scrape-parallel");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -32758,7 +32758,13 @@ app.post("/products/scrape-url", async (c) => {
           const res = await fetch(`https://r.jina.ai/${url}`, {
             method: "GET",
             headers,
-            signal: AbortSignal.timeout(mode === "browser" ? 25_000 : 12_000),
+            // 15s ceiling on browser (was 25s) — gpt-4o-mini downstream
+            // can chew 8-10s, raw HTML 8s, response serialisation 1s,
+            // we need Jina to finish under ~20s to keep total under 30s.
+            // SPA pages that genuinely need >15s are extreme; for those
+            // the merchant just types the description. 8s on default
+            // (was 12s) — Jina default is fast or it's not coming back.
+            signal: AbortSignal.timeout(mode === "browser" ? 15_000 : 8_000),
           });
           if (!res.ok) {
             console.log(`[products/scrape-url] Jina(${mode}) status ${res.status} in ${Date.now() - t0}ms`);
@@ -32806,11 +32812,31 @@ app.post("/products/scrape-url", async (c) => {
         }
       })();
 
-      let result = await tryJina("browser");
-      if (!result || result.markdown.length < 100) {
-        if (result) console.log(`[products/scrape-url] Jina(browser) thin (${result.markdown.length} chars), trying default engine`);
-        const fallback = await tryJina("default");
-        if (fallback && fallback.markdown.length > (result?.markdown.length || 0)) result = fallback;
+      // Lance Jina(browser) ET Jina(default) EN PARALLÈLE. Coût: 2 appels
+      // Jina au lieu d'1 (~$0.02 supplémentaire/scrape). Gain: cap le worst
+      // case Jina à 15s au lieu de 23s sequential. La plupart des SPA
+      // marchent sur browser, les pages statiques sur default — laisser
+      // les deux courir et prendre le meilleur résultat est plus rapide
+      // que tester séquentiellement.
+      const [browserResult, defaultResult] = await Promise.all([
+        tryJina("browser"),
+        tryJina("default"),
+      ]);
+      // Préfère le résultat le plus riche (le browser engine voit les
+      // SPA hydratées, le default est plus rapide sur SSR).
+      let result: { markdown: string; images: string[] } | null = null;
+      const browserOk = browserResult && browserResult.markdown.length >= 100;
+      const defaultOk = defaultResult && defaultResult.markdown.length >= 100;
+      if (browserOk && defaultOk) {
+        // Les deux ont marché — prends celui avec le plus de contenu.
+        result = (browserResult!.markdown.length >= defaultResult!.markdown.length) ? browserResult : defaultResult;
+      } else if (browserOk) {
+        result = browserResult;
+      } else if (defaultOk) {
+        result = defaultResult;
+      } else if (browserResult || defaultResult) {
+        // Aucun n'a vraiment réussi mais on a quelque chose — prends le moins thin.
+        result = (browserResult?.markdown.length || 0) >= (defaultResult?.markdown.length || 0) ? browserResult : defaultResult;
       }
       if (result) {
         html = result.markdown;
