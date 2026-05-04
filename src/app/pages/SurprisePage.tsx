@@ -2796,20 +2796,23 @@ function CarouselTile({
             </button>
             <button
               onClick={() => {
-                if (!currentSlide?.imageUrl) return;
-                // Currently publishes the active slide only — full carousel
-                // publish to Post for Me requires PublishModal to accept
-                // asset arrays. Tracked separately.
+                // Carousel publish — push ALL slides as imageUrls[] so the
+                // backend ships a multi-image carousel post (Insta carousel,
+                // FB carousel, LinkedIn carousel). Order matters: slide 0
+                // is the cover, the rest follow as user swipes. The caption
+                // is the post-level caption (Insta merges it across slides).
+                const orderedImageUrls = slides
+                  .map((s) => s.imageUrl)
+                  .filter((u): u is string => !!u);
+                if (orderedImageUrls.length === 0) return;
                 setPublishTarget({
-                  imageUrl: currentSlide.imageUrl,
-                  videoUrl: currentSlide.videoUrl,
+                  imageUrls: orderedImageUrls,
                   defaultCaption: captionItem?.caption || "",
                 });
-                toast.info(`Publishing slide ${activeSlide + 1} only — multi-slide publish coming soon`);
               }}
               className="shrink-0 h-7 px-2.5 rounded-full flex items-center justify-center gap-1 text-[11px]"
               style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
-              aria-label="Publish active slide" title="Publish the active slide (multi-slide publish coming soon)">
+              aria-label="Publish carousel" title="Publish all slides as a carousel post">
               <Send size={11} /> Publish
             </button>
           </>

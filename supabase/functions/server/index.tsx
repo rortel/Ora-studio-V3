@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T15:55Z — v678-jsonld-extraction");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T18:30Z — v679-carousel-publish");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -26461,7 +26461,7 @@ app.post("/pfm/publish", async (c) => {
     const user = await requireAuth(c);
     const body = c.get("parsedBody") || await c.req.json();
     const {
-      caption, hashtags, imageUrl, videoUrl,
+      caption, hashtags, imageUrl, imageUrls, videoUrl,
       accountIds, scheduledAt,
       platformConfigurations, accountConfigurations,
       calendarEventId,
@@ -26495,18 +26495,26 @@ app.post("/pfm/publish", async (c) => {
       }, 403);
     }
 
-    // Re-sign storage URLs (re-uses the helper added by PR #101).
-    // Critical for scheduled posts — Post for Me fetches the media at
-    // posting time, not scheduling time, so a 7-day signed URL would
-    // expire before a post scheduled 8 days out.
-    const [freshImageUrl, freshVideoUrl] = await Promise.all([
-      refreshSupabaseSignedUrl(imageUrl),
+    // Carousel support: client may send `imageUrls: string[]` (multi-slide
+    // carousel — Insta carousel, FB carousel, LinkedIn carousel) OR the
+    // legacy single `imageUrl`. Refresh signed URLs for ALL of them in
+    // parallel and pass them as separate `media[]` entries. Post For Me
+    // auto-detects the post type from media count: 1 image = standard
+    // post, 2+ images = carousel on every supported network. Critical
+    // for scheduled posts — PfM fetches media at posting time, not
+    // scheduling time, so 7-day signed URLs expire before scheduled day.
+    const candidateImageUrls: string[] = Array.isArray(imageUrls) && imageUrls.length > 0
+      ? imageUrls.map((u: any) => String(u || "").trim()).filter(Boolean).slice(0, 10)
+      : (imageUrl ? [String(imageUrl)] : []);
+    const [refreshedImageList, freshVideoUrl] = await Promise.all([
+      Promise.all(candidateImageUrls.map((u) => refreshSupabaseSignedUrl(u))),
       refreshSupabaseSignedUrl(videoUrl),
     ]);
+    const freshImageUrls: string[] = refreshedImageList.filter((u): u is string => !!u);
 
     const fullCaption = [caption || "", hashtags || ""].filter(Boolean).join("\n\n").slice(0, 5000);
     const media: any[] = [];
-    if (freshImageUrl) media.push({ url: freshImageUrl });
+    for (const u of freshImageUrls) media.push({ url: u });
     if (freshVideoUrl) media.push({ url: freshVideoUrl });
 
     const postBody: any = {

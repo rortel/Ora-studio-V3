@@ -25,6 +25,12 @@ import { useI18n } from "../lib/i18n";
 
 export interface PublishableAsset {
   imageUrl?: string;
+  // Multi-image carousels (Insta carousel, FB carousel, LinkedIn carousel).
+  // When present and length >= 2, the modal sends them all to /pfm/publish
+  // which auto-detects carousel mode based on media count. The first slide
+  // is the cover; the order in this array is the order of slides on Insta.
+  // Legacy single-image posts keep using `imageUrl` and ignore this field.
+  imageUrls?: string[];
   videoUrl?: string;
   defaultCaption?: string;
   libraryItemId?: string;
@@ -333,10 +339,17 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
       // the user's profile-scoped list server-side (PR #111 hard-guard,
       // parity with Zernio PR #108) so a stale or hand-crafted body
       // can never reach a tenant other than the requester.
+      // Carousel: when asset.imageUrls (plural) is set, ALL slides ship
+      // as media[] entries — Insta/FB/LinkedIn auto-render as carousel.
+      // Auto-reframe is disabled in carousel mode because reframing each
+      // slide independently would distort the visual continuity that
+      // makes a carousel feel coherent. The merchant pre-formatted them.
+      const isCarousel = Array.isArray(asset.imageUrls) && asset.imageUrls.length >= 2;
       const res = await serverPost("/pfm/publish", {
         caption: captionText,
         hashtags: hashtagsText,
-        imageUrl: platformImageUrl,
+        imageUrl: isCarousel ? undefined : platformImageUrl,
+        imageUrls: isCarousel ? asset.imageUrls : undefined,
         videoUrl: asset.videoUrl,
         scheduledAt: scheduledAtISO,
         accountIds: [accountId],
