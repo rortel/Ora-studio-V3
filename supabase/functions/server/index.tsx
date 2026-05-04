@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-04-14T15:30Z — v671-pollo-full-suite");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T08:10Z — v672-surprise-pipeline-rewire");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
