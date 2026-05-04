@@ -11156,12 +11156,19 @@ OUTPUT JSON:
       overlayStyle?: "headline" | "value-prop" | "cta" | "caption";
     }> = [];
     // Wall-clock budget for the entire still phase. Supabase Edge gateway
-    // cuts off around 150s; we leave 30s headroom for film generation +
-    // response serialisation. If a batch runs us past the budget, we
-    // gracefully bail with whatever's done so far + mark remaining shots
-    // as queued — better than a silent 502/504.
-    const STILLS_BUDGET_MS = 100_000;
-    const handlerStart = t0;
+    // cuts off around 150s; we leave 45s headroom for film generation,
+    // captions, persistence, and response serialisation. If a batch runs
+    // us past the budget, we gracefully bail with whatever's done so far
+    // + mark remaining shots as queued — better than a silent 502/504.
+    // Tightened from 100s → 85s after observing 504s on 6-shot apparel
+    // packs where the cascade-removal made slow Photoroom calls more
+    // costly (no fallback to absorb a slow batch).
+    // Anchor the budget at the START OF THE STILLS PHASE, not at the
+    // handler entry. The concept call already burned ~30s; using t0 as
+    // the anchor was eating that into the stills budget and forcing the
+    // bailout half-way through batch 2 on slow apparel packs.
+    const STILLS_BUDGET_MS = 85_000;
+    const handlerStart = Date.now();
     writeProgress("stills_started", 0.30, `Shooting ${jobs.length} stills…`);
     for (let i = 0; i < jobs.length; i += CONCURRENCY) {
       // Real-time progress: each batch boundary updates the fraction
@@ -11960,7 +11967,13 @@ async function photoroomExtractCutout(productImageUrl: string, photoroomKey: str
   params.set("textRemoval.mode", "ai.artificial");
   params.set("export.format", "png");
   const url = `https://image-api.photoroom.com/v2/edit?${params.toString()}`;
-  const res = await fetch(url, { headers: { "x-api-key": photoroomKey } });
+  // 20s ceiling — cutout-only call is fast (no AI bg). Anything past
+  // this is a Photoroom hiccup and we'd rather fail than block the
+  // composite caller, which has its own timeout downstream.
+  const res = await fetch(url, {
+    headers: { "x-api-key": photoroomKey },
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!res.ok) {
     const b = await res.text();
     throw new Error(`Photoroom cutout ${res.status}: ${b.slice(0, 200)}`);
@@ -12048,16 +12061,21 @@ async function runPixelPerfectComposite(opts: {
     params.set("ignorePaddingAndSnapOnCroppedSides", "false");
     params.set("export.format", "webp");
 
+    // 30s ceiling — Photoroom Studio normally returns in 6-12s. Past 30s
+    // is a queue / rate-limit problem upstream. Fail this shot fast so
+    // sibling shots in the same batch can finish (was 45s — combined
+    // with concurrency=3 and 6 shots, a single hung call could push the
+    // handler past the 150s gateway timeout).
     const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
       headers: {
         "x-api-key": photoroomKey,
         "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
       },
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       const b = await res.text();
-      console.log(`[composite] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
+      console.log(`[composite] Photoroom Studio ${res.status} after ${Date.now() - t0}ms: ${b.slice(0, 200)}`);
       return null;
     }
     const imageBuffer = await res.arrayBuffer();
@@ -12156,16 +12174,20 @@ async function runPhotoroomGhostMannequin(opts: {
     params.set("outputSize", arSizeMap[opts.aspectRatio || "1:1"] || "1080x1080");
     params.set("padding", "0.06");
     params.set("export.format", "webp");
+    // 30s ceiling — Photoroom Ghost Mannequin normally returns in 8-15s.
+    // Anything past 30s is a Photoroom-side queue / rate-limit issue and
+    // we'd rather fail this shot than block the whole batch and push the
+    // handler past the 150s gateway timeout (was 60s, caused 504s).
     const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
       headers: {
         "x-api-key": photoroomKey,
         "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
       },
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       const b = await res.text();
-      console.log(`[ghost-mannequin] ${res.status}: ${b.slice(0, 200)}`);
+      console.log(`[ghost-mannequin] ${res.status} after ${Date.now() - t0}ms: ${b.slice(0, 200)}`);
       return null;
     }
     const buf = await res.arrayBuffer();
