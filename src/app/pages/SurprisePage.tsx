@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -157,6 +157,12 @@ function SurpriseContent() {
   // from typing for any product/dish/service that already has a website.
   const [productPageUrl, setProductPageUrl] = useState("");
   const [scanningProductUrl, setScanningProductUrl] = useState(false);
+  // Toggle pour révéler les champs description+price quand l'utilisateur
+  // n'a rien tapé et n'a pas encore scrapé. Réduit la sensation "trop
+  // de champs" sur le formulaire initial — la majorité des utilisateurs
+  // scraperont une URL ou cliqueront "Plus de détails", pas besoin de
+  // les leur imposer dès l'ouverture.
+  const [showDetails, setShowDetails] = useState(false);
   // Rich product attributes scraped from the URL. The 200-char productDescription
   // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
   // come out flat because the model has no concrete attributes to anchor the
@@ -229,6 +235,17 @@ function SurpriseContent() {
   // edit lives here and takes precedence over the LLM-generated text from
   // the server. Survives the lifetime of the result view; reset on new pack.
   const [editedOverlays, setEditedOverlays] = useState<Record<string, string>>({});
+  // Set of fileNames that the user dismissed from the result view. Hides
+  // the shot from the displayed pack but doesn't delete it from Library
+  // — the asset is already saved server-side. Reset on new pack.
+  const [dismissedFileNames, setDismissedFileNames] = useState<Set<string>>(new Set());
+  const dismissShot = useCallback((fileName: string) => {
+    setDismissedFileNames((prev) => {
+      const next = new Set(prev);
+      next.add(fileName);
+      return next;
+    });
+  }, []);
   // Request ID for the in-flight generation. Used by GenerationProgress to
   // poll /analyze/surprise-me-progress and replace the time-windowed phase
   // approximation with the real backend phase.
@@ -700,6 +717,7 @@ function SurpriseContent() {
     setStage("concept");
     setPack(null);
     setEditedOverlays({}); // wipe carousel overlay edits from previous run
+    setDismissedFileNames(new Set()); // wipe dismissed shots from previous run
     // Generate a per-run request id the backend uses as the progress KV
     // key. Browsers from ~2022 expose crypto.randomUUID; we fall back to a
     // timestamp+random combo for older runtimes (and for SSR safety).
@@ -866,6 +884,11 @@ function SurpriseContent() {
   const groupedByPlatform: Record<string, PackItem[]> = {};
   if (pack) {
     for (const it of pack.items) {
+      // Filtre les shots dismissed par l'utilisateur (clic Trash) — ils
+      // restent en Library mais disparaissent de la vue résultat. Ça
+      // permet de "nettoyer" le pack visuellement avant publish/share
+      // sans perdre les assets côté serveur.
+      if (dismissedFileNames.has(it.fileName)) continue;
       const bucket = (groupedByPlatform[it.platform] ||= []);
       bucket.push(it);
     }
@@ -1480,32 +1503,60 @@ function SurpriseContent() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
-                      {subjectMeta.descLabel}
-                    </label>
-                    <input
-                      value={productDescription}
-                      onChange={(e) => setProductDescription(e.target.value)}
-                      placeholder={subjectMeta.descPlaceholder}
-                      className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
-                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
-                      Price <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional)</span>
-                    </label>
-                    <input
-                      value={productPrice}
-                      onChange={(e) => setProductPrice(e.target.value)}
-                      placeholder="€89"
-                      className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
-                      style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
-                    />
-                  </div>
-                </div>
+                {/* Champs description + prix — révélés progressivement.
+                  * Avant : toujours visibles, contribuait à la sensation
+                  * "trop de champs" même si la plupart sont optionnels.
+                  * Maintenant : cachés par défaut, auto-révélés quand le
+                  * scrape a réussi OU quand l'utilisateur a déjà tapé
+                  * quelque chose, OU sur clic du bouton "Plus de détails".
+                  * Permet à l'utilisateur de générer en collant juste une
+                  * URL et en cliquant Generate. */}
+                {(() => {
+                  const hasContent = !!productDescription.trim() || !!productPrice.trim() || !!scrapedProduct;
+                  if (!hasContent && !showDetails) {
+                    return (
+                      <div className="mb-6">
+                        <button
+                          type="button"
+                          onClick={() => setShowDetails(true)}
+                          className="inline-flex items-center gap-1.5 text-[12.5px] hover:text-black transition"
+                          style={{ color: MUTED, fontWeight: 500 }}
+                        >
+                          <span style={{ fontSize: 14, opacity: 0.7 }}>+</span>
+                          Plus de détails (optionnel)
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">
+                      <div>
+                        <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                          {subjectMeta.descLabel}
+                        </label>
+                        <input
+                          value={productDescription}
+                          onChange={(e) => setProductDescription(e.target.value)}
+                          placeholder={subjectMeta.descPlaceholder}
+                          className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                          style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-mono uppercase tracking-[0.2em] mb-1.5" style={{ color: MUTED }}>
+                          Price <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>(optional)</span>
+                        </label>
+                        <input
+                          value={productPrice}
+                          onChange={(e) => setProductPrice(e.target.value)}
+                          placeholder="€89"
+                          className="w-full rounded-xl px-3 h-10 text-[14px] outline-none"
+                          style={{ background: "#fff", border: `1px solid ${BORDER}`, color: TEXT }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 2.5 Intent — six SMB-friendly chips. Single-select. Click toggles.
                     The selected chip writes a rich directive into ctxWhy that the
@@ -2006,6 +2057,12 @@ function SurpriseContent() {
                                   <Download size={11} /> mp4
                                 </button>
                               )}
+                              <button
+                                onClick={() => dismissShot(it.fileName)}
+                                className="shrink-0 w-7 h-7 rounded-full hover:bg-red-50 flex items-center justify-center"
+                                aria-label="Remove from pack" title="Cacher ce shot du pack (reste sauvegardé en Library)">
+                                <Trash2 size={12} style={{ color: "rgba(220, 50, 50, 0.7)" }} />
+                              </button>
                               <button
                                 onClick={() => setPublishTarget({
                                   imageUrl: it.imageUrl,

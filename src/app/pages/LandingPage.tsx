@@ -660,13 +660,13 @@ function PickMockup() {
  * the panel never renders empty on first paint.
  */
 function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: string; platform: string }> }) {
-  // Tuiles 1:1 pour un bento propre — un mix de plateformes qui couvre la
-  // variété des sorties Ora (Feed/Story/Reel/Carousel/TikTok/Facebook/
-  // FB Story/FB Carousel/LinkedIn). 9 tuiles en 3×3 sur desktop pour montrer
-  // que les packs Ora couvrent vraiment tout l'écosystème social — vs 5
-  // tuiles avant qui rendait un layout 3+2 asymétrique et sous-vendait la
-  // promesse "tous tes canaux d'un coup".
-  const TILES = [
+  // Tuiles 1:1 pour un bento propre. Le mix couvre l'écosystème social
+  // (IG/FB/TikTok/LinkedIn) mais le NOMBRE de tuiles s'adapte au nombre
+  // de items featurés réellement disponibles côté admin Library — on
+  // ne veut pas afficher de gradient placeholder vide quand on a 4
+  // items featured, ça lit "produit pas encore prêt" au visiteur.
+  // Layout: 6 minimum (3×2) si pas assez d'items, jusqu'à 9 (3×3) max.
+  const TILE_DIMS = [
     { platform: "IG · Feed",      dim: "1080×1080", gradient: "linear-gradient(135deg, #FFB088 0%, #FF5C39 100%)" },
     { platform: "IG · Story",     dim: "1080×1920", gradient: "linear-gradient(160deg, #F4C542 0%, #EC8926 100%)" },
     { platform: "IG · Reel",      dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
@@ -677,6 +677,13 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
     { platform: "FB · Carousel",  dim: "1080×1080", gradient: "linear-gradient(140deg, #2563EB 0%, #0EA5E9 100%)" },
     { platform: "LinkedIn",       dim: "1200×1200", gradient: "linear-gradient(135deg, #0A66C2 0%, #111111 100%)" },
   ];
+
+  // Adapte le nombre de tuiles affichées au nombre d'assets featurés
+  // disponibles. En dessous de 6, on tombe sur 6 (le bento minimal).
+  // Au-dessus de 9, on plafonne à 9 (3×3).
+  const validAssetsCount = assets.filter((a) => a && (a.imageUrl || a.videoUrl)).length;
+  const tileCount = validAssetsCount >= 9 ? 9 : (validAssetsCount >= 6 ? validAssetsCount : 6);
+  const TILES = TILE_DIMS.slice(0, tileCount);
 
   // Track which tile media has failed to load (expired signed URL,
   // 404, network error). When that happens we fall back to the
