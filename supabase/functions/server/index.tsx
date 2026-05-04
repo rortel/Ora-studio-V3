@@ -10178,6 +10178,29 @@ app.get("/analyze/surprise-me-progress", async (c) => {
   }
 });
 
+// POST variant — preferred path. The GET variant carries the user JWT
+// in the query string, which broke once Supabase started issuing ES256
+// tokens with bloated user_metadata: the URL crossed the browser /
+// proxy / Supabase gateway URL-length limit (~2-4 KB) and the polling
+// loop fired ERR_FAILED every 2 seconds for the entire run. POST keeps
+// the token in the body so the URL stays small.
+//
+// Content-Type: text/plain skips the CORS preflight; the body-parser
+// middleware extracts _token + parsedBody before the handler runs.
+app.post("/analyze/surprise-me-progress", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
+    const id = String(body?.id || "").trim();
+    if (!id) return c.json({ success: false, error: "Missing id" }, 400);
+    const data = await kv.get(`progress:${user.id}:${id}`);
+    if (!data) return c.json({ success: true, progress: null });
+    return c.json({ success: true, progress: data });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // STYLE CATALOG — gallery picker for Surprise Me
 // ═══════════════════════════════════════════════════════════════════

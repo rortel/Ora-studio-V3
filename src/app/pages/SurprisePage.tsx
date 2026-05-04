@@ -2154,12 +2154,20 @@ function GenerationProgress({ stage, mediaType, assetCount, requestId, accessTok
     let cancelled = false;
     const poll = async () => {
       try {
-        // The progress endpoint reads the user JWT from `_token` query
-        // param (CORS-safe path also used by other authenticated GETs).
-        // Authorization header carries the public anon key so the
-        // Supabase gateway lets the request through to the function.
-        const url = `${API_BASE}/analyze/surprise-me-progress?id=${encodeURIComponent(requestId)}&_token=${encodeURIComponent(accessToken)}`;
-        const r = await fetch(url, { headers: { Authorization: `Bearer ${publicAnonKey}` } });
+        // POST variant — JWT goes in the body, not the URL. The GET
+        // variant put the token in the query string, which crossed
+        // browser / proxy URL-length limits (~2-4 KB) once Supabase
+        // started issuing ES256 tokens with bloated user_metadata, and
+        // every poll fired ERR_FAILED for the duration of the run.
+        // Content-Type: text/plain keeps the request CORS-safe.
+        const r = await fetch(`${API_BASE}/analyze/surprise-me-progress`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+            "Content-Type": "text/plain",
+          },
+          body: JSON.stringify({ _token: accessToken, id: requestId }),
+        });
         if (!r.ok) return;
         const j = await r.json().catch(() => null);
         if (!cancelled && j?.success && j.progress) {
