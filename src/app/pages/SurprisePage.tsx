@@ -1435,6 +1435,49 @@ function SurpriseContent() {
                       {scanningProductUrl ? "Lecture…" : "Scanner"}
                     </button>
                   </div>
+                  {/* Attributs récupérés du scrape — feedback visible que la
+                   * ground-truth est bien arrivée. Donne au merchant la
+                   * confiance que le pack généré sera fidèle au produit
+                   * réel (sinon il a l'impression que rien n'est passé). */}
+                  {scrapedProduct && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-2 flex flex-wrap gap-1.5"
+                    >
+                      {scrapedProduct.category && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(17,17,17,0.06)", color: TEXT }}>
+                          <span style={{ opacity: 0.55 }}>cat.</span> {scrapedProduct.category}
+                        </span>
+                      )}
+                      {scrapedProduct.color && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(17,17,17,0.06)", color: TEXT }}>
+                          <span style={{ opacity: 0.55 }}>couleur</span> {scrapedProduct.color}
+                        </span>
+                      )}
+                      {scrapedProduct.material && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(17,17,17,0.06)", color: TEXT }}>
+                          <span style={{ opacity: 0.55 }}>matière</span> {scrapedProduct.material}
+                        </span>
+                      )}
+                      {scrapedProduct.fit && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(17,17,17,0.06)", color: TEXT }}>
+                          <span style={{ opacity: 0.55 }}>coupe</span> {scrapedProduct.fit}
+                        </span>
+                      )}
+                      {scrapedProduct.styleTags && scrapedProduct.styleTags.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(17,17,17,0.06)", color: TEXT }}>
+                          <span style={{ opacity: 0.55 }}>style</span> {scrapedProduct.styleTags.slice(0, 3).join(", ")}
+                        </span>
+                      )}
+                      {scrapedProduct.imageUrls && scrapedProduct.imageUrls.length > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(255,200,100,0.18)", color: TEXT }}>
+                          <span style={{ opacity: 0.7 }}>📸</span> {scrapedProduct.imageUrls.length} photo{scrapedProduct.imageUrls.length > 1 ? "s" : ""} récupérée{scrapedProduct.imageUrls.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </motion.div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-3 mb-6">

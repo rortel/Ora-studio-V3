@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T14:40Z — v676-scrape-wayback-fallback");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T15:10Z — v677-bing-fallback-single-garment");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -12553,7 +12553,14 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       // garbled letters ("BEUNULA UIL FLAGONA", "1oeliideroays") when
       // asked. Text overlays are added by a separate downstream layer.
       const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — overrides any typography / headline / magazine / sign / wordmark / sale-tag / billboard / price-label / brand-name / poster cue that may appear above. This image MUST contain ZERO rendered letters or words. Garbled or hallucinated letterforms = REJECTED. Text and headlines are added by a separate overlay layer downstream — render only the product, the wearer (if any), and the scene. Any element that wants a label = render it as a clean coloured shape, band, or block instead.";
-      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}${noTextCap}`;
+      // SINGLE-GARMENT cap — the model sometimes invents a second pair of
+      // pants (oversized prop being held by a phantom hand), a second
+      // jacket draped over a chair, an extra shirt floating in the
+      // background. We forbid all duplicates explicitly.
+      const singleItemCap = ctx.subjectKind === "product" && ctx.jobIsApparel
+        ? "\n\nSINGLE-GARMENT RULE (apparel — non-negotiable): exactly ONE instance of the garment in the frame, on the wearer. NEVER show a second pair of pants, a duplicate jacket, an extra t-shirt, a clone garment in the background, a garment held by a hand, a garment floating, a garment on a hanger, a garment draped over furniture, a stack of similar items, or any garment-shaped prop besides the one worn. NEVER show phantom hands, body parts disconnected from the wearer, or extra people interacting with another garment. Just one wearer wearing the garment, in scene."
+        : "";
+      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}${singleItemCap}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}${noTextCap}`;
     }
     case "studio-composite": {
       // Photoroom Studio AI bg.prompt — full scene description with
@@ -12596,7 +12603,15 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const productBlock = ctx.productDescription
         ? `THE PRODUCT THE SUBJECT IS WEARING / USING / SHOWING (must be reproduced in vivid concrete detail — every attribute named below MUST be visible in the rendered image): ${ctx.productDescription.slice(0, 700)}\n\n`
         : "";
-      return `${styleHead}${productBlock}SCENE: ${job.promptText}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
+      // SINGLE-ITEM cap on apparel T2I — models hallucinate "two pairs
+      // of pants" / "second jacket as backdrop prop" / "phantom hand
+      // holding extra garment" exactly the way the Bershka pack drifted
+      // into a "girl standing inside a giant baggy held by phantom hand"
+      // composition. Naming the failure modes explicitly forbids them.
+      const singleItemCap = ctx.jobIsApparel
+        ? "\n\nSINGLE-GARMENT RULE: exactly ONE instance of the garment in the frame, worn by the wearer. NEVER show a second pair of pants, a duplicate jacket, a clone garment in the background, a garment held by a hand, a garment floating in space, a garment on a hanger or chair as backdrop prop, a stack of similar items, OR any garment-shaped item besides the one being worn. NEVER show phantom hands, disembodied limbs, or extra people interacting with another garment. ONE wearer, ONE garment, ONE scene. No exceptions."
+        : "";
+      return `${styleHead}${productBlock}SCENE: ${job.promptText}${singleItemCap}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
     }
     case "text-card-only":
     case "pure-t2i":
@@ -32916,14 +32931,60 @@ app.post("/products/scrape-url", async (c) => {
       }
     }
 
+    // ── BOT-PROTECTION FALLBACK 2: Bing cache via search ──
+    // Wayback peut ne pas avoir de snapshot (URL toute neuve, ou site
+    // exclu de la robots.txt d'archive.org). Bing cache les pages qu'il
+    // indexe et les sert via leur résultat de recherche en mode cache.
+    // On l'utilise comme dernière chance avant de rendre l'erreur 422.
+    if (!html || html.length < 500) {
+      try {
+        console.log(`[products/scrape-url] Trying Bing cache fallback`);
+        // Bing's cache URL pattern: search the URL exactly, then click
+        // the cached link. We can hit it directly via a search query.
+        const bingSearchUrl = `https://www.bing.com/search?q=url%3A${encodeURIComponent(url)}`;
+        const bingRes = await fetch(bingSearchUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (bingRes.ok) {
+          const bingHtml = await bingRes.text();
+          // Bing renders the cached snippet inline in the SERP. Extract the
+          // cached snippet text from the search result for this exact URL.
+          // Pattern: <li class="b_algo">...<p>[snippet]</p>...
+          const snippetMatch = bingHtml.match(/<li class="b_algo"[\s\S]{0,200}<p[^>]*>([\s\S]{200,3000}?)<\/p>/);
+          if (snippetMatch && snippetMatch[1]) {
+            const snippet = snippetMatch[1].replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+            if (snippet.length > 200) {
+              if ((html?.length || 0) < snippet.length) {
+                // Bing snippet is short (~500 chars) but it's product
+                // metadata — use it as text content for the AI extractor.
+                html = snippet;
+                console.log(`[products/scrape-url] Bing snippet delivered ${snippet.length} chars`);
+              }
+            }
+          }
+        }
+      } catch (bingErr) {
+        console.log(`[products/scrape-url] Bing fallback error: ${bingErr}`);
+      }
+    }
+
     // Hard fail if everything came back empty: Jina returned thin, direct
-    // fetch was bot-blocked, AND Wayback Machine has no snapshot. Returning
-    // `success:true` with empty fields here would look like the scrape
-    // worked, then silently ship an empty form — confusing the user into
-    // thinking autofill is broken.
+    // fetch was bot-blocked, Wayback has no snapshot, AND Bing cache empty.
+    // Returning `success:true` with empty fields here would look like the
+    // scrape worked, then silently ship an empty form — confusing the user
+    // into thinking autofill is broken.
     if (!html || html.length < 200) {
       console.log(`[products/scrape-url] Nothing usable to analyze (html=${html?.length || 0} chars, rawHtml=${rawHtml.length} chars) — returning error`);
-      return c.json({ success: false, error: "Couldn't read this page. The site may be blocking bots — try a different product URL or fill the fields manually." }, 422);
+      // Detect the specific failure mode so the message can be actionable
+      const sitePattern = (() => {
+        try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+      })();
+      const isKnownBotProtected = /\b(bershka|zara|pullandbear|stradivarius|massimodutti|mango|lacoste|hermes|chanel|dior|gucci|burberry|louisvuitton|nike\.com|adidas\.com)\b/i.test(sitePattern);
+      const errMsg = isKnownBotProtected
+        ? `${sitePattern} bloque le scrape automatique. Colle directement la description du produit dans le champ "Quel produit ?" — Ora gère le reste à partir de ton brief.`
+        : `Cette page n'est pas lisible automatiquement. Si elle est très récente (publiée aujourd'hui ou hier) elle n'est pas encore indexée — réessaie demain. Sinon colle la description manuellement.`;
+      return c.json({ success: false, error: errMsg, hostname: sitePattern, botProtected: isKnownBotProtected }, 422);
     }
 
     // ── Image extraction with scoring ──
