@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T15:10Z — v677-bing-fallback-single-garment");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T15:55Z — v678-jsonld-extraction");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -32881,6 +32881,42 @@ app.post("/products/scrape-url", async (c) => {
       html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     }
 
+    // ── JSON-LD STRUCTURED DATA EXTRACTION ──
+    // E-commerce sites (Shopify, Magento, Inditex/Bershka/Zara, etc.)
+    // embed Schema.org Product data in <script type="application/ld+json">
+    // for Google Shopping. This data survives:
+    //   - SPA hydration (it's in the HTML shell)
+    //   - Cloudflare/Akamai bot blocks (the shell still ships)
+    //   - Wayback Machine snapshots (preserved verbatim)
+    //   - Bing cache snippets (sometimes, when the snippet includes <head>)
+    // It's the most reliable ground truth for products on bot-protected
+    // sites. We extract it from rawHtml AND any Wayback snapshot below,
+    // and inject it into the AI extractor's input alongside the text.
+    let jsonLdBlob = "";
+    const extractJsonLd = (rawSource: string): string => {
+      if (!rawSource) return "";
+      const matches = rawSource.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+      const collected: string[] = [];
+      for (const m of matches) {
+        const raw = m[1].trim();
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          // Garde uniquement les blocs Product (filtre WebSite, Organization, BreadcrumbList).
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          for (const node of arr) {
+            const nodeType = (node?.["@type"] || "").toString().toLowerCase();
+            if (nodeType.includes("product") || node?.offers || node?.brand || node?.sku) {
+              collected.push(JSON.stringify(node).slice(0, 4000));
+            }
+          }
+        } catch { /* JSON-LD malformé, skip */ }
+      }
+      return collected.join("\n").slice(0, 6000);
+    };
+    jsonLdBlob = extractJsonLd(rawHtml);
+    if (jsonLdBlob) console.log(`[products/scrape-url] JSON-LD Product trouvé: ${jsonLdBlob.length} chars`);
+
     // ── BOT-PROTECTION FALLBACK: Wayback Machine ──
     // Some sites (Bershka/Inditex, Zara, Lacoste, certaines luxury) block
     // datacenter IPs aggressively via Cloudflare/Akamai. Jina's browser
@@ -32914,9 +32950,16 @@ app.post("/products/scrape-url", async (c) => {
               snapHtml = snapHtml.replace(/<!--\s*BEGIN WAYBACK[\s\S]*?END WAYBACK[^>]*-->/gi, "");
               snapHtml = snapHtml.replace(/<script[^>]*src=["'][^"']*archive\.org[^"']*["'][^>]*><\/script>/gi, "");
               if (!rawHtml || rawHtml.length < snapHtml.length) rawHtml = snapHtml;
+              // Extract JSON-LD Product from the Wayback snapshot too — souvent
+              // c'est la SEULE data exploitable des SPA Inditex/Zara/Bershka.
+              const wbJsonLd = extractJsonLd(snapHtml);
+              if (wbJsonLd && wbJsonLd.length > jsonLdBlob.length) {
+                jsonLdBlob = wbJsonLd;
+                console.log(`[products/scrape-url] Wayback snapshot JSON-LD: ${wbJsonLd.length} chars`);
+              }
               const stripped = snapHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
               if (stripped.length > (html?.length || 0)) html = stripped;
-              console.log(`[products/scrape-url] Wayback delivered ${snapHtml.length} chars HTML, ${stripped.length} chars text`);
+              console.log(`[products/scrape-url] Wayback delivered ${snapHtml.length} chars HTML, ${stripped.length} chars text, JSON-LD: ${wbJsonLd.length}`);
             } else {
               console.log(`[products/scrape-url] Wayback snapshot fetch ${snapRes.status}`);
             }
@@ -32969,14 +33012,12 @@ app.post("/products/scrape-url", async (c) => {
       }
     }
 
-    // Hard fail if everything came back empty: Jina returned thin, direct
-    // fetch was bot-blocked, Wayback has no snapshot, AND Bing cache empty.
-    // Returning `success:true` with empty fields here would look like the
-    // scrape worked, then silently ship an empty form — confusing the user
-    // into thinking autofill is broken.
-    if (!html || html.length < 200) {
-      console.log(`[products/scrape-url] Nothing usable to analyze (html=${html?.length || 0} chars, rawHtml=${rawHtml.length} chars) — returning error`);
-      // Detect the specific failure mode so the message can be actionable
+    // Hard fail si on n'a NI texte exploitable NI JSON-LD structuré. Le
+    // JSON-LD seul (même sans texte) suffit pour extraire un produit
+    // proprement parce qu'il contient name/description/brand/price/image
+    // dans des champs nommés. Toujours préférable au texte brut.
+    if ((!html || html.length < 150) && !jsonLdBlob) {
+      console.log(`[products/scrape-url] Nothing usable to analyze (html=${html?.length || 0} chars, rawHtml=${rawHtml.length} chars, jsonLd=0) — returning error`);
       const sitePattern = (() => {
         try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
       })();
@@ -33132,7 +33173,7 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 9000)}` },
+          { role: "user", content: `URL: ${url}\n\n${jsonLdBlob ? `Structured Product JSON-LD (Schema.org — extract from this FIRST when fields are present, it's the canonical product data):\n${jsonLdBlob}\n\n` : ""}Page text content${jsonLdBlob ? " (use as fallback when JSON-LD lacks a field)" : ""}:\n${html ? html.slice(0, 9000) : "(empty — rely entirely on JSON-LD above)"}` },
         ],
         max_tokens: 900,
         temperature: 0,
