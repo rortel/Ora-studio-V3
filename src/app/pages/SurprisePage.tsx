@@ -824,6 +824,80 @@ function SurpriseContent() {
       // Refresh auth profile so the credits pill in AppTabs updates immediately.
       refreshProfile().catch(() => {});
     } catch (err: any) {
+      // Récupération de secours : si la requête échoue (504 gateway timeout,
+      // 502, network error), le serveur a peut-être quand même fini de
+      // générer + sauver le pack en Library AVANT que le gateway coupe.
+      // Au lieu d'afficher une page vide à l'utilisateur, on attend 5s et
+      // on cherche la dernière campagne créée par cet user dans /library/list.
+      // Si on en trouve une fraîche (créée dans les 4 dernières minutes),
+      // on reconstruit un Pack et on l'affiche sur la page résultat comme
+      // si la requête avait réussi. Le client n'a JAMAIS une page vide
+      // tant que les assets sont bien arrivés serveur-side.
+      const errMsg = String(err?.message || err || "").toLowerCase();
+      const looksLikeTimeout = /504|gateway|timeout|aborted|network|failed to fetch/i.test(errMsg);
+      console.log(`[surprise-me] catch: ${errMsg} — looksLikeTimeout=${looksLikeTimeout}, tentative de récupération depuis Library...`);
+      try {
+        // Délai pour laisser le serveur finir d'écrire en Library
+        await new Promise((r) => setTimeout(r, looksLikeTimeout ? 5_000 : 1_500));
+        const lib = await serverPost("/library/list", {});
+        if (lib?.success && Array.isArray(lib.items)) {
+          // Cherche la campagne wrapper la plus récente (type === "campaign"
+          // ou "campaign-film") créée dans les 4 dernières minutes. C'est
+          // forcément celle qu'on vient de tenter.
+          const fourMinAgo = Date.now() - 4 * 60_000;
+          const recentCampaigns = lib.items
+            .filter((it: any) => {
+              const isCampaign = it.type === "campaign" || it.type === "campaign-film";
+              if (!isCampaign) return false;
+              const savedAt = new Date(it.savedAt || it.createdAt || 0).getTime();
+              return savedAt >= fourMinAgo;
+            })
+            .sort((a: any, b: any) => new Date(b.savedAt || b.createdAt || 0).getTime() - new Date(a.savedAt || a.createdAt || 0).getTime());
+          const recovered = recentCampaigns[0];
+          const recoveredAssets = recovered?.preview?.assets;
+          if (recovered && Array.isArray(recoveredAssets) && recoveredAssets.length > 0) {
+            const recoveredItems: PackItem[] = recoveredAssets.map((a: any) => ({
+              platform: String(a.platform || ""),
+              aspectRatio: String(a.aspectRatio || "1:1"),
+              label: String(a.label || ""),
+              fileName: String(a.fileName || ""),
+              videoFileName: a.videoFileName,
+              motion: a.motion,
+              twistElement: a.twistElement,
+              caption: a.caption,
+              status: "ok" as const,
+              imageUrl: a.imageUrl,
+              videoUrl: a.videoUrl,
+              provider: a.provider,
+              videoProvider: a.videoProvider,
+              carouselGroupId: a.carouselGroupId,
+              carouselSlideIndex: a.carouselSlideIndex,
+              overlayText: a.overlayText,
+              overlayPosition: a.overlayPosition,
+              overlayStyle: a.overlayStyle,
+            }));
+            const copy = recovered.preview?.copy || {};
+            setPack({
+              campaignName: String(recovered.title || copy.headline || ""),
+              campaignSlug: String(recovered.preview?.campaignSlug || recovered.campaignSlug || "ora-campaign"),
+              creativeAngle: String(copy.angle || ""),
+              tone: String(copy.tone || ""),
+              keyMessage: String(copy.keyMessage || ""),
+              creativityLevel: Number(recovered.preview?.creativityLevel || creativity),
+              items: recoveredItems,
+              savedCount: recoveredItems.length,
+              brandLockScore: 0,
+            });
+            setStage("done");
+            toast.success(`Génération récupérée — ${recoveredItems.length} posts prêts`);
+            refreshProfile().catch(() => {});
+            return;
+          }
+        }
+      } catch (recoverErr) {
+        console.log(`[surprise-me] recovery failed: ${recoverErr}`);
+      }
+      // Si la récup a échoué aussi, fallback comportement original
       toast.error(String(err?.message || err));
       setStage("idle");
     } finally {
