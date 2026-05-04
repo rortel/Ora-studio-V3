@@ -11269,16 +11269,17 @@ OUTPUT JSON:
             const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog|studio|minimal)\b/.test(labelLower);
 
             // ── Path selection — one model per category, no cascade ──
-            //   • apparel + promo/packshot label → Photoroom Ghost Mannequin
-            //   • apparel lifestyle              → Ideogram Remix @ 95
-            //   • place / person / service       → Ideogram Remix @ 95
-            //   • non-apparel product            → Photoroom Studio composite
-            // Each category picks ONE model and FAILS if it fails. We don't
-            // cascade across providers because that hides quality issues
-            // (a Bria-rendered shot looks nothing like a Photoroom-rendered
-            // shot in the same pack — user can't tell which one's broken).
+            //   • apparel + (promo intent OR packshot label) → Ghost Mannequin
+            //   • apparel lifestyle (non-promo)              → Ideogram Remix @ 95
+            //   • place / person / service                   → Ideogram Remix @ 95
+            //   • non-apparel product                        → Photoroom Studio
+            // Promo intent ALWAYS routes apparel through Ghost Mannequin —
+            // Photoroom doesn't render text, so no risk of garbled "SALIE"
+            // / magazine-typo bake-in that we got from Ideogram Remix on
+            // earlier promo runs. The carousel overlay layer handles
+            // discount text on top of the clean packshot.
 
-            // Apparel packshot / promo → Ghost Mannequin
+            // Apparel + promo / packshot → Ghost Mannequin (no text bake-in)
             if (jobIsApparel && (isPromoIntent || isPackshotLabel)) {
               const ghost = await runPhotoroomGhostMannequin({
                 productImageUrl: productRef,
@@ -12385,16 +12386,26 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
         : ctx.subjectKind === "service"
         ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
         : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
-      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
+      // Hard NO-TEXT cap at the END so it overrides any typography /
+      // magazine / sale-tag / billboard / wordmark cues that may have
+      // sneaked into job.promptText. Ideogram Remix at imageWeight=95
+      // has very little headroom to invent typography and produces
+      // garbled letters ("BEUNULA UIL FLAGONA", "1oeliideroays") when
+      // asked. Text overlays are added by a separate downstream layer.
+      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — overrides any typography / headline / magazine / sign / wordmark / sale-tag / billboard / price-label / brand-name / poster cue that may appear above. This image MUST contain ZERO rendered letters or words. Garbled or hallucinated letterforms = REJECTED. Text and headlines are added by a separate overlay layer downstream — render only the product, the wearer (if any), and the scene. Any element that wants a label = render it as a clean coloured shape, band, or block instead.";
+      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}${noTextCap}`;
     }
     case "studio-composite": {
       // Photoroom Studio AI bg.prompt — full scene description with
       // product identity anchor so the bg matches (a navy tracksuit
       // doesn't get a beige bohemian setting).
       const styleHead = ctx.styleDirective ? `${ctx.styleDirective.slice(0, 240)}\n\n` : "";
+      // Same NO-TEXT cap as apparel-remix — Photoroom Studio's AI bg
+      // model can also bake garbled text when asked.
+      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — render ZERO letters or words in the background. Hallucinated text = REJECTED. Use coloured shapes / bands / blocks for any element that might want a label.";
       return ctx.productDescription
-        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${job.promptText}`
-        : `${styleHead}${job.promptText}`;
+        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${job.promptText}${noTextCap}`
+        : `${styleHead}${job.promptText}${noTextCap}`;
     }
     case "text-card-with-product": {
       const styleHead = ctx.styleDirective
