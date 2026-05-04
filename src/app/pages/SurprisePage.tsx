@@ -1458,6 +1458,31 @@ function SurpriseContent() {
                       {scanningProductUrl ? "Lecture…" : "Scanner"}
                     </button>
                   </div>
+                  {/* Avertissement préemptif sur les hosts connus pour bloquer
+                   * tout scrape automatique (Cloudflare/Akamai agressifs).
+                   * Inditex group + luxe principalement. Inutile de faire
+                   * poireauter l'utilisateur 20s pour un 422 garanti — on lui
+                   * dit dès qu'il colle l'URL : "ce site bloque, type direct".
+                   * Match insensible à la casse, sur le hostname extrait. */}
+                  {(() => {
+                    if (!productPageUrl.trim() || scanningProductUrl) return null;
+                    let hostname = "";
+                    try { hostname = new URL(productPageUrl.trim()).hostname.replace(/^www\./, "").toLowerCase(); } catch { return null; }
+                    const KNOWN_BLOCKED = /\b(bershka|zara|pullandbear|stradivarius|massimodutti|mango|lacoste|hermes|chanel|dior|gucci|burberry|louisvuitton|nike\.com|adidas\.com)\b/i;
+                    if (!KNOWN_BLOCKED.test(hostname)) return null;
+                    return (
+                      <div className="mt-2 px-3 py-2 rounded-lg text-[12px] flex items-start gap-2" style={{ background: "rgba(255,180,80,0.12)", color: TEXT, border: "1px solid rgba(255,150,40,0.25)" }}>
+                        <span style={{ fontSize: 14, lineHeight: 1 }}>⚠️</span>
+                        <div>
+                          <div style={{ fontWeight: 600, marginBottom: 2 }}>{hostname} bloque le scrape automatique.</div>
+                          <div style={{ opacity: 0.75 }}>
+                            Le scan tentera quand même via les caches, mais il y a 90 % de chances qu'il échoue après ~20s.
+                            Plus rapide : tape la description direct dans le champ ci-dessous (3 lignes suffisent — Ora compose à partir de ton brief).
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Attributs récupérés du scrape — feedback visible que la
                    * ground-truth est bien arrivée. Donne au merchant la
                    * confiance que le pack généré sera fidèle au produit
