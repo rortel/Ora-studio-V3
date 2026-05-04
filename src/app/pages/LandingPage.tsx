@@ -660,18 +660,22 @@ function PickMockup() {
  * the panel never renders empty on first paint.
  */
 function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: string; platform: string }> }) {
-  // All tiles square (1:1) for a clean 3×2 bento that reads "pack ready
-  // to ship" at a glance. Previous pass used mixed aspect ratios
-  // (9:16, 16:9, 4:5…) in a uniform grid which produced uneven column
-  // heights + looked disorganized. Square tiles resolve this because
-  // every platform has a 1:1 variant, and the eye reads the grid as
-  // one coherent sheet.
+  // Tuiles 1:1 pour un bento propre — un mix de plateformes qui couvre la
+  // variété des sorties Ora (Feed/Story/Reel/Carousel/TikTok/Facebook/
+  // FB Story/FB Carousel/LinkedIn). 9 tuiles en 3×3 sur desktop pour montrer
+  // que les packs Ora couvrent vraiment tout l'écosystème social — vs 5
+  // tuiles avant qui rendait un layout 3+2 asymétrique et sous-vendait la
+  // promesse "tous tes canaux d'un coup".
   const TILES = [
-    { platform: "IG · Feed",   dim: "1080×1080", gradient: "linear-gradient(135deg, #FFB088 0%, #FF5C39 100%)" },
-    { platform: "IG · Story",  dim: "1080×1920", gradient: "linear-gradient(160deg, #F4C542 0%, #EC8926 100%)" },
-    { platform: "TikTok",      dim: "1080×1920", gradient: "linear-gradient(145deg, #111111 0%, #FF5C39 100%)" },
-    { platform: "Facebook",    dim: "1200×1200", gradient: "linear-gradient(135deg, #7C5CE0 0%, #1D4ED8 100%)" },
-    { platform: "IG · Reel",   dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
+    { platform: "IG · Feed",      dim: "1080×1080", gradient: "linear-gradient(135deg, #FFB088 0%, #FF5C39 100%)" },
+    { platform: "IG · Story",     dim: "1080×1920", gradient: "linear-gradient(160deg, #F4C542 0%, #EC8926 100%)" },
+    { platform: "IG · Reel",      dim: "1080×1920", gradient: "linear-gradient(150deg, #111111 0%, #7C5CE0 100%)" },
+    { platform: "IG · Carousel",  dim: "1080×1080", gradient: "linear-gradient(135deg, #FF7AB6 0%, #B14AED 100%)" },
+    { platform: "TikTok",         dim: "1080×1920", gradient: "linear-gradient(145deg, #111111 0%, #FF5C39 100%)" },
+    { platform: "Facebook",       dim: "1200×1200", gradient: "linear-gradient(135deg, #7C5CE0 0%, #1D4ED8 100%)" },
+    { platform: "FB · Story",     dim: "1080×1920", gradient: "linear-gradient(155deg, #1D4ED8 0%, #38BDF8 100%)" },
+    { platform: "FB · Carousel",  dim: "1080×1080", gradient: "linear-gradient(140deg, #2563EB 0%, #0EA5E9 100%)" },
+    { platform: "LinkedIn",       dim: "1200×1200", gradient: "linear-gradient(135deg, #0A66C2 0%, #111111 100%)" },
   ];
 
   // Track which tile media has failed to load (expired signed URL,
@@ -685,7 +689,7 @@ function ShipMockup({ assets }: { assets: Array<{ imageUrl: string; videoUrl: st
   });
 
   return (
-    <MouseTilt maxTilt={3} className="w-full max-w-[1080px]">
+    <MouseTilt maxTilt={3} className="w-full max-w-[1320px]">
       <motion.div
         className="w-full grid grid-cols-3 gap-3 md:gap-4"
         initial={{ opacity: 0 }}
@@ -972,9 +976,9 @@ export function LandingPage() {
       <MethodPanel
         eyebrow="03 / 03 · we publish"
         title={<>Done.</>}
-        subtitle={<>Six posts, image + 5s film, sized for every platform. One click and they're live on Instagram, Facebook, TikTok.</>}
+        subtitle={<>A full pack, image + 5s film, sized for every platform. One click and they're live on Instagram, Facebook, TikTok, LinkedIn.</>}
       >
-        <ShipMockup assets={showcase.slice(0, 6).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
+        <ShipMockup assets={showcase.slice(0, 9).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
       </MethodPanel>
 
       {/* ═══ Panel 4.5 — STEP-BY-STEP FLOW ═══
