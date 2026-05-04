@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T08:10Z — v672-surprise-pipeline-rewire");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T13:30Z — v673-virtual-model-rich-scrape");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -10605,6 +10605,64 @@ app.post("/analyze/surprise-me", async (c) => {
     const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
     const productDescription = enrichedDescription || userDescription;
     const productPrice       = String(body?.productPrice || "").trim().slice(0, 40);
+    // Rich product attributes from URL scrape — when the merchant pasted
+    // a product URL, the scrape ramps up the data we have on the product:
+    // full description, category, color, material, fit, sizing, style tags,
+    // target user, features. Without these the planner has only 200-400
+    // chars of name+blurb and the prompts come out generic. With them, the
+    // Lifestyle/UGC text-to-image path can describe the garment richly
+    // enough that no source-photo constraint is needed.
+    const productAttributes: {
+      fullDescription?: string;
+      category?: string;
+      color?: string;
+      material?: string;
+      fit?: string;
+      sizing?: string;
+      styleTags?: string[];
+      targetUser?: string;
+      features?: string[];
+    } = body?.productAttributes && typeof body.productAttributes === "object"
+      ? {
+          fullDescription: typeof body.productAttributes.fullDescription === "string" ? body.productAttributes.fullDescription.slice(0, 1500) : undefined,
+          category:        typeof body.productAttributes.category === "string"        ? body.productAttributes.category.slice(0, 100)        : undefined,
+          color:           typeof body.productAttributes.color === "string"           ? body.productAttributes.color.slice(0, 80)            : undefined,
+          material:        typeof body.productAttributes.material === "string"        ? body.productAttributes.material.slice(0, 120)        : undefined,
+          fit:             typeof body.productAttributes.fit === "string"             ? body.productAttributes.fit.slice(0, 80)              : undefined,
+          sizing:          typeof body.productAttributes.sizing === "string"          ? body.productAttributes.sizing.slice(0, 80)           : undefined,
+          styleTags:       Array.isArray(body.productAttributes.styleTags) ? body.productAttributes.styleTags.slice(0, 6).map((t: any) => String(t).slice(0, 40))      : undefined,
+          targetUser:      typeof body.productAttributes.targetUser === "string"      ? body.productAttributes.targetUser.slice(0, 200)      : undefined,
+          features:        Array.isArray(body.productAttributes.features) ? body.productAttributes.features.slice(0, 8).map((f: any) => String(f).slice(0, 120))      : undefined,
+        }
+      : {};
+    // Compose a rich textual product block ONLY when scrape data is present.
+    // When not, falls back to the existing productDescription. The composed
+    // block is used by both the planner system prompt (gives concrete attributes
+    // for every shot) and the lifestyle-t2i-rich shot builder (lets us regen
+    // the scene without an image_ref constraint).
+    const richProductDescription: string = (() => {
+      const a = productAttributes;
+      if (!a.fullDescription && !a.category && !a.color && !a.material && !a.fit && !a.styleTags && !a.features) {
+        return productDescription; // nothing scraped, use whatever's typed
+      }
+      const lines: string[] = [];
+      if (a.fullDescription) lines.push(a.fullDescription);
+      const tags: string[] = [];
+      if (a.category)  tags.push(`category: ${a.category}`);
+      if (a.color)     tags.push(`color: ${a.color}`);
+      if (a.material)  tags.push(`material: ${a.material}`);
+      if (a.fit)       tags.push(`fit: ${a.fit}`);
+      if (a.sizing)    tags.push(`sizing: ${a.sizing}`);
+      if (a.styleTags?.length)  tags.push(`style: ${a.styleTags.join(", ")}`);
+      if (a.targetUser) tags.push(`target: ${a.targetUser}`);
+      if (tags.length) lines.push(tags.join(" · "));
+      if (a.features?.length) lines.push(`Features: ${a.features.join("; ")}`);
+      // Append the user-typed description if it adds anything not in the scrape.
+      if (productDescription && !lines.join(" ").toLowerCase().includes(productDescription.toLowerCase().slice(0, 30))) {
+        lines.push(productDescription);
+      }
+      return lines.join("\n").slice(0, 1500);
+    })();
     // subjectKind tells us what the photo represents and routes the pipeline
     // accordingly. "place" / "person" / "service" skip Photoroom (cutout makes
     // no sense on a room or a face) and use Ideogram Remix at high weight.
@@ -11219,7 +11277,11 @@ OUTPUT JSON:
           // and the ctx is rebuilt at that point.
           let promptCtx: ShotPromptCtx = {
             styleDirective,
-            productDescription,
+            // Use the rich block (URL-scraped attributes folded into a
+            // structured description) when available. Falls through to the
+            // typed productDescription when no URL was scraped. Same field
+            // name so existing builders pick it up unchanged.
+            productDescription: richProductDescription || productDescription,
             subjectKind: subjectKind as ShotPromptCtx["subjectKind"],
             jobIsApparel: false,
           };
@@ -11295,7 +11357,50 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
             }
 
-            // Apparel lifestyle / place / person / service → Ideogram Remix @ 95
+            // Apparel + Lifestyle/UGC styles. Two strategies in order:
+            //   1. Photoroom Virtual Model: generates a FRESH AI human
+            //      wearing the EXACT garment from the source photo, in a
+            //      fresh AI scene. Best of both worlds — silhouette
+            //      preserved + scene fully regenerated. Single Photoroom
+            //      call, ~12-20s.
+            //   2. Ideogram T2I with rich product description: garment is
+            //      reconstituted from words (richer when URL was scraped),
+            //      scene fully invented. Mild garment drift acceptable on
+            //      Lifestyle/UGC in exchange for a real fresh scene.
+            // Image-to-image at imageWeight=95 was the previous approach
+            // and it suffocated these styles (catalog photo dominated,
+            // "phone aesthetic / golden hour / candid hand-held" went
+            // unrendered).
+            const isLifestyleOrUGC = styleId === "lifestyle" || styleId === "ugc";
+            if (jobIsApparel && isLifestyleOrUGC) {
+              // Strategy 1: Virtual Model
+              const vm = await runPhotoroomVirtualModel({
+                productImageUrl: productRef,
+                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                aspectRatio: job.aspectRatio,
+                userId: user.id,
+                campaignSlug,
+              });
+              if (vm) {
+                const persisted = await persistOne(vm.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || vm.imageUrl, provider: vm.provider };
+              }
+              console.log(`[surprise-me] virtual-model failed for ${job.label}, falling through to lifestyle-t2i-rich`);
+              // Strategy 2: T2I rich
+              const card = await runIdeogramTextCard({
+                prompt: buildShotPrompt("lifestyle-t2i-rich", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                aspectRatio: job.aspectRatio,
+                userId: user.id,
+                campaignSlug,
+              });
+              if (card) {
+                const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: `${card.provider}-lifestyle-rich` };
+              }
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle apparel both VM and T2I failed" };
+            }
+
+            // Apparel (non-lifestyle styles) / place / person / service → Ideogram Remix @ 95
             const useRemixPath = jobIsApparel || subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
             if (useRemixPath) {
               const remix = await runIdeogramRemixOnRef({
@@ -11692,7 +11797,7 @@ OUTPUT JSON:
               message: `Film fail: ${job!.label}`,
               route: "/analyze/surprise-me:film",
               userId: user.id,
-              severity: "warn",
+              severity: "warning",
               context: {
                 platform: job!.platform,
                 error: (r as any).error,
@@ -12196,6 +12301,67 @@ async function runPhotoroomGhostMannequin(opts: {
   }
 }
 
+// Virtual Model — generates a fresh AI human wearing the exact garment from
+// the source photo, in a fresh AI scene. Solves the apparel + Lifestyle/UGC
+// problem that Ideogram Remix at imageWeight=95 couldn't crack: the catalog
+// photo was suffocating creative regen, but at lower imageWeight the silhouette
+// drifted. Photoroom Virtual Model literally infers a body around the garment
+// and composes it into a generated scene. Single Photoroom call.
+async function runPhotoroomVirtualModel(opts: {
+  productImageUrl: string;
+  bgPrompt?: string;
+  aspectRatio?: string;
+  userId: string | null;
+  campaignSlug?: string;
+}): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
+  const t0 = Date.now();
+  const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
+  if (!photoroomKey) return null;
+  const arSizeMap: Record<string, string> = {
+    "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+    "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+    "2:3": "800x1200", "3:2": "1200x800",
+  };
+  try {
+    const params = new URLSearchParams();
+    params.set("imageUrl", opts.productImageUrl);
+    params.set("virtualModel.mode", "ai.auto");
+    if (opts.bgPrompt) {
+      params.set("background.prompt", String(opts.bgPrompt).slice(0, 400));
+      params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+      params.set("shadow.mode", "ai.soft");
+    }
+    params.set("outputSize", arSizeMap[opts.aspectRatio || "1:1"] || "1080x1080");
+    params.set("padding", "0.04");
+    params.set("export.format", "webp");
+    // 35s ceiling — Virtual Model is heavier than Ghost Mannequin (model
+    // generation step). Median ~12-20s, p95 ~30s. Anything past 35s is
+    // upstream queue pressure; fail and let the lifestyle-t2i-rich path
+    // pick it up downstream.
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: {
+        "x-api-key": photoroomKey,
+        "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
+      },
+      signal: AbortSignal.timeout(35_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[virtual-model] ${res.status} after ${Date.now() - t0}ms: ${b.slice(0, 200)}`);
+      return null;
+    }
+    const buf = await res.arrayBuffer();
+    const url = await uploadPhotoroomBytesAndSign(buf, "image/webp", "virtual-model", opts.userId);
+    if (!url) return null;
+    const latencyMs = Date.now() - t0;
+    logCost({ type: "image", model: "photoroom-virtual-model", provider: "photoroom-virtual-model", costUsd: getProviderCost("photoroom-virtual-model", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs, userId: opts.userId || "anon", success: true, campaignSlug: opts.campaignSlug }).catch(() => {});
+    return { imageUrl: url, provider: "photoroom-virtual-model", latencyMs };
+  } catch (err) {
+    console.log(`[virtual-model] error: ${err}`);
+    return null;
+  }
+}
+
 // Beautify — packshot-grade polish on a product photo (smooth edges, even
 // lighting, clean backdrop). beautify.mode=ai.food specialises on food.
 async function runPhotoroomBeautify(opts: {
@@ -12325,13 +12491,14 @@ async function runPhotoroomExpand(opts: {
 // builder centralises all prompt assembly so a single edit propagates to
 // every path that needs it.
 type ShotPromptCategory =
-  | "ghost-mannequin"        // Photoroom Ghost Mannequin — bg-only prompt
-  | "apparel-remix"          // Ideogram Remix at imageWeight=95 — full anchored prompt
-  | "regen-with-subject"     // Ideogram Remix at imageWeight=95 — place / person / service
-  | "studio-composite"       // Photoroom Studio AI bg — bg + product anchor
-  | "text-card-with-product" // Ideogram Remix at imageWeight=88 — typography over product
-  | "text-card-only"         // Ideogram T2I — planner promptText as-is (already styled)
-  | "pure-t2i";              // Luma Photon T2I — planner promptText as-is
+  | "ghost-mannequin"         // Photoroom Ghost Mannequin — bg-only prompt
+  | "apparel-remix"           // Ideogram Remix at imageWeight=95 — full anchored prompt
+  | "regen-with-subject"      // Ideogram Remix at imageWeight=95 — place / person / service
+  | "studio-composite"        // Photoroom Studio AI bg — bg + product anchor
+  | "text-card-with-product"  // Ideogram Remix at imageWeight=88 — typography over product
+  | "text-card-only"          // Ideogram T2I — planner promptText as-is (already styled)
+  | "lifestyle-t2i-rich"      // Ideogram T2I — full product description as anchor, NO image_ref constraint, scene fully invented
+  | "pure-t2i";               // Luma Photon T2I — planner promptText as-is
 
 interface ShotPromptCtx {
   styleDirective: string;     // empty string when no style picked
@@ -12408,6 +12575,28 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
         ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
         : "";
       return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
+    }
+    case "lifestyle-t2i-rich": {
+      // Text-to-image with rich product description as the anchor. Used
+      // when the picked style demands a fresh wearer + scene (UGC,
+      // Lifestyle) and image-to-image at imageWeight=95 was suffocating
+      // the regen — the model had 5% headroom and the source catalog
+      // photo dominated.
+      // Strategy: describe the garment verbally, hand the model the
+      // style directive, let it invent everything else from scratch.
+      // The garment is reconstituted from words; if attributes are rich
+      // (color, material, fit, sizing, features) the result reads true
+      // to the actual product. If attributes are thin (no scrape, just
+      // user-typed blurb), result still drifts — but that's the cost of
+      // not constraining with an image_ref, and on UGC/Lifestyle the
+      // user accepts mild garment drift in exchange for a real scene.
+      const styleHead = ctx.styleDirective
+        ? `PICKED VISUAL STYLE (drives the entire image — non-negotiable): ${ctx.styleDirective.slice(0, 280)}\n\n`
+        : "";
+      const productBlock = ctx.productDescription
+        ? `THE PRODUCT THE SUBJECT IS WEARING / USING / SHOWING (must be reproduced in vivid concrete detail — every attribute named below MUST be visible in the rendered image): ${ctx.productDescription.slice(0, 700)}\n\n`
+        : "";
+      return `${styleHead}${productBlock}SCENE: ${job.promptText}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
     }
     case "text-card-only":
     case "pure-t2i":
@@ -13443,6 +13632,30 @@ app.post("/images/ghost-mannequin", async (c) => {
       userId: user.id,
     });
     if (!out) return c.json({ success: false, error: "Ghost Mannequin failed" }, 502);
+    return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
+  } catch (err: any) {
+    return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
+  }
+});
+
+// ── Photoroom Plus: Virtual Model (AI human wearing the garment) ──
+// Body: { imageUrl, bgPrompt?, aspectRatio? }
+// Generates a fresh AI human wearing the exact garment from imageUrl,
+// composed into an AI background. Use for apparel lifestyle / UGC shots
+// where Ghost Mannequin (no model) feels too catalog-y.
+app.post("/images/virtual-model", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    const body = c.get("parsedBody") || await c.req.json();
+    const { imageUrl, bgPrompt, aspectRatio } = body;
+    if (!imageUrl) return c.json({ success: false, error: "No imageUrl" }, 400);
+    const out = await runPhotoroomVirtualModel({
+      productImageUrl: imageUrl,
+      bgPrompt: bgPrompt || undefined,
+      aspectRatio: aspectRatio || "1:1",
+      userId: user.id,
+    });
+    if (!out) return c.json({ success: false, error: "Virtual Model failed" }, 502);
     return c.json({ success: true, imageUrl: out.imageUrl, provider: out.provider, latencyMs: out.latencyMs });
   } catch (err: any) {
     return c.json({ success: false, error: String(err?.message || err) }, err?.message === "Unauthorized" ? 401 : 500);
@@ -32738,16 +32951,24 @@ app.post("/products/scrape-url", async (c) => {
     const key = Deno.env.get("APIPOD_API_KEY");
     if (!key) return c.json({ success: false, error: "AI key not configured" }, 500);
 
-    const systemPrompt = `You are a product data extractor. Given a webpage's text content, extract structured product information.
-Return a JSON object with these fields (use null if not found):
+    const systemPrompt = `You are a product data extractor. Given a webpage's text content, extract DEEP structured product information that a marketing system can use to compose campaigns without ever seeing the page again.
+
+Return a JSON object with these fields (use null if a field genuinely isn't on the page — but TRY HARD before giving up):
 {
   "name": "product name",
-  "description": "short product description (2-3 sentences max)",
+  "description": "rich product description, 600-1500 chars. Include the brand voice, the why-buy, the use cases. NOT 2-3 sentences — the merchant wants the full pitch in YOUR words, distilled from the page. Drop hyperbole and salesy filler, keep concrete facts and feels.",
   "price": "numeric price as string (e.g. '29.99')",
   "currency": "3-letter currency code (e.g. EUR, USD, GBP)",
-  "category": "product category",
-  "features": ["feature 1", "feature 2", "feature 3"] (up to 6 key features)
+  "category": "specific product category (e.g. 'baggy jeans', 'oxford shirt', 'serum 30ml', 'oat milk 1L'). Be specific — 'fashion' is too vague.",
+  "features": ["feature 1", ...] up to 8 concrete facts (e.g. '100% organic cotton', 'machine washable 30°', 'made in Portugal', 'fits true to size')",
+  "color": "primary colour name as on the page (e.g. 'sand beige', 'navy blue', 'wash indigo'). Null if multi-colour or N/A.",
+  "material": "primary material(s) (e.g. 'cotton denim', 'merino wool', 'recycled polyester', 'glass + cork'). Null if N/A.",
+  "fit": "for apparel: cut/fit (e.g. 'baggy', 'slim', 'oversized', 'true to size', 'cropped'). Null otherwise.",
+  "sizing": "for apparel: sizing system + range (e.g. 'EU 36-44', 'XS-XXL', 'one size'). Null otherwise.",
+  "style_tags": ["tag1", "tag2", ...] up to 6 vibe / aesthetic tags (e.g. 'streetwear', '90s', 'workwear', 'minimal', 'vintage-wash')",
+  "target_user": "one short phrase describing the typical buyer (e.g. 'urban Gen-Z, weekday wardrobe', 'home cooks who care about provenance'). Null if unclear."
 }
+
 Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
 
     const aiRes = await fetch(`${APIPOD_BASE}/chat/completions`, {
@@ -32757,12 +32978,12 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 8000)}` },
+          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 12000)}` },
         ],
-        max_tokens: 500,
+        max_tokens: 1200,
         temperature: 0,
       }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(20_000),
     });
 
     if (!aiRes.ok) return c.json({ success: false, error: "AI extraction failed" }, 500);

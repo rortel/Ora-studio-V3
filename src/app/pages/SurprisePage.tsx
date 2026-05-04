@@ -157,6 +157,24 @@ function SurpriseContent() {
   // from typing for any product/dish/service that already has a website.
   const [productPageUrl, setProductPageUrl] = useState("");
   const [scanningProductUrl, setScanningProductUrl] = useState(false);
+  // Rich product attributes scraped from the URL. The 200-char productDescription
+  // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
+  // come out flat because the model has no concrete attributes to anchor the
+  // garment description on). When present, these go into the surprise-me POST
+  // and unlock the "lifestyle-t2i-rich" path (text-to-image with full product
+  // description, no source-photo constraint, fresh scene).
+  const [scrapedProduct, setScrapedProduct] = useState<{
+    fullDescription?: string;
+    category?: string;
+    color?: string;
+    material?: string;
+    fit?: string;
+    sizing?: string;
+    styleTags?: string[];
+    targetUser?: string;
+    features?: string[];
+    imageUrls?: string[];
+  } | null>(null);
   // Subject archetype — drives label adaptation + server-side pipeline routing.
   //   product = boulanger/fleuriste/pâtissier/caviste/distributeur (Photoroom OK)
   //   place   = restaurant/hôtel/spa/studio yoga (Ideogram Remix high-weight)
@@ -627,12 +645,30 @@ function SurpriseContent() {
       if (res?.success && res.product) {
         const p = res.product;
         if (p.name && !productDescription.trim()) {
-          const desc = [p.name, p.description].filter(Boolean).join(" — ").slice(0, 200);
+          // Short label used in the form input — name + 1-line summary
+          const desc = [p.name, p.description?.slice(0, 120)].filter(Boolean).join(" — ").slice(0, 200);
           setProductDescription(desc);
         }
         if (p.price && p.currency && !productPrice.trim()) {
           setProductPrice(`${p.price} ${p.currency}`);
         }
+        // Stash the rich attributes — surprise-me reads these to unlock
+        // text-to-image scene regen on Lifestyle/UGC styles. The full
+        // description (~600-1500 chars) plus structured attributes give
+        // the planner concrete facts to weave into every shot's promptText
+        // instead of paraphrasing a 200-char blob.
+        setScrapedProduct({
+          fullDescription: typeof p.description === "string" ? p.description : undefined,
+          category: typeof p.category === "string" ? p.category : undefined,
+          color: typeof p.color === "string" ? p.color : undefined,
+          material: typeof p.material === "string" ? p.material : undefined,
+          fit: typeof p.fit === "string" ? p.fit : undefined,
+          sizing: typeof p.sizing === "string" ? p.sizing : undefined,
+          styleTags: Array.isArray(p.style_tags) ? p.style_tags.map(String) : undefined,
+          targetUser: typeof p.target_user === "string" ? p.target_user : undefined,
+          features: Array.isArray(p.features) ? p.features.map(String) : undefined,
+          imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls.map(String) : undefined,
+        });
         toast.success(`Page lue : ${p.name || u}`);
       } else {
         toast.error(res?.error || "Impossible de lire cette page — essaie l'URL d'une fiche produit.");
@@ -675,14 +711,37 @@ function SurpriseContent() {
         ?? Object.fromEntries(platformPicks.map((p) => [p.id, p.format]));
       const effCreativity = override?.creativity ?? creativity;
       const effAssetCount = override?.assetCount ?? assetCount;
+      // Fall back to the scraped product images when the merchant didn't
+      // upload their own. Lets URL-only flows actually have a visual
+      // reference instead of pure T2I (which still works but starts blind).
+      const effProductImageUrls = productPhotos.length > 0
+        ? productPhotos
+        : (scrapedProduct?.imageUrls && scrapedProduct.imageUrls.length > 0
+            ? scrapedProduct.imageUrls.slice(0, 5)
+            : []);
       const res = await serverPost("/analyze/surprise-me", {
         requestId: reqId,
         styleId: styleId || undefined,
-        productImageUrl: productPhotos[0] || undefined,
-        productImageUrls: productPhotos.length > 0 ? productPhotos : undefined,
+        productImageUrl: effProductImageUrls[0] || undefined,
+        productImageUrls: effProductImageUrls.length > 0 ? effProductImageUrls : undefined,
         productDescription: productDescription.trim() || undefined,
         enrichedDescription: enrichedDescription || undefined,
         productPrice: productPrice.trim() || undefined,
+        // Rich product attributes from URL scrape — when present, the server
+        // can route Lifestyle/UGC shots through text-to-image with the full
+        // description as anchor instead of constraining Ideogram Remix to
+        // 5% creative headroom on a catalog photo.
+        productAttributes: scrapedProduct ? {
+          fullDescription: scrapedProduct.fullDescription,
+          category: scrapedProduct.category,
+          color: scrapedProduct.color,
+          material: scrapedProduct.material,
+          fit: scrapedProduct.fit,
+          sizing: scrapedProduct.sizing,
+          styleTags: scrapedProduct.styleTags,
+          targetUser: scrapedProduct.targetUser,
+          features: scrapedProduct.features,
+        } : undefined,
         creativityLevel: effCreativity,
         assetCount: effAssetCount,
         platforms: effPlatforms,
@@ -749,7 +808,7 @@ function SurpriseContent() {
       setBusy(false);
       setActiveRequestId(null);
     }
-  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId, scrapedProduct]);
 
   // ── Publish the entire pack to the Calendar ──────────────────────
   // Maps each ok asset → a draft Calendar event with an AI-suggested
