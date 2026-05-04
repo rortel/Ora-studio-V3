@@ -11522,12 +11522,13 @@ OUTPUT JSON:
             logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: submit.error };
           }
-          // Poll up to 2 min (Kling 2.5 typically completes in 60-90s).
-          // Was 5 min — caused 504 Gateway Timeouts on Supabase Edge when
-          // multiple clips were in flight. 2 min is enough for the happy
-          // path, and the user prefers a fast partial pack over a 504.
+          // Poll up to 75s (Kling 2.5 happy path is 50-70s). Was 120s —
+          // combined with concept (30s) + stills (85s) it pushed total
+          // wall time past the 150s edge gateway and triggered 504s.
+          // 75s catches the median + p75 latency; the long tail (>75s)
+          // ships as a still and the user can retry the film.
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 120_000) {
+          while (Date.now() - pollStart < 75_000) {
             await new Promise((r) => setTimeout(r, 4_000));
             const status = await callFalVideoStatus(submit.statusUrl, submit.responseUrl);
             if (status.state === "completed") {
@@ -11544,7 +11545,7 @@ OUTPUT JSON:
             }
           }
           logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Kling timed out (>2 min)" };
+          return { ok: false, error: "Kling timed out (>75s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -11575,7 +11576,7 @@ OUTPUT JSON:
           const g = await startRes.json();
           if (!g.id) return { ok: false, error: "Luma Ray: no generation id" };
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 90_000) { // 90s cap per clip — Luma Ray Flash 2 is fast, was 4 min and caused 504s
+          while (Date.now() - pollStart < 60_000) { // 60s cap per clip — Luma Ray Flash 2 happy path is 30-45s; tightened from 90s to keep total handler under the 150s edge gateway
             try {
               const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
               if (pr.ok) {
@@ -11593,7 +11594,7 @@ OUTPUT JSON:
             await new Promise((r) => setTimeout(r, 3_000));
           }
           logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Luma Ray timed out (>90s)" };
+          return { ok: false, error: "Luma Ray timed out (>60s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -11645,22 +11646,23 @@ OUTPUT JSON:
       if (allFilmable.length > MAX_FILMS) {
         console.log(`[surprise-me:film] pack capped at ${MAX_FILMS}/${allFilmable.length} films (rest ship as stills only)`);
       }
-      // FILM PHASE WALL-CLOCK BUDGET. Together with the stills budget
-      // (100s), this keeps total request well under the 150s gateway
-      // timeout. If we're already past the stills budget, skip films
-      // entirely — they'd 504 anyway, better to ship the still pack
-      // clean than wait for a failed clip.
-      const FILMS_BUDGET_MS = 80_000;
+      // FILM PHASE WALL-CLOCK BUDGET. Tightened together: 50s budget,
+      // skip-entirely threshold at 95s of handler time. With concept
+      // (~30s) + stills (~60s typical) we land at ~90s before films,
+      // leaving 50s for at most one batch of clips. Anything tighter
+      // and films are skipped — better to return a clean still pack
+      // than to 504 the whole request.
+      const FILMS_BUDGET_MS = 50_000;
       const filmsStartedAt = Date.now();
       const handlerElapsedAtFilmStart = filmsStartedAt - t0;
-      if (handlerElapsedAtFilmStart > 110_000) {
+      if (handlerElapsedAtFilmStart > 95_000) {
         console.log(`[surprise-me:film] skipping film phase entirely — stills already used ${handlerElapsedAtFilmStart}ms, no budget left`);
         for (const { idx } of filmable) {
           (items[idx] as any).videoError = "Skipped — pack hit budget on stills, retry to add films";
         }
       }
       const FILM_CONCURRENCY = 3;
-      for (let i = 0; handlerElapsedAtFilmStart <= 110_000 && i < filmable.length; i += FILM_CONCURRENCY) {
+      for (let i = 0; handlerElapsedAtFilmStart <= 95_000 && i < filmable.length; i += FILM_CONCURRENCY) {
         // Check budget before launching next batch — bail if close to limit.
         if (Date.now() - filmsStartedAt > FILMS_BUDGET_MS) {
           console.log(`[surprise-me:film] film budget exceeded after ${i} clips, marking remaining as queued`);
@@ -11671,10 +11673,13 @@ OUTPUT JSON:
         }
         const slice = filmable.slice(i, i + FILM_CONCURRENCY);
         await Promise.all(slice.map(async ({ it, idx, job }) => {
-          // Single retry on video failure (most flakiness is transient
-          // FAL/Luma 5xx). Doubles wall-clock worst case but the win
-          // on success rate is worth it.
-          let r = await runVideoForShot({
+          // No retry on video. Each clip is a 60-75s wait — a retry
+          // would double that to 120-150s and burn the whole 150s edge
+          // gateway budget on a single shot. The runVideoForShot helper
+          // already cascades Kling → Luma, so a single attempt has two
+          // shots at success. If both fail, ship the still and let the
+          // user retry the film from the result screen.
+          const r = await runVideoForShot({
             imageUrl: it.imageUrl!,
             motion: job!.motion,
             aspectRatio: it.aspectRatio,
@@ -11682,29 +11687,17 @@ OUTPUT JSON:
             scene: job!.scene,
           });
           if (!r.ok) {
-            console.log(`[surprise-me:film] retry ${job!.label} after first failure: ${(r as any).error}`);
-            const retry = await runVideoForShot({
-              imageUrl: it.imageUrl!,
-              motion: job!.motion,
-              aspectRatio: it.aspectRatio,
-              duration: videoDuration,
-              scene: job!.scene,
-            });
-            if (retry.ok) r = retry;
-            else {
-              console.error(`[surprise-me:film] FINAL FAIL ${job!.label} platform=${job!.platform} error1="${(r as any).error}" error2="${(retry as any).error}"`);
-              reportServerError({
-                message: `Film final fail: ${job!.label}`,
-                route: "/analyze/surprise-me:film",
-                userId: user.id,
-                severity: "error",
-                context: {
-                  platform: job!.platform,
-                  error1: (r as any).error,
-                  error2: (retry as any).error,
-                },
-              }).catch(() => {});
-            }
+            console.error(`[surprise-me:film] FAIL ${job!.label} platform=${job!.platform} error="${(r as any).error}"`);
+            reportServerError({
+              message: `Film fail: ${job!.label}`,
+              route: "/analyze/surprise-me:film",
+              userId: user.id,
+              severity: "warn",
+              context: {
+                platform: job!.platform,
+                error: (r as any).error,
+              },
+            }).catch(() => {});
           }
           items[idx].motion = job!.motion;
           items[idx].videoFileName = job!.videoFileName;
