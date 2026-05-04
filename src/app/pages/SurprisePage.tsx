@@ -641,7 +641,11 @@ function SurpriseContent() {
     }
     setScanningProductUrl(true);
     try {
-      const res = await serverPost("/products/scrape-url", { url: u }, 25_000);
+      // 45s timeout — scrape combine Jina (browser engine peut prendre
+      // 20-25s sur SPA Shopify/Wix) + raw HTML fetch parallèle + AI
+      // extraction (~10s). Le 25s d'origine était trop serré, beaucoup
+      // de pages produit timeoutait avant la fin du Jina browser.
+      const res = await serverPost("/products/scrape-url", { url: u }, 45_000);
       if (res?.success && res.product) {
         const p = res.product;
         if (p.name && !productDescription.trim()) {

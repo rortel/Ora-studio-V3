@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T13:30Z — v673-virtual-model-rich-scrape");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T13:55Z — v674-scrape-fast");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -32782,6 +32782,30 @@ app.post("/products/scrape-url", async (c) => {
         }
       };
 
+      // Lance le raw-HTML fetch EN PARALLÈLE du Jina (au lieu de séquentiel)
+      // — les deux sources sont indépendantes, on n'a aucune raison d'attendre
+      // que Jina finisse pour démarrer le fetch direct. Gain ~5-10s dans le
+      // happy path, élimine la cause principale des timeouts client à 25s.
+      const rawHtmlPromise = (async () => {
+        try {
+          const pageRes = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+            redirect: "follow",
+            signal: AbortSignal.timeout(8_000),
+          });
+          if (pageRes.ok) {
+            const text = await pageRes.text();
+            console.log(`[products/scrape-url] Raw HTML: ${text.length} chars (status ${pageRes.status})`);
+            return text;
+          }
+          console.log(`[products/scrape-url] Raw HTML fetch blocked: status ${pageRes.status}`);
+          return "";
+        } catch (fetchErr) {
+          console.log(`[products/scrape-url] Raw HTML fetch failed (non-fatal): ${fetchErr}`);
+          return "";
+        }
+      })();
+
       let result = await tryJina("browser");
       if (!result || result.markdown.length < 100) {
         if (result) console.log(`[products/scrape-url] Jina(browser) thin (${result.markdown.length} chars), trying default engine`);
@@ -32792,29 +32816,21 @@ app.post("/products/scrape-url", async (c) => {
         html = result.markdown;
         jinaImages = result.images;
       }
-    }
 
-    // Always fetch the raw HTML in parallel — we need the tags intact so we
-    // can read og:image / twitter:image / <img srcset> etc. Previous version
-    // only did this as a fallback and stripped tags, so image scoring never
-    // had anything to work with outside the Jina structured list.
-    try {
-      const pageRes = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
-        redirect: "follow",
-        signal: AbortSignal.timeout(10_000),
-      });
-      // Only keep the body if the request actually succeeded — otherwise we'd
-      // be parsing Cloudflare/Akamai "Access Denied" pages as if they were
-      // the product page (Lacoste blocks datacenter IPs aggressively).
-      if (pageRes.ok) {
-        rawHtml = await pageRes.text();
-        console.log(`[products/scrape-url] Raw HTML: ${rawHtml.length} chars (status ${pageRes.status})`);
-      } else {
-        console.log(`[products/scrape-url] Raw HTML fetch blocked: status ${pageRes.status} — relying on Jina output only`);
-      }
-    } catch (fetchErr) {
-      console.log(`[products/scrape-url] Raw HTML fetch failed (non-fatal): ${fetchErr}`);
+      // Récupère le raw HTML lancé en parallèle (peut déjà être prêt).
+      rawHtml = await rawHtmlPromise;
+    }
+    // Hors du if (jinaKey) — au cas où on n'a pas Jina, on a quand même
+    // tenté un fetch direct ci-dessous (rawHtml reste "" ici).
+    if (!rawHtml && !jinaKey) {
+      try {
+        const pageRes = await fetch(url, {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (pageRes.ok) rawHtml = await pageRes.text();
+      } catch { /* noop */ }
     }
 
     // Fallback text if Jina didn't give us anything usable: strip tags from
@@ -32978,12 +32994,13 @@ Output ONLY valid JSON. No explanation, no markdown, no code blocks.`;
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 12000)}` },
+          { role: "user", content: `URL: ${url}\n\nPage content:\n${html.slice(0, 9000)}` },
         ],
-        max_tokens: 1200,
+        max_tokens: 900,
         temperature: 0,
+        response_format: { type: "json_object" },
       }),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(12_000),
     });
 
     if (!aiRes.ok) return c.json({ success: false, error: "AI extraction failed" }, 500);
