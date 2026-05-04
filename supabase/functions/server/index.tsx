@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T14:10Z — v675-scrape-parallel");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T14:40Z — v676-scrape-wayback-fallback");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -32866,10 +32866,61 @@ app.post("/products/scrape-url", async (c) => {
       html = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
     }
 
-    // Hard fail if both paths came back empty: Jina didn't return content AND
-    // direct fetch either errored or was bot-blocked. Returning `success:true`
-    // with empty fields here would look like the scrape worked, then silently
-    // ship an empty form — confusing the user into thinking autofill is broken.
+    // ── BOT-PROTECTION FALLBACK: Wayback Machine ──
+    // Some sites (Bershka/Inditex, Zara, Lacoste, certaines luxury) block
+    // datacenter IPs aggressively via Cloudflare/Akamai. Jina's browser
+    // engine + raw HTML fetch all return 403/empty for these. The fallback
+    // is to fetch a recent snapshot from archive.org's Wayback Machine,
+    // which serves cached HTML without bot protection. The product info
+    // doesn't change minute-to-minute so a snapshot of the last week is
+    // fine for marketing copy generation.
+    if (!html || html.length < 500) {
+      try {
+        console.log(`[products/scrape-url] Primary methods returned thin/empty content — trying Wayback Machine fallback`);
+        const wbApiRes = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (wbApiRes.ok) {
+          const wbApiData = await wbApiRes.json();
+          const snapshotUrl: string | undefined = wbApiData?.archived_snapshots?.closest?.url;
+          if (snapshotUrl) {
+            console.log(`[products/scrape-url] Wayback snapshot: ${snapshotUrl}`);
+            const snapRes = await fetch(snapshotUrl, {
+              headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+              redirect: "follow",
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (snapRes.ok) {
+              let snapHtml = await snapRes.text();
+              // Strip Wayback's toolbar/iframe injection from the body so
+              // it doesn't pollute the AI extraction. Wayback wraps the
+              // page with <!-- BEGIN WAYBACK TOOLBAR INSERT --> markers
+              // and a <script> block at the top.
+              snapHtml = snapHtml.replace(/<!--\s*BEGIN WAYBACK[\s\S]*?END WAYBACK[^>]*-->/gi, "");
+              snapHtml = snapHtml.replace(/<script[^>]*src=["'][^"']*archive\.org[^"']*["'][^>]*><\/script>/gi, "");
+              if (!rawHtml || rawHtml.length < snapHtml.length) rawHtml = snapHtml;
+              const stripped = snapHtml.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+              if (stripped.length > (html?.length || 0)) html = stripped;
+              console.log(`[products/scrape-url] Wayback delivered ${snapHtml.length} chars HTML, ${stripped.length} chars text`);
+            } else {
+              console.log(`[products/scrape-url] Wayback snapshot fetch ${snapRes.status}`);
+            }
+          } else {
+            console.log(`[products/scrape-url] Wayback has no snapshot for this URL`);
+          }
+        } else {
+          console.log(`[products/scrape-url] Wayback availability API ${wbApiRes.status}`);
+        }
+      } catch (wbErr) {
+        console.log(`[products/scrape-url] Wayback fallback error: ${wbErr}`);
+      }
+    }
+
+    // Hard fail if everything came back empty: Jina returned thin, direct
+    // fetch was bot-blocked, AND Wayback Machine has no snapshot. Returning
+    // `success:true` with empty fields here would look like the scrape
+    // worked, then silently ship an empty form — confusing the user into
+    // thinking autofill is broken.
     if (!html || html.length < 200) {
       console.log(`[products/scrape-url] Nothing usable to analyze (html=${html?.length || 0} chars, rawHtml=${rawHtml.length} chars) — returning error`);
       return c.json({ success: false, error: "Couldn't read this page. The site may be blocking bots — try a different product URL or fill the fields manually." }, 422);
