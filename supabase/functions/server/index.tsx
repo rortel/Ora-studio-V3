@@ -10665,7 +10665,6 @@ app.post("/analyze/surprise-me", async (c) => {
     // the scene, the mood, the twist — never the product itself. So the
     // product reference weight is held constant (high) for every level;
     // only the LLM system hint and temperature change.
-    const PRODUCT_REF_WEIGHT = 0.92; // tight fidelity — raised from 0.85 after reports of colour drift when the scene composition differs from the reference (polo on hanger vs polo on model).
     const CREATIVITY: Record<number, { temp: number; systemHint: string }> = {
       1: { temp: 0.45, systemHint: "Stay conservative and brand-safe. Familiar lifestyle contexts, conventional compositions. EACH shot still carries ONE subtle twist — a color accent, a soft gradient wash, a minimal geometric overlay, a signature light flare — never surreal, never risky. EVERY twist MUST be brand-compliant (use brand palette colours + brand typography feel — no random AI-mag look). The product itself stays exactly as provided." },
       2: { temp: 0.70, systemHint: "Balance familiar and unexpected. EVERY shot features ONE tangible twist — an unexpected prop, a signature light beam, a graphic frame, a vintage-print grain effect — so the pack reads intentional, never templated. EVERY twist MUST be brand-compliant (props/frames coloured from the brand palette, type-treatments using brand typography feel). The product itself stays exactly as provided." },
@@ -11184,16 +11183,22 @@ OUTPUT JSON:
           //     typography overlay on top. This is the fix for "NEW DROP
           //     poster with no product visible" — when a merchant uploaded a
           //     photo, that photo MUST appear on every shot, even text-cards.
+          // Single source of truth for prompt assembly across the 6 paths.
+          // Built once per shot; jobIsApparel is the only job-dependent
+          // field — it's computed below right before the (productRef) block
+          // and the ctx is rebuilt at that point.
+          let promptCtx: ShotPromptCtx = {
+            styleDirective,
+            productDescription,
+            subjectKind: subjectKind as ShotPromptCtx["subjectKind"],
+            jobIsApparel: false,
+          };
+
           if (job.type === "text-card") {
             if (productRef) {
-              const productAnchor = productDescription
-                ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
-                : "";
-              const styleHead = styleDirective ? `PICKED VISUAL STYLE (apply across this card's lighting, surfaces, palette, mood AND typography feel — non-negotiable): ${styleDirective.slice(0, 280)}\n\n` : "";
-              const textCardWithProductPrompt = `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
               const card = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
-                prompt: textCardWithProductPrompt,
+                prompt: buildShotPrompt("text-card-with-product", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
                 imageWeight: 88,
                 userId: user.id,
@@ -11225,35 +11230,29 @@ OUTPUT JSON:
           if (productRef) {
             // Apparel/wearable detection: per-pack from the user's
             // productDescription, and per-shot from the planner's scene/
-            // subject/promptText (catches cases where the description is
-            // vague but the planner generated a "model wearing X" scene).
+            // subject/promptText.
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
-            // Apparel pre-pass: when the merchant picked Promo intent OR the
-            // shot label looks packshot-y (hero, sale, packshot, tile, card,
-            // promo, catalogue), route through Photoroom Ghost Mannequin.
-            // It locks the garment silhouette pixel-for-pixel from the
-            // reference (fixes the "sleeveless ↔ sleeves" drift we kept
-            // seeing across carousel slides) and composites a clean AI
-            // background in the same call — exactly what a sale packshot
-            // wants. Lifestyle / editorial apparel shots still flow through
-            // Ideogram Remix below to get a fresh wearer in scene.
+            promptCtx = { ...promptCtx, jobIsApparel };
             const isPromoIntent = !!brief && brief.includes("Promotion:");
             const labelLower = (job.label || "").toLowerCase();
             const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog|studio|minimal)\b/.test(labelLower);
+
+            // ── Path selection — one model per category, no cascade ──
+            //   • apparel + promo/packshot label → Photoroom Ghost Mannequin
+            //   • apparel lifestyle              → Ideogram Remix @ 95
+            //   • place / person / service       → Ideogram Remix @ 95
+            //   • non-apparel product            → Photoroom Studio composite
+            // Each category picks ONE model and FAILS if it fails. We don't
+            // cascade across providers because that hides quality issues
+            // (a Bria-rendered shot looks nothing like a Photoroom-rendered
+            // shot in the same pack — user can't tell which one's broken).
+
+            // Apparel packshot / promo → Ghost Mannequin
             if (jobIsApparel && (isPromoIntent || isPackshotLabel)) {
-              // The picked style (Editorial / Studio / Minimal / Magazine /
-              // UGC / Lifestyle) drives the BACKGROUND that Photoroom
-              // generates. Without this, Ghost Mannequin only sees
-              // job.scene which doesn't carry the style fingerprint and
-              // every pack ends up looking the same generic studio.
-              const styleHead = styleDirective ? `${styleDirective.slice(0, 240)}\n\n` : "";
-              const ghostBgPrompt = productDescription
-                ? `${styleHead}${job.scene.slice(0, 200)} — backdrop appropriate for ${productDescription.slice(0, 150)}`
-                : `${styleHead}${job.scene.slice(0, 250)}`;
               const ghost = await runPhotoroomGhostMannequin({
                 productImageUrl: productRef,
-                bgPrompt: ghostBgPrompt,
+                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
                 userId: user.id,
                 campaignSlug,
@@ -11262,54 +11261,15 @@ OUTPUT JSON:
                 const persisted = await persistOne(ghost.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || ghost.imageUrl, provider: ghost.provider };
               }
-              console.log(`[surprise-me] ghost-mannequin failed for ${job.label}, falling through to remix path`);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
             }
 
-            // Three subject kinds need image-conditioned regeneration (Remix)
-            // instead of cutout+composite (Photoroom):
-            //   • apparel — a garment cutout floats without a body
-            //   • place   — you don't cut a room out of its background
-            //   • person  — face/portrait preservation is regen, not paste
-            //   • service — before/after photos are scenes, not products
-            // For all of these, Ideogram Remix at image_weight=95 preserves
-            // the subject while regenerating the surrounding scene. Bumped
-            // from 90 → 95 to fix silhouette drift on apparel (carousel
-            // slides ended up showing different garments).
+            // Apparel lifestyle / place / person / service → Ideogram Remix @ 95
             const useRemixPath = jobIsApparel || subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
             if (useRemixPath) {
-              const subjectNoun = subjectKind === "place"   ? "space / venue"
-                                : subjectKind === "person"  ? "person / portrait"
-                                : subjectKind === "service" ? "service result (before/after or finished work)"
-                                : "garment";
-              const subjectAnchor = productDescription
-                ? `\n\nSUBJECT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${productDescription.slice(0, 400)}`
-                : "";
-              // Apparel-specific silhouette anchor — the most common drift
-              // mode is sleeve-length / neckline / hem changing across shots.
-              // Naming those features explicitly in the prompt forces the
-              // model to copy them from the reference instead of inventing.
-              const silhouetteAnchor = subjectKind === "product" && jobIsApparel
-                ? "\n\nSILHOUETTE LOCK (apparel): COPY FROM REFERENCE PHOTO — sleeve length (sleeveless / short / 3-4 / long), neckline shape (crew / V / scoop / collar / button-up), hem length (cropped / waist / hip / mid-thigh / knee / floor), closure (zip / button row / pullover), fit (slim / regular / oversized), fabric weight and texture. Any deviation from the reference on these features = REJECTED. The wearer changes, the garment is identical."
-                : "";
-              const sceneRegenInstructions = subjectKind === "place"
-                ? "REGENERATE the lighting, season, time of day, and any people present around the locked space. Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo. Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm."
-                : subjectKind === "person"
-                ? "REGENERATE the background and styling around the locked face/portrait. Keep the person's identity (face, hair, ethnicity, build) IDENTICAL to the source. Vary the setting: studio backdrop, candid lifestyle, on-location, branded environment."
-                : subjectKind === "service"
-                ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
-                : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
-              // PICKED STYLE first — when the user picked Editorial / Studio
-              // / Minimal etc., the directive must dominate the image. The
-              // existing prompt stacks so many "REAL-LIFE SCENE / FIDELITY /
-              // FRAMING" anchors that the style gets drowned, which is why
-              // styled packs ended up looking generic. Putting it at the
-              // top forces the model to apply lighting/surface/palette
-              // BEFORE it interprets scene instructions.
-              const styleHead = styleDirective ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${styleDirective.slice(0, 280)}\n\n` : "";
-              const apparelPrompt = `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegenInstructions}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
-                prompt: apparelPrompt,
+                prompt: buildShotPrompt(jobIsApparel ? "apparel-remix" : "regen-with-subject", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
                 imageWeight: 95,
                 userId: user.id,
@@ -11319,24 +11279,13 @@ OUTPUT JSON:
                 const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
               }
-              console.log(`[surprise-me] remix-path failed for ${job.label} (subjectKind=${subjectKind}, apparel=${jobIsApparel}), falling back to Photoroom Studio composite`);
-              // fall through to Photoroom Studio path below — only really
-              // useful for product/apparel; for place/person it's a poor
-              // approximation, but better than failing the shot entirely.
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Remix path failed" };
             }
 
-            // Stage 1: Pixel-perfect composite (product = real pixels, scene = generated).
-            // Inject the verbatim product description into the bg prompt so
-            // the AI background generator places the product in a context
-            // that matches the product's identity (a navy tracksuit doesn't
-            // get a beige bohemian setting).
-            const styleHeadComposite = styleDirective ? `${styleDirective.slice(0, 240)}\n\n` : "";
-            const compositePrompt = productDescription
-              ? `${styleHeadComposite}PRODUCT IDENTITY (preserve exactly): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
-              : `${styleHeadComposite}${job.promptText}`;
+            // Non-apparel product → Photoroom Studio composite
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
-              prompt: compositePrompt,
+              prompt: buildShotPrompt("studio-composite", { scene: job.scene, promptText: job.promptText }, promptCtx),
               aspectRatio: job.aspectRatio,
               userId: user.id,
               cachedCutoutUrl,
@@ -11347,27 +11296,7 @@ OUTPUT JSON:
               const persisted = await persistOne(composite.imageUrl, job.fileName, job.platform);
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || composite.imageUrl, provider: composite.provider };
             }
-
-            // Stage 2: kontext-pro fallback (compositing failed — usually
-            // means Photoroom + FAL keys missing or all three providers down).
-            // Stronger product anchor here too: kontext-pro is more drift-prone
-            // than Photoroom, so we always prepend the verbatim description.
-            console.log(`[surprise-me] composite failed for ${job.label}, falling back to kontext-pro`);
-            const promptWithProduct = productDescription
-              ? `PRODUCT IDENTITY ANCHOR (must match reference photo VERBATIM — colour, material, cut, hardware, logo placement, proportions): ${productDescription.slice(0, 400)}\n\n${job.promptText}`
-              : job.promptText;
-            const r = await runRemix({
-              finalPrompt: promptWithProduct, imageUrl: productRef,
-              model: "kontext-pro", aspectRatio: job.aspectRatio, seed,
-              refWeight: PRODUCT_REF_WEIGHT,
-            });
-            if (!r.ok) {
-              logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: user.id, success: false, campaignSlug }).catch(() => {});
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: r.error };
-            }
-            logCost({ type: "image", model: "kontext-pro", provider: "fal/kontext-pro", costUsd: getProviderCost("fal/kontext-pro", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: user.id, success: true, campaignSlug }).catch(() => {});
-            const persisted = await persistOne(r.imageUrl, job.fileName, job.platform);
-            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || r.imageUrl, provider: r.provider };
+            return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Studio composite failed" };
           }
           // Text-to-image via Luma Photon
           const tLuma = Date.now();
@@ -12033,16 +11962,14 @@ async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string 
   return signedData.signedUrl;
 }
 
-// Reusable pixel-perfect compositing — used by both /compare/pixel-perfect-product
-// (as the canonical endpoint) and /analyze/surprise-me (as primary path per shot).
+// Photoroom Studio AI background composite. Single strategy — no cascade.
+// Used by /compare/pixel-perfect-product and /analyze/surprise-me as the
+// canonical product-composite path. If Photoroom fails, the caller fails
+// the shot rather than silently falling back to a different model that
+// would produce a visually inconsistent output.
 //
-// Three-strategy fallback (returns on first success):
-//   A) Photoroom v2/edit Studio AI bg — one-shot cutout + AI background
-//   B) FAL Bria background/replace — purpose-built for product photography
-//   C) FAL IC-Light v2 — relight cutout into prompt-described environment
-//
-// Cutout caching: pass `cachedCutoutUrl` to skip Stage 1 (Photoroom extract).
-// surprise-me uses this to extract the cutout ONCE per run and reuse across all shots.
+// Cutout caching: pass `cachedCutoutUrl` to skip the cutout extract step.
+// surprise-me extracts the cutout ONCE per run and reuses it across shots.
 async function runPixelPerfectComposite(opts: {
   productImageUrl: string;
   prompt: string;
@@ -12055,11 +11982,17 @@ async function runPixelPerfectComposite(opts: {
   const { productImageUrl, prompt, userId, campaignSlug } = opts;
   const aspectRatio = opts.aspectRatio || "1:1";
   const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
-  const falKey = Deno.env.get("FAL_API_KEY");
+  if (!photoroomKey) {
+    console.log(`[composite] PHOTOROOM_API_KEY not set — composite path unavailable`);
+    return null;
+  }
 
   // ── STAGE 1: Subject cutout (skip if cached) ──
+  // The cutout itself is not the final output — Photoroom Studio below
+  // re-runs removeBackground internally — but we extract it for cache
+  // reuse across shots in the same surprise-me run.
   let cutoutSignedUrl: string | null = opts.cachedCutoutUrl || null;
-  if (!cutoutSignedUrl && photoroomKey) {
+  if (!cutoutSignedUrl) {
     try {
       const { pngBlob } = await photoroomExtractCutout(productImageUrl, photoroomKey);
       cutoutSignedUrl = await uploadPngToStorage(pngBlob, "cutout", userId);
@@ -12068,128 +12001,67 @@ async function runPixelPerfectComposite(opts: {
     }
   }
 
-  // ── STAGE 2A: Photoroom Studio AI bg (preferred — cutout + bg + relight in 1 call) ──
-  if (photoroomKey) {
-    try {
-      const arSizeMap: Record<string, string> = {
-        "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
-        "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
-        "2:3": "800x1200", "3:2": "1200x800",
-      };
-      const outputSize = arSizeMap[aspectRatio] || "1080x1080";
-      const params = new URLSearchParams();
-      params.set("imageUrl", productImageUrl);
-      params.set("removeBackground", "true");
-      params.set("background.prompt", String(prompt).slice(0, 400));
-      params.set("lighting.mode", "ai.preserve-hue-and-saturation");
-      // Explicit soft-shadow grounds the product in the new scene. Without
-      // it the AI bg model decides whether to drop a shadow on its own,
-      // which sometimes lands a floating cutout on a otherwise-photoreal
-      // backdrop. ai.soft is the most forgiving across packshot styles.
-      params.set("shadow.mode", "ai.soft");
-      params.set("textRemoval.mode", "ai.artificial");
-      params.set("outputSize", outputSize);
-      params.set("padding", "0.08");
-      params.set("ignorePaddingAndSnapOnCroppedSides", "false");
-      params.set("export.format", "webp");
+  // ── STAGE 2: Photoroom Studio AI bg (cutout + bg + relight in 1 call) ──
+  try {
+    const arSizeMap: Record<string, string> = {
+      "1:1": "1080x1080", "9:16": "1080x1920", "16:9": "1920x1080",
+      "4:5": "1080x1350", "4:3": "1200x900", "3:4": "900x1200",
+      "2:3": "800x1200", "3:2": "1200x800",
+    };
+    const outputSize = arSizeMap[aspectRatio] || "1080x1080";
+    const params = new URLSearchParams();
+    params.set("imageUrl", productImageUrl);
+    params.set("removeBackground", "true");
+    params.set("background.prompt", String(prompt).slice(0, 400));
+    params.set("lighting.mode", "ai.preserve-hue-and-saturation");
+    // Explicit soft-shadow grounds the product in the new scene. Without
+    // it the AI bg model decides whether to drop a shadow on its own,
+    // which sometimes lands a floating cutout on a otherwise-photoreal
+    // backdrop. ai.soft is the most forgiving across packshot styles.
+    params.set("shadow.mode", "ai.soft");
+    params.set("textRemoval.mode", "ai.artificial");
+    params.set("outputSize", outputSize);
+    params.set("padding", "0.08");
+    params.set("ignorePaddingAndSnapOnCroppedSides", "false");
+    params.set("export.format", "webp");
 
-      const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
-        headers: {
-          "x-api-key": photoroomKey,
-          "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
-        },
-        signal: AbortSignal.timeout(45_000),
-      });
-      if (res.ok) {
-        const imageBuffer = await res.arrayBuffer();
-        const fileName = `pixel-perfect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
-        const storagePath = `generated/${userId || "anon"}/${fileName}`;
-        const sb = supabaseAdmin();
-        const { error: uploadError } = await sb.storage
-          .from("make-cad57f79-media")
-          .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
-        if (!uploadError) {
-          const { data: signedData } = await sb.storage
-            .from("make-cad57f79-media")
-            .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
-          if (signedData?.signedUrl) {
-            console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
-            logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
-            return { imageUrl: signedData.signedUrl, provider: "photoroom-studio", cutoutUrl: cutoutSignedUrl };
-          }
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[composite] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) {
-      console.log(`[composite] Photoroom Studio error: ${err}`);
+    const res = await fetch(`https://image-api.photoroom.com/v2/edit?${params.toString()}`, {
+      headers: {
+        "x-api-key": photoroomKey,
+        "pr-ai-background-model-version": "background-studio-beta-2025-03-17",
+      },
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) {
+      const b = await res.text();
+      console.log(`[composite] Photoroom Studio ${res.status}: ${b.slice(0, 200)}`);
+      return null;
     }
-  }
-
-  // ── STAGE 2B: FAL Bria background/replace (needs cutout) ──
-  if (falKey && cutoutSignedUrl) {
-    try {
-      const res = await fetch("https://fal.run/fal-ai/bria/background/replace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-        body: JSON.stringify({
-          image_url: cutoutSignedUrl,
-          bg_prompt: String(prompt).slice(0, 400),
-          refine_prompt: true,
-          num_results: 1,
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const imageUrl = data.result?.[0] || data.images?.[0]?.url;
-        if (imageUrl) {
-          console.log(`[composite] FAL Bria OK in ${Date.now() - t0}ms`);
-          logCost({ type: "image", model: "fal-bria-bg-replace", provider: "fal-bria-bg-replace", costUsd: getProviderCost("fal-bria-bg-replace", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
-          return { imageUrl, provider: "fal-bria-bg-replace", cutoutUrl: cutoutSignedUrl };
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[composite] FAL Bria ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) {
-      console.log(`[composite] FAL Bria error: ${err}`);
+    const imageBuffer = await res.arrayBuffer();
+    const fileName = `pixel-perfect-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webp`;
+    const storagePath = `generated/${userId || "anon"}/${fileName}`;
+    const sb = supabaseAdmin();
+    const { error: uploadError } = await sb.storage
+      .from("make-cad57f79-media")
+      .upload(storagePath, new Uint8Array(imageBuffer), { contentType: "image/webp", upsert: true });
+    if (uploadError) {
+      console.log(`[composite] storage upload failed: ${uploadError.message}`);
+      return null;
     }
-  }
-
-  // ── STAGE 2C: FAL IC-Light v2 relight (needs cutout) ──
-  if (falKey && cutoutSignedUrl) {
-    try {
-      const res = await fetch("https://fal.run/fal-ai/iclight-v2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Key ${falKey}` },
-        body: JSON.stringify({
-          image_url: cutoutSignedUrl,
-          prompt: String(prompt).slice(0, 400),
-          num_images: 1,
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const imageUrl = data.images?.[0]?.url;
-        if (imageUrl) {
-          console.log(`[composite] FAL IC-Light OK in ${Date.now() - t0}ms`);
-          logCost({ type: "image", model: "fal-iclight-v2", provider: "fal-iclight-v2", costUsd: getProviderCost("fal-iclight-v2", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
-          return { imageUrl, provider: "fal-iclight-v2", cutoutUrl: cutoutSignedUrl };
-        }
-      } else {
-        const b = await res.text();
-        console.log(`[composite] FAL IC-Light ${res.status}: ${b.slice(0, 200)}`);
-      }
-    } catch (err) {
-      console.log(`[composite] FAL IC-Light error: ${err}`);
+    const { data: signedData } = await sb.storage
+      .from("make-cad57f79-media")
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+    if (!signedData?.signedUrl) {
+      console.log(`[composite] storage no signed URL`);
+      return null;
     }
+    console.log(`[composite] Photoroom Studio OK in ${Date.now() - t0}ms`);
+    logCost({ type: "image", model: "photoroom-studio", provider: "photoroom-studio", costUsd: getProviderCost("photoroom-studio", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+    return { imageUrl: signedData.signedUrl, provider: "photoroom-studio", cutoutUrl: cutoutSignedUrl };
+  } catch (err) {
+    console.log(`[composite] Photoroom Studio error: ${err}`);
+    return null;
   }
-
-  console.log(`[composite] all strategies failed in ${Date.now() - t0}ms`);
-  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -12399,6 +12271,100 @@ async function runPhotoroomExpand(opts: {
   } catch (err) {
     console.log(`[expand] error: ${err}`);
     return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SHOT PROMPT BUILDER — single source of truth for surprise-me prompts
+// ═══════════════════════════════════════════════════════════════════
+// The surprise-me handler has six distinct image-generation paths
+// (Ghost Mannequin / apparel-Remix / regen-with-subject for place-person-
+// service / Studio-composite / text-card-with-product / text-card-only /
+// pure T2I). Until this helper landed, each path inlined its own prompt
+// wrapper, so any new rule (style propagation, promo visibility, silhouette
+// lock) had to be patched in N places and we'd inevitably miss one. This
+// builder centralises all prompt assembly so a single edit propagates to
+// every path that needs it.
+type ShotPromptCategory =
+  | "ghost-mannequin"        // Photoroom Ghost Mannequin — bg-only prompt
+  | "apparel-remix"          // Ideogram Remix at imageWeight=95 — full anchored prompt
+  | "regen-with-subject"     // Ideogram Remix at imageWeight=95 — place / person / service
+  | "studio-composite"       // Photoroom Studio AI bg — bg + product anchor
+  | "text-card-with-product" // Ideogram Remix at imageWeight=88 — typography over product
+  | "text-card-only"         // Ideogram T2I — planner promptText as-is (already styled)
+  | "pure-t2i";              // Luma Photon T2I — planner promptText as-is
+
+interface ShotPromptCtx {
+  styleDirective: string;     // empty string when no style picked
+  productDescription: string; // empty string when no product description
+  subjectKind: "product" | "place" | "person" | "service";
+  jobIsApparel: boolean;
+}
+
+interface ShotPromptJob {
+  scene: string;
+  promptText: string;
+}
+
+function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: ShotPromptCtx): string {
+  switch (category) {
+    case "ghost-mannequin": {
+      // Photoroom v2/edit background.prompt — describes only what goes
+      // BEHIND the locked garment. Style first, then scene, then product
+      // descriptor for surface/palette appropriateness.
+      const styleHead = ctx.styleDirective ? `${ctx.styleDirective.slice(0, 240)}\n\n` : "";
+      return ctx.productDescription
+        ? `${styleHead}${job.scene.slice(0, 200)} — backdrop appropriate for ${ctx.productDescription.slice(0, 150)}`
+        : `${styleHead}${job.scene.slice(0, 250)}`;
+    }
+    case "apparel-remix":
+    case "regen-with-subject": {
+      const styleHead = ctx.styleDirective
+        ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${ctx.styleDirective.slice(0, 280)}\n\n`
+        : "";
+      const subjectNoun = ctx.subjectKind === "place"   ? "space / venue"
+                        : ctx.subjectKind === "person"  ? "person / portrait"
+                        : ctx.subjectKind === "service" ? "service result (before/after or finished work)"
+                        : "garment";
+      const subjectAnchor = ctx.productDescription
+        ? `\n\nSUBJECT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
+        : "";
+      // Apparel-only: name the silhouette features that drift most.
+      const silhouetteAnchor = ctx.subjectKind === "product" && ctx.jobIsApparel
+        ? "\n\nSILHOUETTE LOCK (apparel): COPY FROM REFERENCE PHOTO — sleeve length (sleeveless / short / 3-4 / long), neckline shape (crew / V / scoop / collar / button-up), hem length (cropped / waist / hip / mid-thigh / knee / floor), closure (zip / button row / pullover), fit (slim / regular / oversized), fabric weight and texture. Any deviation from the reference on these features = REJECTED. The wearer changes, the garment is identical."
+        : "";
+      const sceneRegen = ctx.subjectKind === "place"
+        ? "REGENERATE the lighting, season, time of day, and any people present around the locked space. Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo. Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm."
+        : ctx.subjectKind === "person"
+        ? "REGENERATE the background and styling around the locked face/portrait. Keep the person's identity (face, hair, ethnicity, build) IDENTICAL to the source. Vary the setting: studio backdrop, candid lifestyle, on-location, branded environment."
+        : ctx.subjectKind === "service"
+        ? "REGENERATE the surrounding context and lighting around the locked work-result. Keep the actual subject of the service (the haircut, the finished bathroom, the cleaned car, the manicured lawn) IDENTICAL to the source. Vary the angle, framing, and ambient context."
+        : "REGENERATE THE WEARER AND THE SCENE around the garment: invent a different model with a different look, in a real lifestyle situation that fits the brief — DO NOT preserve the source photo's wearer, framing, or background. The point is variety: this shot should look like a brand campaign with a fresh person, not the same source model pasted on a new backdrop.";
+      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}`;
+    }
+    case "studio-composite": {
+      // Photoroom Studio AI bg.prompt — full scene description with
+      // product identity anchor so the bg matches (a navy tracksuit
+      // doesn't get a beige bohemian setting).
+      const styleHead = ctx.styleDirective ? `${ctx.styleDirective.slice(0, 240)}\n\n` : "";
+      return ctx.productDescription
+        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${job.promptText}`
+        : `${styleHead}${job.promptText}`;
+    }
+    case "text-card-with-product": {
+      const styleHead = ctx.styleDirective
+        ? `PICKED VISUAL STYLE (apply across this card's lighting, surfaces, palette, mood AND typography feel — non-negotiable): ${ctx.styleDirective.slice(0, 280)}\n\n`
+        : "";
+      const productAnchor = ctx.productDescription
+        ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
+        : "";
+      return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
+    }
+    case "text-card-only":
+    case "pure-t2i":
+      // Planner is briefed (in conceptSystem) to open promptText with the
+      // picked style descriptors, so no wrapper needed for these two paths.
+      return job.promptText;
   }
 }
 
