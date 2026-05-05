@@ -1,16 +1,16 @@
 /**
- * Onboarding checklist — persistent pill in the navbar that guides
+ * Onboarding checklist — persistent pill bottom-right that guides
  * first-time users through the 4 key actions:
  *
- *   1. Set up Brand Vault  → /hub/vault
- *   2. Drop a product, generate first pack  → /hub/surprise
- *   3. Edit a post  → /hub/editor (after a Library item exists)
- *   4. Publish (coming soon)  → social-publishing integration
+ *   1. Set up Brand Vault              → /hub/vault
+ *   2. Generate first pack             → /hub/surprise
+ *   3. Edit a post                     → /hub/editor
+ *   4. Connect a social account        → /hub/account?tab=connections
  *
  * Progress is auto-detected from user state (vault fields populated,
- * library count, etc.) — not stored separately. Dismissal is stored
- * in localStorage so the checklist disappears once the user marks it
- * as "done" or completes all steps.
+ * library count, PfM connected accounts) — not stored separately.
+ * Dismissal is stored in localStorage so the checklist disappears
+ * once the user marks it as "done" or completes all steps.
  *
  * Visible only when user is logged in AND not all steps are complete
  * AND not dismissed.
@@ -30,15 +30,15 @@ interface OnboardingState {
   vaultDone: boolean;
   firstPackDone: boolean;
   firstEditDone: boolean;
-  // Future: publishDone (social publishing)
+  publishDone: boolean;
   loaded: boolean;
 }
 
 export function OnboardingChecklist() {
-  const { user, profile } = useAuth();
+  const { user, accessToken } = useAuth();
   const location = useLocation();
   const [state, setState] = useState<OnboardingState>({
-    vaultDone: false, firstPackDone: false, firstEditDone: false, loaded: false,
+    vaultDone: false, firstPackDone: false, firstEditDone: false, publishDone: false, loaded: false,
   });
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -52,11 +52,15 @@ export function OnboardingChecklist() {
   // checklist auto-updates when the user finishes a step.
   // Gate the network calls on a non-empty access token — without this
   // gate the effect fired during the auth-state warm-up window (the
-  // moment between `user` being set and `profile.accessToken` being
-  // hydrated) and the server returned 401, polluting the console.
+  // moment between `user` being set and `accessToken` being hydrated)
+  // and the server returned 401, polluting the console.
+  // BUG FIX 2026-05-05: was reading profile.accessToken which doesn't
+  // exist on the profile object (the token lives directly on useAuth's
+  // returned context). Effect never ran → onboarding checklist never
+  // showed up for any user. Now reads accessToken from the hook root.
   useEffect(() => {
     if (!user) return;
-    const token = profile?.accessToken || "";
+    const token = accessToken || "";
     if (!token) return; // wait until the token is in memory
     let cancelled = false;
     (async () => {
@@ -84,17 +88,34 @@ export function OnboardingChecklist() {
         // editedFrom marker, or a saved version with type "edited").
         const firstEditDone = items.some((it) => it.type === "edited" || it.editedFrom);
 
-        if (!cancelled) setState({ vaultDone, firstPackDone, firstEditDone, loaded: true });
+        // Publish: detect a connected social account via Post For Me.
+        // Hits /pfm/accounts which returns the user's connected social
+        // identities (Instagram / Facebook / TikTok / LinkedIn). Gracefully
+        // fails if PfM isn't reachable — checklist stays at 3/4 instead
+        // of crashing.
+        let publishDone = false;
+        try {
+          const pfmRes = await fetch(`${API_BASE}/pfm/accounts`, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
+            body: JSON.stringify({ _token: token }),
+          });
+          const pfmData = await pfmRes.json().catch(() => ({}));
+          const accounts: any[] = pfmData?.accounts || [];
+          publishDone = accounts.length > 0;
+        } catch { /* PfM unavailable, leave publishDone=false */ }
+
+        if (!cancelled) setState({ vaultDone, firstPackDone, firstEditDone, publishDone, loaded: true });
       } catch {
         if (!cancelled) setState((s) => ({ ...s, loaded: true }));
       }
     })();
     return () => { cancelled = true; };
-  }, [user, profile?.accessToken, location.pathname]);
+  }, [user, accessToken, location.pathname]);
 
   if (!user || dismissed || !state.loaded) return null;
-  const completedCount = [state.vaultDone, state.firstPackDone, state.firstEditDone].filter(Boolean).length;
-  if (completedCount === 3) return null; // all 3 steps done — hide
+  const completedCount = [state.vaultDone, state.firstPackDone, state.firstEditDone, state.publishDone].filter(Boolean).length;
+  if (completedCount === 4) return null; // all 4 steps done — hide
 
   const handleDismiss = () => {
     try { localStorage.setItem(DISMISS_KEY, "1"); } catch {}
@@ -106,6 +127,7 @@ export function OnboardingChecklist() {
     { id: "vault", label: "Set up Brand Vault", href: "/hub/vault", done: state.vaultDone, icon: <BookOpen size={14} />, hint: "Paste your website URL — we extract palette, fonts, voice in 30s." },
     { id: "pack", label: "Generate your first pack", href: "/hub/surprise", done: state.firstPackDone, icon: <Sparkles size={14} />, hint: "Drop a product photo. We compose 6 platform-ready posts." },
     { id: "edit", label: "Edit a post", href: "/hub/editor", done: state.firstEditDone, icon: <Wand2 size={14} />, hint: "Add a logo, change format, tweak typography." },
+    { id: "publish", label: "Connect a social account", href: "/hub/account?tab=connections", done: state.publishDone, icon: <Send size={14} />, hint: "Auto-publish to Instagram, Facebook, TikTok or LinkedIn in one tap." },
   ];
 
   return (
@@ -186,22 +208,6 @@ export function OnboardingChecklist() {
                     </div>
                   </li>
                 ))}
-                <li className="flex items-start gap-3 opacity-50">
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ background: "rgba(17,17,17,0.04)", color: "rgba(17,17,17,0.30)" }}
-                  >
-                    <Send size={11} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12.5px] font-medium leading-tight" style={{ color: "rgba(17,17,17,0.45)" }}>
-                      Publish to socials
-                    </div>
-                    <div className="text-[11px] mt-0.5" style={{ color: "rgba(17,17,17,0.45)" }}>
-                      Coming soon — auto-publish to Instagram, Facebook, TikTok.
-                    </div>
-                  </div>
-                </li>
               </ul>
               <div className="px-4 pb-3 pt-1 flex justify-end">
                 <button
