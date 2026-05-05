@@ -21,17 +21,20 @@ function getNestedValue(obj: Record<string, any>, path: string): string {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("ora-locale");
-      if (saved === "fr" || saved === "en") return saved;
-    }
-    return "en";
-  });
+  // English-only: locale is hardcoded to "en". The FR translations
+  // remain in the dict for now (history) but are unreachable from any
+  // UI. We also wipe any legacy localStorage entry that would have
+  // restored "fr" for returning users.
+  const [locale, setLocaleState] = useState<Locale>("en");
 
-  const setLocale = useCallback((l: Locale) => {
-    setLocaleState(l);
-    localStorage.setItem("ora-locale", l);
+  if (typeof window !== "undefined") {
+    try { localStorage.removeItem("ora-locale"); } catch { /* noop */ }
+  }
+
+  const setLocale = useCallback((_l: Locale) => {
+    // No-op: locale is fixed to English. Kept as a stable function
+    // reference so any consumer calling setLocale doesn't crash.
+    setLocaleState("en");
   }, []);
 
   const t = useCallback(
@@ -292,19 +295,20 @@ const en = {
 
 By accessing the Service or creating an account, you unconditionally accept these Terms. If you do not accept these conditions, please do not use the Service.`,
     s2Title: "2. Description of the Service",
-    s2Content: `ORA is an AI aggregator and comparator. The Service allows you to:
+    s2Content: `ORA Studio is a marketing content platform powered by artificial intelligence. The Service allows you to:
 
-• Access more than 50 state-of-the-art AI models (text, image, video, music) through a single subscription
-• Send the same prompt to multiple models and compare results side by side
-• Evaluate and score each model on 8 KPI dimensions (image, video, text, pro performance, consumer use, technical, legal & security, ethics & CSR)
-• Browse a neutral catalogue of models with transparent scoring
-• Keep a history of your generations and favourites`,
+• Generate marketing visuals, captions and content packs from a brief, a product photo or a URL
+• Compose multi-platform campaigns (Instagram, Facebook, TikTok, LinkedIn) in one pass
+• Manage a brand vault that locks visual identity across every output
+• Edit, schedule and publish to your connected social accounts
+• Keep a library of every generation, with download and re-publish capability`,
     s3Title: "3. Account Registration and Conditions",
     s3Content: `To use the Service, you must create an account by providing a valid email address. You are responsible for maintaining the confidentiality of your login credentials and for all activity carried out from your account.
 
 You must be at least 16 years old to use the Service. By creating an account, you represent that the information provided is accurate and up to date.`,
     s4Title: "4. Plans and Pricing",
-    s4Content: `ORA offers the following plans:
+    s4Content: `ORA Studio offers tiered subscription plans, billed monthly via Stripe, with generation credits adjusted to each tier. A free plan is available to try the Service. Credit top-up packs can be purchased at any time. Up-to-date pricing is shown on the public pricing page. Prices may change with 30 days' notice given by email and in-app.`,
+    __unusedOldS4: `ORA offers the following plans:
 
 • Starter — \u20AC29/month: 200 generations/month, 15 AI models, 3-way side-by-side comparison
 • Pro — \u20AC79/month: 1,000 generations/month, 50+ AI models (incl. video & music), 6-way comparison, KPI scoring
@@ -316,9 +320,9 @@ A free plan is available to try the Service. Top-up generation packs (50 / 150 /
 
 The ORA Studio brand, logo, interface, and graphic elements are the exclusive property of ORA Studio and may not be reproduced without written authorisation.`,
     s6Title: "6. Use of Third-Party AI",
-    s6Content: `The Service integrates artificial intelligence models developed by third parties, including Luma, Flux, DALL-E, Stable Diffusion, Midjourney, Kling, Sora, Gemini, Claude, and others. The use of these models is subject to the respective terms of use of each provider.
+    s6Content: `The Service integrates artificial intelligence models developed by third-party providers. Use of these models is subject to the respective terms of use of each provider, accepted on your behalf when you use the Service.
 
-ORA Studio acts as a technical intermediary and shall not be held liable for the results produced by these third-party models.`,
+ORA Studio acts as a technical intermediary and shall not be held liable for the results produced by third-party models, nor for any change in their availability, behaviour or terms.`,
     s7Title: "7. Liability and Limitations",
     s7Content: `ORA Studio endeavours to provide a high-quality service with optimal availability. However, the Service is provided "as is" and ORA Studio does not guarantee:
 
@@ -374,13 +378,7 @@ For any questions regarding the protection of your data, you may contact our Dat
 • Legitimate interest: service improvement, security, fraud prevention
 • Legal obligation: data retention for accounting and tax purposes`,
     s5Title: "5. Data Hosting",
-    s5Content: `Your data is hosted by the following providers:
-
-• Supabase (database and authentication) — servers located within the European Union
-• Vercel (web application hosting) — global network with European nodes
-• Stripe (payments) — PCI DSS Level 1 certified
-
-We ensure that all our providers comply with GDPR requirements and offer appropriate data protection guarantees.`,
+    s5Content: `Your data is hosted by hosting and database providers operating within the European Union, payment processing certified PCI DSS Level 1, and a global content delivery network with European nodes. We ensure that all our providers comply with GDPR requirements and offer appropriate data protection guarantees. The list of sub-processors is available on request.`,
     s6Title: "6. Data Retention Period",
     s6Content: `Your data is retained for the following periods:
 
@@ -1701,6 +1699,71 @@ You also have the right to lodge a complaint with the CNIL (French Data Protecti
   gallery: {
     label: "What you can create",
     title: "Limitless creative output",
+  },
+  // ── Removed legal duplicates added by mistake (the EN dict already
+  // has terms/privacy at the top). Keeping the existing entries which
+  // are more detailed.
+  __unusedDuplicateLegalEn: {
+    headerLabel: "Legal",
+    title: "Terms of Service",
+    lastUpdated: "Last updated: May 4, 2026",
+    s1Title: "1. Purpose",
+    s1Content: "These Terms of Service govern access to and use of Ora Studio (the \"Service\"), an AI content-generation platform operated by Ora Studio (the \"Company\"). By creating an account or using the Service, you accept these Terms in full.",
+    s2Title: "2. Acceptance",
+    s2Content: "Use of the Service implies unconditional acceptance of these Terms. If you do not accept them, do not use the Service. The Terms in force at the time of your use apply.",
+    s3Title: "3. Description of the Service",
+    s3Content: "Ora Studio lets you generate marketing visuals, captions and content packs from a brief, a product photo or a URL. The output is generated by AI models (text and image). You retain ownership of the inputs you upload; you receive a worldwide, royalty-free licence to use the outputs commercially.",
+    s4Title: "4. Account & registration",
+    s4Content: "Access requires an account created with a valid email address. You are responsible for keeping your credentials secret and for all activity on your account. You must be at least 18 years old or have legal capacity to contract.",
+    s5Title: "5. Pricing and payment",
+    s5Content: "Plans and credit packs are billed monthly via Stripe. Prices are displayed in EUR including VAT where applicable. Subscriptions renew automatically until cancellation. No refunds for unused periods, except as required by mandatory consumer law.",
+    s6Title: "6. Intellectual property",
+    s6Content: "The Service, its codebase, brand and logos are the exclusive property of the Company. You receive a personal, non-exclusive, non-transferable licence to use the Service. You may not copy, modify, reverse-engineer or resell any part of the Service.",
+    s7Title: "7. User-generated content",
+    s7Content: "You are solely responsible for the inputs you upload (photos, brand assets, briefs). You guarantee you have the rights necessary to use them. You agree not to upload illegal, infringing, defamatory or obscene content. The Company may remove any content violating these Terms.",
+    s8Title: "8. Liability",
+    s8Content: "The Service is provided \"as is\". The Company gives no warranty as to the suitability of the AI-generated outputs for a specific commercial purpose, nor as to uninterrupted availability. Liability is limited to direct damages and capped at the amounts paid in the 12 months preceding the claim.",
+    s9Title: "9. Suspension and termination",
+    s9Content: "You may close your account at any time from settings. The Company may suspend or close any account in case of breach of these Terms, fraud, or unpaid invoices, with or without notice depending on severity.",
+    s10Title: "10. Personal data",
+    s10Content: "Processing of personal data is described in our Privacy Policy. By using the Service you accept that processing.",
+    s11Title: "11. Governing law",
+    s11Content: "These Terms are governed by French law. Any dispute is subject to the exclusive jurisdiction of the courts in the Company's registered seat, subject to mandatory consumer law.",
+    s12Title: "12. Contact",
+    s12Content: "For any question regarding these Terms, contact us at hello@ora-studio.app.",
+    seeAlso: "See also our",
+    seeAlsoLink: "Privacy Policy",
+  },
+  __unusedDuplicateLegalEn2: {
+    headerLabel: "Legal",
+    title: "Privacy Policy",
+    lastUpdated: "Last updated: May 4, 2026",
+    s1Title: "1. Data Controller",
+    s1Content: "Ora Studio (\"we\", \"us\") is the data controller for processing carried out via the Service. Contact: hello@ora-studio.app. DPO: privacy@ora-studio.app.",
+    s2Title: "2. Data we collect",
+    s2Content: "We collect: (a) account data (email, name, password hash); (b) usage data (logins, activity logs, traffic metadata); (c) content data (uploaded photos, briefs, generated outputs); (d) billing data (managed by Stripe — we do not store full card numbers); (e) technical data (IP address, user-agent, cookies).",
+    s3Title: "3. Purposes of processing",
+    s3Content: "Your data is used to: provide and improve the Service, manage your account, process payments, generate AI outputs from your inputs, send transactional emails (account, billing, generation status), prevent fraud and abuse, comply with legal obligations.",
+    s4Title: "4. Legal basis",
+    s4Content: "Processing rests on (a) performance of the contract (account, generation, billing), (b) legitimate interest (security, fraud prevention, product improvement), (c) consent (analytics cookies, marketing emails), (d) legal obligation (accounting, tax law).",
+    s5Title: "5. Recipients",
+    s5Content: "We share data only with: hosting and database providers, payment processors, AI service providers (to generate the outputs you request), social publishing infrastructure (to publish to your social accounts on your instruction), email and SMS service providers, and analytics tools. All sub-processors are bound by data protection agreements and operate under GDPR-compliant safeguards. The full list of sub-processors is available on request.",
+    s6Title: "6. Retention",
+    s6Content: "Account data is retained for the lifetime of your account, then 3 years after last activity for legal purposes. Generated content remains until you delete it. Logs are kept 12 months. Billing records 10 years (legal obligation). You may request earlier deletion; see your rights below.",
+    s7Title: "7. Your rights",
+    s7Content: "Under GDPR you have the right to: access your data, rectify inaccurate data, erase your data, restrict processing, port your data, object to processing, lodge a complaint with the CNIL (French DPA). You can exercise these rights from your account settings or by emailing privacy@ora-studio.app — we respond within 30 days.",
+    s8Title: "8. Cookies",
+    s8Content: "We use essential cookies (session, security) and, with your consent, analytics cookies to understand usage. You can change your cookie preferences at any time via the cookie banner.",
+    s9Title: "9. Security",
+    s9Content: "We use industry-standard technical and organisational measures: HTTPS in transit, encryption at rest (Supabase), hashed passwords (bcrypt), strict access control, audit logs. We commit to notify the CNIL and affected users within 72 hours in case of a personal data breach.",
+    s10Title: "10. International transfers",
+    s10Content: "Some of our sub-processors (e.g. AI providers) operate from outside the EU, mainly the US. These transfers rely on the European Commission's Standard Contractual Clauses (SCCs) and equivalent safeguards.",
+    s11Title: "11. Changes to this policy",
+    s11Content: "We may update this Policy. Significant changes are notified by email and via a banner in the Service. Continued use after notification implies acceptance of the new version.",
+    s12Title: "12. Contact",
+    s12Content: "For any question or to exercise your rights:",
+    seeAlso: "See also our",
+    seeAlsoLink: "Terms of Service",
   },
 };
 
@@ -3344,5 +3407,69 @@ Vous disposez également du droit d'introduire une réclamation auprès de la CN
   gallery: {
     label: "Ce que vous pouvez créer",
     title: "Une créativité sans limites",
+  },
+  // ── Removed duplicates added by mistake (FR dict already has terms/privacy
+  // at top). FR locale is now disabled site-wide anyway.
+  __unusedDuplicateLegalFr: {
+    headerLabel: "Mentions légales",
+    title: "Conditions Générales d'Utilisation",
+    lastUpdated: "Dernière mise à jour : 4 mai 2026",
+    s1Title: "1. Objet",
+    s1Content: "Les présentes Conditions Générales d'Utilisation (\"CGU\") régissent l'accès au service Ora Studio (le \"Service\"), une plateforme de génération de contenu marketing par IA éditée par Ora Studio (la \"Société\"). Toute création de compte ou utilisation du Service emporte acceptation pleine et entière des présentes CGU.",
+    s2Title: "2. Acceptation",
+    s2Content: "L'utilisation du Service implique l'acceptation sans réserve des présentes CGU. Si vous n'acceptez pas ces conditions, n'utilisez pas le Service. Les CGU applicables sont celles en vigueur au moment de l'utilisation.",
+    s3Title: "3. Description du Service",
+    s3Content: "Ora Studio permet de générer des visuels marketing, légendes et packs de contenu à partir d'un brief, d'une photo produit ou d'une URL. Les résultats sont produits par des modèles d'IA (texte et image). Vous restez propriétaire des éléments que vous fournissez ; vous obtenez une licence mondiale, gratuite et libre de redevances pour utiliser commercialement les résultats générés.",
+    s4Title: "4. Inscription et compte",
+    s4Content: "L'accès au Service nécessite la création d'un compte avec une adresse email valide. Vous êtes responsable de la confidentialité de vos identifiants et de toute activité réalisée sur votre compte. Vous devez avoir 18 ans ou plus, ou disposer de la capacité juridique pour contracter.",
+    s5Title: "5. Tarifs et paiement",
+    s5Content: "Les abonnements et packs de crédits sont facturés mensuellement via Stripe. Les prix sont affichés en euros, TVA incluse le cas échéant. Les abonnements se renouvellent automatiquement jusqu'à résiliation. Aucun remboursement pour les périodes non utilisées, sauf droit de rétractation légal applicable.",
+    s6Title: "6. Propriété intellectuelle",
+    s6Content: "Le Service, son code source, sa marque et ses logos sont la propriété exclusive de la Société. Vous bénéficiez d'une licence personnelle, non exclusive et non transférable d'utilisation du Service. Vous ne pouvez pas copier, modifier, décompiler ni revendre tout ou partie du Service.",
+    s7Title: "7. Contenu généré par l'utilisateur",
+    s7Content: "Vous êtes seul responsable des contenus que vous téléversez (photos, éléments de marque, briefs). Vous garantissez disposer des droits nécessaires à leur utilisation. Vous vous engagez à ne pas téléverser de contenu illégal, contrefaisant, diffamatoire ou obscène. La Société se réserve le droit de retirer tout contenu non conforme.",
+    s8Title: "8. Responsabilité",
+    s8Content: "Le Service est fourni \"en l'état\". La Société n'offre aucune garantie quant à l'adéquation des contenus IA générés à un usage commercial spécifique, ni quant à la disponibilité ininterrompue du Service. La responsabilité est limitée aux dommages directs et plafonnée aux sommes versées au cours des 12 mois précédant la réclamation.",
+    s9Title: "9. Suspension et résiliation",
+    s9Content: "Vous pouvez fermer votre compte à tout moment depuis vos paramètres. La Société peut suspendre ou clôturer tout compte en cas de manquement aux présentes CGU, fraude, ou impayés, avec ou sans préavis selon la gravité.",
+    s10Title: "10. Données personnelles",
+    s10Content: "Les traitements de données personnelles sont décrits dans notre Politique de confidentialité. Vous acceptez ces traitements en utilisant le Service.",
+    s11Title: "11. Loi applicable",
+    s11Content: "Les présentes CGU sont régies par le droit français. Tout litige relève de la compétence exclusive des tribunaux du siège social de la Société, sous réserve des dispositions impératives du droit de la consommation.",
+    s12Title: "12. Contact",
+    s12Content: "Pour toute question concernant les présentes CGU, contactez-nous à hello@ora-studio.app.",
+    seeAlso: "Voir aussi notre",
+    seeAlsoLink: "Politique de confidentialité",
+  },
+  __unusedDuplicateLegalFr2: {
+    headerLabel: "Mentions légales",
+    title: "Politique de confidentialité",
+    lastUpdated: "Dernière mise à jour : 4 mai 2026",
+    s1Title: "1. Responsable du traitement",
+    s1Content: "Ora Studio (\"nous\") est responsable du traitement des données personnelles collectées via le Service. Contact : hello@ora-studio.app. DPO : privacy@ora-studio.app.",
+    s2Title: "2. Données collectées",
+    s2Content: "Nous collectons : (a) données de compte (email, nom, hash du mot de passe) ; (b) données d'usage (connexions, journal d'activité, métadonnées de trafic) ; (c) données de contenu (photos téléversées, briefs, contenus générés) ; (d) données de facturation (gérées par Stripe — nous ne stockons pas le numéro de carte complet) ; (e) données techniques (adresse IP, user-agent, cookies).",
+    s3Title: "3. Finalités du traitement",
+    s3Content: "Vos données sont utilisées pour : fournir et améliorer le Service, gérer votre compte, traiter les paiements, générer les sorties IA à partir de vos entrées, vous envoyer des emails transactionnels (compte, facturation, statut de génération), prévenir la fraude et les abus, respecter les obligations légales.",
+    s4Title: "4. Base légale",
+    s4Content: "Le traitement repose sur (a) l'exécution du contrat (compte, génération, facturation), (b) l'intérêt légitime (sécurité, prévention de la fraude, amélioration produit), (c) le consentement (cookies analytiques, emails marketing), (d) l'obligation légale (comptabilité, droit fiscal).",
+    s5Title: "5. Destinataires",
+    s5Content: "Nous partageons vos données uniquement avec : hébergeurs et bases de données, processeurs de paiement, fournisseurs de services d'IA (pour produire les résultats que vous demandez), infrastructure de publication sociale (pour publier sur vos comptes sociaux sur vos instructions), fournisseurs d'email et SMS, outils analytics. Tous ces sous-traitants sont liés par des accords de protection des données et opèrent dans le cadre des garanties RGPD. La liste complète des sous-traitants est disponible sur demande.",
+    s6Title: "6. Conservation",
+    s6Content: "Les données de compte sont conservées pendant la vie de votre compte, puis 3 ans après votre dernière activité à des fins légales. Les contenus générés sont conservés jusqu'à ce que vous les supprimiez. Les logs sont conservés 12 mois. Les données de facturation 10 ans (obligation légale). Vous pouvez demander une suppression anticipée — voir vos droits ci-dessous.",
+    s7Title: "7. Vos droits",
+    s7Content: "Conformément au RGPD, vous disposez du droit : d'accès, de rectification, d'effacement, de limitation du traitement, de portabilité, d'opposition au traitement, et de réclamation auprès de la CNIL. Vous pouvez exercer ces droits depuis vos paramètres de compte ou par email à privacy@ora-studio.app — nous répondons sous 30 jours.",
+    s8Title: "8. Cookies",
+    s8Content: "Nous utilisons des cookies essentiels (session, sécurité) et, avec votre consentement, des cookies analytiques pour comprendre l'usage du Service. Vous pouvez modifier vos préférences cookies à tout moment via la bannière dédiée.",
+    s9Title: "9. Sécurité",
+    s9Content: "Nous mettons en œuvre des mesures techniques et organisationnelles standards : HTTPS en transit, chiffrement au repos (Supabase), mots de passe hachés (bcrypt), contrôle d'accès strict, journaux d'audit. Nous nous engageons à notifier la CNIL et les utilisateurs concernés sous 72 heures en cas de violation de données personnelles.",
+    s10Title: "10. Transferts hors UE",
+    s10Content: "Certains de nos sous-traitants (notamment les fournisseurs d'IA) opèrent en dehors de l'UE, principalement aux États-Unis. Ces transferts s'appuient sur les Clauses Contractuelles Types de la Commission européenne et garanties équivalentes.",
+    s11Title: "11. Modifications",
+    s11Content: "Nous pouvons mettre à jour cette Politique. Les changements significatifs sont notifiés par email et via une bannière dans le Service. La poursuite de l'utilisation après notification vaut acceptation de la nouvelle version.",
+    s12Title: "12. Contact",
+    s12Content: "Pour toute question ou pour exercer vos droits :",
+    seeAlso: "Voir aussi nos",
+    seeAlsoLink: "Conditions Générales d'Utilisation",
   },
 };

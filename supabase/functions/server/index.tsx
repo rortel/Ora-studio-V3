@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T20:30Z — v680-strip-typography-style");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-04T22:50Z — v681-stability-burndown");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -348,18 +348,29 @@ app.post("/analytics/track", async (c) => {
       referrer: String(body.referrer || "").slice(0, 300),
       userAgent: String(body.userAgent || "").slice(0, 200),
     };
+    // Single KV write — happy path. Cheap, fast.
     await kv.set(`evt:${entry.id}`, entry);
-    // Best-effort prune: keep only the 5000 most recent events.
-    try {
-      const all = await kv.getByPrefix("evt:");
-      if (Array.isArray(all) && all.length > 5000) {
-        const sorted = [...all].sort((a: any, b: any) => (b?.ts || "").localeCompare(a?.ts || ""));
-        const tooOld = sorted.slice(5000);
-        for (const old of tooOld) {
-          if (old?.id) await kv.del(`evt:${old.id}`);
+    // PRUNE — probabilistic + non-blocking. Was running on EVERY request,
+    // doing kv.getByPrefix("evt:") which scans 5000+ events and was
+    // intermittently timing out → 500. Now: 1 in 200 requests triggers
+    // the prune, fire-and-forget so the response ships immediately.
+    if (Math.random() < 0.005) {
+      (async () => {
+        try {
+          const all = await kv.getByPrefix("evt:");
+          if (Array.isArray(all) && all.length > 5000) {
+            const sorted = [...all].sort((a: any, b: any) => (b?.ts || "").localeCompare(a?.ts || ""));
+            const tooOld = sorted.slice(5000);
+            for (const old of tooOld) {
+              if (old?.id) await kv.del(`evt:${old.id}`);
+            }
+            console.log(`[analytics/track] pruned ${tooOld.length} old events`);
+          }
+        } catch (pruneErr) {
+          console.log(`[analytics/track] prune failed (non-fatal): ${pruneErr}`);
         }
-      }
-    } catch { /* prune best-effort */ }
+      })();
+    }
     return c.json({ success: true }, 200, { "access-control-allow-origin": "*" });
   } catch (err: any) {
     return c.json({ success: false, error: String(err?.message || err) }, 500);
@@ -11357,36 +11368,20 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
             }
 
-            // Apparel + Lifestyle/UGC styles. Two strategies in order:
-            //   1. Photoroom Virtual Model: generates a FRESH AI human
-            //      wearing the EXACT garment from the source photo, in a
-            //      fresh AI scene. Best of both worlds — silhouette
-            //      preserved + scene fully regenerated. Single Photoroom
-            //      call, ~12-20s.
-            //   2. Ideogram T2I with rich product description: garment is
-            //      reconstituted from words (richer when URL was scraped),
-            //      scene fully invented. Mild garment drift acceptable on
-            //      Lifestyle/UGC in exchange for a real fresh scene.
-            // Image-to-image at imageWeight=95 was the previous approach
-            // and it suffocated these styles (catalog photo dominated,
-            // "phone aesthetic / golden hour / candid hand-held" went
-            // unrendered).
+            // Apparel + Lifestyle/UGC styles → Ideogram T2I rich path.
+            // Previously chained Photoroom Virtual Model (~20-35s) + T2I
+            // fallback, which on a 6-shot pack pushed total handler time
+            // past the 150s gateway → 504. Virtual Model is structurally
+            // too slow for our budget envelope. Skip to T2I rich directly:
+            // single ~10s call per shot, 6 shots / concurrency 3 = ~20s
+            // stills phase. Keeps total handler comfortably under 90s.
+            // Cost: garment fidelity comes purely from the rich product
+            // description (URL scrape attributes) instead of being locked
+            // by a Photoroom-locked source-photo composite. Acceptable
+            // trade on Lifestyle/UGC where the user accepts mild garment
+            // drift in exchange for a real fresh wearer + scene.
             const isLifestyleOrUGC = styleId === "lifestyle" || styleId === "ugc";
             if (jobIsApparel && isLifestyleOrUGC) {
-              // Strategy 1: Virtual Model
-              const vm = await runPhotoroomVirtualModel({
-                productImageUrl: productRef,
-                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
-                aspectRatio: job.aspectRatio,
-                userId: user.id,
-                campaignSlug,
-              });
-              if (vm) {
-                const persisted = await persistOne(vm.imageUrl, job.fileName, job.platform);
-                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || vm.imageUrl, provider: vm.provider };
-              }
-              console.log(`[surprise-me] virtual-model failed for ${job.label}, falling through to lifestyle-t2i-rich`);
-              // Strategy 2: T2I rich
               const card = await runIdeogramTextCard({
                 prompt: buildShotPrompt("lifestyle-t2i-rich", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
@@ -11397,7 +11392,7 @@ OUTPUT JSON:
                 const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: `${card.provider}-lifestyle-rich` };
               }
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle apparel both VM and T2I failed" };
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle T2I rich failed" };
             }
 
             // Apparel (non-lifestyle styles) / place / person / service → Ideogram Remix @ 95
@@ -18244,9 +18239,22 @@ app.post("/vault/analyze", async (c) => {
         console.log(`[vault/analyze] Deep scan: crawling sub-pages...`);
         const baseUrl = new URL(url);
         const deepStart = Date.now();
-        // Hard ceiling so deep crawl never blows the edge function timeout (60s).
-        // We keep ~20s for the AI call afterwards.
-        const DEEP_BUDGET_MS = 35_000;
+        // Tighter ceiling so the full vault/analyze handler stays under
+        // the 150s edge gateway. Math: initial Jina scrape can take up
+        // to 25s, AI extraction 15-20s, persistence 5s. That leaves
+        // ~25s for deep crawl. Was 35s and triggered 504s on slow sites.
+        // If we hit the cap mid-crawl we ship what we have, partial >
+        // 504. Skip deep entirely if the initial scrape already burned
+        // > 50s (see below).
+        const DEEP_BUDGET_MS = 22_000;
+        // Skip deep crawl entirely if the initial scrape was unusually
+        // slow — likely the host is geographically distant or rate-limiting,
+        // and crawling 20 sub-pages will guarantee a 504. Better to ship
+        // a vault built from the homepage alone than hang.
+        const elapsedSinceStart = Date.now() - t0;
+        if (elapsedSinceStart > 50_000) {
+          console.log(`[vault/analyze] Initial scrape took ${elapsedSinceStart}ms — skipping deep crawl to avoid 504`);
+        } else {
 
         // Priority paths — most likely to contain brand-relevant info
         const priorityPaths = [
@@ -18342,6 +18350,7 @@ app.post("/vault/analyze", async (c) => {
           for (const r of subResults) { if (r.status === "fulfilled" && r.value) textToAnalyze += r.value; }
         }
         console.log(`[vault/analyze] Deep: total ${textToAnalyze.length} chars from up to ${pathsToTry.length} pages`);
+        } // ferme le else: skip-deep-on-slow-initial check
       }
 
       if (!textToAnalyze || textToAnalyze.length < 50) {
