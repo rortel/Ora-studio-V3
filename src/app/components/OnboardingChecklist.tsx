@@ -88,14 +88,14 @@ export function OnboardingChecklist() {
         // editedFrom marker, or a saved version with type "edited").
         const firstEditDone = items.some((it) => it.type === "edited" || it.editedFrom);
 
-        // Publish: detect a connected social account via Post For Me.
-        // Hits /pfm/accounts which returns the user's connected social
-        // identities (Instagram / Facebook / TikTok / LinkedIn). Gracefully
-        // fails if PfM isn't reachable — checklist stays at 3/4 instead
-        // of crashing.
+        // Publish: detect a connected social account via the
+        // /pfm/accounts/list endpoint which returns the user's
+        // connected social identities (Instagram / Facebook / TikTok /
+        // LinkedIn). Gracefully fails if unreachable — checklist
+        // stays at 3/4 instead of crashing.
         let publishDone = false;
         try {
-          const pfmRes = await fetch(`${API_BASE}/pfm/accounts`, {
+          const pfmRes = await fetch(`${API_BASE}/pfm/accounts/list`, {
             method: "POST",
             headers: { "Content-Type": "text/plain", Authorization: `Bearer ${publicAnonKey}` },
             body: JSON.stringify({ _token: token }),
@@ -103,7 +103,7 @@ export function OnboardingChecklist() {
           const pfmData = await pfmRes.json().catch(() => ({}));
           const accounts: any[] = pfmData?.accounts || [];
           publishDone = accounts.length > 0;
-        } catch { /* PfM unavailable, leave publishDone=false */ }
+        } catch { /* unavailable, leave publishDone=false */ }
 
         if (!cancelled) setState({ vaultDone, firstPackDone, firstEditDone, publishDone, loaded: true });
       } catch {

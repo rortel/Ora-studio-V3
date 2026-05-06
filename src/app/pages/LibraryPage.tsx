@@ -1728,7 +1728,7 @@ function LibraryPageContent() {
                         )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)" }}>{item.model?.name || "AI"}</span>
+                            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)" }}>{item.type === "film" || item.type === "campaign-film" ? "Video" : item.type === "campaign" ? "Campaign" : "Image"}</span>
                             <span style={{ fontSize: "9px", color: "var(--text-secondary)" }}>
                               {new Date(item.savedAt).toLocaleDateString()}
                             </span>
@@ -1854,7 +1854,6 @@ function LibraryPageContent() {
                         </div>
                       </div>
                       <span className="w-20 hidden sm:block" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{getTypeLabel(item.type)}</span>
-                      <span className="w-24 hidden md:block truncate" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{item.model?.name || "AI"}</span>
                       <span className="w-24 hidden lg:block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{new Date(item.savedAt).toLocaleDateString()}</span>
                       <div className="w-28 flex items-center gap-1">
                         {(item.preview?.kind === "image" || item.preview?.kind === "film") && (

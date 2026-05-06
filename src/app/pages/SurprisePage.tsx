@@ -2457,7 +2457,7 @@ function GenerationProgress({ stage, mediaType, assetCount, requestId, accessTok
     { upTo: 0.25, emoji: "✏️", label: "Writing the campaign concept…" },
     { upTo: 0.55, emoji: "📷", label: `Shooting ${assetCount} stills (different scenes, locked product)…` },
     { upTo: 0.65, emoji: "✍️", label: "Writing platform-tuned captions…" },
-    { upTo: 0.95, emoji: "🎬", label: "Animating films (Kling 2.5 Pro)…" },
+    { upTo: 0.95, emoji: "🎬", label: "Animating films…" },
     { upTo: 1.00, emoji: "📦", label: "Packing for Library…" },
   ] : [
     { upTo: 0.20, emoji: "🧠", label: "Reading your brand & product…" },
@@ -2477,7 +2477,7 @@ function GenerationProgress({ stage, mediaType, assetCount, requestId, accessTok
       case "stills_started": return { emoji: "📷", label: detail || `Shooting ${assetCount} stills (different scenes, locked product)…` };
       case "stills":         return { emoji: "📷", label: detail || `Shooting ${assetCount} stills…` };
       case "stills_done":    return { emoji: "📷", label: detail || "Stills ready" };
-      case "films_started":  return { emoji: "🎬", label: detail || "Animating films (Kling 2.5 Pro)…" };
+      case "films_started":  return { emoji: "🎬", label: detail || "Animating films…" };
       case "films_done":     return { emoji: "🎬", label: detail || "Films ready" };
       case "persisting":     return { emoji: "📦", label: detail || "Packing for Library…" };
       case "done":           return { emoji: "✅", label: detail || "Pack ready" };

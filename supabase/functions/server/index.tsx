@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-05T07:30Z — v682-wearer-required");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T08:35Z — v683-fidelity-restore");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11370,31 +11370,33 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
             }
 
-            // Apparel + Lifestyle/UGC styles → Ideogram T2I rich path.
-            // Previously chained Photoroom Virtual Model (~20-35s) + T2I
-            // fallback, which on a 6-shot pack pushed total handler time
-            // past the 150s gateway → 504. Virtual Model is structurally
-            // too slow for our budget envelope. Skip to T2I rich directly:
-            // single ~10s call per shot, 6 shots / concurrency 3 = ~20s
-            // stills phase. Keeps total handler comfortably under 90s.
-            // Cost: garment fidelity comes purely from the rich product
-            // description (URL scrape attributes) instead of being locked
-            // by a Photoroom-locked source-photo composite. Acceptable
-            // trade on Lifestyle/UGC where the user accepts mild garment
-            // drift in exchange for a real fresh wearer + scene.
+            // Apparel + Lifestyle/UGC styles → Ideogram Remix at imageWeight=80.
+            // History:
+            //   v1 imageWeight=95 → product preserved, scene barely changed
+            //                       ("reprise triste de capture d'écran")
+            //   v2 T2I rich (no source) → garment drift, model invented
+            //                              boots that don't match upload
+            //   v3 (current) imageWeight=80 → product readable from source,
+            //                                  20% creative budget for fresh
+            //                                  wearer + lifestyle scene.
+            // Single Ideogram Remix call ~10-12s per shot. 6 shots /
+            // concurrency 3 = ~24s stills. Comfortably under the 95s
+            // films-skip threshold so films phase still runs.
             const isLifestyleOrUGC = styleId === "lifestyle" || styleId === "ugc";
             if (jobIsApparel && isLifestyleOrUGC) {
-              const card = await runIdeogramTextCard({
-                prompt: buildShotPrompt("lifestyle-t2i-rich", { scene: job.scene, promptText: job.promptText }, promptCtx),
+              const remix = await runIdeogramRemixOnRef({
+                productImageUrl: productRef,
+                prompt: buildShotPrompt("apparel-remix", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
+                imageWeight: 80,
                 userId: user.id,
                 campaignSlug,
               });
-              if (card) {
-                const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
-                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: `${card.provider}-lifestyle-rich` };
+              if (remix) {
+                const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
               }
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle T2I rich failed" };
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle remix failed" };
             }
 
             // Apparel (non-lifestyle styles) / place / person / service → Ideogram Remix @ 95
@@ -11536,7 +11538,7 @@ OUTPUT JSON:
     // Film pass — runs whenever any shot was assigned format=film
     // (either by the per-platform map or by the all-film override).
     if (jobs.some((j) => j.format === "film")) {
-      writeProgress("films_started", 0.72, "Animating films (Kling 2.5 Pro)…");
+      writeProgress("films_started", 0.72, "Animating films…");
       const filmStart = Date.now();
       const arRayMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
 
