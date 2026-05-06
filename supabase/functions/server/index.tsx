@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:30Z — v686-virtual-model-default");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:45Z — v687-vm-gender-fullbody");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11437,13 +11437,30 @@ OUTPUT JSON:
               }
               // Editorial / Lifestyle / UGC / promo / packshot label / no
               // style picked — all flow through Virtual Model. Wearer in
-              // scene wearing the EXACT product.
+              // scene wearing the EXACT product. Gender of the model is
+              // inferred from the product description / category /
+              // scrape attributes — without this Photoroom defaulted to
+              // wrong-gender models on gendered products (women on men's
+              // boots etc.). Bg prompt reinforces "FULL BODY VISIBLE"
+              // because on footwear specifically Virtual Model sometimes
+              // renders just the boots in scene without a person.
+              const inferredGender = inferProductGender(
+                productDescription,
+                richProductDescription,
+                productAttributes.category,
+                productAttributes.targetUser,
+                job.scene,
+                job.subject,
+              );
+              const vmBgPrompt = buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx)
+                + " — A REAL HUMAN MODEL is fully visible in the frame wearing the product, full body or relevant body part for the framing. Never show the product alone without the wearer.";
               const vm = await runPhotoroomVirtualModel({
                 productImageUrl: productRef,
-                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                bgPrompt: vmBgPrompt,
                 aspectRatio: job.aspectRatio,
                 userId: user.id,
                 campaignSlug,
+                gender: inferredGender,
               });
               if (vm) {
                 const persisted = await persistOne(vm.imageUrl, job.fileName, job.platform);
@@ -12367,6 +12384,11 @@ async function runPhotoroomVirtualModel(opts: {
   aspectRatio?: string;
   userId: string | null;
   campaignSlug?: string;
+  // Gender hint inferred from product description ("men's boots" =>
+  // "male"). When omitted, Photoroom defaults its own pick which has
+  // produced the wrong gender on men's products. Always derive when
+  // possible.
+  gender?: "male" | "female" | "non-binary";
 }): Promise<{ imageUrl: string; provider: string; latencyMs: number } | null> {
   const t0 = Date.now();
   const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
@@ -12380,6 +12402,13 @@ async function runPhotoroomVirtualModel(opts: {
     const params = new URLSearchParams();
     params.set("imageUrl", opts.productImageUrl);
     params.set("virtualModel.mode", "ai.auto");
+    if (opts.gender) {
+      // Photoroom's API accepts gender hint as a separate field; sending
+      // both forms because the parameter name has been stable but their
+      // beta surface still moves. The accepted hint forces the body
+      // generator to render the right gender.
+      params.set("virtualModel.gender", opts.gender);
+    }
     if (opts.bgPrompt) {
       params.set("background.prompt", String(opts.bgPrompt).slice(0, 400));
       params.set("lighting.mode", "ai.preserve-hue-and-saturation");
@@ -12916,6 +12945,23 @@ function isApparelOrWearable(productCategory: string, productName: string, promp
       || apparelNames.test(name)
       || apparelNames.test(promptLower)
       || personCues.test(promptLower);
+}
+
+// Infer the gender of the model the AI should render from the product
+// description / category / scrape attributes. Returns "male" / "female" /
+// "non-binary" or undefined when the signal is unclear (Photoroom
+// then falls back to its default). Without this, men's products were
+// being rendered with female models — we observed it on men's leather
+// boots labelled "Bottines Hommes" in French.
+function inferProductGender(...sources: Array<string | undefined | null>): "male" | "female" | "non-binary" | undefined {
+  const blob = sources.filter(Boolean).join(" ").toLowerCase();
+  if (!blob) return undefined;
+  // Strong female signals first (so "men's vs women's" lines lean female
+  // when the product description names the women's variant explicitly).
+  if (/\b(women|womens?|woman|ladies|ladys?|lady|female|femmes?|dames?|madame|miss|mrs)\b/.test(blob)) return "female";
+  if (/\b(mens?|men|gentlemen|male|hommes?|monsieur|messieurs|monsieurs?|mr|sir)\b/.test(blob)) return "male";
+  if (/\b(unisex|non[- ]binary|non[- ]binaire|gender[- ]neutral|kids?|children|enfants?|junior)\b/.test(blob)) return "non-binary";
+  return undefined;
 }
 
 app.post("/compare/pixel-perfect-product", async (c) => {
