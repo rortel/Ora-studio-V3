@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:00Z — v684-virtual-model-back");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:30Z — v685-photoroom-only-product");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11299,23 +11299,14 @@ OUTPUT JSON:
             jobIsApparel: false,
           };
 
-          if (job.type === "text-card") {
-            if (productRef) {
-              const card = await runIdeogramRemixOnRef({
-                productImageUrl: productRef,
-                prompt: buildShotPrompt("text-card-with-product", { scene: job.scene, promptText: job.promptText }, promptCtx),
-                aspectRatio: job.aspectRatio,
-                imageWeight: 88,
-                userId: user.id,
-                campaignSlug,
-              });
-              if (card) {
-                const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
-                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: card.provider };
-              }
-              console.log(`[surprise-me] text-card+product remix failed for ${job.label}, falling back to text-only typography`);
-              // fall through to pure T2I below — better a clean typo than nothing
-            }
+          // Text-card WITHOUT product photo → pure Ideogram T2I typography
+          // poster (no product to preserve, generative is correct here).
+          // Text-card WITH product photo falls through to the productRef
+          // block below where it's handled by Photoroom (clean visual)
+          // + downstream HTML overlay layer for the headline. Per the
+          // 2026-05-06 routing principle: product photo provided ⇒
+          // Photoroom, no exceptions.
+          if (job.type === "text-card" && !productRef) {
             const card = await runIdeogramTextCard({
               prompt: job.promptText,
               aspectRatio: job.aspectRatio,
@@ -11333,65 +11324,111 @@ OUTPUT JSON:
           }
 
           if (productRef) {
-            // Apparel/wearable detection: per-pack from the user's
-            // productDescription, and per-shot from the planner's scene/
-            // subject/promptText.
+            // ── ROUTING PRINCIPLE (frozen 2026-05-06) ──────────────────
+            // PRODUCT PHOTO PROVIDED = PHOTOROOM. Always. Photoroom is
+            // non-generative on the product itself (cutout / ghost
+            // mannequin / virtual-model layer the product into a fresh
+            // AI scene; the product pixels are preserved 1:1). Generative
+            // paths (Ideogram Remix, Ideogram T2I) redraw the product
+            // even at high imageWeight — they produce something that
+            // LOOKS like the merchant's product but isn't. Not acceptable.
+            //
+            // The only exception is when subjectKind ≠ product (place,
+            // person, service): Photoroom can't preserve a room layout
+            // or a face 1:1, so Ideogram Remix at high weight is the
+            // only practical option for those subjects.
+            //
+            // Apparel decision tree (productRef + subjectKind=product):
+            //   Promo intent OR packshot label  → Ghost Mannequin (clean garment, sale-band overlay layer)
+            //   Style ∈ {studio, magazine, minimal} → Ghost Mannequin (no human in those aesthetics)
+            //   Style ∈ {editorial, lifestyle, ugc, ""} → Virtual Model (human in scene)
+            //
+            // text-card with product: the visual goes through Photoroom
+            // exactly like a normal product shot, then the headline is
+            // rendered by the downstream HTML overlay layer. No more
+            // baked-text on product photos (which produced "BEL CHOUB"
+            // / "VALE" gibberish before the strip-typography fix).
             const jobScene = `${job.scene} ${job.subject} ${job.promptText}`.slice(0, 1000);
             const jobIsApparel = isApparelOrWearable("", "", productDescription) || isApparelOrWearable("", "", jobScene);
             promptCtx = { ...promptCtx, jobIsApparel };
             const isPromoIntent = !!brief && brief.includes("Promotion:");
             const labelLower = (job.label || "").toLowerCase();
-            const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog|studio|minimal)\b/.test(labelLower);
+            const isPackshotLabel = /\b(packshot|hero|sale|promo|tile|card|catalogue|catalog)\b/.test(labelLower);
+            const styleNoHuman = styleId === "studio" || styleId === "magazine" || styleId === "minimal";
+            const isTextCard = job.type === "text-card";
 
-            // ── Path selection — one model per category, no cascade ──
-            //   • apparel + (promo intent OR packshot label) → Ghost Mannequin
-            //   • apparel lifestyle (non-promo)              → Ideogram Remix @ 95
-            //   • place / person / service                   → Ideogram Remix @ 95
-            //   • non-apparel product                        → Photoroom Studio
-            // Promo intent ALWAYS routes apparel through Ghost Mannequin —
-            // Photoroom doesn't render text, so no risk of garbled "SALIE"
-            // / magazine-typo bake-in that we got from Ideogram Remix on
-            // earlier promo runs. The carousel overlay layer handles
-            // discount text on top of the clean packshot.
+            // Helper: extract a short headline from the planner's
+            // promptText for text-cards. The planner outputs prompts
+            // like '...the words "NEW DROP" in oversized condensed sans...'
+            // We grab the first quoted ASCII fragment of 2-30 chars.
+            // Falls back to the planner's overlayText if it bothered
+            // to fill it, then to twistElement, then to empty.
+            const extractCardHeadline = (): string => {
+              if (job.overlayText && String(job.overlayText).trim()) return String(job.overlayText).trim().slice(0, 30);
+              const pt = String(job.promptText || "");
+              const quoted = pt.match(/['"]([A-Z0-9 \-+%!&'.]{2,30})['"]/);
+              if (quoted && quoted[1]) return quoted[1].trim();
+              if (job.twistElement) return String(job.twistElement).trim().slice(0, 30);
+              return "";
+            };
 
-            // Apparel + promo / packshot → Ghost Mannequin (no text bake-in)
-            if (jobIsApparel && (isPromoIntent || isPackshotLabel)) {
-              const ghost = await runPhotoroomGhostMannequin({
+            // ── DECISION TREE ──
+            // 1. text-card with product → Photoroom (visual) + HTML overlay (text)
+            if (isTextCard) {
+              const cardOverlay = extractCardHeadline();
+              const overlayPosition = (job.overlayPosition === "top" || job.overlayPosition === "center" || job.overlayPosition === "bottom") ? job.overlayPosition : "center";
+              const overlayStyle = (job.overlayStyle === "headline" || job.overlayStyle === "value-prop" || job.overlayStyle === "cta" || job.overlayStyle === "caption") ? job.overlayStyle : "headline";
+
+              if (jobIsApparel) {
+                // Ghost Mannequin: clean garment shot, text comes via overlay
+                const ghost = await runPhotoroomGhostMannequin({
+                  productImageUrl: productRef,
+                  bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                  aspectRatio: job.aspectRatio,
+                  userId: user.id,
+                  campaignSlug,
+                });
+                if (ghost) {
+                  const persisted = await persistOne(ghost.imageUrl, job.fileName, job.platform);
+                  return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || ghost.imageUrl, provider: ghost.provider, overlayText: cardOverlay, overlayPosition, overlayStyle };
+                }
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed (text-card apparel)" };
+              }
+              // Non-apparel product: Studio composite for the clean visual
+              const composite = await runPixelPerfectComposite({
                 productImageUrl: productRef,
-                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                prompt: buildShotPrompt("studio-composite", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
                 userId: user.id,
+                cachedCutoutUrl,
                 campaignSlug,
               });
-              if (ghost) {
-                const persisted = await persistOne(ghost.imageUrl, job.fileName, job.platform);
-                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || ghost.imageUrl, provider: ghost.provider };
+              if (composite?.cutoutUrl && !cachedCutoutUrl) cachedCutoutUrl = composite.cutoutUrl;
+              if (composite) {
+                const persisted = await persistOne(composite.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || composite.imageUrl, provider: composite.provider, overlayText: cardOverlay, overlayPosition, overlayStyle };
               }
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Studio composite failed (text-card non-apparel)" };
             }
 
-            // Apparel + Lifestyle/UGC styles → Photoroom Virtual Model.
-            // RESTORED 2026-05-06 after a brief wrong detour through
-            // Ideogram Remix at imageWeight=80. The principle we want
-            // to honour: when the merchant provides a product photo,
-            // we use Photoroom (non-generative) to preserve the actual
-            // pixels of the product. Generative paths (Ideogram Remix,
-            // Ideogram T2I) DRAW boots that look like the merchant's
-            // boots but aren't — that's not acceptable.
-            //
-            // Virtual Model = Photoroom inserts a fresh AI human into
-            // the scene wearing the EXACT garment from the source
-            // photo. Garment pixels are preserved 1:1, the human is
-            // inferred + composited. ~20-30s per call.
-            //
-            // Latency safety net: if the full handler exceeds the
-            // 150s gateway, the client-side Library recovery (see
-            // SurprisePage handleSurprise catch block) pulls the
-            // saved campaign and displays it on the result page as
-            // if the request had succeeded. So slow generations still
-            // ship the user a usable pack.
-            const isLifestyleOrUGC = styleId === "lifestyle" || styleId === "ugc";
-            if (jobIsApparel && isLifestyleOrUGC) {
+            // 2. Apparel → Ghost Mannequin or Virtual Model based on style + intent
+            if (jobIsApparel) {
+              const useGhost = isPromoIntent || isPackshotLabel || styleNoHuman;
+              if (useGhost) {
+                const ghost = await runPhotoroomGhostMannequin({
+                  productImageUrl: productRef,
+                  bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                  aspectRatio: job.aspectRatio,
+                  userId: user.id,
+                  campaignSlug,
+                });
+                if (ghost) {
+                  const persisted = await persistOne(ghost.imageUrl, job.fileName, job.platform);
+                  return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || ghost.imageUrl, provider: ghost.provider };
+                }
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
+              }
+              // Editorial / Lifestyle / UGC / default → Virtual Model
               const vm = await runPhotoroomVirtualModel({
                 productImageUrl: productRef,
                 bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
@@ -11403,19 +11440,17 @@ OUTPUT JSON:
                 const persisted = await persistOne(vm.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || vm.imageUrl, provider: vm.provider };
               }
-              // VM failed (Photoroom 5xx, rate-limit, etc.) — fail this
-              // shot rather than silently falling back to a generative
-              // path. The user's principle is: real product or nothing.
-              // Other shots in the pack continue independently.
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Virtual Model failed" };
             }
 
-            // Apparel (non-lifestyle styles) / place / person / service → Ideogram Remix @ 95
-            const useRemixPath = jobIsApparel || subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
-            if (useRemixPath) {
+            // 3. place / person / service — Photoroom can't preserve room layouts
+            // or faces 1:1, Ideogram Remix at imageWeight=95 is the only
+            // practical preservation tool here.
+            const isRegenSubject = subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
+            if (isRegenSubject) {
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
-                prompt: buildShotPrompt(jobIsApparel ? "apparel-remix" : "regen-with-subject", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                prompt: buildShotPrompt("regen-with-subject", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
                 imageWeight: 95,
                 userId: user.id,
@@ -11425,10 +11460,10 @@ OUTPUT JSON:
                 const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
               }
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Remix path failed" };
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Subject remix failed" };
             }
 
-            // Non-apparel product → Photoroom Studio composite
+            // 4. Non-apparel product (bottle, jewellery, accessory, etc.) → Studio composite
             const composite = await runPixelPerfectComposite({
               productImageUrl: productRef,
               prompt: buildShotPrompt("studio-composite", { scene: job.scene, promptText: job.promptText }, promptCtx),
