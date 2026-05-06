@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:30Z — v685-photoroom-only-product");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:30Z — v686-virtual-model-default");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11411,10 +11411,17 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Studio composite failed (text-card non-apparel)" };
             }
 
-            // 2. Apparel → Ghost Mannequin or Virtual Model based on style + intent
+            // 2. Apparel → Ghost Mannequin OR Virtual Model
+            //    Ghost Mannequin (no human, packshot-style) ONLY when the
+            //    style explicitly excludes human presence (studio / magazine /
+            //    minimal). Promo intent does NOT auto-trigger Ghost — the
+            //    promo signal travels via HTML overlay layer (sale band /
+            //    "-30% off" headline), not via removing the human. A merchant
+            //    wanting a clean promo packshot picks Studio/Minimal
+            //    explicitly. Otherwise default = Virtual Model with a wearer
+            //    in scene, which is what almost every apparel pack expects.
             if (jobIsApparel) {
-              const useGhost = isPromoIntent || isPackshotLabel || styleNoHuman;
-              if (useGhost) {
+              if (styleNoHuman) {
                 const ghost = await runPhotoroomGhostMannequin({
                   productImageUrl: productRef,
                   bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
@@ -11428,7 +11435,9 @@ OUTPUT JSON:
                 }
                 return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
               }
-              // Editorial / Lifestyle / UGC / default → Virtual Model
+              // Editorial / Lifestyle / UGC / promo / packshot label / no
+              // style picked — all flow through Virtual Model. Wearer in
+              // scene wearing the EXACT product.
               const vm = await runPhotoroomVirtualModel({
                 productImageUrl: productRef,
                 bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
