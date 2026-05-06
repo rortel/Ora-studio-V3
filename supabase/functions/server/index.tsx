@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T08:35Z — v683-fidelity-restore");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:00Z — v684-virtual-model-back");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11370,33 +11370,44 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Ghost Mannequin failed" };
             }
 
-            // Apparel + Lifestyle/UGC styles → Ideogram Remix at imageWeight=80.
-            // History:
-            //   v1 imageWeight=95 → product preserved, scene barely changed
-            //                       ("reprise triste de capture d'écran")
-            //   v2 T2I rich (no source) → garment drift, model invented
-            //                              boots that don't match upload
-            //   v3 (current) imageWeight=80 → product readable from source,
-            //                                  20% creative budget for fresh
-            //                                  wearer + lifestyle scene.
-            // Single Ideogram Remix call ~10-12s per shot. 6 shots /
-            // concurrency 3 = ~24s stills. Comfortably under the 95s
-            // films-skip threshold so films phase still runs.
+            // Apparel + Lifestyle/UGC styles → Photoroom Virtual Model.
+            // RESTORED 2026-05-06 after a brief wrong detour through
+            // Ideogram Remix at imageWeight=80. The principle we want
+            // to honour: when the merchant provides a product photo,
+            // we use Photoroom (non-generative) to preserve the actual
+            // pixels of the product. Generative paths (Ideogram Remix,
+            // Ideogram T2I) DRAW boots that look like the merchant's
+            // boots but aren't — that's not acceptable.
+            //
+            // Virtual Model = Photoroom inserts a fresh AI human into
+            // the scene wearing the EXACT garment from the source
+            // photo. Garment pixels are preserved 1:1, the human is
+            // inferred + composited. ~20-30s per call.
+            //
+            // Latency safety net: if the full handler exceeds the
+            // 150s gateway, the client-side Library recovery (see
+            // SurprisePage handleSurprise catch block) pulls the
+            // saved campaign and displays it on the result page as
+            // if the request had succeeded. So slow generations still
+            // ship the user a usable pack.
             const isLifestyleOrUGC = styleId === "lifestyle" || styleId === "ugc";
             if (jobIsApparel && isLifestyleOrUGC) {
-              const remix = await runIdeogramRemixOnRef({
+              const vm = await runPhotoroomVirtualModel({
                 productImageUrl: productRef,
-                prompt: buildShotPrompt("apparel-remix", { scene: job.scene, promptText: job.promptText }, promptCtx),
+                bgPrompt: buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
-                imageWeight: 80,
                 userId: user.id,
                 campaignSlug,
               });
-              if (remix) {
-                const persisted = await persistOne(remix.imageUrl, job.fileName, job.platform);
-                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || remix.imageUrl, provider: remix.provider };
+              if (vm) {
+                const persisted = await persistOne(vm.imageUrl, job.fileName, job.platform);
+                return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || vm.imageUrl, provider: vm.provider };
               }
-              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Lifestyle remix failed" };
+              // VM failed (Photoroom 5xx, rate-limit, etc.) — fail this
+              // shot rather than silently falling back to a generative
+              // path. The user's principle is: real product or nothing.
+              // Other shots in the pack continue independently.
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Virtual Model failed" };
             }
 
             // Apparel (non-lifestyle styles) / place / person / service → Ideogram Remix @ 95
