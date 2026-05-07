@@ -5,9 +5,10 @@
 
 import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T15:40Z — v692-svg-logo-url-gender");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T15:55Z — v693-static-imagescript-debug");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11514,6 +11515,7 @@ OUTPUT JSON:
                 job.scene,
                 job.subject,
               );
+              console.log(`[surprise-me] inferred gender for ${job.label} = ${inferredGender || "undefined"} (urlSrc="${productPageUrl.slice(0, 80)}")`);
               const vmBgPrompt = buildShotPrompt("ghost-mannequin", { scene: job.scene, promptText: job.promptText }, promptCtx)
                 + " — A REAL HUMAN MODEL is fully visible in the frame wearing the product, full body or relevant body part for the framing. Never show the product alone without the wearer.";
               const vm = await runPhotoroomVirtualModel({
@@ -12273,6 +12275,8 @@ async function compositeImageWithLogo(
   srcBuf: Uint8Array,
   logoUrl: string,
 ): Promise<{ buf: Uint8Array; contentType: string } | null> {
+  const t0 = Date.now();
+  console.log(`[composite-logo] enter — srcBytes=${srcBuf.length}, logoUrl="${logoUrl.slice(0, 80)}…"`);
   try {
     // SVG detection — imagescript can't decode vector (it only handles
     // raster: PNG/JPEG/WebP/TIFF/GIF). Route SVG URLs through the
@@ -12284,13 +12288,18 @@ async function compositeImageWithLogo(
       effectiveLogoUrl = `https://wsrv.nl/?url=${encodeURIComponent(logoUrl)}&output=png&w=600`;
       console.log(`[composite-logo] SVG detected — rasterising via wsrv.nl`);
     }
-    const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
     // Decode source image — imagescript accepts JPEG/PNG/WebP and
-    // returns RGBA so we can composite directly.
-    const src = await Image.decode(srcBuf);
+    // returns RGBA so we can composite directly. Static import at the
+    // top of this file ensures this is bundled at deploy time and
+    // doesn't depend on dynamic-import support in the Edge Runtime.
+    const src = await ImagescriptImage.decode(srcBuf);
     const w = src.width;
     const h = src.height;
-    if (!w || !h) return null;
+    if (!w || !h) {
+      console.log(`[composite-logo] decode src ok but invalid dims w=${w} h=${h}`);
+      return null;
+    }
+    console.log(`[composite-logo] src decoded ${w}×${h}`);
     // Fetch + decode logo. Hard 15 s timeout so a slow Vault CDN
     // can't gate the whole pack.
     const logoRes = await fetch(effectiveLogoUrl, { signal: AbortSignal.timeout(15_000) });
@@ -12299,7 +12308,9 @@ async function compositeImageWithLogo(
       return null;
     }
     const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
-    let logo = await Image.decode(logoBytes);
+    console.log(`[composite-logo] logo fetched ${logoBytes.length} bytes`);
+    let logo = await ImagescriptImage.decode(logoBytes);
+    console.log(`[composite-logo] logo decoded ${logo.width}×${logo.height}`);
     // Resize logo to ~12% of source width, preserving aspect ratio.
     const targetW = Math.max(80, Math.round(w * 0.12));
     const targetH = Math.max(1, Math.round(logo.height * (targetW / logo.width)));
@@ -12311,9 +12322,10 @@ async function compositeImageWithLogo(
     const y = Math.max(0, h - logo.height - padY);
     src.composite(logo, x, y);
     const out = await src.encode();
+    console.log(`[composite-logo] OK — out=${out.length} bytes (${Date.now() - t0}ms)`);
     return { buf: out, contentType: "image/png" };
   } catch (err) {
-    console.log(`[composite-logo] error: ${String((err as any)?.message || err).slice(0, 200)}`);
+    console.log(`[composite-logo] ERROR (${Date.now() - t0}ms): ${String((err as any)?.message || err).slice(0, 250)}`);
     return null;
   }
 }
