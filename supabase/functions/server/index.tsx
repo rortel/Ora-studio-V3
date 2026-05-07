@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-06T09:45Z — v687-vm-gender-fullbody");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T11:00Z — v688-gpt-image-2-noproduct-textcard");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -1523,6 +1523,11 @@ const PROVIDER_COSTS: Record<string, number> = {
   "luma/photon-1": 0.030, "luma/photon-flash-1": 0.015,
   // Image — Ideogram
   "ideogram/v3": 0.080, "ideogram/v3-turbo": 0.040,
+  // Image — OpenAI gpt-image-2 (medium quality 1024x1024 ≈ $0.05 / call)
+  "openai/gpt-image-2": 0.050,
+  "openai/gpt-image-2-low":    0.020,
+  "openai/gpt-image-2-medium": 0.050,
+  "openai/gpt-image-2-high":   0.150,
   // Image — Higgsfield
   "higgsfield/seedream-v4": 0.030,
   // Image — Photoroom (primary compositing path)
@@ -11299,27 +11304,47 @@ OUTPUT JSON:
             jobIsApparel: false,
           };
 
-          // Text-card WITHOUT product photo → pure Ideogram T2I typography
-          // poster (no product to preserve, generative is correct here).
+          // Text-card WITHOUT product photo → typography poster (no
+          // product to preserve, generative is correct here).
           // Text-card WITH product photo falls through to the productRef
           // block below where it's handled by Photoroom (clean visual)
           // + downstream HTML overlay layer for the headline. Per the
           // 2026-05-06 routing principle: product photo provided ⇒
           // Photoroom, no exceptions.
+          //
+          // Provider order (since 2026-05-07):
+          //   1. gpt-image-2 (character-accurate text, French diacritics
+          //      preserved, agentic reasoning before generation) — kills
+          //      the "BEUNULA UIL FLAGONA" / "VALE" hallucinated-text bug.
+          //   2. Ideogram v3 fallback if gpt-image-2 unavailable / errors.
           if (job.type === "text-card" && !productRef) {
-            const card = await runIdeogramTextCard({
-              prompt: job.promptText,
-              aspectRatio: job.aspectRatio,
-              userId: user.id,
-              campaignSlug,
-            });
+            let card: { imageUrl: string; provider: string } | null = null;
+            if (isGptImage2Enabled()) {
+              card = await runGptImage2T2I({
+                prompt: job.promptText,
+                aspectRatio: job.aspectRatio,
+                userId: user.id,
+                campaignSlug,
+                quality: "medium",
+              });
+            }
+            if (!card) {
+              // Fallback to Ideogram v3 if gpt-image-2 is disabled or failed
+              card = await runIdeogramTextCard({
+                prompt: job.promptText,
+                aspectRatio: job.aspectRatio,
+                userId: user.id,
+                campaignSlug,
+              });
+            }
             if (card) {
               const persisted = await persistOne(card.imageUrl, job.fileName, job.platform);
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persisted || card.imageUrl, provider: card.provider };
             }
-            // Ideogram failed — for text-cards there's no clean fallback,
-            // mark the shot as failed (we'd rather skip than ship a typo).
-            console.log(`[surprise-me] ideogram failed for ${job.label}, marking failed`);
+            // Both providers failed — for text-cards there's no clean
+            // fallback, mark the shot as failed (we'd rather skip than
+            // ship a typo).
+            console.log(`[surprise-me] text-card generation failed for ${job.label} (gpt-image-2 + ideogram), marking failed`);
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Text-card generation failed" };
           }
 
@@ -11505,7 +11530,27 @@ OUTPUT JSON:
             }
             return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Studio composite failed" };
           }
-          // Text-to-image via Luma Photon
+          // ── Pure text-to-image (no productRef, not a text-card) ──
+          // Pack contains a place / lifestyle / scene shot without a
+          // product photo to preserve. Provider order (since 2026-05-07):
+          //   1. gpt-image-2 — agentic reasoning + best-in-class
+          //      coherence (Image Arena #1 by +242 pts at launch).
+          //   2. Luma Photon fallback if gpt-image-2 unavailable / errors.
+          if (isGptImage2Enabled()) {
+            const t2i = await runGptImage2T2I({
+              prompt: job.promptText,
+              aspectRatio: job.aspectRatio,
+              userId: user.id,
+              campaignSlug,
+              quality: "medium",
+            });
+            if (t2i) {
+              const persistedT2i = await persistOne(t2i.imageUrl, job.fileName, job.platform);
+              return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "ok", imageUrl: persistedT2i || t2i.imageUrl, provider: t2i.provider };
+            }
+            console.log(`[surprise-me:shot] gpt-image-2 failed for ${job.label}, falling back to Luma Photon`);
+          }
+          // Fallback: Luma Photon
           const tLuma = Date.now();
           const arLumaMap: Record<string, string> = { "1:1": "1:1", "9:16": "9:16", "16:9": "16:9", "4:3": "4:3", "3:4": "3:4" };
           const startRes = await fetch(`${LUMA_BASE}/generations/image`, {
@@ -12814,6 +12859,112 @@ async function runIdeogramTextCard(opts: {
     logCost({ type: "image", model: "ideogram-v3", provider: "ideogram/v3", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
     return null;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// gpt-image-2 (OpenAI, released 2026-04-21) — text-to-image with
+// agentic reasoning + character-accurate text rendering.
+// ═══════════════════════════════════════════════════════════════════
+// Use cases in surprise-me:
+//   • text-card without product → typography poster with reliable
+//     letterforms in any language (replaces Ideogram T2I — no more
+//     "BEUNULA UIL FLAGONA" hallucinated text on French promos)
+//   • pure T2I without any product photo → place / lifestyle / scene
+//     generation (replaces Luma Photon for higher coherence)
+//
+// NOT used for product shots: gpt-image-2 is generative end-to-end and
+// re-renders the product (the "1:1 pixel-perfect" rule reserves those
+// paths for Photoroom). Even at "high fidelity" it approximates.
+//
+// Aspect ratios available on gpt-image-2 today: 1024x1024, 1024x1536
+// (portrait 2:3), 1536x1024 (landscape 3:2), or "auto". We map our
+// internal aspect notation to the closest supported size.
+async function runGptImage2T2I(opts: {
+  prompt: string;
+  aspectRatio?: string;
+  userId: string | null;
+  campaignSlug?: string;
+  quality?: "low" | "medium" | "high" | "auto";
+}): Promise<{ imageUrl: string; provider: string } | null> {
+  const t0 = Date.now();
+  const { prompt, userId, campaignSlug } = opts;
+  const aspectRatio = opts.aspectRatio || "1:1";
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openaiKey) {
+    console.log(`[gpt-image-2] OPENAI_API_KEY not set`);
+    return null;
+  }
+  // Aspect mapping. gpt-image-2 supports the 3 sizes below + "auto"
+  // (let the model pick from the prompt). We map our 7 internal aspects
+  // to the closest match. 4:5 / 3:4 / 9:16 collapse to portrait 2:3;
+  // 16:9 / 4:3 / 3:2 collapse to landscape 3:2; 1:1 stays square.
+  const sizeMap: Record<string, string> = {
+    "1:1":  "1024x1024",
+    "9:16": "1024x1536",
+    "4:5":  "1024x1536",
+    "3:4":  "1024x1536",
+    "2:3":  "1024x1536",
+    "16:9": "1536x1024",
+    "4:3":  "1536x1024",
+    "3:2":  "1536x1024",
+  };
+  const size = sizeMap[aspectRatio] || "1024x1024";
+  const quality = opts.quality || "medium";
+  console.log(`[gpt-image-2] prompt="${String(prompt).slice(0, 60)}", size=${size}, quality=${quality}`);
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({
+        model: "gpt-image-2",
+        prompt: String(prompt).slice(0, 4000),
+        size,
+        quality,
+        n: 1,
+      }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      console.log(`[gpt-image-2] ${res.status}: ${t.slice(0, 200)}`);
+      logCost({ type: "image", model: "gpt-image-2", provider: "openai/gpt-image-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    const data = await res.json();
+    // gpt-image-2 returns base64 by default (no expiring URL). Convert
+    // to a data: URL we can immediately re-upload to Supabase storage
+    // for a stable public URL.
+    const b64 = data?.data?.[0]?.b64_json;
+    const directUrl = data?.data?.[0]?.url;
+    let publicUrl: string | null = null;
+    if (b64) {
+      publicUrl = await editorUploadResult(`data:image/png;base64,${b64}`, "gpt-image-2");
+    } else if (directUrl) {
+      publicUrl = await editorUploadResult(directUrl, "gpt-image-2");
+    }
+    if (!publicUrl) {
+      console.log(`[gpt-image-2] no image in response: ${JSON.stringify(data).slice(0, 200)}`);
+      logCost({ type: "image", model: "gpt-image-2", provider: "openai/gpt-image-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+      return null;
+    }
+    console.log(`[gpt-image-2] OK in ${Date.now() - t0}ms`);
+    logCost({ type: "image", model: "gpt-image-2", provider: "openai/gpt-image-2", costUsd: getProviderCost("openai/gpt-image-2", "image"), revenueEur: REVENUE_PER_TYPE.image, latencyMs: Date.now() - t0, userId: userId || "anon", success: true, campaignSlug }).catch(() => {});
+    return { imageUrl: publicUrl, provider: "openai/gpt-image-2" };
+  } catch (err) {
+    console.log(`[gpt-image-2] error: ${err}`);
+    logCost({ type: "image", model: "gpt-image-2", provider: "openai/gpt-image-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - t0, userId: userId || "anon", success: false, campaignSlug }).catch(() => {});
+    return null;
+  }
+}
+
+// Feature flag: gpt-image-2 enabled by default when an OpenAI key is
+// available; can be force-disabled via env to roll back to Ideogram /
+// Luma Photon without redeploying.
+function isGptImage2Enabled(): boolean {
+  const flag = (Deno.env.get("GPT_IMAGE_2_ENABLED") || "1").trim();
+  if (flag === "0" || flag.toLowerCase() === "false" || flag.toLowerCase() === "off") return false;
+  return !!Deno.env.get("OPENAI_API_KEY");
 }
 
 // Ideogram v3 Remix on a product reference photo. Used for apparel /
