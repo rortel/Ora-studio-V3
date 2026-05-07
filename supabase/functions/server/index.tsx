@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:30Z — v690-logo-composite");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:50Z — v691-debug-payload");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -10628,6 +10628,11 @@ app.post("/analyze/surprise-me", async (c) => {
     // (called from persistOne). Source can be the Brand Vault logo URL or
     // a custom one uploaded by the user. Empty string disables compositing.
     const logoUrl            = String(body?.logoUrl || "").trim().slice(0, 500);
+    // Debug visibility on payload reception — without this, when the
+    // simple-mode bottom bar isn't sending the new fields we built
+    // server-side support for, the failure looks identical to the
+    // server skipping them. Logged once per request, ~80 chars total.
+    console.log(`[surprise-me] payload received — productPageUrl=${productPageUrl ? `"${productPageUrl.slice(0, 60)}…"` : "EMPTY"}, logoUrl=${logoUrl ? `"${logoUrl.slice(0, 60)}…"` : "EMPTY"}, photos=${imageUrls.length}, scrapeAttrs=${body?.productAttributes ? "yes" : "no"}`);
     const userDescription = String(body?.productDescription || "").trim().slice(0, 400);
     const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
     const productDescription = enrichedDescription || userDescription;
