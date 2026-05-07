@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "motion/react";
-import { ArrowRight, Globe2, Lightbulb, Sparkles, Wand2, CalendarDays, Send, Plus, Check } from "lucide-react";
+import { ArrowRight, Globe2, Lightbulb, Sparkles, Wand2, CalendarDays, Send, Plus, Check, Upload } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { AppTabs } from "../components/AppTabs";
