@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -108,7 +108,7 @@ export function SurprisePage() {
 }
 
 function SurpriseContent() {
-  const { getAuthHeader, can, remainingCredits, refreshProfile, accessToken } = useAuth();
+  const { getAuthHeader, can, remainingCredits, refreshProfile, accessToken, profile } = useAuth();
   const navigate = useNavigate();
 
   // Core inputs (minimal — the two blanks)
@@ -998,220 +998,231 @@ function SurpriseContent() {
       <AppTabs active="surprise" />
 
       {/* ═══════════════════════════════════════════════════════════════
-          SIMPLE-MODE HERO (default) — Feads-inspired single screen.
-          Three placeholder cards (Product / Style / Brief), one action
-          row (Image|Video / Quantity / Format), one Generate button.
-          Smart defaults mean the user can click Generate immediately
-          after dropping a product. "Personnaliser" toggle below reveals
-          the existing rich form (kept intact) for power users.
+          SIMPLE-MODE LAYOUT (default) — three vertical zones:
+          (1) top greeting band, (2) middle canvas (empty placeholder
+          for future "Recent projects" strip), (3) fixed bottom action
+          bar with three placeholder cards + instructions textarea +
+          controls row + paper-plane send. Common AI generator UX
+          patterns (Sora, Midjourney web, ChatGPT compose) implemented
+          in Ora's cream / ink / coral palette with Bagel + DM Sans
+          typography and original copy. "Customize advanced options"
+          link reveals the rich form below (kept intact) for power
+          users.
           ═══════════════════════════════════════════════════════════════ */}
       {simpleMode && stage === "idle" && !pack && (
-        <main className="flex-1 flex items-center">
-          <div className="w-full max-w-[1080px] mx-auto px-5 md:px-10 py-12 md:py-20">
-            {/* Title */}
+        <main className="flex-1 flex flex-col" style={{ paddingBottom: "clamp(320px, 42vh, 420px)" }}>
+          {/* ── Top greeting band ── */}
+          <div className="w-full max-w-[1280px] mx-auto px-5 md:px-10 pt-12 md:pt-20 pb-6">
             <motion.div
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-              className="mb-8 md:mb-10 text-center"
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}
             >
-              <h1 className="leading-[1.05]" style={{ fontFamily: DISPLAY, fontSize: "clamp(36px, 6.5vw, 72px)", letterSpacing: "-0.03em", color: TEXT }}>
-                Drop a photo. Get a <span style={{ fontFamily: '"Playfair Display", serif', fontStyle: "italic", fontWeight: 500 }}>pack</span>.
+              <h1 className="leading-[1.04]" style={{ fontFamily: DISPLAY, fontSize: "clamp(34px, 5.6vw, 60px)", letterSpacing: "-0.025em", color: TEXT }}>
+                {(() => {
+                  const name = (profile as any)?.fullName || (profile as any)?.firstName || (profile as any)?.email?.split("@")[0] || "";
+                  const first = name ? String(name).split(" ")[0] : "";
+                  return first ? <>Welcome back, <span style={{ color: ACCENT }}>{first}</span>.</> : <>Welcome <span style={{ color: ACCENT }}>back</span>.</>;
+                })()}
               </h1>
-              <p className="mt-3 text-[14px] md:text-[15px] max-w-[540px] mx-auto" style={{ color: MUTED, fontWeight: 300 }}>
-                Paste a product URL or drop a photo. We compose 6 platform-ready visuals — pixel-perfect on the product, never re-rendered.
+              <p className="mt-2 text-[14px] md:text-[15px] max-w-[640px]" style={{ color: MUTED, fontWeight: 300 }}>
+                Drop a product. Get six platform-ready posts. Your real product, pixel-for-pixel.
               </p>
             </motion.div>
+          </div>
 
-            {/* Three horizontal placeholder cards — Product / Style / Brief */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
-              className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4"
+          {/* ── Middle canvas (intentionally empty — future home of "Recent projects") ── */}
+          <div className="flex-1 w-full max-w-[1280px] mx-auto px-5 md:px-10" />
+
+          {/* ── Customize advanced — subtle link above the action bar ── */}
+          <div className="w-full max-w-[1280px] mx-auto px-5 md:px-10 pb-2 flex justify-end">
+            <button
+              onClick={() => setSimpleMode(false)}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium transition hover:opacity-100"
+              style={{ color: MUTED, opacity: 0.85 }}
             >
-              {/* Product card */}
-              <button
-                type="button"
-                onClick={() => { setSimpleMode(false); }}
-                className="group rounded-2xl p-5 text-left transition-all hover:border-[var(--coral,#FF6B47)]"
-                style={{
-                  background: productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.04)" : "#fff",
-                  border: `1px solid ${productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.4)" : BORDER}`,
-                  minHeight: 140,
-                }}
-              >
-                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3" style={{ color: MUTED }}>
-                  Product
-                </div>
-                {productPhotos.length > 0 ? (
-                  <div className="flex items-center gap-2">
-                    <img src={productPhotos[0]} alt="" className="w-12 h-12 rounded-lg object-cover" style={{ border: `1px solid ${BORDER}` }} />
-                    <div className="text-[13px] font-medium" style={{ color: TEXT }}>
-                      {productPhotos.length} photo{productPhotos.length > 1 ? "s" : ""} ready
-                    </div>
-                  </div>
-                ) : scrapedProduct?.fullDescription ? (
-                  <div className="text-[13px] line-clamp-3" style={{ color: TEXT }}>
-                    {scrapedProduct.fullDescription.slice(0, 100)}…
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
-                      <Upload size={16} style={{ color: ACCENT }} />
-                    </div>
-                    <div>
-                      <div className="text-[13.5px] font-semibold" style={{ color: TEXT }}>Upload or paste URL</div>
-                      <div className="text-[11.5px]" style={{ color: MUTED }}>Photo, image link, or product page</div>
-                    </div>
-                  </div>
-                )}
-              </button>
+              Customize advanced options
+              <ChevronDown size={13} />
+            </button>
+          </div>
 
-              {/* Style card */}
-              <button
-                type="button"
-                onClick={() => { setSimpleMode(false); }}
-                className="rounded-2xl p-5 text-left transition-all"
-                style={{
-                  background: styleId ? "rgba(255,107,71,0.04)" : "#fff",
-                  border: `1px solid ${styleId ? "rgba(255,107,71,0.4)" : BORDER}`,
-                  minHeight: 140,
-                }}
-              >
-                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3 flex items-center gap-2" style={{ color: MUTED }}>
-                  Style
-                  <span className="px-1.5 py-0.5 rounded-full text-[9.5px]" style={{ background: ACCENT, color: "#fff", fontWeight: 600 }}>AI</span>
-                </div>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
-                    <Wand2 size={16} style={{ color: ACCENT }} />
-                  </div>
-                  <div>
-                    <div className="text-[13.5px] font-semibold" style={{ color: TEXT }}>
-                      {styleId ? `Style: ${styleId}` : "Balanced for ads (AI)"}
-                    </div>
-                    <div className="text-[11.5px]" style={{ color: MUTED }}>
-                      {styleId ? "Custom style locked" : "We pick the best fit per shot"}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              {/* Brief card — inline editable */}
-              <div
-                className="rounded-2xl p-5 transition-all"
-                style={{
-                  background: simpleBrief ? "rgba(255,107,71,0.04)" : "#fff",
-                  border: `1px solid ${simpleBrief ? "rgba(255,107,71,0.4)" : BORDER}`,
-                  minHeight: 140,
-                }}
-              >
-                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3" style={{ color: MUTED }}>
-                  Brief <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
-                </div>
-                <textarea
-                  value={simpleBrief}
-                  onChange={(e) => setSimpleBrief(e.target.value)}
-                  placeholder="ex: outdoors, white background, luxury mood, natural light"
-                  rows={3}
-                  maxLength={400}
-                  className="w-full text-[13px] resize-none bg-transparent outline-none"
-                  style={{ color: TEXT, fontFamily: "inherit", lineHeight: 1.5 }}
-                />
-              </div>
-            </motion.div>
-
-            {/* Action row — secondary controls + live credit cost + send */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}
-              className="rounded-2xl p-3 md:p-4 flex flex-wrap items-center gap-3 md:gap-4"
-              style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+          {/* ── Fixed bottom action bar ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.05 }}
+            className="fixed bottom-3 md:bottom-5 left-3 md:left-5 right-3 md:right-5 z-30"
+          >
+            <div
+              className="mx-auto"
+              style={{
+                maxWidth: 1280,
+                background: "#FFFFFF",
+                borderRadius: "1.5rem",
+                border: `1px solid ${BORDER}`,
+                boxShadow: "0 24px 60px -16px rgba(17,17,17,0.18)",
+                padding: "0.875rem",
+              }}
             >
-              {/* Image / Video pill */}
-              <div className="inline-flex rounded-full p-1" style={{ background: "rgba(17,17,17,0.04)" }}>
-                {(["image", "film"] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setMediaType(t)}
-                    className="px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition"
-                    style={{
-                      background: mediaType === t ? "#fff" : "transparent",
-                      color: mediaType === t ? TEXT : MUTED,
-                      boxShadow: mediaType === t ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-                    }}
-                  >
-                    {t === "image" ? "Image" : "Video"}
-                  </button>
-                ))}
-              </div>
-
-              {/* Quantity selector */}
-              <label className="flex items-center gap-1.5 text-[12px]" style={{ color: MUTED }}>
-                <span>Quantity</span>
-                <select
-                  value={assetCount}
-                  onChange={(e) => setAssetCount(Number(e.target.value))}
-                  className="px-2 py-1 rounded-md text-[12px] font-semibold bg-transparent outline-none"
-                  style={{ color: TEXT, border: `1px solid ${BORDER}` }}
+              {/* Three placeholder cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 mb-2.5">
+                {/* Product */}
+                <button
+                  type="button"
+                  onClick={() => { setSimpleMode(false); }}
+                  className="rounded-xl p-3.5 text-left transition-all"
+                  style={{
+                    background: productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
+                    border: `1px solid ${productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.35)" : "rgba(17,17,17,0.06)"}`,
+                    minHeight: 88,
+                  }}
                 >
-                  {[3, 6, 9, 12].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2" style={{ color: MUTED }}>
+                    Product
+                  </div>
+                  {productPhotos.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <img src={productPhotos[0]} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: `1px solid ${BORDER}` }} />
+                      <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                        {productPhotos.length} photo{productPhotos.length > 1 ? "s" : ""} ready
+                      </div>
+                    </div>
+                  ) : scrapedProduct?.fullDescription ? (
+                    <div className="text-[12.5px] line-clamp-2" style={{ color: TEXT }}>
+                      {scrapedProduct.fullDescription.slice(0, 90)}…
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.12)" }}>
+                        <Plus size={14} style={{ color: ACCENT }} />
+                      </div>
+                      <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                        Add a product
+                      </div>
+                    </div>
+                  )}
+                </button>
 
-              {/* Quality / duration depending on media type */}
-              {mediaType === "film" && (
-                <label className="flex items-center gap-1.5 text-[12px]" style={{ color: MUTED }}>
-                  <span>Length</span>
+                {/* Style */}
+                <button
+                  type="button"
+                  onClick={() => { setSimpleMode(false); }}
+                  className="rounded-xl p-3.5 text-left transition-all"
+                  style={{
+                    background: styleId ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
+                    border: `1px solid ${styleId ? "rgba(255,107,71,0.35)" : "rgba(17,17,17,0.06)"}`,
+                    minHeight: 88,
+                  }}
+                >
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2 flex items-center gap-1.5" style={{ color: MUTED }}>
+                    Style
+                    <span className="px-1.5 py-0.5 rounded-full text-[8.5px]" style={{ background: ACCENT, color: "#fff", fontWeight: 700 }}>AI</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.12)" }}>
+                      <Wand2 size={13} style={{ color: ACCENT }} />
+                    </div>
+                    <div className="text-[12.5px] font-medium leading-tight" style={{ color: TEXT }}>
+                      {styleId ? `Style: ${styleId}` : "Balanced for ads"}
+                    </div>
+                  </div>
+                </button>
+
+                {/* Brief — inline editable textarea */}
+                <div
+                  className="rounded-xl p-3.5 transition-all"
+                  style={{
+                    background: simpleBrief ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
+                    border: `1px solid ${simpleBrief ? "rgba(255,107,71,0.35)" : "rgba(17,17,17,0.06)"}`,
+                    minHeight: 88,
+                  }}
+                >
+                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-1.5" style={{ color: MUTED }}>
+                    Brief <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: MUTED }}>(optional)</span>
+                  </div>
+                  <textarea
+                    value={simpleBrief}
+                    onChange={(e) => setSimpleBrief(e.target.value)}
+                    placeholder="ex: outdoors, white background, natural light"
+                    rows={2}
+                    maxLength={400}
+                    className="w-full text-[12.5px] resize-none bg-transparent outline-none"
+                    style={{ color: TEXT, fontFamily: "inherit", lineHeight: 1.45 }}
+                  />
+                </div>
+              </div>
+
+              {/* Action row */}
+              <div className="flex flex-wrap items-center gap-2.5 md:gap-3 px-1 pt-2" style={{ borderTop: `1px solid ${BORDER}` }}>
+                {/* Image / Video pill */}
+                <div className="inline-flex rounded-full p-1" style={{ background: "rgba(17,17,17,0.05)" }}>
+                  {(["image", "film"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setMediaType(t)}
+                      className="px-3 py-1 rounded-full text-[11.5px] font-semibold transition"
+                      style={{
+                        background: mediaType === t ? "#FFFFFF" : "transparent",
+                        color: mediaType === t ? TEXT : MUTED,
+                        boxShadow: mediaType === t ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                      }}
+                    >
+                      {t === "image" ? "Image" : "Video"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Quantity */}
+                <label className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: MUTED }}>
+                  <span>Qty</span>
                   <select
-                    value={videoDuration}
-                    onChange={(e) => setVideoDuration(e.target.value as "3s" | "5s" | "8s")}
-                    className="px-2 py-1 rounded-md text-[12px] font-semibold bg-transparent outline-none"
+                    value={assetCount}
+                    onChange={(e) => setAssetCount(Number(e.target.value))}
+                    className="px-1.5 py-0.5 rounded-md text-[11.5px] font-semibold bg-transparent outline-none"
                     style={{ color: TEXT, border: `1px solid ${BORDER}` }}
                   >
-                    <option value="3s">3s</option>
-                    <option value="5s">5s</option>
-                    <option value="8s">8s</option>
+                    {[3, 6, 9, 12].map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </label>
-              )}
 
-              <div className="ml-auto flex items-center gap-3">
-                {/* Live credit cost — shows what this generation will consume */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold" style={{ background: "rgba(255,107,71,0.08)", color: ACCENT }}>
-                  <Sparkles size={11} />
-                  {(() => {
-                    // Conservative cost preview: image = assetCount credits, film = assetCount * 4
-                    const cost = mediaType === "film" ? assetCount * 4 : assetCount;
-                    return `${cost} credit${cost > 1 ? "s" : ""}`;
-                  })()}
+                {/* Length when film */}
+                {mediaType === "film" && (
+                  <label className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: MUTED }}>
+                    <span>Length</span>
+                    <select
+                      value={videoDuration}
+                      onChange={(e) => setVideoDuration(e.target.value as "3s" | "5s" | "8s")}
+                      className="px-1.5 py-0.5 rounded-md text-[11.5px] font-semibold bg-transparent outline-none"
+                      style={{ color: TEXT, border: `1px solid ${BORDER}` }}
+                    >
+                      <option value="3s">3s</option>
+                      <option value="5s">5s</option>
+                      <option value="8s">8s</option>
+                    </select>
+                  </label>
+                )}
+
+                <div className="ml-auto flex items-center gap-2.5">
+                  {/* Live credit cost */}
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,107,71,0.1)", color: ACCENT }}>
+                    <Sparkles size={11} />
+                    {(() => {
+                      const cost = mediaType === "film" ? assetCount * 4 : assetCount;
+                      return `${cost}`;
+                    })()}
+                  </div>
+
+                  {/* Send */}
+                  <button
+                    onClick={() => handleSurprise({ brief: simpleBrief.trim() || undefined })}
+                    disabled={busy || (productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim())}
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                    style={{ background: ACCENT, color: "#fff", boxShadow: "0 8px 18px -4px rgba(255,107,71,0.4)" }}
+                    aria-label="Generate"
+                    title={productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim() ? "Drop a photo, paste a URL, or write a brief" : "Generate"}
+                  >
+                    {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
                 </div>
-
-                {/* Generate button — paper-plane icon, coral round */}
-                <button
-                  onClick={() => handleSurprise({ brief: simpleBrief.trim() || undefined })}
-                  disabled={busy || (productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim())}
-                  className="inline-flex items-center justify-center w-11 h-11 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
-                  style={{ background: ACCENT, color: "#fff" }}
-                  aria-label="Generate"
-                  title={productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim() ? "Drop a photo, paste a URL, or write a brief" : "Generate"}
-                >
-                  {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                </button>
               </div>
-            </motion.div>
-
-            {/* Personnaliser toggle — small, discreet, central */}
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.25 }}
-              className="mt-6 text-center"
-            >
-              <button
-                onClick={() => setSimpleMode(false)}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium hover:underline transition"
-                style={{ color: MUTED }}
-              >
-                Customize advanced options
-                <ChevronDown size={13} />
-              </button>
-            </motion.div>
-          </div>
+            </div>
+          </motion.div>
         </main>
       )}
 
