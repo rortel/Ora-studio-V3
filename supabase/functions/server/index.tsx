@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T15:55Z — v693-static-imagescript-debug");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T16:00Z — v694-wsrv-source-png");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11197,24 +11197,32 @@ OUTPUT JSON:
     const sb = supabaseAdmin();
     const persistOne = async (sourceUrl: string, fileName: string, platform: string): Promise<string | null> => {
       try {
-        const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
-        if (!dl.ok) return null;
-        let ct  = dl.headers.get("content-type") || "image/jpeg";
-        let buf = new Uint8Array(await dl.arrayBuffer());
+        let ct: string = "image/jpeg";
+        let buf: Uint8Array | null = null;
         // ── Logo overlay step ──
         // When the request carries a logoUrl (vault logo OR custom upload),
-        // bake it into the bottom-right corner BEFORE upload so every
-        // download / publish / library preview ships with the merchant's
-        // exact brand mark. Skipped for video poster frames (.mp4 ext) so
-        // the logo doesn't sit awkwardly on a stale frame of a moving clip.
+        // composite it onto every persisted image shot. compositeImageWithLogo
+        // routes both the source AND the logo through wsrv.nl as PNG so the
+        // pipeline tolerates whatever format Photoroom served (WebP / AVIF
+        // are common and not decoded by imagescript). Skipped for video
+        // poster frames (.mp4 ext) so the logo doesn't sit awkwardly on a
+        // stale frame of a moving clip.
         if (logoUrl && !fileName.toLowerCase().endsWith(".mp4")) {
           const t0 = Date.now();
-          const composited = await compositeImageWithLogo(buf, logoUrl);
+          const composited = await compositeImageWithLogo(sourceUrl, logoUrl);
           if (composited) {
             buf = composited.buf;
             ct = composited.contentType;
             console.log(`[surprise-me] logo composited onto ${fileName} (${Date.now() - t0}ms)`);
           }
+        }
+        // Fallback: if no logo was requested, OR the composite failed,
+        // download the original source as-is and upload that.
+        if (!buf) {
+          const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
+          if (!dl.ok) return null;
+          ct  = dl.headers.get("content-type") || "image/jpeg";
+          buf = new Uint8Array(await dl.arrayBuffer());
         }
         const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
         const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
@@ -12272,26 +12280,34 @@ async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string 
 // Cost: ~300-800 ms per image, ~10 MB transient memory. Acceptable
 // at concurrency 3 within the 256 MB Edge Function envelope.
 async function compositeImageWithLogo(
-  srcBuf: Uint8Array,
+  srcUrl: string,
   logoUrl: string,
 ): Promise<{ buf: Uint8Array; contentType: string } | null> {
   const t0 = Date.now();
-  console.log(`[composite-logo] enter — srcBytes=${srcBuf.length}, logoUrl="${logoUrl.slice(0, 80)}…"`);
+  console.log(`[composite-logo] enter — srcUrl="${srcUrl.slice(0, 80)}…", logoUrl="${logoUrl.slice(0, 80)}…"`);
   try {
-    // SVG detection — imagescript can't decode vector (it only handles
-    // raster: PNG/JPEG/WebP/TIFF/GIF). Route SVG URLs through the
-    // wsrv.nl public image proxy with output=png to rasterize before
-    // passing to imagescript. Adds ~200-400 ms hop but lets Vault
-    // logos that are SVG (Shopify cdn pattern) actually composite.
-    let effectiveLogoUrl = logoUrl;
-    if (/\.svg(\?|$)/i.test(logoUrl)) {
-      effectiveLogoUrl = `https://wsrv.nl/?url=${encodeURIComponent(logoUrl)}&output=png&w=600`;
-      console.log(`[composite-logo] SVG detected — rasterising via wsrv.nl`);
+    // Source — Photoroom returns WebP / AVIF / mixed formats that
+    // imagescript can't decode (raster: PNG/JPEG/GIF/TIFF/BMP only).
+    // Route through wsrv.nl public image proxy with output=png so
+    // imagescript always sees PNG, regardless of what Photoroom served.
+    const srcPngUrl = `https://wsrv.nl/?url=${encodeURIComponent(srcUrl)}&output=png`;
+    const srcRes = await fetch(srcPngUrl, { signal: AbortSignal.timeout(25_000) });
+    if (!srcRes.ok) {
+      console.log(`[composite-logo] src fetch ${srcRes.status} for ${srcPngUrl.slice(0, 100)}`);
+      return null;
     }
-    // Decode source image — imagescript accepts JPEG/PNG/WebP and
-    // returns RGBA so we can composite directly. Static import at the
-    // top of this file ensures this is bundled at deploy time and
-    // doesn't depend on dynamic-import support in the Edge Runtime.
+    const srcBuf = new Uint8Array(await srcRes.arrayBuffer());
+    console.log(`[composite-logo] src fetched ${srcBuf.length} bytes via wsrv.nl`);
+    // Logo — same wsrv.nl trick handles SVG / WebP / odd formats.
+    const logoPngUrl = `https://wsrv.nl/?url=${encodeURIComponent(logoUrl)}&output=png&w=600`;
+    const logoRes = await fetch(logoPngUrl, { signal: AbortSignal.timeout(15_000) });
+    if (!logoRes.ok) {
+      console.log(`[composite-logo] logo fetch ${logoRes.status} for ${logoPngUrl.slice(0, 100)}`);
+      return null;
+    }
+    const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
+    console.log(`[composite-logo] logo fetched ${logoBytes.length} bytes via wsrv.nl`);
+    // Decode source — guaranteed PNG now.
     const src = await ImagescriptImage.decode(srcBuf);
     const w = src.width;
     const h = src.height;
@@ -12300,15 +12316,7 @@ async function compositeImageWithLogo(
       return null;
     }
     console.log(`[composite-logo] src decoded ${w}×${h}`);
-    // Fetch + decode logo. Hard 15 s timeout so a slow Vault CDN
-    // can't gate the whole pack.
-    const logoRes = await fetch(effectiveLogoUrl, { signal: AbortSignal.timeout(15_000) });
-    if (!logoRes.ok) {
-      console.log(`[composite-logo] fetch logo ${logoRes.status} for ${effectiveLogoUrl.slice(0, 80)}`);
-      return null;
-    }
-    const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
-    console.log(`[composite-logo] logo fetched ${logoBytes.length} bytes`);
+    // Decode logo — guaranteed PNG now.
     let logo = await ImagescriptImage.decode(logoBytes);
     console.log(`[composite-logo] logo decoded ${logo.width}×${logo.height}`);
     // Resize logo to ~12% of source width, preserving aspect ratio.
