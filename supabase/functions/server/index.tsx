@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:50Z — v691-debug-payload");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T15:40Z — v692-svg-logo-url-gender");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -12274,6 +12274,16 @@ async function compositeImageWithLogo(
   logoUrl: string,
 ): Promise<{ buf: Uint8Array; contentType: string } | null> {
   try {
+    // SVG detection — imagescript can't decode vector (it only handles
+    // raster: PNG/JPEG/WebP/TIFF/GIF). Route SVG URLs through the
+    // wsrv.nl public image proxy with output=png to rasterize before
+    // passing to imagescript. Adds ~200-400 ms hop but lets Vault
+    // logos that are SVG (Shopify cdn pattern) actually composite.
+    let effectiveLogoUrl = logoUrl;
+    if (/\.svg(\?|$)/i.test(logoUrl)) {
+      effectiveLogoUrl = `https://wsrv.nl/?url=${encodeURIComponent(logoUrl)}&output=png&w=600`;
+      console.log(`[composite-logo] SVG detected — rasterising via wsrv.nl`);
+    }
     const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
     // Decode source image — imagescript accepts JPEG/PNG/WebP and
     // returns RGBA so we can composite directly.
@@ -12283,9 +12293,9 @@ async function compositeImageWithLogo(
     if (!w || !h) return null;
     // Fetch + decode logo. Hard 15 s timeout so a slow Vault CDN
     // can't gate the whole pack.
-    const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(15_000) });
+    const logoRes = await fetch(effectiveLogoUrl, { signal: AbortSignal.timeout(15_000) });
     if (!logoRes.ok) {
-      console.log(`[composite-logo] fetch logo ${logoRes.status}`);
+      console.log(`[composite-logo] fetch logo ${logoRes.status} for ${effectiveLogoUrl.slice(0, 80)}`);
       return null;
     }
     const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
@@ -13200,6 +13210,20 @@ function isApparelOrWearable(productCategory: string, productName: string, promp
 // being rendered with female models — we observed it on men's leather
 // boots labelled "Bottines Hommes" in French.
 function inferProductGender(...sources: Array<string | undefined | null>): "male" | "female" | "non-binary" | undefined {
+  // ── URL path priority — the FIRST source is treated specially.
+  //     URL paths like /collections/hommes-boots/ or /femme/jeans/ are
+  //     unambiguous brand-merchandised gender signals. They must beat
+  //     any drift in scraped descriptions or planner-generated scenes
+  //     (which can leak "mrs"/"miss"/etc. on perfume copy and confuse
+  //     the female-first regex below).
+  const urlSrc = String(sources[0] || "");
+  if (urlSrc.startsWith("http") || urlSrc.startsWith("/")) {
+    const urlBlob = urlSrc.toLowerCase();
+    if (/\b(hommes?|men|mens|gentlemen|male|monsieur|messieurs|mr|sir)\b/.test(urlBlob)) return "male";
+    if (/\b(femmes?|women|womens?|woman|ladies|lady|female|dames?|madame)\b/.test(urlBlob)) return "female";
+    if (/\b(unisex|non[- ]binary|non[- ]binaire|kids?|children|enfants?|junior)\b/.test(urlBlob)) return "non-binary";
+  }
+  // ── Otherwise concatenate all sources and run the original heuristics.
   const blob = sources.filter(Boolean).join(" ").toLowerCase();
   if (!blob) return undefined;
   // Strong female signals first (so "men's vs women's" lines lean female

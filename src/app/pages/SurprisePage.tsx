@@ -1507,7 +1507,14 @@ function SurpriseContent() {
                         parts.push("Do NOT include any brand logo, wordmark, or brand name in any shot.");
                       }
                       const composedBrief = parts.join(" ").trim() || undefined;
-                      handleSurprise({ brief: composedBrief });
+                      // Force every platform's format to match the simple-mode
+                      // mediaType pill. Without this override, platformPicks
+                      // keeps its per-platform defaults (TikTok=film) and the
+                      // user gets a video shot they didn't ask for.
+                      const forcedFormats = Object.fromEntries(
+                        platformPicks.map((p) => [p.id, mediaType === "film" ? "film" as const : "image" as const])
+                      );
+                      handleSurprise({ brief: composedBrief, platformFormats: forcedFormats });
                     }}
                     disabled={busy || (productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim())}
                     className="inline-flex items-center justify-center w-10 h-10 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
