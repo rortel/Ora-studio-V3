@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T16:00Z — v694-wsrv-source-png");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T18:00Z — v695-strip-quoted-headline");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -12791,6 +12791,35 @@ function stripTypographyFromStyle(directive: string): string {
     .replace(/typo\b/gi, "graphic block");
 }
 
+// Strip planner-generated text-rendering instructions from a promptText
+// going to a PRODUCT path (Ghost Mannequin / Virtual Model / Studio /
+// Subject Remix / Lifestyle T2I rich). The planner sometimes ignores the
+// "NO RENDERED TEXT" rule and slips quoted copy into promptText —
+// patterns like:
+//   the words "Découvrez les Mules en cuir"
+//   reading "NEW DROP"
+//   with the headline 'SPRING SALE'
+//   text overlay saying "Promo -20%"
+// When the image model sees these, it tries to render the actual text
+// and produces gibberish ("Découvéé les Mules enn cui de Belmraz").
+// Stripping eliminates the rendering attempt — the headline still
+// surfaces via the downstream HTML overlay layer.
+function stripPlannerQuotedText(promptText: string): string {
+  if (!promptText) return "";
+  return promptText
+    // Remove "the words/saying/reading/headline 'XXX'" patterns. The
+    // surrounding helper words go too — they cue text rendering even
+    // without the quoted content.
+    .replace(/(\bthe\s+)?(words?|text|copy|caption|headline|tagline|slogan|saying|reading|spelling)\s*[:=-]?\s*['"][^'"]{2,80}['"]/gi, "")
+    .replace(/(\bwith\s+)?(the\s+)?(words?|text|copy|caption|headline|tagline|slogan)\s+['"][^'"]{2,80}['"]/gi, "")
+    // Remove any remaining quoted strings of 3+ words on a product path —
+    // they're almost always copy fragments the planner wants rendered.
+    .replace(/['"]([^'"]+\s+[^'"]+\s+[^'"]+[^'"]*)['"]/g, "")
+    // Tidy double spaces left behind.
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: ShotPromptCtx): string {
   switch (category) {
     case "ghost-mannequin": {
@@ -12814,6 +12843,7 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       // letterforms ("Bel Choub", "EESN 91Chona"). Cleaned directive
       // keeps the visual aesthetic (saturated fields, split layouts,
       // oversized blocks) without the text license.
+      const cleanPromptText = stripPlannerQuotedText(job.promptText);
       const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
       const styleHead = cleanStyle
         ? `PICKED VISUAL STYLE (apply across this shot's lighting, surfaces, palette and mood — non-negotiable): ${cleanStyle.slice(0, 280)}\n\n`
@@ -12850,7 +12880,7 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const singleItemCap = ctx.subjectKind === "product" && ctx.jobIsApparel
         ? "\n\nSINGLE-GARMENT RULE (apparel — non-negotiable): exactly ONE instance of the garment in the frame. WEARER REQUIRED — a real person is wearing the garment, with their body fully visible (face, hands, arms, legs, feet as relevant to the framing). The wearer's own body parts are EXPECTED and CORRECT. What's FORBIDDEN: a SECOND identical garment elsewhere in the frame (duplicate pair of pants in the background, clone jacket on a hanger as prop, stack of similar items, garment held by an extra phantom hand). The wearer's hands holding their own coat lapel = fine. A floating disembodied hand holding a duplicate garment = rejected. ONE wearer, ONE garment, ONE scene."
         : "";
-      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}${singleItemCap}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${job.promptText}${noTextCap}`;
+      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}${singleItemCap}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${cleanPromptText}${noTextCap}`;
     }
     case "studio-composite": {
       // Photoroom Studio AI bg.prompt — full scene description with
@@ -12858,21 +12888,30 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       // doesn't get a beige bohemian setting). Typography vocab
       // stripped from style — Photoroom's AI bg also hallucinates
       // garbled text when given "typography" cues.
+      const cleanPromptText = stripPlannerQuotedText(job.promptText);
       const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
       const styleHead = cleanStyle ? `${cleanStyle.slice(0, 240)}\n\n` : "";
       const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — render ZERO letters, words, brand names, sale tags, signs, billboards, or labels of any kind in the image. Hallucinated text (even partial like 'BEL CHOU' or 'VALE') = REJECTED. Use coloured shapes / bands / blocks for any element that might want a label.";
       return ctx.productDescription
-        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${job.promptText}${noTextCap}`
-        : `${styleHead}${job.promptText}${noTextCap}`;
+        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${cleanPromptText}${noTextCap}`
+        : `${styleHead}${cleanPromptText}${noTextCap}`;
     }
     case "text-card-with-product": {
-      const styleHead = ctx.styleDirective
-        ? `PICKED VISUAL STYLE (apply across this card's lighting, surfaces, palette, mood AND typography feel — non-negotiable): ${ctx.styleDirective.slice(0, 280)}\n\n`
+      // Image stays clean — the headline is rendered downstream as an
+      // HTML overlay. Strip planner-quoted copy so the model never
+      // tries to bake the headline into the pixels (which produced
+      // "Découvéé les Mules enn cui de Belmraz" gibberish on the
+      // 2026-05-07 Belmiraz test).
+      const cleanPromptText = stripPlannerQuotedText(job.promptText);
+      const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
+      const styleHead = cleanStyle
+        ? `PICKED VISUAL STYLE (apply across this card's lighting, surfaces, palette, mood — non-negotiable): ${cleanStyle.slice(0, 280)}\n\n`
         : "";
       const productAnchor = ctx.productDescription
         ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
         : "";
-      return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\nADD a clean typography overlay on top of the product shot — short headline (3-6 ASCII words, NO French diacritics), bold display sans, brand-palette colours. The product is the visual hero; the typography frames or sits next to it, never replaces it.\n\n${job.promptText}`;
+      const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — this image MUST be CLEAN. Render the product + scene only. Do NOT bake any headline, slogan, copy, marketing tagline, brand name, or any rendered letterform into the image. The headline + copy will be added by a separate HTML overlay layer downstream. Garbled or hallucinated text = REJECTED. Use coloured shapes / bands / blocks for any element that wants a label.";
+      return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\n${cleanPromptText}${noTextCap}`;
     }
     case "lifestyle-t2i-rich": {
       // Text-to-image with rich product description as the anchor. Used
@@ -12902,7 +12941,7 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const singleItemCap = ctx.jobIsApparel
         ? "\n\nWEARER REQUIRED: a real human is wearing the product in the frame. Their full body is part of the scene — face / hands / arms / legs as relevant to the platform framing. The wearer is alive and engaged in the scene (walking, sitting, standing, working). NEVER show the product alone on a surface, in a void, or floating. NEVER show a duplicate of the product elsewhere in the frame (a second pair on a hanger as a backdrop prop, a clone in the background, a stack of identical items). The wearer's own hands and limbs are expected and correct. ONE wearer, ONE product, real scene with real human presence."
         : "";
-      return `${styleHead}${productBlock}SCENE: ${job.promptText}${singleItemCap}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
+      return `${styleHead}${productBlock}SCENE: ${stripPlannerQuotedText(job.promptText)}${singleItemCap}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
     }
     case "text-card-only":
     case "pure-t2i":
