@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus, Check } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
@@ -178,6 +178,19 @@ function SurpriseContent() {
   // Studio / Magazine / Minimal) in a modal so picking a style stays
   // inside the simple-mode flow without bouncing to advanced.
   const [showStyleSheet, setShowStyleSheet] = useState(false);
+
+  // Logo control for the simple-mode action bar. Three states:
+  //   null   — no logo will be injected (default)
+  //   "vault" — use the logo stored in the user's Brand Vault
+  //   "custom" — use the URL stored in customLogoUrl (uploaded by user)
+  // The server already auto-loads the vault logo on every authenticated
+  // surprise-me call, so "vault" simply leaves the existing behaviour
+  // ON and "null" sends an explicit "Do NOT include any brand logo"
+  // hint to the planner via the brief addendum.
+  const [logoChoice, setLogoChoice] = useState<"vault" | "custom" | null>(null);
+  const [customLogoUrl, setCustomLogoUrl] = useState<string>("");
+  const [vaultLogoUrl, setVaultLogoUrl] = useState<string>("");
+  const [showLogoMenu, setShowLogoMenu] = useState(false);
   // Rich product attributes scraped from the URL. The 200-char productDescription
   // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
   // come out flat because the model has no concrete attributes to anchor the
@@ -314,6 +327,18 @@ function SurpriseContent() {
         const v = d?.vault || d?.data || null;
         const looksEmpty = !v || (!v.company_name && !v.brandName && (!v.colors || v.colors.length === 0) && !v.logo_url && !v.logoUrl);
         setVaultMissing(looksEmpty);
+        // Capture the vault logo URL so the simple-mode bar can offer
+        // "Use Vault logo" without a second fetch. Falls through both
+        // snake_case and camelCase keys (server syncs both).
+        const logoUrl = String(v?.logo_url || v?.logoUrl || "").trim();
+        if (logoUrl) {
+          setVaultLogoUrl(logoUrl);
+          // Default to ON when a vault logo exists — matches existing
+          // server-side behaviour (planner already injects vault logo on
+          // every authenticated surprise-me call). User can opt out via
+          // the Logo control if they don't want it on a particular pack.
+          setLogoChoice((prev) => prev ?? "vault");
+        }
       } catch { /* silent — banner just stays hidden */ }
     })();
     return () => { cancelled = true; };
@@ -1191,6 +1216,105 @@ function SurpriseContent() {
                   </label>
                 )}
 
+                {/* Logo control — popover with vault / upload / none */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowLogoMenu((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11.5px] font-semibold transition"
+                    style={{
+                      color: logoChoice ? ACCENT : MUTED,
+                      background: logoChoice ? "rgba(255,107,71,0.08)" : "transparent",
+                      border: `1px solid ${logoChoice ? "rgba(255,107,71,0.35)" : BORDER}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, lineHeight: 1 }}>{logoChoice ? "●" : "○"}</span>
+                    Logo: <span style={{ fontWeight: 700 }}>
+                      {logoChoice === "vault" ? "Vault" : logoChoice === "custom" ? "Custom" : "Off"}
+                    </span>
+                  </button>
+                  <AnimatePresence>
+                    {showLogoMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 z-40 rounded-xl overflow-hidden"
+                        style={{
+                          bottom: "calc(100% + 8px)",
+                          minWidth: 240,
+                          background: "#FFFFFF",
+                          border: `1px solid ${BORDER}`,
+                          boxShadow: "0 18px 36px -10px rgba(17,17,17,0.18)",
+                        }}
+                      >
+                        {vaultLogoUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => { setLogoChoice("vault"); setShowLogoMenu(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition hover:bg-black/[0.03]"
+                          >
+                            <img src={vaultLogoUrl} alt="Vault logo" className="w-7 h-7 rounded object-contain" style={{ background: "#F2EFEA", border: `1px solid ${BORDER}` }} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Use Vault logo</div>
+                              <div className="text-[10.5px]" style={{ color: MUTED }}>From your Brand Vault</div>
+                            </div>
+                            {logoChoice === "vault" && <Check size={14} style={{ color: ACCENT }} />}
+                          </button>
+                        ) : (
+                          <div className="px-3 py-2.5 text-[11.5px]" style={{ color: MUTED, background: "rgba(17,17,17,0.02)" }}>
+                            No Vault logo set yet. <Link to="/hub/vault" className="font-semibold underline" style={{ color: ACCENT }}>Add one</Link>.
+                          </div>
+                        )}
+                        <label
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition hover:bg-black/[0.03] cursor-pointer"
+                          style={{ borderTop: `1px solid ${BORDER}` }}
+                        >
+                          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
+                            <Upload size={13} style={{ color: ACCENT }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>
+                              {logoChoice === "custom" && customLogoUrl ? "Replace upload" : "Upload a logo"}
+                            </div>
+                            <div className="text-[10.5px]" style={{ color: MUTED }}>PNG / SVG · transparent bg ideal</div>
+                          </div>
+                          {logoChoice === "custom" && <Check size={14} style={{ color: ACCENT }} />}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const url = URL.createObjectURL(file);
+                              setCustomLogoUrl(url);
+                              setLogoChoice("custom");
+                              setShowLogoMenu(false);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setLogoChoice(null); setCustomLogoUrl(""); setShowLogoMenu(false); }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition hover:bg-black/[0.03]"
+                          style={{ borderTop: `1px solid ${BORDER}` }}
+                        >
+                          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: "rgba(17,17,17,0.06)" }}>
+                            <X size={13} style={{ color: MUTED }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>No logo</div>
+                            <div className="text-[10.5px]" style={{ color: MUTED }}>Clean shots, no brand mark</div>
+                          </div>
+                          {logoChoice === null && <Check size={14} style={{ color: ACCENT }} />}
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <div className="ml-auto flex items-center gap-2.5">
                   {/* Live credit cost */}
                   <div className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(255,107,71,0.1)", color: ACCENT }}>
@@ -1203,7 +1327,25 @@ function SurpriseContent() {
 
                   {/* Send */}
                   <button
-                    onClick={() => handleSurprise({ brief: simpleBrief.trim() || undefined })}
+                    onClick={() => {
+                      // Build brief addendum from the logo choice. Vault logo
+                      // is already auto-injected server-side, but we surface
+                      // the explicit instruction so the planner knows to
+                      // place it discreetly. Custom upload appends its URL
+                      // verbatim. "No logo" sends an explicit "no brand
+                      // mark" hint that overrides the default vault inject.
+                      const parts: string[] = [];
+                      if (simpleBrief.trim()) parts.push(simpleBrief.trim());
+                      if (logoChoice === "vault" && vaultLogoUrl) {
+                        parts.push(`Include the brand logo (${vaultLogoUrl}) as a small discreet mark in a corner of each shot — never large, never central.`);
+                      } else if (logoChoice === "custom" && customLogoUrl) {
+                        parts.push(`Include this brand logo (${customLogoUrl}) as a small discreet mark in a corner of each shot — never large, never central.`);
+                      } else if (logoChoice === null) {
+                        parts.push("Do NOT include any brand logo, wordmark, or brand name in any shot.");
+                      }
+                      const composedBrief = parts.join(" ").trim() || undefined;
+                      handleSurprise({ brief: composedBrief });
+                    }}
                     disabled={busy || (productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim())}
                     className="inline-flex items-center justify-center w-10 h-10 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
                     style={{ background: ACCENT, color: "#fff", boxShadow: "0 8px 18px -4px rgba(255,107,71,0.4)" }}
