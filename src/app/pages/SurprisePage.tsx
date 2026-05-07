@@ -795,6 +795,11 @@ function SurpriseContent() {
         styleId: styleId || undefined,
         productImageUrl: effProductImageUrls[0] || undefined,
         productImageUrls: effProductImageUrls.length > 0 ? effProductImageUrls : undefined,
+        // Forward the original product page URL when the user pasted one.
+        // The server uses the URL path as a strong signal in inferProductGender
+        // (paths like /collections/hommes-boots/ or /femme/ are unambiguous,
+        // unlike scraped content which sometimes drops the gender keyword).
+        productPageUrl: productPageUrl.trim() || undefined,
         productDescription: productDescription.trim() || undefined,
         enrichedDescription: enrichedDescription || undefined,
         productPrice: productPrice.trim() || undefined,
@@ -886,9 +891,39 @@ function SurpriseContent() {
       const looksLikeTimeout = /504|gateway|timeout|aborted|network|failed to fetch/i.test(errMsg);
       console.log(`[surprise-me] catch: ${errMsg} — looksLikeTimeout=${looksLikeTimeout}, tentative de récupération depuis Library...`);
       try {
-        // Délai pour laisser le serveur finir d'écrire en Library
-        await new Promise((r) => setTimeout(r, looksLikeTimeout ? 5_000 : 1_500));
-        const lib = await serverPost("/library/list", {});
+        // Robust recovery: 504 gateway timeouts often happen AFTER the server
+        // finished generating + persisting the pack to Library. We poll
+        // /library/list with retries to catch the campaign even if the first
+        // attempts return 500 (transient — Edge instance recycling under
+        // load) or empty (server still finalising the persist). Total
+        // patience: ~10s initial + 4 attempts × up to 15s backoff = ~70s.
+        const initialWaitMs = looksLikeTimeout ? 10_000 : 1_500;
+        await new Promise((r) => setTimeout(r, initialWaitMs));
+        let lib: any = null;
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          try {
+            lib = await serverPost("/library/list", {});
+            if (lib?.success && Array.isArray(lib.items)) {
+              const fourMinAgo = Date.now() - 4 * 60_000;
+              const hasFresh = lib.items.some((it: any) => {
+                const isCampaign = it.type === "campaign" || it.type === "campaign-film";
+                if (!isCampaign) return false;
+                const savedAt = new Date(it.savedAt || it.createdAt || 0).getTime();
+                return savedAt >= fourMinAgo;
+              });
+              if (hasFresh) break; // Found the campaign — exit loop early.
+              console.log(`[surprise-me recovery] attempt ${attempt}: library returned ${lib.items.length} items, none fresh`);
+            } else {
+              console.log(`[surprise-me recovery] attempt ${attempt}: library/list non-success ${JSON.stringify(lib).slice(0, 150)}`);
+            }
+          } catch (libErr) {
+            console.log(`[surprise-me recovery] attempt ${attempt}: library/list error ${String(libErr).slice(0, 150)}`);
+          }
+          if (attempt < 4) {
+            // Backoff between attempts: 5s, 10s, 15s
+            await new Promise((r) => setTimeout(r, 5000 * attempt));
+          }
+        }
         if (lib?.success && Array.isArray(lib.items)) {
           // Cherche la campagne wrapper la plus récente (type === "campaign"
           // ou "campaign-film") créée dans les 4 dernières minutes. C'est

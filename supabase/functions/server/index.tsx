@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T11:00Z — v688-gpt-image-2-noproduct-textcard");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:15Z — v689-url-gender-signal");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -10617,6 +10617,12 @@ app.post("/analyze/surprise-me", async (c) => {
     const legacyUrl = String(body?.productImageUrl || "").trim();
     const imageUrls: string[] = imageUrlsRaw.length > 0 ? imageUrlsRaw : (legacyUrl ? [legacyUrl] : []);
     const productRef = imageUrls[0] || "";
+    // Optional product page URL — when the merchant pasted a URL the scrape
+    // already populated productDescription/attributes, but the URL path
+    // itself often carries the strongest gender signal (e.g.
+    // /collections/hommes-boots/, /femme/jeans/, /men/shirts/) which the
+    // scraped content sometimes drops. We keep it raw to feed inferProductGender.
+    const productPageUrl     = String(body?.productPageUrl || "").trim().slice(0, 500);
     const userDescription = String(body?.productDescription || "").trim().slice(0, 400);
     const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
     const productDescription = enrichedDescription || userDescription;
@@ -11469,7 +11475,13 @@ OUTPUT JSON:
               // boots etc.). Bg prompt reinforces "FULL BODY VISIBLE"
               // because on footwear specifically Virtual Model sometimes
               // renders just the boots in scene without a person.
+              // The product URL path is the strongest gender signal — paths
+              // like /collections/hommes-boots/ or /femme/jeans/ are
+              // unambiguous and bypass any drift from the scraped content
+              // (Belchous bug 2026-05-07: woman on men's boots because the
+              // scrape didn't capture "homme" but the URL clearly said so).
               const inferredGender = inferProductGender(
+                productPageUrl,
                 productDescription,
                 richProductDescription,
                 productAttributes.category,
