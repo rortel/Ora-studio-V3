@@ -173,6 +173,11 @@ function SurpriseContent() {
   // as `brief` override so the planner gets it directly without going through
   // the chip composition path.
   const [simpleBrief, setSimpleBrief] = useState("");
+  // Bottom-sheet style picker — opened when the Style card is clicked.
+  // Renders the existing StylePicker (UGC / Lifestyle / Editorial /
+  // Studio / Magazine / Minimal) in a modal so picking a style stays
+  // inside the simple-mode flow without bouncing to advanced.
+  const [showStyleSheet, setShowStyleSheet] = useState(false);
   // Rich product attributes scraped from the URL. The 200-char productDescription
   // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
   // come out flat because the model has no concrete attributes to anchor the
@@ -1032,18 +1037,6 @@ function SurpriseContent() {
           {/* ── Middle canvas (intentionally empty — future home of "Recent projects") ── */}
           <div className="flex-1 w-full max-w-[1280px] mx-auto px-5 md:px-10" />
 
-          {/* ── Customize advanced — subtle link above the action bar ── */}
-          <div className="w-full max-w-[1280px] mx-auto px-5 md:px-10 pb-2 flex justify-end">
-            <button
-              onClick={() => setSimpleMode(false)}
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium transition hover:opacity-100"
-              style={{ color: MUTED, opacity: 0.85 }}
-            >
-              Customize advanced options
-              <ChevronDown size={13} />
-            </button>
-          </div>
-
           {/* ── Fixed bottom action bar ── */}
           <motion.div
             initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.05 }}
@@ -1102,7 +1095,7 @@ function SurpriseContent() {
                 {/* Style */}
                 <button
                   type="button"
-                  onClick={() => { setSimpleMode(false); }}
+                  onClick={() => setShowStyleSheet(true)}
                   className="rounded-xl p-3.5 text-left transition-all"
                   style={{
                     background: styleId ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
@@ -1118,8 +1111,8 @@ function SurpriseContent() {
                     <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.12)" }}>
                       <Wand2 size={13} style={{ color: ACCENT }} />
                     </div>
-                    <div className="text-[12.5px] font-medium leading-tight" style={{ color: TEXT }}>
-                      {styleId ? `Style: ${styleId}` : "Balanced for ads"}
+                    <div className="text-[12.5px] font-medium leading-tight capitalize" style={{ color: TEXT }}>
+                      {styleId ? styleId : "Balanced for ads"}
                     </div>
                   </div>
                 </button>
@@ -1225,6 +1218,56 @@ function SurpriseContent() {
           </motion.div>
         </main>
       )}
+
+      {/* ═══ Style picker bottom sheet ═══
+          Modal opened from the Style card in the simple-mode bottom
+          bar. Renders the existing Ora StylePicker (UGC / Lifestyle /
+          Editorial / Studio / Magazine / Minimal). Picking a style
+          stores it in styleId and closes the sheet — no jump to
+          advanced. */}
+      <AnimatePresence>
+        {showStyleSheet && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
+            style={{ background: "rgba(17,17,17,0.55)", backdropFilter: "blur(6px)" }}
+            onClick={() => setShowStyleSheet(false)}
+          >
+            <motion.div
+              initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 28 }}
+              className="w-full max-w-[960px] mx-3 md:mx-6 rounded-t-3xl md:rounded-3xl overflow-hidden flex flex-col"
+              style={{ background: "#FFFFFF", maxHeight: "min(86vh, 860px)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 md:px-7 py-4" style={{ borderBottom: `1px solid ${BORDER}` }}>
+                <h2 className="text-[18px] font-semibold" style={{ color: TEXT, ...bagel, fontSize: 22, letterSpacing: "-0.01em" }}>
+                  Pick a style
+                </h2>
+                <button
+                  onClick={() => setShowStyleSheet(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center transition hover:bg-black/5"
+                  aria-label="Close"
+                  style={{ color: MUTED }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5">
+                <StylePicker
+                  selectedStyleId={styleId}
+                  onPick={(id) => {
+                    setStyleId(id);
+                    // Auto-close on pick — the user has made their choice,
+                    // they want to get back to the action bar and hit Send.
+                    setTimeout(() => setShowStyleSheet(false), 180);
+                  }}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Idle / form state — one sentence, one button, fine-tune hidden */}
       {!simpleMode && stage === "idle" && !pack && (
