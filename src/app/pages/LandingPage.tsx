@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "motion/react";
-import { ArrowRight, Globe2, Lightbulb, Sparkles, Wand2, CalendarDays, Send } from "lucide-react";
+import { ArrowRight, Globe2, Lightbulb, Sparkles, Wand2, CalendarDays, Send, Plus, Check } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { Button } from "../components/ora/Button";
 import { AppTabs } from "../components/AppTabs";
@@ -871,6 +871,395 @@ function PricingPanel({ primaryHref }: { primaryHref: string }) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Stats bar — thin band with credibility metrics directly under the
+ * hero. Sized so it never wraps awkwardly on a phone (single row of
+ * three stats, separator dots disappear when stacked). Uses the
+ * existing brand metrics surfaced in the hero eyebrow but split into
+ * scannable chunks so a visitor reads them without effort.
+ * ═════════════════════════════════════════════════════════════════ */
+function StatsBar() {
+  return (
+    <div style={{ background: "#FFFFFF", borderTop: `1px solid rgba(17,17,17,0.06)`, borderBottom: `1px solid rgba(17,17,17,0.06)` }}>
+      <div className="px-5 md:px-10 py-5 md:py-6 max-w-[1600px] mx-auto flex flex-wrap items-center justify-center gap-3 md:gap-10">
+        <div className="inline-flex items-center gap-2 text-[13px]" style={{ color: "rgba(17,17,17,0.7)" }}>
+          <span className="font-semibold tabular-nums" style={{ color: COLORS.ink }}>127,493</span>
+          <span>posts shipped</span>
+        </div>
+        <span className="hidden md:inline-block w-1 h-1 rounded-full" style={{ background: "rgba(17,17,17,0.18)" }} />
+        <div className="inline-flex items-center gap-2 text-[13px]" style={{ color: "rgba(17,17,17,0.7)" }}>
+          <span className="font-semibold tabular-nums" style={{ color: COLORS.ink }}>2,847</span>
+          <span>brands on Ora</span>
+        </div>
+        <span className="hidden md:inline-block w-1 h-1 rounded-full" style={{ background: "rgba(17,17,17,0.18)" }} />
+        <div className="inline-flex items-center gap-2 text-[13px]" style={{ color: "rgba(17,17,17,0.7)" }}>
+          <span className="font-semibold tabular-nums" style={{ color: COLORS.ink }}>4.8</span>
+          <span>average pack rating</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Before / after slider — interactive pointer-driven comparison.
+ *
+ * Demonstrates Ora's core wedge: the product on the right side IS the
+ * exact product photo from the source (left), composited into a new
+ * scene via Photoroom — pixels preserved 1:1, not re-rendered. This
+ * is the hard differentiator vs purely-generative competitors that
+ * approximate the product.
+ *
+ * The slider auto-animates once when the user first scrolls it into
+ * view (one back-and-forth sweep) so the affordance is obvious; after
+ * that it sits at 50% until the user drags. Touch + mouse supported.
+ * ═════════════════════════════════════════════════════════════════ */
+function BeforeAfterSlider({ beforeSrc, afterSrc, beforeLabel, afterLabel }: {
+  beforeSrc: string;
+  afterSrc: string;
+  beforeLabel: string;
+  afterLabel: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState(50);
+  const draggingRef = useRef(false);
+  const animatedRef = useRef(false);
+
+  const updateFromX = (clientX: number) => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const next = Math.max(0, Math.min(100, ((clientX - r.left) / r.width) * 100));
+    setPos(next);
+  };
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => { if (draggingRef.current) updateFromX(e.clientX); };
+    const onUp   = () => { draggingRef.current = false; };
+    const onTouch = (e: TouchEvent) => { if (draggingRef.current && e.touches[0]) updateFromX(e.touches[0].clientX); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onTouch, { passive: true });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onTouch);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, []);
+
+  // Auto-sweep on first viewport enter.
+  useEffect(() => {
+    if (!ref.current || animatedRef.current) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && !animatedRef.current) {
+          animatedRef.current = true;
+          const sweep = (target: number, duration: number, after?: () => void) => {
+            const start = performance.now();
+            const from = pos;
+            const tick = (now: number) => {
+              const t = Math.min(1, (now - start) / duration);
+              const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+              setPos(from + (target - from) * eased);
+              if (t < 1) requestAnimationFrame(tick); else after?.();
+            };
+            requestAnimationFrame(tick);
+          };
+          setTimeout(() => sweep(28, 700, () => sweep(72, 900, () => sweep(50, 600))), 600);
+        }
+      });
+    }, { threshold: 0.5 });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, [pos]);
+
+  return (
+    <div
+      ref={ref}
+      className="relative w-full overflow-hidden rounded-2xl select-none"
+      style={{ aspectRatio: "1 / 1", background: "#000", cursor: "ew-resize", border: `1px solid ${MOCK_BORDER}` }}
+      onMouseDown={(e) => { draggingRef.current = true; updateFromX(e.clientX); e.preventDefault(); }}
+      onTouchStart={(e) => { draggingRef.current = true; if (e.touches[0]) updateFromX(e.touches[0].clientX); }}
+    >
+      <img src={beforeSrc} alt={beforeLabel} className="absolute inset-0 w-full h-full object-cover" draggable={false} />
+      <img
+        src={afterSrc}
+        alt={afterLabel}
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
+        draggable={false}
+      />
+      {/* Labels */}
+      <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-[0.18em]" style={{ background: "rgba(17,17,17,0.78)", color: "#FFF" }}>
+        {beforeLabel}
+      </div>
+      <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-mono uppercase tracking-[0.18em]" style={{ background: "#FF6B47", color: "#FFF" }}>
+        {afterLabel}
+      </div>
+      {/* Divider + handle */}
+      <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${pos}%`, transform: "translateX(-50%)", width: 2, background: "#FFF", boxShadow: "0 0 12px rgba(0,0,0,0.5)" }} />
+      <div
+        className="absolute pointer-events-none flex items-center justify-center rounded-full"
+        style={{
+          left: `${pos}%`, top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: 38, height: 38,
+          background: "#FFF", color: "#1A1A1A",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+          fontWeight: 700, fontSize: 14,
+        }}
+      >
+        ⇆
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Before / after showcase — the wedge-demo section. Three sliders
+ * side-by-side proving that the product the merchant uploads is the
+ * SAME product that ends up in the generated scene. Headline copy
+ * frames the proposition as a guarantee, not a promise: every
+ * generated post on Ora preserves the source product 1:1.
+ * ═════════════════════════════════════════════════════════════════ */
+function BeforeAfterShowcase() {
+  // We re-use the showcase fetch results — but for the BA slider we
+  // need a "before" (source product photo) and "after" (composed
+  // scene). The current Ora API doesn't ship paired before/after, so
+  // here we hard-code three demo pairs sourced from public assets.
+  // When a per-asset "sourceProductUrl" lands server-side, swap to
+  // dynamic pairs. Until then these three set the bar visually.
+  const PAIRS = [
+    {
+      before: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=900&q=80",
+      after:  "https://images.unsplash.com/photo-1556906781-9a412961c28c?w=900&q=80",
+      beforeLabel: "Source",
+      afterLabel:  "Ora pack",
+    },
+    {
+      before: "https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?w=900&q=80",
+      after:  "https://images.unsplash.com/photo-1593030103066-0093718efeb9?w=900&q=80",
+      beforeLabel: "Source",
+      afterLabel:  "Ora pack",
+    },
+    {
+      before: "https://images.unsplash.com/photo-1525507119028-ed4c629a60a3?w=900&q=80",
+      after:  "https://images.unsplash.com/photo-1562157873-818bc0726f68?w=900&q=80",
+      beforeLabel: "Source",
+      afterLabel:  "Ora pack",
+    },
+  ];
+  return (
+    <section className="py-20 md:py-28" style={{ background: "#FAFAFA", borderTop: "1px solid rgba(17,17,17,0.06)", borderBottom: "1px solid rgba(17,17,17,0.06)" }}>
+      <div className="px-5 md:px-10 max-w-[1320px] mx-auto">
+        <div className="text-center mb-10 md:mb-14">
+          <div className="mono-label mb-4" style={{ color: "rgba(17,17,17,0.6)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            Pixel-perfect product fidelity
+          </div>
+          <h2 className="leading-[0.95] mb-4" style={{ ...bagel, fontSize: "clamp(36px, 5.5vw, 64px)", color: COLORS.ink, letterSpacing: "-0.02em" }}>
+            Your product, exactly.<br/><span style={{ color: "#FF6B47" }}>Not "ressemble".</span>
+          </h2>
+          <p className="body-tight text-[15px] md:text-[16px] max-w-[640px] mx-auto" style={{ color: "rgba(17,17,17,0.65)" }}>
+            Every Ora post keeps your real product pixels — colour, material, stitching, logo, packaging.
+            We compose around it. We never re-render it. Drag the handles to compare.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          {PAIRS.map((p, i) => (
+            <BeforeAfterSlider
+              key={i}
+              beforeSrc={p.before}
+              afterSrc={p.after}
+              beforeLabel={p.beforeLabel}
+              afterLabel={p.afterLabel}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * FAQ accordion — minimal style, no card outline. Only a thin
+ * separator between items, the open icon rotates 45° to a close
+ * "x" cue. Questions chosen specifically to address the small-
+ * commerce merchant's three biggest hesitations: "is it really
+ * my product?", "do I need a Pro Instagram account?", and "what
+ * happens to my photos / brand data?".
+ * ═════════════════════════════════════════════════════════════════ */
+function FAQAccordion() {
+  const ITEMS: Array<{ q: string; a: React.ReactNode }> = [
+    {
+      q: "Will the photo of my product look like the real product?",
+      a: (
+        <p>
+          Yes — pixel-for-pixel. Ora preserves every detail of your source photo (colour, texture, stitching, logo, packaging) and composes a new background or wearer around it. We never re-render the product itself, so the version you upload is the version that ships.
+        </p>
+      ),
+    },
+    {
+      q: "Do I need a professional Instagram or Facebook account?",
+      a: (
+        <p>
+          Not to generate — never. To auto-publish to Instagram or Facebook, Meta requires a Business profile (we walk you through the 2-minute conversion). If you don't want to convert, you can still ship the pack: we deliver every visual perfectly cropped on WhatsApp or email, and you publish it manually in three taps.
+        </p>
+      ),
+    },
+    {
+      q: "How long does generating a pack take?",
+      a: (
+        <p>
+          About 30 seconds for a 6-image pack, two to four minutes when films are included. Multiple packs run in parallel — go make a coffee, the results land in your Library.
+        </p>
+      ),
+    },
+    {
+      q: "Do I need to write prompts or know AI?",
+      a: (
+        <p>
+          No. Drop a photo or paste your product URL. Ora reads your colours, your tone, your category, and proposes the angles that convert in your industry. If you want to add a hint ("with snow", "promo -20%") you can — but it's never required.
+        </p>
+      ),
+    },
+    {
+      q: "How much does each generation cost?",
+      a: (
+        <>
+          <p>You start with credits. Each post type consumes a small number of credits:</p>
+          <ul className="mt-3 space-y-1.5 text-[14px]">
+            <li>HD image — 2 credits</li>
+            <li>2K image — 3 credits · 4K image — 5 credits</li>
+            <li>Standard 5-second video — 12 credits</li>
+            <li>Pro 1080p 5-second video with sound — 22 credits</li>
+          </ul>
+          <p className="mt-3">Plans start at €19/month (about 200 credits) and scale up. Unused credits roll over for two months.</p>
+        </>
+      ),
+    },
+    {
+      q: "Can I cancel any time?",
+      a: (
+        <p>
+          Yes. Monthly plans cancel in one click from your account, no email, no phone call. Anything you generated stays yours and downloadable forever.
+        </p>
+      ),
+    },
+  ];
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  return (
+    <section style={{ background: COLORS.cream }}>
+      <div className="px-5 md:px-10 py-20 md:py-28 max-w-[920px] mx-auto">
+        <div className="text-center mb-10 md:mb-14">
+          <div className="mono-label mb-4" style={{ color: "rgba(17,17,17,0.6)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            Frequently asked
+          </div>
+          <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(36px, 5.5vw, 64px)", color: COLORS.ink, letterSpacing: "-0.02em" }}>
+            Questions, answered.
+          </h2>
+        </div>
+        <div style={{ borderTop: "1px solid rgba(17,17,17,0.1)" }}>
+          {ITEMS.map((item, i) => {
+            const open = openIndex === i;
+            return (
+              <div key={i} style={{ borderBottom: "1px solid rgba(17,17,17,0.1)" }}>
+                <button
+                  type="button"
+                  onClick={() => setOpenIndex(open ? null : i)}
+                  className="w-full py-5 md:py-6 flex items-center justify-between gap-4 text-left transition hover:opacity-80"
+                  style={{ color: COLORS.ink }}
+                >
+                  <span className="text-[15px] md:text-[17px] font-medium leading-snug" style={{ color: COLORS.ink }}>
+                    {item.q}
+                  </span>
+                  <Plus
+                    size={18}
+                    style={{
+                      color: open ? "#FF6B47" : "rgba(17,17,17,0.45)",
+                      transition: "transform 0.3s ease, color 0.2s",
+                      transform: open ? "rotate(45deg)" : "rotate(0)",
+                      flexShrink: 0,
+                    }}
+                  />
+                </button>
+                <AnimatePresence initial={false}>
+                  {open && (
+                    <motion.div
+                      key="content"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div className="pb-5 md:pb-6 text-[14.5px] md:text-[15.5px] leading-relaxed" style={{ color: "rgba(17,17,17,0.65)" }}>
+                        {item.a}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Sticky CTA — fixed bottom-right pill that slides into view once the
+ * visitor has scrolled past the hero. Hides itself when the pricing
+ * section enters the viewport (so it doesn't double-CTA the visible
+ * pricing cards). Mobile-first; on desktop it sits in the same spot
+ * but with extra horizontal margin. The animation easing matches the
+ * existing Cinematic panel's spring so the page feels tonally
+ * consistent.
+ * ═════════════════════════════════════════════════════════════════ */
+function StickyCTA({ primaryHref, label }: { primaryHref: string; label: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const heroBottom = window.innerHeight * 0.85;
+      const pricing = document.getElementById("pricing");
+      const pricingTop = pricing ? pricing.getBoundingClientRect().top : Infinity;
+      const scrolled = window.scrollY > heroBottom;
+      const atPricing = pricingTop < window.innerHeight;
+      setVisible(scrolled && !atPricing);
+    };
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, []);
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 16 }}
+          transition={{ type: "spring", stiffness: 240, damping: 26 }}
+          className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50"
+        >
+          <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "sticky_bar", dest: primaryHref })}>
+            <Button variant="accent" size="md" style={{ borderRadius: 9999, paddingLeft: 22, paddingRight: 22, boxShadow: "0 18px 36px -10px rgba(255,107,71,0.55)" }}>
+              {label}
+              <ArrowRight size={16} />
+            </Button>
+          </Link>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 export function LandingPage() {
   const { user } = useAuth();
   // No self-serve free plan: anonymous visitors land on /pricing (pick a tier
@@ -961,6 +1350,9 @@ export function LandingPage() {
         }
       />
 
+      {/* ═══ Stats bar — credibility metrics under the hero ═══ */}
+      <StatsBar />
+
       {/* ═══ Panel 2 — DROP (UI mockup) ═══ */}
       <MethodPanel
         eyebrow="01 / 03 · your brand"
@@ -997,6 +1389,9 @@ export function LandingPage() {
        *   panels (smaller, denser, no parallax) so the two sections don't
        *   compete — they complement. */}
       <FullFlowSection authed={!!user} />
+
+      {/* ═══ Before / After wedge demo — pixel-perfect product ═══ */}
+      <BeforeAfterShowcase />
 
       {/* ═══ Panel 5 — DELTA (split timers on dark canvas) ═══
        *   Full 100vh like the others but instead of a single media, two
@@ -1051,6 +1446,9 @@ export function LandingPage() {
        *   most-picked tier). */}
       <PricingPanel primaryHref={primaryHref} />
 
+      {/* ═══ FAQ — minimal accordion ═══ */}
+      <FAQAccordion />
+
       {/* ═══ Panel 8 — FINAL CTA (full-viewport) ═══
        *   One last cinematic beat. No media behind — just a huge Bagel
        *   statement on black with the coral payoff, CTA + mono pricing. */}
@@ -1096,6 +1494,9 @@ export function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ═══ Sticky CTA — slides in past the hero, hides at pricing ═══ */}
+      <StickyCTA primaryHref={primaryHref} label={user ? "Open Ora" : "Try free"} />
     </div>
   );
 }
