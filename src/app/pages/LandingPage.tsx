@@ -1260,6 +1260,414 @@ function StickyCTA({ primaryHref, label }: { primaryHref: string; label: string 
   );
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * Clean hero — 2-col grid: animated demo on the left, headline +
+ * CTA on the right. Replaces the previous full-viewport cinematic
+ * hero. Stays under 90vh on desktop so the stats bar stays visible
+ * just below, anchoring the "this is real" social proof immediately
+ * after the brand statement.
+ *
+ * Demo loops through three phases: type URL → Ora analyses →
+ * grid of generated visuals. Pause when scrolled out of view.
+ * ═════════════════════════════════════════════════════════════════ */
+function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
+  const [phase, setPhase] = useState<1 | 2 | 3>(1);
+  const [typed, setTyped] = useState("");
+  const URL_TARGET = "yourshop.com/product";
+  const sectionRef = useRef<HTMLDivElement | null>(null);
+  const runningRef = useRef(false);
+
+  useEffect(() => {
+    if (!sectionRef.current) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting && !runningRef.current) {
+          runningRef.current = true;
+          loop();
+        } else if (!e.isIntersecting) {
+          runningRef.current = false;
+        }
+      });
+    }, { threshold: 0.2 });
+    obs.observe(sectionRef.current);
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loop = async () => {
+    while (runningRef.current) {
+      // Phase 1: typing
+      setPhase(1); setTyped("");
+      for (let i = 1; i <= URL_TARGET.length; i++) {
+        if (!runningRef.current) return;
+        await new Promise((r) => setTimeout(r, 60));
+        setTyped(URL_TARGET.slice(0, i));
+      }
+      await new Promise((r) => setTimeout(r, 700));
+      // Phase 2: analysis
+      if (!runningRef.current) return;
+      setPhase(2);
+      await new Promise((r) => setTimeout(r, 3500));
+      // Phase 3: grid
+      if (!runningRef.current) return;
+      setPhase(3);
+      await new Promise((r) => setTimeout(r, 4500));
+    }
+  };
+
+  return (
+    <section ref={sectionRef} style={{ background: "#FFFFFF", borderBottom: `1px solid rgba(17,17,17,0.06)` }}>
+      <div className="px-5 md:px-10 py-16 md:py-24 max-w-[1320px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
+        {/* LEFT — animated demo window */}
+        <div className="order-2 md:order-1">
+          <div className="rounded-2xl overflow-hidden" style={{ background: "#F2EFEA", border: `1px solid rgba(17,17,17,0.08)` }}>
+            {/* Window chrome */}
+            <div className="flex items-center gap-2 px-3 py-2.5" style={{ background: "rgba(255,255,255,0.55)", borderBottom: "1px solid rgba(17,17,17,0.06)" }}>
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F56" }} />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FFBD2E" }} />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#27C93F" }} />
+              <div className="flex-1 mx-3 text-center text-[11px] font-medium" style={{ color: "rgba(17,17,17,0.5)" }}>
+                Ora Studio
+              </div>
+            </div>
+            {/* Body */}
+            <div className="relative" style={{ minHeight: 360, padding: "1.5rem" }}>
+              {/* Phase 1 — URL bar */}
+              {phase === 1 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
+                  <div className="text-[10.5px] font-mono uppercase tracking-[0.18em]" style={{ color: "#FF6B47" }}>
+                    Step 01 · Drop your product
+                  </div>
+                  <div className="flex items-center gap-2 w-full max-w-[420px] px-4 py-3 rounded-xl" style={{ background: "#FFF", border: "1px solid rgba(17,17,17,0.08)" }}>
+                    <Globe2 size={16} style={{ color: "rgba(17,17,17,0.45)" }} />
+                    <span className="flex-1 text-[14px] font-medium tabular-nums" style={{ color: COLORS.ink }}>
+                      {typed}<span className="inline-block w-[2px] h-[1em] align-middle ml-0.5" style={{ background: "#FF6B47", animation: "blink 0.9s steps(2) infinite" }} />
+                    </span>
+                  </div>
+                  <button className="px-5 py-2.5 rounded-xl text-[13px] font-semibold" style={{ background: "#FF6B47", color: "#FFF" }}>
+                    Generate →
+                  </button>
+                </div>
+              )}
+              {/* Phase 2 — analysis */}
+              {phase === 2 && (
+                <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-4 p-6 items-center">
+                  <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-black">
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tracking-widest" style={{ color: "rgba(255,255,255,0.45)" }}>
+                      ANALYZING…
+                    </div>
+                    <div className="absolute left-0 right-0 h-[3px]" style={{ background: "linear-gradient(90deg, transparent, #FF6B47, transparent)", boxShadow: "0 0 24px #FF6B47", animation: "scan 2.4s ease-in-out infinite" }} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {["Reading product photo", "Extracting brand voice", "Composing six angles"].map((s, i) => (
+                      <motion.div
+                        key={s}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.4 + i * 0.5 }}
+                        className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl"
+                        style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.06)" }}
+                      >
+                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "#FF6B47", color: "#FFF" }}>✓</span>
+                        <span className="text-[13px] font-medium" style={{ color: COLORS.ink }}>{s}</span>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Phase 3 — grid of results */}
+              {phase === 3 && (
+                <div className="absolute inset-0 grid grid-cols-3 gap-2.5 p-5">
+                  {[
+                    { tag: "Lifestyle",  hue: "#E7D4C4" },
+                    { tag: "Packshot",   hue: "#F2D0C4" },
+                    { tag: "Story",      hue: "#FFC9B5" },
+                    { tag: "Carousel",   hue: "#E5DBCA" },
+                    { tag: "Promo",      hue: "#FF6B47" },
+                    { tag: "Reel",       hue: "#1A0F0C" },
+                  ].map((c, i) => (
+                    <motion.div
+                      key={c.tag}
+                      initial={{ opacity: 0, y: 14, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ delay: i * 0.08 }}
+                      className="rounded-lg relative overflow-hidden"
+                      style={{ aspectRatio: "4/5", background: c.hue, border: "1px solid rgba(17,17,17,0.06)" }}
+                    >
+                      <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[8.5px] font-semibold" style={{ background: c.tag === "Promo" ? "#FFFFFF" : "rgba(17,17,17,0.78)", color: c.tag === "Promo" ? "#FF6B47" : "#FFFFFF" }}>
+                        {c.tag}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+              {/* Phase dots */}
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+                {[1, 2, 3].map((p) => (
+                  <span
+                    key={p}
+                    style={{
+                      width: phase === p ? 18 : 5, height: 5, borderRadius: 99,
+                      background: phase === p ? "#FF6B47" : "rgba(17,17,17,0.18)",
+                      transition: "all 0.35s ease",
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT — headline */}
+        <div className="order-1 md:order-2">
+          <div className="mono-label mb-5" style={{ color: "rgba(17,17,17,0.55)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            For shops that don't have time
+          </div>
+          <h1 className="leading-[1.0] mb-6" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 88px)", color: COLORS.ink, letterSpacing: "-0.025em" }}>
+            Drop a photo.<br/>
+            <span style={{ color: "#FF6B47" }}>Get a pack.</span>
+          </h1>
+          <p className="body-tight text-[16px] md:text-[17.5px] mb-8 max-w-[480px]" style={{ color: "rgba(17,17,17,0.65)", lineHeight: 1.55 }}>
+            Six platform-ready posts from one product photo. Your real product — pixel-perfect, never re-rendered. Ship in thirty seconds.
+          </p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "hero", dest: primaryHref, authed: !!user })}>
+              <Button variant="accent" size="lg">
+                {user ? "Open Ora" : "Try free · no card"} <ArrowRight size={16} />
+              </Button>
+            </Link>
+            <span className="mono-label" style={{ color: "rgba(17,17,17,0.5)" }}>
+              {user ? "Drop a photo. Done." : "Six posts on the house"}
+            </span>
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes blink { 50% { opacity: 0; } } @keyframes scan { 0%,100% { top: 0; } 50% { top: calc(100% - 3px); } }`}</style>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Marquee row — horizontally scrolling band of generated assets.
+ * Items have variable widths (we don't constrain to a single ratio)
+ * so the row reads as a textured stream rather than a uniform grid.
+ * Two duplicated copies of the items animate left at a constant
+ * speed for seamless looping. Pauses on hover for readability.
+ * ═════════════════════════════════════════════════════════════════ */
+function MarqueeRow({ assets }: { assets: ShowcaseAsset[] }) {
+  // Cap to 12 most recent. If fewer than 6 are available, fall back
+  // to repeating what we have so the marquee doesn't collapse.
+  const items = (assets.length >= 6 ? assets.slice(0, 12) : [...assets, ...assets, ...assets].slice(0, 12));
+  if (items.length === 0) return null;
+  return (
+    <section style={{ background: "#FFFFFF", paddingTop: 24, paddingBottom: 64, overflow: "hidden" }}>
+      <div className="overflow-hidden" style={{
+        WebkitMaskImage: "linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)",
+        maskImage: "linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)",
+      }}>
+        <div className="flex gap-3" style={{ width: "max-content", animation: "ora-marquee 38s linear infinite" }}>
+          {[...items, ...items].map((a, i) => (
+            <div key={i} className="rounded-xl overflow-hidden flex-shrink-0" style={{ background: "#F2EFEA", border: "1px solid rgba(17,17,17,0.06)", height: 220 }}>
+              <img
+                src={a.imageUrl}
+                alt={a.caption || a.fileName || "Ora pack"}
+                className="h-full w-auto object-cover block"
+                loading="lazy"
+                style={{ aspectRatio: a.aspectRatio?.includes(":") ? a.aspectRatio.replace(":", "/") : undefined }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      <style>{`@keyframes ora-marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * How it works — four numbered cards in a single row on desktop,
+ * stacked on mobile. Replaces the previous Drop / Pick / Done
+ * cinematic triad with a tighter, less-repetitive expression of the
+ * mechanism. Each step pairs an icon, a step number in a coral
+ * circle, a 4-7 word title, and a single-sentence body.
+ * ═════════════════════════════════════════════════════════════════ */
+function HowItWorks() {
+  const STEPS = [
+    {
+      icon: <Upload size={20} />,
+      title: "Drop your product",
+      body: "Upload a photo or paste your shop URL. Ora reads colours, voice, category in 30 seconds.",
+    },
+    {
+      icon: <Wand2 size={20} />,
+      title: "Pick a direction",
+      body: "Three angles tailored to your brand — or let Ora decide. No prompt, no guesswork.",
+    },
+    {
+      icon: <Sparkles size={20} />,
+      title: "Six posts compose",
+      body: "Photoroom locks the product, AI composes the scene. Your product stays your product.",
+    },
+    {
+      icon: <Send size={20} />,
+      title: "Publish or download",
+      body: "One click to Instagram, Facebook, TikTok. Or download every format for manual share.",
+    },
+  ];
+  return (
+    <section style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.06)" }}>
+      <div className="px-5 md:px-10 py-20 md:py-28 max-w-[1320px] mx-auto">
+        <div className="text-center mb-10 md:mb-14">
+          <div className="mono-label mb-4" style={{ color: "rgba(17,17,17,0.55)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            How it works
+          </div>
+          <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(36px, 5.5vw, 64px)", color: COLORS.ink, letterSpacing: "-0.02em" }}>
+            From a photo to a pack,<br/>
+            <span style={{ color: "#FF6B47" }}>in four steps.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
+          {STEPS.map((s, i) => (
+            <div
+              key={i}
+              className="rounded-2xl p-6 flex flex-col gap-4"
+              style={{ background: "#FFFFFF", border: "1px solid rgba(17,17,17,0.06)" }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)", color: "#FF6B47" }}>
+                  {s.icon}
+                </div>
+                <span className="text-[11px] font-mono tabular-nums" style={{ color: "rgba(17,17,17,0.35)" }}>
+                  0{i + 1}
+                </span>
+              </div>
+              <div>
+                <h3 className="text-[16px] font-semibold mb-1.5" style={{ color: COLORS.ink }}>
+                  {s.title}
+                </h3>
+                <p className="text-[13.5px] leading-relaxed" style={{ color: "rgba(17,17,17,0.6)" }}>
+                  {s.body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Feature cards — six small cards in a 3-col grid on desktop,
+ * single column on mobile. Each card surfaces one capability the
+ * merchant gets out of the box (no setup, no plan upgrade).
+ * Coral icon, single-line title, two-line body.
+ * ═════════════════════════════════════════════════════════════════ */
+function FeatureCards() {
+  const FEATURES = [
+    {
+      icon: <Lightbulb size={18} />,
+      title: "AI-led brand voice",
+      body: "Reads your site once. Every post matches your colours, fonts, tone — no manual setup.",
+    },
+    {
+      icon: <Sparkles size={18} />,
+      title: "Six angles per pack",
+      body: "Lifestyle, packshot, before/after, unboxing, social proof, promo — automatically.",
+    },
+    {
+      icon: <CalendarDays size={18} />,
+      title: "Every platform format",
+      body: "1:1, 9:16, 16:9 — sized for Instagram, TikTok, Facebook, Pinterest in one go.",
+    },
+    {
+      icon: <Wand2 size={18} />,
+      title: "Plain-language edit",
+      body: "Type \"add a -20% promo\" or \"swap to winter\". Ora updates without re-rendering.",
+    },
+    {
+      icon: <Globe2 size={18} />,
+      title: "Multi-shop projects",
+      body: "Manage several boutiques, each with its own brand vault, in one Ora account.",
+    },
+    {
+      icon: <Send size={18} />,
+      title: "One-click publish",
+      body: "Send to Instagram, Facebook, TikTok directly — or grab the file and post yourself.",
+    },
+  ];
+  return (
+    <section style={{ background: "#1A0F0C" }}>
+      <div className="px-5 md:px-10 py-20 md:py-28 max-w-[1320px] mx-auto">
+        <div className="text-center mb-10 md:mb-14">
+          <div className="mono-label mb-4" style={{ color: "rgba(255,255,255,0.55)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            Built in
+          </div>
+          <h2 className="leading-[0.95]" style={{ ...bagel, fontSize: "clamp(36px, 5.5vw, 64px)", color: "#FFFFFF", letterSpacing: "-0.02em" }}>
+            Tools that save<br/>
+            <span style={{ color: "#FF6B47" }}>days, not minutes.</span>
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+          {FEATURES.map((f, i) => (
+            <div
+              key={i}
+              className="rounded-2xl p-6"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              <div className="w-9 h-9 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(255,107,71,0.15)", color: "#FF6B47" }}>
+                {f.icon}
+              </div>
+              <h3 className="text-[15.5px] font-semibold mb-2" style={{ color: "#FFFFFF" }}>
+                {f.title}
+              </h3>
+              <p className="text-[13.5px] leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+                {f.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Final CTA — coral-tinted band with one bold headline and one CTA.
+ * Replaces the previous full-viewport final-CTA section. Tighter
+ * (no parallax, no 100vh) so the page doesn't end on a scroll
+ * marathon.
+ * ═════════════════════════════════════════════════════════════════ */
+function FinalCTA({ primaryHref, user }: { primaryHref: string; user: any }) {
+  return (
+    <section style={{ background: "#FFE9DD" }}>
+      <div className="px-5 md:px-10 py-20 md:py-24 max-w-[1320px] mx-auto grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-8 md:gap-12 items-center">
+        <div>
+          <h2 className="leading-[1.05]" style={{ ...bagel, fontSize: "clamp(36px, 5.5vw, 60px)", color: COLORS.ink, letterSpacing: "-0.02em" }}>
+            Ship your first pack tonight.
+          </h2>
+          <p className="body-tight text-[14.5px] md:text-[15.5px] mt-3 max-w-[480px]" style={{ color: "rgba(17,17,17,0.6)" }}>
+            Ten free credits. No card. Cancel any time.
+          </p>
+        </div>
+        <div className="flex flex-col items-start md:items-end gap-2.5">
+          <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "final_cta", dest: primaryHref, authed: !!user })}>
+            <Button variant="ink" size="lg">
+              {user ? "Open Ora" : "Start free"} <ArrowRight size={16} />
+            </Button>
+          </Link>
+          <span className="text-[11px]" style={{ color: "rgba(17,17,17,0.5)" }}>
+            Trusted by small shops across France
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function LandingPage() {
   const { user } = useAuth();
   // No self-serve free plan: anonymous visitors land on /pricing (pick a tier
@@ -1320,163 +1728,35 @@ export function LandingPage() {
 
   return (
     <div style={{ background: COLORS.cream, color: COLORS.ink }}>
-      {/* ═══ Navbar — unified AppTabs pill segmented control ═══
-       *   Same navbar pattern used across Hub / Surprise / Library / Edit /
-       *   Vault. On the landing the 4 tabs act as a teaser of what the
-       *   visitor will use post-signup. "Surprise Me" stays visually active
-       *   by default since it's the primary flow users land on. */}
+      {/* ═══ Navbar ═══ */}
       <AppTabs />
 
-      {/* ═══ Panel 1 — HERO ═══ */}
-      <CinematicPanel
-        tonality="hero"
-        videoSrc={mediaHero.videoSrc}
-        posterSrc={mediaHero.posterSrc}
-        imageSrc={mediaHero.imageSrc}
-        eyebrow="v2.4 · 2,847 brands · 127,493 posts published"
-        title={<>Drop a photo.<br/><span style={{ color: "#FF6B47" }}>We post for you.</span></>}
-        subtitle={<>6 posts ready for Instagram, Facebook, TikTok. We make them. We publish them. You do something else.</>}
-        cta={
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Link to={user ? "/hub/surprise" : "/login?mode=signup&next=/hub/surprise"} onClick={() => trackEvent("cta_click", { location: "ship_section", dest: user ? "/hub/surprise" : "/login?mode=signup", authed: !!user })}>
-              <Button variant="accent" size="lg">
-                {user ? "Open Ora" : "Try it. No card."} <ArrowRight size={16} />
-              </Button>
-            </Link>
-            <span className="mono-label" style={{ color: "rgba(255,255,255,0.7)" }}>
-              {user ? "Drop a photo. We post." : "6 posts on the house. No card."}
-            </span>
-          </div>
-        }
-      />
+      {/* ═══ Hero — clean 2-col with animated demo + headline ═══ */}
+      <CleanHero user={user} primaryHref={primaryHref} />
 
-      {/* ═══ Stats bar — credibility metrics under the hero ═══ */}
+      {/* ═══ Stats bar ═══ */}
       <StatsBar />
 
-      {/* ═══ Panel 2 — DROP (UI mockup) ═══ */}
-      <MethodPanel
-        eyebrow="01 / 03 · your brand"
-        title={<>Drop.</>}
-        subtitle={<>Paste your website URL. 30 seconds later, Ora knows your colours, your fonts, your voice — your whole vibe. You only do this once.</>}
-      >
-        <DropMockup />
-      </MethodPanel>
+      {/* ═══ Marquee — Ora-generated content stream ═══ */}
+      <MarqueeRow assets={showcase} />
 
-      {/* ═══ Panel 3 — PICK (UI mockup) ═══ */}
-      <MethodPanel
-        eyebrow="02 / 03 · we suggest"
-        title={<>Pick.</>}
-        subtitle={<>We suggest three ways to show your product this month — based on your brand, your industry, the season. You click one. That's it. No typing.</>}
-      >
-        <PickMockup />
-      </MethodPanel>
-
-      {/* ═══ Panel 4 — SHIP (UI mockup using featured posts) ═══ */}
-      <MethodPanel
-        eyebrow="03 / 03 · we publish"
-        title={<>Done.</>}
-        subtitle={<>A full pack, image + 5s film, sized for every platform. One click and they're live on Instagram, Facebook, TikTok, LinkedIn.</>}
-      >
-        <ShipMockup assets={showcase.slice(0, 9).map((a) => ({ imageUrl: a.imageUrl, videoUrl: a.videoUrl, platform: a.platform }))} />
-      </MethodPanel>
-
-      {/* ═══ Panel 4.5 — STEP-BY-STEP FLOW ═══
-       *   The cinematic Drop / Pick / Done panels above sell the *promise*.
-       *   This denser, numbered grid sells the *mechanism*. Lets a small-
-       *   commerce visitor follow finger-by-finger what actually happens
-       *   between the moment they paste their URL and the moment posts
-       *   land on Instagram. Different visual treatment from the cinematic
-       *   panels (smaller, denser, no parallax) so the two sections don't
-       *   compete — they complement. */}
-      <FullFlowSection authed={!!user} />
-
-      {/* ═══ Before / After wedge demo — pixel-perfect product ═══ */}
+      {/* ═══ Wedge demo — pixel-perfect product fidelity ═══ */}
       <BeforeAfterShowcase />
 
-      {/* ═══ Panel 5 — DELTA (split timers on dark canvas) ═══
-       *   Full 100vh like the others but instead of a single media, two
-       *   halves side-by-side: the old workflow (pale grey, 4h) vs Ora
-       *   (coral, 42s). No media behind — pure typography on black reads
-       *   as "the cold hard number" which is exactly the point. */}
-      <section className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: COLORS.cream }}>
-        <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
-          <div className="mono-label mb-10" style={{ color: "rgba(17,17,17,0.6)" }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
-            The delta
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2">
-            <div className="pb-8 md:py-12 md:pr-12">
-              <div className="mono-label mb-4" style={{ color: "rgba(17,17,17,0.5)" }}>Before Ora</div>
-              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "rgba(17,17,17,0.35)", lineHeight: 0.92 }}>
-                04:00:00
-              </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: "rgba(17,17,17,0.5)" }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Open Canva again</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Resize for every platform</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Write the captions yourself</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1 opacity-60">×</span> Schedule on each app, one by one</li>
-              </ul>
-            </div>
-            <div className="pt-8 pb-8 md:py-12 md:pl-12 md:border-l" style={{ borderColor: "rgba(17,17,17,0.12)" }}>
-              <div className="mono-label mb-4" style={{ color: "#FF6B47" }}>With Ora</div>
-              <div className="mb-8 tabular-nums" style={{ ...bagel, fontSize: "clamp(72px, 13vw, 200px)", color: "#FF6B47", lineHeight: 0.92 }}>
-                00:00:42
-              </div>
-              <ul className="body-tight space-y-3 text-[15.5px]" style={{ color: COLORS.ink }}>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> One photo</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Six posts ready</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Captions written for you</li>
-                <li className="flex items-start gap-3"><span className="mono-data mt-1" style={{ color: "#FF6B47" }}>✓</span> Posted on every platform</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* ═══ How it works — 4 numbered cards ═══ */}
+      <HowItWorks />
 
-      {/* Gallery section removed — the SHIP panel above already shows a
-       *  6-asset pack grid fed by the same showcase data, so a second
-       *  "here's a gallery" scroll beat was pure repetition. If we need
-       *  dedicated case-study surfacing later, it belongs on its own
-       *  /cases subpage rather than stacked on the main narrative. */}
+      {/* ═══ Feature cards — 6 capabilities on dark ═══ */}
+      <FeatureCards />
 
-      {/* ═══ Panel 6 — PRICING TIERS (3 cards) ═══
-       *   The actual tiers from /pricing, surfaced on the landing so
-       *   visitors don't have to leave to know what they're paying.
-       *   Studio is highlighted with a coral outline (it's the
-       *   most-picked tier). */}
+      {/* ═══ Pricing tiers ═══ */}
       <PricingPanel primaryHref={primaryHref} />
 
-      {/* ═══ FAQ — minimal accordion ═══ */}
+      {/* ═══ FAQ accordion ═══ */}
       <FAQAccordion />
 
-      {/* ═══ Panel 8 — FINAL CTA (full-viewport) ═══
-       *   One last cinematic beat. No media behind — just a huge Bagel
-       *   statement on black with the coral payoff, CTA + mono pricing. */}
-      <section id="pricing" className="relative h-screen w-full overflow-hidden flex items-center" style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.08)" }}>
-        <div className="px-5 md:px-10 w-full max-w-[1600px] mx-auto">
-          <div className="mono-label mb-6" style={{ color: "rgba(17,17,17,0.6)" }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
-            Start creating
-          </div>
-          <h2 className="leading-[0.9] max-w-[18ch] mb-10" style={{ ...bagel, fontSize: "clamp(64px, 12vw, 200px)", color: COLORS.ink }}>
-            Stop designing.<br />
-            <span style={{ color: "#FF6B47" }}>Start surprising.</span>
-          </h2>
-          <p className="body-tight text-[17px] md:text-[19px] max-w-xl mb-10" style={{ color: "rgba(17,17,17,0.75)" }}>
-            Join the brands who've stopped briefing Figma. Pick a plan, ship your first pack tonight.
-          </p>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "footer_cta", dest: primaryHref, authed: !!user })}>
-              <Button variant="accent" size="lg">
-                Pick a plan <ArrowRight size={16} />
-              </Button>
-            </Link>
-            <span className="mono-label" style={{ color: "rgba(17,17,17,0.5)" }}>
-              From €19/mo · cancel anytime
-            </span>
-          </div>
-        </div>
-      </section>
+      {/* ═══ Final CTA — coral-tinted band ═══ */}
+      <FinalCTA primaryHref={primaryHref} user={user} />
 
       {/* ═══ Footer — dark minimal, mono ═══ */}
       <footer style={{ background: COLORS.cream, borderTop: "1px solid rgba(17,17,17,0.08)" }}>
