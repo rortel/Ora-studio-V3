@@ -800,6 +800,14 @@ function SurpriseContent() {
         // (paths like /collections/hommes-boots/ or /femme/ are unambiguous,
         // unlike scraped content which sometimes drops the gender keyword).
         productPageUrl: productPageUrl.trim() || undefined,
+        // Forward the resolved logo URL — vault or custom upload. Server
+        // composites the actual PNG onto every shot via persistOne (see
+        // compositeImageWithLogo). Empty / null when user picked "No logo".
+        logoUrl: (() => {
+          if (logoChoice === "vault" && vaultLogoUrl) return vaultLogoUrl;
+          if (logoChoice === "custom" && customLogoUrl) return customLogoUrl;
+          return undefined;
+        })(),
         productDescription: productDescription.trim() || undefined,
         enrichedDescription: enrichedDescription || undefined,
         productPrice: productPrice.trim() || undefined,
@@ -988,7 +996,7 @@ function SurpriseContent() {
       setBusy(false);
       setActiveRequestId(null);
     }
-  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId, scrapedProduct]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId, scrapedProduct, productPageUrl, logoChoice, vaultLogoUrl, customLogoUrl]);
 
   // ── Publish the entire pack to the Calendar ──────────────────────
   // Maps each ok asset → a draft Calendar event with an AI-suggested
@@ -1484,19 +1492,18 @@ function SurpriseContent() {
                   {/* Send */}
                   <button
                     onClick={() => {
-                      // Build brief addendum from the logo choice. Vault logo
-                      // is already auto-injected server-side, but we surface
-                      // the explicit instruction so the planner knows to
-                      // place it discreetly. Custom upload appends its URL
-                      // verbatim. "No logo" sends an explicit "no brand
-                      // mark" hint that overrides the default vault inject.
+                      // Brief = user free-text only; the logo is forwarded as
+                      // a structured payload field (read by handleSurprise via
+                      // closure on logoChoice/vaultLogoUrl/customLogoUrl). The
+                      // server bakes the actual PNG into every shot via
+                      // compositeImageWithLogo — no need to bloat the prompt
+                      // with a logo URL the image model can't use anyway.
+                      // Only surfaces a "no logo" hint when the user opted
+                      // out, so the planner doesn't ask the model to render
+                      // a hallucinated brand mark.
                       const parts: string[] = [];
                       if (simpleBrief.trim()) parts.push(simpleBrief.trim());
-                      if (logoChoice === "vault" && vaultLogoUrl) {
-                        parts.push(`Include the brand logo (${vaultLogoUrl}) as a small discreet mark in a corner of each shot — never large, never central.`);
-                      } else if (logoChoice === "custom" && customLogoUrl) {
-                        parts.push(`Include this brand logo (${customLogoUrl}) as a small discreet mark in a corner of each shot — never large, never central.`);
-                      } else if (logoChoice === null) {
+                      if (logoChoice === null) {
                         parts.push("Do NOT include any brand logo, wordmark, or brand name in any shot.");
                       }
                       const composedBrief = parts.join(" ").trim() || undefined;

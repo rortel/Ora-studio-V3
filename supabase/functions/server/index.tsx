@@ -7,7 +7,7 @@ import { Hono } from "npm:hono@4.4.2";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:15Z — v689-url-gender-signal");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T14:30Z — v690-logo-composite");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -10623,6 +10623,11 @@ app.post("/analyze/surprise-me", async (c) => {
     // /collections/hommes-boots/, /femme/jeans/, /men/shirts/) which the
     // scraped content sometimes drops. We keep it raw to feed inferProductGender.
     const productPageUrl     = String(body?.productPageUrl || "").trim().slice(0, 500);
+    // Optional brand logo URL — when set, every persisted image shot gets
+    // the logo overlaid at the bottom-right corner via compositeImageWithLogo
+    // (called from persistOne). Source can be the Brand Vault logo URL or
+    // a custom one uploaded by the user. Empty string disables compositing.
+    const logoUrl            = String(body?.logoUrl || "").trim().slice(0, 500);
     const userDescription = String(body?.productDescription || "").trim().slice(0, 400);
     const enrichedDescription = String(body?.enrichedDescription || "").trim().slice(0, 1200);
     const productDescription = enrichedDescription || userDescription;
@@ -11188,8 +11193,23 @@ OUTPUT JSON:
       try {
         const dl = await fetch(sourceUrl, { signal: AbortSignal.timeout(45_000) });
         if (!dl.ok) return null;
-        const ct  = dl.headers.get("content-type") || "image/jpeg";
-        const buf = new Uint8Array(await dl.arrayBuffer());
+        let ct  = dl.headers.get("content-type") || "image/jpeg";
+        let buf = new Uint8Array(await dl.arrayBuffer());
+        // ── Logo overlay step ──
+        // When the request carries a logoUrl (vault logo OR custom upload),
+        // bake it into the bottom-right corner BEFORE upload so every
+        // download / publish / library preview ships with the merchant's
+        // exact brand mark. Skipped for video poster frames (.mp4 ext) so
+        // the logo doesn't sit awkwardly on a stale frame of a moving clip.
+        if (logoUrl && !fileName.toLowerCase().endsWith(".mp4")) {
+          const t0 = Date.now();
+          const composited = await compositeImageWithLogo(buf, logoUrl);
+          if (composited) {
+            buf = composited.buf;
+            ct = composited.contentType;
+            console.log(`[surprise-me] logo composited onto ${fileName} (${Date.now() - t0}ms)`);
+          }
+        }
         const path = `${user.id}/surprise/${campaignSlug}/${platform}/${Date.now()}-${fileName}`;
         const { error: upErr } = await sb.storage.from(GENERATED_ASSETS_BUCKET).upload(path, buf, { contentType: ct, upsert: true });
         if (upErr) { console.log(`[surprise-me] upload err: ${upErr.message}`); return null; }
@@ -12223,6 +12243,64 @@ async function uploadPngToStorage(pngBlob: Blob, prefix: string, userId: string 
   const { data: signedData } = await sb.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 7 days
   if (!signedData?.signedUrl) throw new Error("Storage: no signed URL");
   return signedData.signedUrl;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOGO COMPOSITING — overlay a brand logo onto a generated image.
+// ═══════════════════════════════════════════════════════════════════
+// Used by surprise-me's persistOne when the request payload carries
+// a logoUrl (vault logo or custom upload). Photoroom Virtual Model /
+// Ghost Mannequin / Studio AI cannot accept a second image as input,
+// so we apply the logo as a downstream compositing step on the
+// returned generated image — this guarantees the merchant's exact
+// PNG ends up in every shot, not a hallucinated "logo-shaped thing".
+//
+// Strategy: decode source via imagescript (pure-JS, Deno-native),
+// fetch + decode the logo, resize logo to ~12% of source width
+// (keeps it discreet — the brief instructed the planner to leave a
+// clean corner anyway), composite at bottom-right with 2.5% padding,
+// re-encode as PNG and return. On any error, returns null and the
+// caller falls back to the un-logoed image.
+//
+// Cost: ~300-800 ms per image, ~10 MB transient memory. Acceptable
+// at concurrency 3 within the 256 MB Edge Function envelope.
+async function compositeImageWithLogo(
+  srcBuf: Uint8Array,
+  logoUrl: string,
+): Promise<{ buf: Uint8Array; contentType: string } | null> {
+  try {
+    const { Image } = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+    // Decode source image — imagescript accepts JPEG/PNG/WebP and
+    // returns RGBA so we can composite directly.
+    const src = await Image.decode(srcBuf);
+    const w = src.width;
+    const h = src.height;
+    if (!w || !h) return null;
+    // Fetch + decode logo. Hard 15 s timeout so a slow Vault CDN
+    // can't gate the whole pack.
+    const logoRes = await fetch(logoUrl, { signal: AbortSignal.timeout(15_000) });
+    if (!logoRes.ok) {
+      console.log(`[composite-logo] fetch logo ${logoRes.status}`);
+      return null;
+    }
+    const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
+    let logo = await Image.decode(logoBytes);
+    // Resize logo to ~12% of source width, preserving aspect ratio.
+    const targetW = Math.max(80, Math.round(w * 0.12));
+    const targetH = Math.max(1, Math.round(logo.height * (targetW / logo.width)));
+    logo = logo.resize(targetW, targetH);
+    // Composite at bottom-right with 2.5% padding on both axes.
+    const padX = Math.round(w * 0.025);
+    const padY = Math.round(h * 0.025);
+    const x = Math.max(0, w - logo.width - padX);
+    const y = Math.max(0, h - logo.height - padY);
+    src.composite(logo, x, y);
+    const out = await src.encode();
+    return { buf: out, contentType: "image/png" };
+  } catch (err) {
+    console.log(`[composite-logo] error: ${String((err as any)?.message || err).slice(0, 200)}`);
+    return null;
+  }
 }
 
 // Photoroom Studio AI background composite. Single strategy — no cascade.
