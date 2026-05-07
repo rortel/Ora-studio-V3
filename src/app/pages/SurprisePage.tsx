@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus, Check } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus, Check, Globe2 } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -191,6 +191,15 @@ function SurpriseContent() {
   const [customLogoUrl, setCustomLogoUrl] = useState<string>("");
   const [vaultLogoUrl, setVaultLogoUrl] = useState<string>("");
   const [showLogoMenu, setShowLogoMenu] = useState(false);
+
+  // Product picker popover — opened from the Product card in the
+  // simple-mode bottom bar. Three options: (1) browse user's saved
+  // products [coming soon, gated behind a future product library],
+  // (2) paste a URL and scrape via the existing /products/scrape-url
+  // endpoint, (3) upload a photo via the existing uploadProductPhoto
+  // handler. All three feed the same state vars (productPhotos,
+  // scrapedProduct, productPageUrl) used by handleSurprise.
+  const [showProductMenu, setShowProductMenu] = useState(false);
   // Rich product attributes scraped from the URL. The 200-char productDescription
   // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
   // come out flat because the model has no concrete attributes to anchor the
@@ -1080,42 +1089,154 @@ function SurpriseContent() {
             >
               {/* Three placeholder cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 md:gap-3 mb-2.5">
-                {/* Product */}
-                <button
-                  type="button"
-                  onClick={() => { setSimpleMode(false); }}
-                  className="rounded-xl p-3.5 text-left transition-all"
-                  style={{
-                    background: productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
-                    border: `1px solid ${productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.35)" : "rgba(17,17,17,0.06)"}`,
-                    minHeight: 88,
-                  }}
-                >
-                  <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2" style={{ color: MUTED }}>
-                    Product
-                  </div>
-                  {productPhotos.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <img src={productPhotos[0]} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: `1px solid ${BORDER}` }} />
-                      <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
-                        {productPhotos.length} photo{productPhotos.length > 1 ? "s" : ""} ready
-                      </div>
+                {/* Product — popover with 3 input paths */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductMenu((v) => !v)}
+                    className="w-full rounded-xl p-3.5 text-left transition-all"
+                    style={{
+                      background: productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.06)" : "rgba(17,17,17,0.025)",
+                      border: `1px solid ${productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.35)" : "rgba(17,17,17,0.06)"}`,
+                      minHeight: 88,
+                    }}
+                  >
+                    <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2" style={{ color: MUTED }}>
+                      Product
                     </div>
-                  ) : scrapedProduct?.fullDescription ? (
-                    <div className="text-[12.5px] line-clamp-2" style={{ color: TEXT }}>
-                      {scrapedProduct.fullDescription.slice(0, 90)}…
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.12)" }}>
-                        <Plus size={14} style={{ color: ACCENT }} />
+                    {productPhotos.length > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <img src={productPhotos[0]} alt="" className="w-10 h-10 rounded-lg object-cover" style={{ border: `1px solid ${BORDER}` }} />
+                        <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                          {productPhotos.length} photo{productPhotos.length > 1 ? "s" : ""} ready
+                        </div>
                       </div>
-                      <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
-                        Add a product
+                    ) : scrapedProduct?.fullDescription ? (
+                      <div className="text-[12.5px] line-clamp-2" style={{ color: TEXT }}>
+                        {scrapedProduct.fullDescription.slice(0, 90)}…
                       </div>
-                    </div>
-                  )}
-                </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.12)" }}>
+                          <Plus size={14} style={{ color: ACCENT }} />
+                        </div>
+                        <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
+                          Add a product
+                        </div>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Popover with three input paths */}
+                  <AnimatePresence>
+                    {showProductMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute left-0 right-0 z-40 rounded-xl overflow-hidden"
+                        style={{
+                          bottom: "calc(100% + 8px)",
+                          background: "#FFFFFF",
+                          border: `1px solid ${BORDER}`,
+                          boxShadow: "0 18px 36px -10px rgba(17,17,17,0.18)",
+                        }}
+                      >
+                        {/* Option 1 — saved products library (future feature) */}
+                        <div
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left opacity-50 cursor-not-allowed"
+                          aria-disabled="true"
+                          title="Coming soon"
+                        >
+                          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: "rgba(17,17,17,0.06)" }}>
+                            <Package size={13} style={{ color: MUTED }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-semibold flex items-center gap-2" style={{ color: TEXT }}>
+                              Browse my products
+                              <span className="px-1.5 py-0.5 rounded-full text-[8.5px] font-bold" style={{ background: "rgba(17,17,17,0.08)", color: MUTED }}>SOON</span>
+                            </div>
+                            <div className="text-[10.5px]" style={{ color: MUTED }}>Pick from products you've saved</div>
+                          </div>
+                        </div>
+
+                        {/* Option 2 — paste URL */}
+                        <div
+                          className="px-3 py-2.5"
+                          style={{ borderTop: `1px solid ${BORDER}` }}
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
+                              <Globe2 size={13} style={{ color: ACCENT }} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Paste a product URL</div>
+                              <div className="text-[10.5px]" style={{ color: MUTED }}>We extract the photo, copy, attributes</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="url"
+                              value={productPageUrl}
+                              onChange={(e) => setProductPageUrl(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !scanningProductUrl && productPageUrl.trim()) {
+                                  e.preventDefault();
+                                  scanProductUrl();
+                                  setShowProductMenu(false);
+                                }
+                              }}
+                              placeholder="https://yourshop.com/product/..."
+                              className="flex-1 px-2.5 py-1.5 rounded-md text-[12px] outline-none"
+                              style={{ background: "#FFFFFF", color: TEXT, border: `1px solid ${BORDER}` }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => { scanProductUrl(); setShowProductMenu(false); }}
+                              disabled={scanningProductUrl || !productPageUrl.trim()}
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ background: ACCENT, color: "#FFFFFF" }}
+                              aria-label="Scan URL"
+                              title="Scan URL"
+                            >
+                              {scanningProductUrl ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Option 3 — upload photo */}
+                        <label
+                          className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition hover:bg-black/[0.03] cursor-pointer"
+                          style={{ borderTop: `1px solid ${BORDER}` }}
+                        >
+                          <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
+                            <Upload size={13} style={{ color: ACCENT }} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Upload a photo</div>
+                            <div className="text-[10.5px]" style={{ color: MUTED }}>JPG / PNG · best on a clean background</div>
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            multiple
+                            className="hidden"
+                            onChange={async (e) => {
+                              const files = Array.from(e.target.files || []);
+                              setShowProductMenu(false);
+                              for (const f of files) {
+                                await uploadProductPhoto(f);
+                              }
+                              // reset value so picking same file again still triggers onChange
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
 
                 {/* Style */}
                 <button
