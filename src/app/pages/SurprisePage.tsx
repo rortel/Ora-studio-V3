@@ -163,6 +163,16 @@ function SurpriseContent() {
   // scraperont une URL ou cliqueront "Plus de détails", pas besoin de
   // les leur imposer dès l'ouverture.
   const [showDetails, setShowDetails] = useState(false);
+  // Simple-mode hero — Feads-inspired single-screen flow. Default ON so
+  // first-time users get the "drop URL or photo → click Generate" path
+  // without seeing the full controls. Toggling "Personnaliser" reveals
+  // the existing rich form below (every input + chip + style picker)
+  // for power users. Stored in component state, not persisted.
+  const [simpleMode, setSimpleMode] = useState(true);
+  // Free-text brief shown only in simple mode. Falls through to handleSurprise
+  // as `brief` override so the planner gets it directly without going through
+  // the chip composition path.
+  const [simpleBrief, setSimpleBrief] = useState("");
   // Rich product attributes scraped from the URL. The 200-char productDescription
   // alone is too thin to drive a fresh-scene generation (UGC / Lifestyle styles
   // come out flat because the model has no concrete attributes to anchor the
@@ -987,10 +997,239 @@ function SurpriseContent() {
     <div style={{ background: BG, color: TEXT }} className="min-h-screen flex flex-col">
       <AppTabs active="surprise" />
 
+      {/* ═══════════════════════════════════════════════════════════════
+          SIMPLE-MODE HERO (default) — Feads-inspired single screen.
+          Three placeholder cards (Product / Style / Brief), one action
+          row (Image|Video / Quantity / Format), one Generate button.
+          Smart defaults mean the user can click Generate immediately
+          after dropping a product. "Personnaliser" toggle below reveals
+          the existing rich form (kept intact) for power users.
+          ═══════════════════════════════════════════════════════════════ */}
+      {simpleMode && stage === "idle" && !pack && (
+        <main className="flex-1 flex items-center">
+          <div className="w-full max-w-[1080px] mx-auto px-5 md:px-10 py-12 md:py-20">
+            {/* Title */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+              className="mb-8 md:mb-10 text-center"
+            >
+              <h1 className="leading-[1.05]" style={{ fontFamily: DISPLAY, fontSize: "clamp(36px, 6.5vw, 72px)", letterSpacing: "-0.03em", color: TEXT }}>
+                Drop a photo. Get a <span style={{ fontFamily: '"Playfair Display", serif', fontStyle: "italic", fontWeight: 500 }}>pack</span>.
+              </h1>
+              <p className="mt-3 text-[14px] md:text-[15px] max-w-[540px] mx-auto" style={{ color: MUTED, fontWeight: 300 }}>
+                Paste a product URL or drop a photo. We compose 6 platform-ready visuals — pixel-perfect on the product, never re-rendered.
+              </p>
+            </motion.div>
+
+            {/* Three horizontal placeholder cards — Product / Style / Brief */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}
+              className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-4"
+            >
+              {/* Product card */}
+              <button
+                type="button"
+                onClick={() => { setSimpleMode(false); }}
+                className="group rounded-2xl p-5 text-left transition-all hover:border-[var(--coral,#FF6B47)]"
+                style={{
+                  background: productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.04)" : "#fff",
+                  border: `1px solid ${productPhotos.length > 0 || scrapedProduct ? "rgba(255,107,71,0.4)" : BORDER}`,
+                  minHeight: 140,
+                }}
+              >
+                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3" style={{ color: MUTED }}>
+                  Product
+                </div>
+                {productPhotos.length > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <img src={productPhotos[0]} alt="" className="w-12 h-12 rounded-lg object-cover" style={{ border: `1px solid ${BORDER}` }} />
+                    <div className="text-[13px] font-medium" style={{ color: TEXT }}>
+                      {productPhotos.length} photo{productPhotos.length > 1 ? "s" : ""} ready
+                    </div>
+                  </div>
+                ) : scrapedProduct?.fullDescription ? (
+                  <div className="text-[13px] line-clamp-3" style={{ color: TEXT }}>
+                    {scrapedProduct.fullDescription.slice(0, 100)}…
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
+                      <Upload size={16} style={{ color: ACCENT }} />
+                    </div>
+                    <div>
+                      <div className="text-[13.5px] font-semibold" style={{ color: TEXT }}>Upload or paste URL</div>
+                      <div className="text-[11.5px]" style={{ color: MUTED }}>Photo, image link, or product page</div>
+                    </div>
+                  </div>
+                )}
+              </button>
+
+              {/* Style card */}
+              <button
+                type="button"
+                onClick={() => { setSimpleMode(false); }}
+                className="rounded-2xl p-5 text-left transition-all"
+                style={{
+                  background: styleId ? "rgba(255,107,71,0.04)" : "#fff",
+                  border: `1px solid ${styleId ? "rgba(255,107,71,0.4)" : BORDER}`,
+                  minHeight: 140,
+                }}
+              >
+                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3 flex items-center gap-2" style={{ color: MUTED }}>
+                  Style
+                  <span className="px-1.5 py-0.5 rounded-full text-[9.5px]" style={{ background: ACCENT, color: "#fff", fontWeight: 600 }}>AI</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,71,0.1)" }}>
+                    <Wand2 size={16} style={{ color: ACCENT }} />
+                  </div>
+                  <div>
+                    <div className="text-[13.5px] font-semibold" style={{ color: TEXT }}>
+                      {styleId ? `Style: ${styleId}` : "Balanced for ads (AI)"}
+                    </div>
+                    <div className="text-[11.5px]" style={{ color: MUTED }}>
+                      {styleId ? "Custom style locked" : "We pick the best fit per shot"}
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              {/* Brief card — inline editable */}
+              <div
+                className="rounded-2xl p-5 transition-all"
+                style={{
+                  background: simpleBrief ? "rgba(255,107,71,0.04)" : "#fff",
+                  border: `1px solid ${simpleBrief ? "rgba(255,107,71,0.4)" : BORDER}`,
+                  minHeight: 140,
+                }}
+              >
+                <div className="text-[10.5px] font-mono uppercase tracking-[0.18em] mb-3" style={{ color: MUTED }}>
+                  Brief <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+                </div>
+                <textarea
+                  value={simpleBrief}
+                  onChange={(e) => setSimpleBrief(e.target.value)}
+                  placeholder="ex: outdoors, white background, luxury mood, natural light"
+                  rows={3}
+                  maxLength={400}
+                  className="w-full text-[13px] resize-none bg-transparent outline-none"
+                  style={{ color: TEXT, fontFamily: "inherit", lineHeight: 1.5 }}
+                />
+              </div>
+            </motion.div>
+
+            {/* Action row — secondary controls + live credit cost + send */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}
+              className="rounded-2xl p-3 md:p-4 flex flex-wrap items-center gap-3 md:gap-4"
+              style={{ background: "#fff", border: `1px solid ${BORDER}` }}
+            >
+              {/* Image / Video pill */}
+              <div className="inline-flex rounded-full p-1" style={{ background: "rgba(17,17,17,0.04)" }}>
+                {(["image", "film"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setMediaType(t)}
+                    className="px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition"
+                    style={{
+                      background: mediaType === t ? "#fff" : "transparent",
+                      color: mediaType === t ? TEXT : MUTED,
+                      boxShadow: mediaType === t ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                    }}
+                  >
+                    {t === "image" ? "Image" : "Video"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Quantity selector */}
+              <label className="flex items-center gap-1.5 text-[12px]" style={{ color: MUTED }}>
+                <span>Quantity</span>
+                <select
+                  value={assetCount}
+                  onChange={(e) => setAssetCount(Number(e.target.value))}
+                  className="px-2 py-1 rounded-md text-[12px] font-semibold bg-transparent outline-none"
+                  style={{ color: TEXT, border: `1px solid ${BORDER}` }}
+                >
+                  {[3, 6, 9, 12].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+
+              {/* Quality / duration depending on media type */}
+              {mediaType === "film" && (
+                <label className="flex items-center gap-1.5 text-[12px]" style={{ color: MUTED }}>
+                  <span>Length</span>
+                  <select
+                    value={videoDuration}
+                    onChange={(e) => setVideoDuration(e.target.value as "3s" | "5s" | "8s")}
+                    className="px-2 py-1 rounded-md text-[12px] font-semibold bg-transparent outline-none"
+                    style={{ color: TEXT, border: `1px solid ${BORDER}` }}
+                  >
+                    <option value="3s">3s</option>
+                    <option value="5s">5s</option>
+                    <option value="8s">8s</option>
+                  </select>
+                </label>
+              )}
+
+              <div className="ml-auto flex items-center gap-3">
+                {/* Live credit cost — shows what this generation will consume */}
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold" style={{ background: "rgba(255,107,71,0.08)", color: ACCENT }}>
+                  <Sparkles size={11} />
+                  {(() => {
+                    // Conservative cost preview: image = assetCount credits, film = assetCount * 4
+                    const cost = mediaType === "film" ? assetCount * 4 : assetCount;
+                    return `${cost} credit${cost > 1 ? "s" : ""}`;
+                  })()}
+                </div>
+
+                {/* Generate button — paper-plane icon, coral round */}
+                <button
+                  onClick={() => handleSurprise({ brief: simpleBrief.trim() || undefined })}
+                  disabled={busy || (productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim())}
+                  className="inline-flex items-center justify-center w-11 h-11 rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+                  style={{ background: ACCENT, color: "#fff" }}
+                  aria-label="Generate"
+                  title={productPhotos.length === 0 && !scrapedProduct && !simpleBrief.trim() ? "Drop a photo, paste a URL, or write a brief" : "Generate"}
+                >
+                  {busy ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </div>
+            </motion.div>
+
+            {/* Personnaliser toggle — small, discreet, central */}
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4, delay: 0.25 }}
+              className="mt-6 text-center"
+            >
+              <button
+                onClick={() => setSimpleMode(false)}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium hover:underline transition"
+                style={{ color: MUTED }}
+              >
+                Customize advanced options
+                <ChevronDown size={13} />
+              </button>
+            </motion.div>
+          </div>
+        </main>
+      )}
+
       {/* Idle / form state — one sentence, one button, fine-tune hidden */}
-      {stage === "idle" && !pack && (
+      {!simpleMode && stage === "idle" && !pack && (
         <main className="flex-1 flex items-center">
           <div className="w-full max-w-[900px] mx-auto px-5 md:px-10 py-14 md:py-24">
+            {/* Back-to-simple link — discreet, top-right */}
+            <div className="mb-6 flex justify-end">
+              <button
+                onClick={() => setSimpleMode(true)}
+                className="inline-flex items-center gap-1.5 text-[12px] font-medium hover:text-black transition"
+                style={{ color: MUTED }}
+              >
+                <ArrowLeft size={12} />
+                Simple mode
+              </button>
+            </div>
             {/* Brand Vault nudge — editorial, dismissible, non-blocking */}
             <AnimatePresence>
               {hasVaultFeature && vaultMissing && !vaultNudgeDismissed && (
