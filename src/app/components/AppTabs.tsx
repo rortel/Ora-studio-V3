@@ -50,17 +50,16 @@ export function AppTabs({ active }: { active?: TabId }) {
   })();
   const credits = typeof remainingCredits === "number" ? remainingCredits : 0;
   const lowOrEmpty = credits <= 5;
-  // On the landing page (root URL) the navbar floats OVER the hero video
-  // (position: fixed, transparent bg, no border). Inside the app (/hub/...)
-  // it stays in normal flow with a tinted blurred backdrop for legibility
-  // against scrolling content.
+  // Landing page (root URL) now has a light hero background — same
+  // visual language as the in-app screens. Use the in-app navbar style
+  // there too: sticky position, blurred-cream backdrop, INK logo. The
+  // previous "fixed-transparent-white-logo" mode was for the legacy
+  // dark cinematic hero which has been retired.
   const isLanding = location.pathname === "/" || location.pathname === "";
-  const headerBg = isLanding ? "transparent" : `${BG}CC`;
-  const headerBorder = isLanding ? "1px solid transparent" : `1px solid ${LINE}`;
-  const headerBlur = isLanding ? "none" : "blur(18px) saturate(180%)";
-  const headerPosClass = isLanding
-    ? "fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-5 md:px-8 h-14"
-    : "sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-14";
+  const headerBg = `${BG}CC`;
+  const headerBorder = `1px solid ${LINE}`;
+  const headerBlur = "blur(18px) saturate(180%)";
+  const headerPosClass = "sticky top-0 z-30 flex items-center justify-between px-5 md:px-8 h-14";
 
   return (
     <header
@@ -73,7 +72,7 @@ export function AppTabs({ active }: { active?: TabId }) {
           style={{
             fontFamily: `"Bagel Fat One", "Inter", system-ui, sans-serif`,
             letterSpacing: "-0.01em",
-            color: isLanding ? "#FFFFFF" : INK,
+            color: INK,
           }}
         >Ora</span>
       </Link>
