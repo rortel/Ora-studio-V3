@@ -2774,9 +2774,22 @@ function SurpriseContent() {
                           {it.status === "ok" && it.imageUrl && (
                             <>
                               <button
-                                onClick={() => navigate("/hub/editor", { state: { assetUrl: it.imageUrl, assetType: "image", assetId: it.fileName } })}
+                                onClick={() => navigate("/hub/editor", {
+                                  state: {
+                                    assetUrl: it.imageUrl,
+                                    assetType: "image",
+                                    assetId: it.fileName,
+                                    // Seed the editor with the LLM headline + any
+                                    // inline edit the user already made on the grid
+                                    // preview. The editor turns this into the first
+                                    // draggable text block.
+                                    overlayText: editedOverlays[it.fileName] ?? it.overlayText,
+                                    overlayPosition: it.overlayPosition,
+                                    overlayStyle: it.overlayStyle,
+                                  },
+                                })}
                                 className="shrink-0 w-7 h-7 rounded-full hover:bg-black/5 flex items-center justify-center"
-                                aria-label="Edit" title="Add logo, text…">
+                                aria-label="Edit" title="Add text, restyle, regenerate…">
                                 <Wand2 size={12} />
                               </button>
                               <button
