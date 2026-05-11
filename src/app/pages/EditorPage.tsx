@@ -436,6 +436,18 @@ function EditorAgency() {
 
         <div className="w-px h-6 mx-1" style={{ background: COLORS.line }} />
 
+        <Button
+          variant={aiMode ? "accent" : "ghost"}
+          size="sm"
+          onClick={() => setAiMode(!aiMode)}
+          disabled={!backgroundImg}
+          title={backgroundImg ? "Describe how to edit the photo" : "Open an image first"}
+        >
+          <Wand2 size={13} /> Ask AI
+        </Button>
+
+        <div className="w-px h-6 mx-1" style={{ background: COLORS.line }} />
+
         <Button variant="ghost" size="sm" onClick={handleSave} disabled={saving} title="Save to Library (⌘S)">
           {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
           {saving ? "Saving…" : "Save"}
@@ -606,39 +618,20 @@ function EditorAgency() {
               onUpdate={(next) => p.selectedLayer && p.updateLayer(p.selectedLayer.id, next)}
               onDelete={() => p.selectedLayer && p.removeLayer(p.selectedLayer.id)}
               vaultColors={vaultColors}
+              vaultLogoUrl={vaultLogoUrl}
+              backgroundUrl={backgroundUrl}
+              onAddText={addText}
+              onAddLogo={addLogo}
+              onAddShape={addShape}
+              onRemoveBackground={() => {
+                setBackgroundImg(null);
+                setBackgroundUrl(null);
+                p.updateProjectProps({ backgroundImageUrl: null });
+              }}
             />
           )}
         </aside>
       </div>
-
-      {/* Layer tools */}
-      <footer
-        className="flex items-center justify-center gap-2 px-5 py-3 border-t flex-wrap"
-        style={{ background: "#FFFFFF", borderColor: COLORS.line }}
-      >
-        <Button variant="ghost" size="sm" onClick={addText}>
-          <TypeIcon size={14} /> Text
-        </Button>
-        <Button variant="ghost" size="sm" onClick={addLogo}>
-          <ImagePlus size={14} /> Logo
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => addShape("rect")}>
-          <Square size={14} /> Rectangle
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => addShape("circle")}>
-          <CircleIcon size={14} /> Circle
-        </Button>
-        <span className="w-px h-5 mx-1" style={{ background: COLORS.line }} />
-        <Button
-          variant={aiMode ? "accent" : "ghost"}
-          size="sm"
-          onClick={() => setAiMode(!aiMode)}
-          disabled={!backgroundImg}
-          title={backgroundImg ? "Describe how to edit the photo" : "Open an image first"}
-        >
-          <Wand2 size={14} /> Ask AI
-        </Button>
-      </footer>
     </div>
   );
 }
@@ -818,22 +811,121 @@ function LogoImageNode({
    locks the colour into the current selection.
    ────────────────────────────────────────────────────────────── */
 function Inspector({
-  selected, onUpdate, onDelete, vaultColors,
+  selected, onUpdate, onDelete, vaultColors, vaultLogoUrl, backgroundUrl,
+  onAddText, onAddLogo, onAddShape, onRemoveBackground,
 }: {
   selected: UnifiedLayer | undefined;
   onUpdate: (next: Partial<UnifiedLayer>) => void;
   onDelete: () => void;
   vaultColors: string[];
+  vaultLogoUrl: string | null;
+  backgroundUrl: string | null;
+  onAddText: () => void;
+  onAddLogo: () => void;
+  onAddShape: (kind: "rect" | "circle") => void;
+  onRemoveBackground: () => void;
 }) {
   if (!selected) {
+    // Empty-state Inspector. Without this the right rail just said "pick a
+    // layer below" and pointed at a footer that has since been removed.
+    // Now: add-layer cards, background controls (when there's a BG), and a
+    // brand-kit preview surfacing the Vault logo + palette so the user
+    // sees what's at hand before they start composing.
+    const AddCard = ({ icon, label, onClick, disabled, hint }: {
+      icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; hint?: string;
+    }) => (
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        className="flex flex-col items-start gap-1.5 rounded-xl p-3 text-left transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-black/[0.03]"
+        style={{ border: `1px solid ${COLORS.line}`, background: "#FFF" }}
+        title={hint}
+      >
+        <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(17,17,17,0.04)" }}>
+          {icon}
+        </span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.ink }}>{label}</span>
+      </button>
+    );
     return (
-      <div className="p-5">
-        <div className="text-[10px] uppercase tracking-[0.18em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-          Inspector
+      <div className="flex flex-col">
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b" style={{ borderColor: COLORS.line }}>
+          <div className="text-[10px] uppercase tracking-[0.18em]" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+            Inspector
+          </div>
+          <div className="text-[13px]" style={{ color: COLORS.muted }}>
+            Nothing selected
+          </div>
         </div>
-        <p className="text-[13px] leading-relaxed" style={{ color: COLORS.muted }}>
-          Pick a layer on the canvas, or drop a new one with Text, Logo, Rectangle or Circle below.
-        </p>
+
+        {/* Add layer */}
+        <div className="px-5 py-4 border-b" style={{ borderColor: COLORS.line }}>
+          <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+            Add layer
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <AddCard icon={<TypeIcon size={13} />}   label="Text"      onClick={onAddText} />
+            <AddCard icon={<ImagePlus size={13} />}  label="Logo"      onClick={onAddLogo}
+                     disabled={!vaultLogoUrl} hint={vaultLogoUrl ? "Place your Vault logo" : "Upload a logo in Vault first"} />
+            <AddCard icon={<Square size={13} />}     label="Rectangle" onClick={() => onAddShape("rect")} />
+            <AddCard icon={<CircleIcon size={13} />} label="Circle"    onClick={() => onAddShape("circle")} />
+          </div>
+        </div>
+
+        {/* Background controls */}
+        {backgroundUrl && (
+          <div className="px-5 py-4 border-b" style={{ borderColor: COLORS.line }}>
+            <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+              Background
+            </div>
+            <div className="flex items-center gap-3">
+              <div
+                className="shrink-0 rounded-lg overflow-hidden"
+                style={{ width: 48, height: 48, background: `center/cover no-repeat url("${backgroundUrl}")`, border: `1px solid ${COLORS.line}` }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11.5px] mb-1.5" style={{ color: COLORS.muted }}>
+                  Use <b style={{ color: COLORS.ink }}>Ask AI</b> in the top bar to rewrite it, or remove it.
+                </div>
+                <button
+                  onClick={onRemoveBackground}
+                  className="text-[11px] underline-offset-2 hover:underline"
+                  style={{ color: COLORS.coral, fontWeight: 600 }}
+                >
+                  Remove background
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Brand kit preview */}
+        {(vaultLogoUrl || vaultColors.length > 0) && (
+          <div className="px-5 py-4">
+            <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
+              Brand kit
+            </div>
+            {vaultLogoUrl && (
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  className="shrink-0 rounded-lg flex items-center justify-center"
+                  style={{ width: 40, height: 40, background: COLORS.warm, border: `1px solid ${COLORS.line}` }}
+                >
+                  <img src={vaultLogoUrl} alt="Logo" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain" }} />
+                </div>
+                <span style={{ fontSize: 11.5, color: COLORS.muted }}>Logo from Vault</span>
+              </div>
+            )}
+            {vaultColors.length > 0 && (
+              <div className="flex items-center flex-wrap gap-1.5">
+                {vaultColors.slice(0, 8).map((c) => (
+                  <span key={c} className="w-6 h-6 rounded-full" style={{ background: c, boxShadow: "inset 0 0 0 1px rgba(17,17,17,0.08)" }} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
