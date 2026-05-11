@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-07T18:00Z — v695-strip-quoted-headline");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T17:00Z — v696-video-tighten-no-cascade-on-timeout");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11790,13 +11790,15 @@ OUTPUT JSON:
             logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: submit.error };
           }
-          // Poll up to 75s (Kling 2.5 happy path is 50-70s). Was 120s —
-          // combined with concept (30s) + stills (85s) it pushed total
-          // wall time past the 150s edge gateway and triggered 504s.
-          // 75s catches the median + p75 latency; the long tail (>75s)
-          // ships as a still and the user can retry the film.
+          // Poll up to 50s. Kling 2.5's median i2v latency is 40-55s; the
+          // p90 long-tail (60-90s) doesn't fit our 150s edge budget anyway
+          // once we account for concept (~30s) + stills (~70-85s). Cutting
+          // the cap from 75s → 50s sheds the slowest 25% of requests but
+          // keeps the whole pack within the edge gateway envelope. Lost
+          // videos surface as "Kling timed out" on the item and the user
+          // can retry the film standalone from the result screen.
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 75_000) {
+          while (Date.now() - pollStart < 50_000) {
             await new Promise((r) => setTimeout(r, 4_000));
             const status = await callFalVideoStatus(submit.statusUrl, submit.responseUrl);
             if (status.state === "completed") {
@@ -11813,7 +11815,7 @@ OUTPUT JSON:
             }
           }
           logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Kling timed out (>75s)" };
+          return { ok: false, error: "Kling timed out (>50s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -11844,7 +11846,7 @@ OUTPUT JSON:
           const g = await startRes.json();
           if (!g.id) return { ok: false, error: "Luma Ray: no generation id" };
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 60_000) { // 60s cap per clip — Luma Ray Flash 2 happy path is 30-45s; tightened from 90s to keep total handler under the 150s edge gateway
+          while (Date.now() - pollStart < 35_000) { // 35s cap per clip — Luma Ray Flash 2 happy path is 25-35s; tightened from 60s so the Kling→Luma cascade can't exceed 85s combined and blow the 150s edge gateway when stills already used ~75s
             try {
               const pr = await fetch(`${LUMA_BASE}/generations/${g.id}`, { headers: lumaHeaders() });
               if (pr.ok) {
@@ -11862,7 +11864,7 @@ OUTPUT JSON:
             await new Promise((r) => setTimeout(r, 3_000));
           }
           logCost({ type: "video", model: "ray-flash-2", provider: "luma/ray-flash-2", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tRay, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Luma Ray timed out (>60s)" };
+          return { ok: false, error: "Luma Ray timed out (>35s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
@@ -11870,12 +11872,29 @@ OUTPUT JSON:
 
       // Primary path = Kling 2.5 Turbo Pro on FAL (better product consistency,
       // good scene awareness, uses the FAL_API_KEY we already have).
-      // Falls back to Luma Ray Flash 2 if Kling fails for any reason — never
-      // lets a video shot fail when Luma still has a chance.
+      // Falls back to Luma Ray Flash 2 only when (a) Kling returned a hard
+      // failure (model error, bad params) and (b) we have enough wall-clock
+      // left to actually finish a Luma poll. Timeouts in particular DON'T
+      // cascade — when Kling times out at 50s, the i2v GPU pipeline is
+      // congested and Luma's GPU isn't going to be faster; cascading just
+      // burns another 35s for the same outcome and risks blowing the
+      // edge function's 150s wall-clock. Better to surface the timeout
+      // immediately so the user can retry that single film standalone.
       const runVideoForShot = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string }) => {
         const k = await runKlingI2v(opts);
         if (k.ok) return k;
-        console.log(`[surprise-me:film] kling failed (${k.error}) — falling back to Luma Ray Flash 2`);
+        const errStr = String((k as any).error || "");
+        const isTimeout = /timed out|timeout/i.test(errStr);
+        const remainingMs = 150_000 - (Date.now() - t0);
+        if (isTimeout) {
+          console.log(`[surprise-me:film] kling timed out (${errStr}) — NOT cascading to Luma (same GPU congestion would just burn 35s more)`);
+          return k;
+        }
+        if (remainingMs < 40_000) {
+          console.log(`[surprise-me:film] kling failed (${errStr}) but only ${remainingMs}ms left — skipping Luma cascade to stay under edge budget`);
+          return k;
+        }
+        console.log(`[surprise-me:film] kling failed (${errStr}) — falling back to Luma Ray Flash 2 (${remainingMs}ms left)`);
         return await runRayVideo(opts);
       };
 
@@ -11914,23 +11933,32 @@ OUTPUT JSON:
       if (allFilmable.length > MAX_FILMS) {
         console.log(`[surprise-me:film] pack capped at ${MAX_FILMS}/${allFilmable.length} films (rest ship as stills only)`);
       }
-      // FILM PHASE WALL-CLOCK BUDGET. Tightened together: 50s budget,
-      // skip-entirely threshold at 95s of handler time. With concept
-      // (~30s) + stills (~60s typical) we land at ~90s before films,
-      // leaving 50s for at most one batch of clips. Anything tighter
-      // and films are skipped — better to return a clean still pack
-      // than to 504 the whole request.
-      const FILMS_BUDGET_MS = 50_000;
+      // FILM PHASE WALL-CLOCK BUDGET. Tightened together with the Kling
+      // and Luma per-clip caps (50s + 35s) so the worst case for a single
+      // video sits at 85s — and with stills at 75s max + films at 85s max
+      // we land at 160s, just over the 150s edge gateway. The skip
+      // threshold below pulls us back under by gating on stills elapsed.
+      //
+      // Sequence:
+      //   concept ~25s
+      //   stills  ~50-75s (capped via stills budget elsewhere)
+      //   films   up to FILMS_BUDGET_MS for launching new batches; each
+      //           clip runs up to 50s (Kling) without cascade-on-timeout
+      //           so wall-clock per parallel batch ≈ 50s.
+      //
+      // If stills used more than 75s, skip films entirely — better to
+      // return a clean still pack than 504 the request.
+      const FILMS_BUDGET_MS = 40_000;
       const filmsStartedAt = Date.now();
       const handlerElapsedAtFilmStart = filmsStartedAt - t0;
-      if (handlerElapsedAtFilmStart > 95_000) {
+      if (handlerElapsedAtFilmStart > 75_000) {
         console.log(`[surprise-me:film] skipping film phase entirely — stills already used ${handlerElapsedAtFilmStart}ms, no budget left`);
         for (const { idx } of filmable) {
           (items[idx] as any).videoError = "Skipped — pack hit budget on stills, retry to add films";
         }
       }
       const FILM_CONCURRENCY = 3;
-      for (let i = 0; handlerElapsedAtFilmStart <= 95_000 && i < filmable.length; i += FILM_CONCURRENCY) {
+      for (let i = 0; handlerElapsedAtFilmStart <= 75_000 && i < filmable.length; i += FILM_CONCURRENCY) {
         // Check budget before launching next batch — bail if close to limit.
         if (Date.now() - filmsStartedAt > FILMS_BUDGET_MS) {
           console.log(`[surprise-me:film] film budget exceeded after ${i} clips, marking remaining as queued`);
