@@ -8,22 +8,13 @@ const MUTED = COLORS.muted;
 const LINE  = COLORS.line;
 const BG    = COLORS.cream;
 
-type TabId = "surprise" | "library" | "edit" | "vault" | "analytics";
+type TabId = "surprise" | "library" | "edit" | "vault";
 
 const TABS: Array<{ id: TabId; label: string; href: string; icon: React.ReactNode }> = [
   { id: "surprise",  label: "Surprise Me", href: "/hub/surprise",  icon: <Sparkles size={14} /> },
   { id: "library",   label: "Library",     href: "/hub/library",   icon: <FolderOpen size={14} /> },
   { id: "edit",      label: "Edit",        href: "/hub/editor",    icon: <Wand2 size={14} /> },
   { id: "vault",     label: "Vault",       href: "/hub/vault",     icon: <BookOpen size={14} /> },
-  // Analytics tab hidden from client navigation pending real engagement
-  // tracking. The current /hub/analytics page only surfaces Ora-internal
-  // production stats (campaigns started, brand health, generation volume)
-  // — useful internally but useless for a small-commerce owner who wants
-  // "is this post working?". The route + page code stay so admins can
-  // still hit /hub/analytics directly, and so the eventual rebuild around
-  // PostMetricsBadge data has a home. Re-add this tab once /pfm/post-metrics
-  // is validated to return real likes/comments across providers.
-  // { id: "analytics", label: "Analytics",   href: "/hub/analytics", icon: <BarChart3 size={14} /> },
 ];
 
 /**
@@ -36,10 +27,9 @@ export function AppTabs({ active }: { active?: TabId }) {
   const location = useLocation();
   const { remainingCredits, profile } = useAuth();
   const activeId: TabId = active
-    ?? (location.pathname.startsWith("/hub/library")    ? "library"
-      : location.pathname.startsWith("/hub/editor")     ? "edit"
-      : location.pathname.startsWith("/hub/vault")      ? "vault"
-      : location.pathname.startsWith("/hub/analytics")  ? "analytics"
+    ?? (location.pathname.startsWith("/hub/library") ? "library"
+      : location.pathname.startsWith("/hub/editor")  ? "edit"
+      : location.pathname.startsWith("/hub/vault")   ? "vault"
       : "surprise");
   const planLabel = (() => {
     const p = String(profile?.plan || "").toLowerCase();

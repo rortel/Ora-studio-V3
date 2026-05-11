@@ -622,7 +622,7 @@ function QuickAccess({ isSubscriber }: { isSubscriber: boolean }) {
     { label: t("profile.aiHub"), desc: t("profile.aiHubDesc"), href: "/hub/surprise", icon: Sparkles, locked: false },
     { label: t("profile.libraryLabel"), desc: t("profile.libraryDesc"), href: "/hub/library", icon: BookOpen, locked: false },
     { label: t("profile.brandVault"), desc: t("profile.brandVaultDesc"), href: "/hub/vault", icon: BookOpen, locked: false },
-    { label: t("profile.analyticsLabel"), desc: t("profile.analyticsDesc"), href: "/hub/editor", icon: PenTool, locked: false },
+    { label: "Editor", desc: "Add logos, text, overlays", href: "/hub/editor", icon: PenTool, locked: false },
   ];
   return (
     <div>

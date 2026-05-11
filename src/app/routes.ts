@@ -3,7 +3,6 @@ import { RootLayout } from "./pages/RootLayout";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { PHASE_1_ONLY } from "./lib/phase";
 import { createElement, lazy } from "react";
 
 /**
@@ -46,29 +45,18 @@ function lazyRetry<T extends Record<string, any>>(
 }
 
 // Lazy-loaded pages (code-splitting with auto-retry on stale chunks)
-const HubPage = lazyRetry(() => import("./pages/HubPage"), "HubPage");
-const StudioPage = lazyRetry(() => import("./pages/StudioPage"), "StudioPage");
 const PricingPage = lazyRetry(() => import("./pages/PricingPage"), "PricingPage");
-const AgentsPage = lazyRetry(() => import("./pages/AgentsPage"), "AgentsPage");
 const VaultPage = lazyRetry(() => import("./pages/VaultPage"), "VaultPage");
-const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
 const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage");
 const AdminPage = lazyRetry(() => import("./pages/AdminPage"), "AdminPage");
 const SubscribePage = lazyRetry(() => import("./pages/SubscribePage"), "SubscribePage");
 const LibraryPage = lazyRetry(() => import("./pages/LibraryPage"), "LibraryPage");
-const CalendarPage = lazyRetry(() => import("./pages/CalendarPage"), "CalendarPage");
-const MusicPage = lazyRetry(() => import("./pages/MusicPage"), "MusicPage");
-const VideoAssemblerPage = lazyRetry(() => import("./pages/VideoAssemblerPage"), "VideoAssemblerPage");
-const ComparePage = lazyRetry(() => import("./pages/ComparePage"), "ComparePage");
 const OnboardingPage = lazyRetry(() => import("./pages/OnboardingPage"), "OnboardingPage");
 const TermsPage = lazyRetry(() => import("./pages/TermsPage"), "TermsPage");
 const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage");
 const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
-const ModelsPage = lazyRetry(() => import("./pages/ModelsPage"), "ModelsPage");
 const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
-const AnalyzePage = lazyRetry(() => import("./pages/AnalyzePage"), "AnalyzePage");
 const SurprisePage = lazyRetry(() => import("./pages/SurprisePage"), "SurprisePage");
-const DashboardPage = lazyRetry(() => import("./pages/DashboardPage"), "DashboardPage");
 
 
 /*
@@ -78,19 +66,20 @@ const DashboardPage = lazyRetry(() => import("./pages/DashboardPage"), "Dashboar
   ---------------------------------------------------
   /                     |   x    |  x   |  x  |    x     |   x
   /pricing              |   x    |  x   |  x  |    x     |   x
-  /models               |   x    |  x   |  x  |    x     |   x
+  /about                |   x    |  x   |  x  |    x     |   x
+  /terms                |   x    |  x   |  x  |    x     |   x
+  /privacy              |   x    |  x   |  x  |    x     |   x
   /login                |   x    |  -   |  -  |    -     |   -
-  /hub                  |   -    |  x   |  x  |    x     |   x
+  /hub/surprise         |   -    |  x   |  x  |    x     |   x
   /hub/library          |   -    |  x   |  x  |    x     |   x
   /hub/vault            |   -    |  x   |  x  |    x     |   x
-  /hub/analytics        |   -    |  -   |  -  |    x     |   x
-  /hub/calendar         |   -    |  -   |  -  |    x     |   x
-  /hub/music            |   -    |  -   |  -  |    x     |   x
+  /hub/editor           |   -    |  x   |  x  |    x     |   x
+  /onboarding           |   -    |  x   |  x  |    x     |   x
   /profile              |   -    |  x   |  x  |    x     |   x
   /subscribe            |   -    |  x   |  x  |    x     |   x
   /admin                |   -    |  -   |  -  |    -     |   x
   ---------------------------------------------------
-  
+
   Route guards are applied INSIDE each page component
   using <RouteGuard> wrapper -- not at router level.
   This keeps the router config simple and lets guards
@@ -105,8 +94,6 @@ export const router = createBrowserRouter([
       // Public routes
       { index: true, Component: LandingPage },
       { path: "pricing", Component: PricingPage },
-      { path: "models", Component: ModelsPage },
-      { path: "agents", Component: AgentsPage },
       { path: "login", Component: LoginPage },
       { path: "terms", Component: TermsPage },
       { path: "privacy", Component: PrivacyPage },
@@ -114,27 +101,15 @@ export const router = createBrowserRouter([
 
       // Authenticated routes (guard inside component)
       { path: "onboarding", Component: OnboardingPage },
-      // Phase 1: /hub redirects to analyze. Studio is kept warm
-      // under /hub/studio so Phase 2 can flip PHASE_1_ONLY to restore it.
+      // /hub is just an alias for the home of the in-app experience: Surprise Me.
       {
         path: "hub",
-        Component: PHASE_1_ONLY
-          ? () => createElement(Navigate, { to: "/hub/surprise", replace: true })
-          : StudioPage,
+        Component: () => createElement(Navigate, { to: "/hub/surprise", replace: true }),
       },
-      { path: "hub/studio", Component: StudioPage },
-      { path: "hub/classic", Component: HubPage },
       { path: "hub/library", Component: LibraryPage },
       { path: "hub/vault", Component: VaultPage },
-      { path: "hub/analytics", Component: AnalyticsPage },
-      { path: "hub/calendar", Component: CalendarPage },
-      { path: "hub/music", Component: MusicPage },
-      { path: "hub/video-editor", Component: VideoAssemblerPage },
-      { path: "hub/analyze", Component: AnalyzePage },
-      { path: "hub/surprise", Component: SurprisePage },
-      { path: "hub/dashboard", Component: DashboardPage },
-      { path: "hub/compare", Component: ComparePage },
       { path: "hub/editor", Component: EditorPage },
+      { path: "hub/surprise", Component: SurprisePage },
       { path: "profile", Component: ProfilePage },
       { path: "subscribe", Component: SubscribePage },
 

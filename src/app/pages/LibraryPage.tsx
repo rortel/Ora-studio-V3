@@ -17,7 +17,6 @@ import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
-import { PHASE_1_ONLY } from "../lib/phase";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
 import { bagel, COLORS } from "../components/ora/tokens";
 
@@ -244,8 +243,7 @@ function LibraryPageContent() {
   const isFr = locale === "fr";
   const { getAuthHeader } = useAuth();
   const [searchParams] = useSearchParams();
-  // Phase 1: campaigns tab is hidden — force content tab regardless of query param.
-  const initialTab = !PHASE_1_ONLY && searchParams.get("tab") === "campaigns" ? "campaigns" : "content";
+  const initialTab: LibraryTab = searchParams.get("tab") === "campaigns" ? "campaigns" : "content";
   const [activeTab, setActiveTab] = useState<LibraryTab>(initialTab);
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -826,7 +824,7 @@ function LibraryPageContent() {
               {t("library.title")}
             </h1>
             <p style={{ fontSize: "14px", color: COLORS.muted, fontWeight: 500 }}>
-              {contentItems.length} {contentItems.length !== 1 ? t("library.assets") : t("library.asset")}{!PHASE_1_ONLY && <>, {campaignItems.length} {campaignItems.length !== 1 ? t("library.campaigns") : t("library.campaign")}</>}
+              {contentItems.length} {contentItems.length !== 1 ? t("library.assets") : t("library.asset")}, {campaignItems.length} {campaignItems.length !== 1 ? t("library.campaigns") : t("library.campaign")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -873,21 +871,19 @@ function LibraryPageContent() {
             {t("library.contentTab")}
             <span className="ml-1.5" style={{ fontSize: "11px", opacity: 0.6 }}>({contentItems.length})</span>
           </button>
-          {!PHASE_1_ONLY && (
-            <button
-              onClick={() => setActiveTab("campaigns")}
-              className="px-5 py-2.5 rounded-full cursor-pointer transition-all"
-              style={{
-                fontSize: "13px", fontWeight: 500,
-                background: activeTab === "campaigns" ? "var(--foreground)" : "var(--secondary)",
-                color: activeTab === "campaigns" ? "var(--background)" : "var(--text-secondary)",
-                border: activeTab === "campaigns" ? "none" : "1px solid var(--border)",
-              }}
-            >
-              {t("library.campaignsTab")}
-              <span className="ml-1.5" style={{ fontSize: "11px", opacity: 0.6 }}>({campaignItems.length})</span>
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab("campaigns")}
+            className="px-5 py-2.5 rounded-full cursor-pointer transition-all"
+            style={{
+              fontSize: "13px", fontWeight: 500,
+              background: activeTab === "campaigns" ? "var(--foreground)" : "var(--secondary)",
+              color: activeTab === "campaigns" ? "var(--background)" : "var(--text-secondary)",
+              border: activeTab === "campaigns" ? "none" : "1px solid var(--border)",
+            }}
+          >
+            {t("library.campaignsTab")}
+            <span className="ml-1.5" style={{ fontSize: "11px", opacity: 0.6 }}>({campaignItems.length})</span>
+          </button>
         </div>
 
         {/* ═══ CAMPAIGNS TAB ═══ */}

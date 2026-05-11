@@ -10,16 +10,7 @@ import type {
   AnimationPreset,
   SpatialProps,
 } from "./types";
-import {
-  createDefaultProject,
-  createVideoClipLayer,
-  createImageLayer,
-  createTextLayer,
-  createAudioTrack,
-  createDefaultSpatial,
-  createDefaultTemporal,
-} from "./types";
-import type { VideoProject, TrackItem } from "../video-editor/types";
+import { createDefaultProject } from "./types";
 import { interpolateSpatialAtFrame } from "./interpolation";
 import { generatePresetKeyframes } from "./presets";
 
@@ -252,78 +243,3 @@ export function useEditorProject(initialName?: string, initialWidth = 1024, init
 }
 
 export type EditorProjectActions = ReturnType<typeof useEditorProject>;
-
-// ── Convert a VideoProject (from VideoAssemblerPage) into an EditorProject ──
-
-export function importFromVideoProject(vp: VideoProject): EditorProject {
-  const layers: UnifiedLayer[] = [];
-  const audioTracks: AudioTrackItem[] = [];
-  let zIndex = 0;
-
-  for (const track of vp.tracks) {
-    for (const item of track.items) {
-      const { data } = item;
-
-      if (data.kind === "video" && item.sourceUrl) {
-        layers.push(createVideoClipLayer(item.sourceUrl, {
-          name: track.label || "Video",
-          zIndex: zIndex++,
-          spatial: createDefaultSpatial(0, 0, vp.width, vp.height),
-          temporal: createDefaultTemporal(item.durationInFrames),
-          trimStart: item.trimStart ?? 0,
-          trimEnd: item.trimEnd ?? item.durationInFrames / vp.fps,
-          volume: data.volume,
-        }));
-        // Override startFrame
-        layers[layers.length - 1].temporal.startFrame = item.from;
-      }
-
-      if (data.kind === "image" && item.sourceUrl) {
-        layers.push(createImageLayer(item.sourceUrl, {
-          name: track.label || "Image",
-          zIndex: zIndex++,
-          spatial: createDefaultSpatial(data.x ?? 0, data.y ?? 0, data.width ?? vp.width, data.height ?? vp.height),
-          temporal: { startFrame: item.from, durationInFrames: item.durationInFrames, keyframes: [] },
-          animationPreset: "ken-burns-in",
-        }));
-      }
-
-      if (data.kind === "text") {
-        layers.push(createTextLayer({
-          name: data.text?.slice(0, 20) || "Text",
-          zIndex: zIndex++,
-          text: data.text,
-          fontSize: data.fontSize,
-          fontFamily: data.fontFamily,
-          fill: data.color,
-          align: data.align || "center",
-          spatial: createDefaultSpatial(data.x, data.y, data.width, data.height),
-          temporal: { startFrame: item.from, durationInFrames: item.durationInFrames, keyframes: [] },
-        }));
-      }
-
-      if (data.kind === "audio" && item.sourceUrl) {
-        audioTracks.push(createAudioTrack(item.sourceUrl, track.label || "Audio", {
-          startFrame: item.from,
-          durationInFrames: item.durationInFrames,
-          trimStart: item.trimStart ?? 0,
-          volume: data.volume,
-          fadeIn: data.fadeIn ?? 0,
-          fadeOut: data.fadeOut ?? 0,
-        }));
-      }
-    }
-  }
-
-  return {
-    id: crypto.randomUUID(),
-    name: vp.name || "Imported Project",
-    fps: vp.fps,
-    width: vp.width,
-    height: vp.height,
-    durationInFrames: vp.durationInFrames,
-    backgroundImageUrl: null,
-    layers,
-    audioTracks,
-  };
-}
