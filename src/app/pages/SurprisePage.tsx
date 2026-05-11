@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus, Check, Globe2 } from "lucide-react";
+import { Sparkles, Loader2, Download, Package, Upload, Wand2, ChevronDown, Paperclip, X, ArrowRight, ArrowLeft, Send, ChevronLeft, ChevronRight, Trash2, Plus, Check, Globe2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../lib/auth-context";
@@ -413,6 +413,10 @@ function SurpriseContent() {
   const [suggestedAngles, setSuggestedAngles] = useState<AngleSuggestion[]>([]);
   const [customBriefMode, setCustomBriefMode] = useState(false);
   const [monthLabel, setMonthLabel] = useState<string>("");
+  // Tracks the product signature (photos+scraped-url) the current angles were
+  // generated FROM. Lets the auto-fetch effect skip when nothing has changed
+  // and re-fire when a new product is added or swapped in.
+  const fetchedAnglesSigRef = useRef<string>("");
 
   // Fetch angles ON DEMAND when the user clicks "Propose angles" from the
   // input form. Previously this ran on mount and drove the entire landing
@@ -454,6 +458,26 @@ function SurpriseContent() {
       setAnglesLoading(false);
     }
   }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice, subjectKind]);
+
+  // Auto-fetch angles in simple-bar mode the moment a product is added (or
+  // swapped). The signature ref guards against re-fires when state churns
+  // for unrelated reasons (e.g. typing in BRIEF). Cleared when the product
+  // is removed so the next add fetches fresh.
+  useEffect(() => {
+    if (!simpleMode) return;
+    if (stage !== "idle") return;
+    const hasProduct = productPhotos.length > 0 || !!scrapedProduct;
+    if (!hasProduct) {
+      if (suggestedAngles.length > 0) setSuggestedAngles([]);
+      if (fetchedAnglesSigRef.current) fetchedAnglesSigRef.current = "";
+      return;
+    }
+    const sig = `${productPhotos.join("|")}::${scrapedProduct?.fullDescription || ""}`;
+    if (fetchedAnglesSigRef.current === sig) return;
+    if (anglesLoading) return;
+    fetchedAnglesSigRef.current = sig;
+    fetchAngles();
+  }, [simpleMode, stage, productPhotos, scrapedProduct, suggestedAngles.length, anglesLoading, fetchAngles]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -1051,8 +1075,86 @@ function SurpriseContent() {
             </motion.div>
           </div>
 
-          {/* ── Middle canvas (intentionally empty — future home of "Recent projects") ── */}
-          <div className="flex-1 w-full max-w-[1280px] mx-auto px-5 md:px-10" />
+          {/* ── Middle canvas — context-aware angle suggestions ──
+               Once a product is added (photo or scraped URL), Ora reads the
+               brand vault + product attributes + current season/marketing
+               calendar and proposes 3 angles. Click one to drop its brief
+               into the BRIEF box below. */}
+          <div className="flex-1 w-full max-w-[1280px] mx-auto px-5 md:px-10 pb-4">
+            {(productPhotos.length > 0 || scrapedProduct) && (
+              <>
+                <div className="flex items-center justify-between mb-4 mt-2">
+                  <div className="text-[11px] font-mono uppercase tracking-[0.22em] flex items-center gap-2" style={{ color: MUTED }}>
+                    <Sparkles size={11} style={{ color: ACCENT }} />
+                    Ideas for your product
+                    {monthLabel && <span style={{ color: COLORS.subtle }}>· {monthLabel}</span>}
+                  </div>
+                  {suggestedAngles.length > 0 && (
+                    <button
+                      onClick={() => { fetchedAnglesSigRef.current = ""; fetchAngles(); }}
+                      disabled={anglesLoading}
+                      className="text-[11px] flex items-center gap-1.5 hover:text-black transition disabled:opacity-40"
+                      style={{ color: MUTED, fontWeight: 500 }}
+                      title="Regenerate angles"
+                    >
+                      {anglesLoading ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                      Other angles
+                    </button>
+                  )}
+                </div>
+
+                {anglesLoading && suggestedAngles.length === 0 ? (
+                  <div className="grid md:grid-cols-3 gap-3 md:gap-4">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="rounded-2xl p-5 animate-pulse"
+                        style={{ background: "#FFFFFF", border: `1px solid ${BORDER}`, minHeight: 140 }}
+                      >
+                        <div className="w-8 h-8 rounded-full mb-3" style={{ background: "rgba(17,17,17,0.06)" }} />
+                        <div className="h-4 rounded mb-2" style={{ background: "rgba(17,17,17,0.06)", width: "60%" }} />
+                        <div className="h-3 rounded" style={{ background: "rgba(17,17,17,0.04)", width: "85%" }} />
+                      </div>
+                    ))}
+                  </div>
+                ) : suggestedAngles.length > 0 ? (
+                  <div className="grid md:grid-cols-3 gap-3 md:gap-4">
+                    {suggestedAngles.map((a, i) => (
+                      <motion.button
+                        key={a.id || i}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.06 * i, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                        whileHover={{ y: -2 }}
+                        onClick={() => {
+                          // Drop the angle's brief into the BRIEF box. The
+                          // user can still tweak it before clicking Send.
+                          setSimpleBrief(a.brief);
+                        }}
+                        disabled={busy || uploadingProduct}
+                        className="text-left rounded-2xl p-5 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{
+                          background: "#FFFFFF",
+                          border: `1px solid ${BORDER}`,
+                          boxShadow: "0 1px 2px rgba(17,17,17,0.03)",
+                        }}
+                      >
+                        <div className="text-[22px] leading-none mb-3">{a.emoji || "✨"}</div>
+                        <h3 className="leading-[1.05] mb-1.5" style={{ fontFamily: DISPLAY, fontSize: 19, color: TEXT, letterSpacing: "-0.01em" }}>
+                          {a.title}
+                        </h3>
+                        {a.subtitle && (
+                          <p className="text-[12px] leading-snug line-clamp-2" style={{ color: MUTED }}>
+                            {a.subtitle}
+                          </p>
+                        )}
+                      </motion.button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
 
           {/* ── Fixed bottom action bar ── */}
           <motion.div
@@ -1263,7 +1365,7 @@ function SurpriseContent() {
                     onChange={(e) => setSimpleBrief(e.target.value)}
                     placeholder="ex: outdoors, white background, natural light"
                     rows={2}
-                    maxLength={400}
+                    maxLength={1000}
                     className="w-full text-[12.5px] resize-none bg-transparent outline-none"
                     style={{ color: TEXT, fontFamily: "inherit", lineHeight: 1.45 }}
                   />
