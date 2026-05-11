@@ -11,7 +11,7 @@ import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as K
 import { toast } from "sonner";
 import {
   Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
-  Undo2, Redo2, Trash2, Loader2, Wand2, Maximize2, X,
+  Undo2, Redo2, Trash2, Loader2, Wand2, X,
 } from "lucide-react";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
@@ -24,7 +24,7 @@ import {
   createTextLayer, createLogoLayer, createShapeLayer, createDefaultSpatial,
   type UnifiedLayer, type TextLayer, type LogoLayer, type ShapeLayer,
 } from "../lib/editor/types";
-import { inpaintImage, expandImage, type ExpandPercents } from "../lib/editor/aiFill";
+import { editImage } from "../lib/editor/aiFill";
 
 /* ──────────────────────────────────────────────────────────────
    Format presets — the platforms Ora ships into. Selecting one
@@ -103,14 +103,11 @@ function EditorAgency() {
   const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
 
-  // AI fill / expand mode + companion state. The mask canvas overlays the
-  // Stage when aiMode === "fill"; expand uses 4 percent sliders instead.
-  const [aiMode, setAiMode] = useState<"off" | "fill" | "expand">("off");
+  // AI mode — Feads-style on-demand. One prompt, the model decides what
+  // to change. No mask, no brush. Apply replaces the background image.
+  const [aiMode, setAiMode] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [brushSize, setBrushSize] = useState(40);
-  const [expandPct, setExpandPct] = useState<ExpandPercents>({ top: 0.2, bottom: 0.2, left: 0.2, right: 0.2 });
   const [aiBusy, setAiBusy] = useState(false);
-  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Vault data — the logo URL the +Logo button will place, and palette
   // colours the inspector (next commit) will render as one-click swatches.
@@ -249,75 +246,42 @@ function EditorAgency() {
     p.setSelectedLayerId(layer.id);
   }, [p, vaultLogoUrl]);
 
-  // ── AI fill helpers ──
-  // Replace the background photo with one returned by Pollo's inpaint /
-  // uncrop pipeline. We always operate on the URL we already loaded; the
-  // mask (for inpaint) is the painted overlay scaled to the displayed
-  // canvas — Pollo resizes internally to the source image dims.
+  // ── AI edit ──
+  // Feads-style on-demand: user types what to change, model rewrites the
+  // photo. Replaces backgroundImg with the returned URL.
   const swapBackground = useCallback((nextUrl: string) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
       setBackgroundImg(img);
       setBackgroundUrl(nextUrl);
-      const w = img.naturalWidth;
-      const h = img.naturalHeight;
-      p.updateProjectProps({ width: w, height: h, backgroundImageUrl: nextUrl });
+      p.updateProjectProps({
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        backgroundImageUrl: nextUrl,
+      });
     };
     img.onerror = () => toast.error("Couldn't load AI result.");
     img.src = nextUrl;
   }, [p]);
 
-  const applyAiFill = useCallback(async () => {
+  const applyAiEdit = useCallback(async () => {
     if (aiBusy) return;
     if (!backgroundUrl) { toast.error("Open an image from your Library first."); return; }
-    if (!aiPrompt.trim()) { toast.error("Describe what should appear in the painted zone."); return; }
-    const mask = maskCanvasRef.current;
-    if (!mask) { toast.error("Paint the area you want to change first."); return; }
-    // Detect empty mask — if no pixels have been painted, skip the call.
-    const ctx = mask.getContext("2d");
-    if (!ctx) return;
-    const px = ctx.getImageData(0, 0, mask.width, mask.height).data;
-    let painted = false;
-    for (let i = 3; i < px.length; i += 4) { if (px[i] > 0) { painted = true; break; } }
-    if (!painted) { toast.error("Paint the area you want to change first."); return; }
-
+    if (!aiPrompt.trim()) { toast.error("Describe the edit you want."); return; }
     setAiBusy(true);
     try {
-      const maskBase64 = mask.toDataURL("image/png").split(",")[1];
-      const url = await inpaintImage({
-        imageUrl: backgroundUrl,
-        maskBase64,
-        prompt: aiPrompt,
-        getAuthHeader,
-      });
+      const url = await editImage({ imageUrl: backgroundUrl, prompt: aiPrompt, getAuthHeader });
       swapBackground(url);
-      ctx.clearRect(0, 0, mask.width, mask.height);
-      setAiMode("off");
+      setAiMode(false);
       setAiPrompt("");
-      toast.success("AI fill applied");
+      toast.success("AI edit applied");
     } catch (err: any) {
       toast.error(String(err?.message || err));
     } finally {
       setAiBusy(false);
     }
   }, [aiBusy, backgroundUrl, aiPrompt, getAuthHeader, swapBackground]);
-
-  const applyAiExpand = useCallback(async () => {
-    if (aiBusy) return;
-    if (!backgroundUrl) { toast.error("Open an image from your Library first."); return; }
-    setAiBusy(true);
-    try {
-      const url = await expandImage({ imageUrl: backgroundUrl, extend: expandPct, getAuthHeader });
-      swapBackground(url);
-      setAiMode("off");
-      toast.success("Image expanded");
-    } catch (err: any) {
-      toast.error(String(err?.message || err));
-    } finally {
-      setAiBusy(false);
-    }
-  }, [aiBusy, backgroundUrl, expandPct, getAuthHeader, swapBackground]);
 
   // ── Save to Library ──
   // Rasterises the current Stage at 2× pixel ratio, POSTs the data URL to
@@ -541,18 +505,6 @@ function EditorAgency() {
               position: "relative",
             }}
           >
-            {/* AI Fill mask overlay — paints a binary mask on top of the
-             *  Stage. White pixels = inpaint zone, black/transparent = keep.
-             *  Sized to the displayed canvas so coordinates map 1:1; Pollo
-             *  handles the resize back to the source-image dimensions. */}
-            {aiMode === "fill" && (
-              <MaskOverlay
-                width={p.project.width * zoom}
-                height={p.project.height * zoom}
-                brushSize={brushSize}
-                canvasRef={maskCanvasRef}
-              />
-            )}
             <Stage
               ref={stageRef}
               width={p.project.width * zoom}
@@ -640,27 +592,13 @@ function EditorAgency() {
           className="hidden lg:flex flex-col border-l overflow-y-auto"
           style={{ width: 300, background: "#FFFFFF", borderColor: COLORS.line }}
         >
-          {aiMode === "fill" ? (
-            <AiFillPanel
+          {aiMode ? (
+            <AiPanel
               prompt={aiPrompt}
               onPromptChange={setAiPrompt}
-              brushSize={brushSize}
-              onBrushSizeChange={setBrushSize}
               busy={aiBusy}
-              onApply={applyAiFill}
-              onCancel={() => { setAiMode("off"); setAiPrompt(""); }}
-              onClearMask={() => {
-                const m = maskCanvasRef.current;
-                m?.getContext("2d")?.clearRect(0, 0, m.width, m.height);
-              }}
-            />
-          ) : aiMode === "expand" ? (
-            <AiExpandPanel
-              extend={expandPct}
-              onChange={setExpandPct}
-              busy={aiBusy}
-              onApply={applyAiExpand}
-              onCancel={() => setAiMode("off")}
+              onApply={applyAiEdit}
+              onCancel={() => { setAiMode(false); setAiPrompt(""); }}
             />
           ) : (
             <Inspector
@@ -692,22 +630,13 @@ function EditorAgency() {
         </Button>
         <span className="w-px h-5 mx-1" style={{ background: COLORS.line }} />
         <Button
-          variant={aiMode === "fill" ? "accent" : "ghost"}
+          variant={aiMode ? "accent" : "ghost"}
           size="sm"
-          onClick={() => setAiMode(aiMode === "fill" ? "off" : "fill")}
+          onClick={() => setAiMode(!aiMode)}
           disabled={!backgroundImg}
-          title={backgroundImg ? "Paint a zone, describe what should appear" : "Open an image first"}
+          title={backgroundImg ? "Describe how to edit the photo" : "Open an image first"}
         >
-          <Wand2 size={14} /> AI Fill
-        </Button>
-        <Button
-          variant={aiMode === "expand" ? "accent" : "ghost"}
-          size="sm"
-          onClick={() => setAiMode(aiMode === "expand" ? "off" : "expand")}
-          disabled={!backgroundImg}
-          title={backgroundImg ? "Extend the canvas with AI-generated edges" : "Open an image first"}
-        >
-          <Maximize2 size={14} /> Expand
+          <Wand2 size={14} /> Ask AI
         </Button>
       </footer>
     </div>
@@ -1145,106 +1074,32 @@ function ColourField({ label, value, swatches, onChange }: { label: string; valu
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   MaskOverlay — HTML5 canvas painted with the user's brush.
-   Sits absolutely on top of the Konva Stage; same dimensions so
-   pointer coordinates map 1:1 to mask pixels. Strokes are pure
-   white at full alpha; the canvas starts transparent so cleared
-   regions keep the original photo intact.
+   AiPanel — right rail when "Ask AI" is active. Feads-style:
+   one prompt, one Apply. The model decides what to change.
+   Hands the current background URL + prompt to the image2image
+   pipeline; on success the BG swaps.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function MaskOverlay({
-  width, height, brushSize, canvasRef,
-}: {
-  width: number;
-  height: number;
-  brushSize: number;
-  canvasRef: React.MutableRefObject<HTMLCanvasElement | null>;
-}) {
-  const drawingRef = useRef(false);
-  const lastRef = useRef<{ x: number; y: number } | null>(null);
-
-  const draw = useCallback((x: number, y: number) => {
-    const c = canvasRef.current;
-    const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.strokeStyle = "#FFFFFF";
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = brushSize;
-    if (lastRef.current) {
-      ctx.beginPath();
-      ctx.moveTo(lastRef.current.x, lastRef.current.y);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    lastRef.current = { x, y };
-  }, [brushSize, canvasRef]);
-
-  const toLocal = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  return (
-    <canvas
-      ref={canvasRef}
-      width={Math.round(width)}
-      height={Math.round(height)}
-      onPointerDown={(e) => {
-        drawingRef.current = true;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        const { x, y } = toLocal(e);
-        lastRef.current = null;
-        draw(x, y);
-      }}
-      onPointerMove={(e) => {
-        if (!drawingRef.current) return;
-        const { x, y } = toLocal(e);
-        draw(x, y);
-      }}
-      onPointerUp={(e) => {
-        drawingRef.current = false;
-        lastRef.current = null;
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }}
-      onPointerLeave={() => { drawingRef.current = false; lastRef.current = null; }}
-      style={{
-        position: "absolute",
-        inset: 0,
-        cursor: "crosshair",
-        opacity: 0.55,
-        mixBlendMode: "screen",
-        touchAction: "none",
-      }}
-    />
-  );
-}
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   AiFillPanel — right rail when AI Fill is active.
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function AiFillPanel({
-  prompt, onPromptChange, brushSize, onBrushSizeChange, busy, onApply, onCancel, onClearMask,
+function AiPanel({
+  prompt, onPromptChange, busy, onApply, onCancel,
 }: {
   prompt: string;
   onPromptChange: (s: string) => void;
-  brushSize: number;
-  onBrushSizeChange: (n: number) => void;
   busy: boolean;
   onApply: () => void;
   onCancel: () => void;
-  onClearMask: () => void;
 }) {
+  const examples = [
+    "Remove the background and put a sunset beach",
+    "Make the model smile",
+    "Change the lighting to golden hour",
+    "Add soft shadows behind the product",
+  ];
   return (
     <div className="p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wand2 size={14} style={{ color: COLORS.coral }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>AI Fill</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>Ask AI</span>
         </div>
         <button onClick={onCancel} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 transition" title="Close">
           <X size={13} />
@@ -1252,7 +1107,7 @@ function AiFillPanel({
       </div>
 
       <p style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>
-        Paint the area you want to change, then describe what should appear there.
+        Describe the edit in plain language. The model rewrites the photo.
       </p>
 
       <div>
@@ -1260,66 +1115,30 @@ function AiFillPanel({
         <textarea
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
-          placeholder="e.g. blue sky with soft clouds"
-          rows={3}
+          placeholder="e.g. put it in a Parisian café at sunset"
+          rows={4}
           className="w-full rounded-lg px-2.5 py-2 text-[12.5px] outline-none resize-none"
           style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink, fontFamily: "inherit" }}
         />
       </div>
 
-      <RangeField label={`Brush · ${brushSize}px`} value={brushSize} min={8} max={120} onChange={onBrushSizeChange} />
-
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onClearMask} disabled={busy}>
-          <Trash2 size={13} /> Clear mask
-        </Button>
+      <div className="flex flex-col gap-1.5">
+        <Label>Examples</Label>
+        {examples.map((ex) => (
+          <button
+            key={ex}
+            onClick={() => onPromptChange(ex)}
+            disabled={busy}
+            className="text-left rounded-md px-2.5 py-1.5 transition hover:bg-black/5 disabled:opacity-40"
+            style={{ fontSize: 11.5, color: COLORS.muted, border: `1px solid ${COLORS.line}` }}
+          >
+            {ex}
+          </button>
+        ))}
       </div>
 
-      <Button variant="accent" size="sm" onClick={onApply} disabled={busy}>
+      <Button variant="accent" size="sm" onClick={onApply} disabled={busy || !prompt.trim()}>
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
-        {busy ? "Generating…" : "Apply"}
-      </Button>
-    </div>
-  );
-}
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   AiExpandPanel — right rail when Expand is active. Four sliders
-   that map directly to Pollo's `extend` percent payload.
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function AiExpandPanel({
-  extend, onChange, busy, onApply, onCancel,
-}: {
-  extend: ExpandPercents;
-  onChange: (v: ExpandPercents) => void;
-  busy: boolean;
-  onApply: () => void;
-  onCancel: () => void;
-}) {
-  const setSide = (k: keyof ExpandPercents) => (v: number) => onChange({ ...extend, [k]: v / 100 });
-  return (
-    <div className="p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Maximize2 size={14} style={{ color: COLORS.coral }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>Expand canvas</span>
-        </div>
-        <button onClick={onCancel} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 transition" title="Close">
-          <X size={13} />
-        </button>
-      </div>
-
-      <p style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>
-        Push out one or more edges. AI fills the new area in the same style as the photo.
-      </p>
-
-      <RangeField label={`Top · ${Math.round(extend.top * 100)}%`}    value={Math.round(extend.top * 100)}    min={0} max={50} onChange={setSide("top")} />
-      <RangeField label={`Right · ${Math.round(extend.right * 100)}%`} value={Math.round(extend.right * 100)} min={0} max={50} onChange={setSide("right")} />
-      <RangeField label={`Bottom · ${Math.round(extend.bottom * 100)}%`} value={Math.round(extend.bottom * 100)} min={0} max={50} onChange={setSide("bottom")} />
-      <RangeField label={`Left · ${Math.round(extend.left * 100)}%`}   value={Math.round(extend.left * 100)}   min={0} max={50} onChange={setSide("left")} />
-
-      <Button variant="accent" size="sm" onClick={onApply} disabled={busy}>
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <Maximize2 size={13} />}
         {busy ? "Generating…" : "Apply"}
       </Button>
     </div>
