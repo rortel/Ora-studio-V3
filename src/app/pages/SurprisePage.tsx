@@ -89,6 +89,11 @@ interface PackItem {
   overlayText?: string;
   overlayPosition?: "top" | "center" | "bottom";
   overlayStyle?: "headline" | "value-prop" | "cta" | "caption";
+  // Per-shot video error — set when the user asked for film mode but
+  // the i2v pipeline timed out / failed / was skipped due to wall-clock
+  // budget. Rendered as a small "video queued" badge so the user knows
+  // the still shipped on purpose, not silently.
+  videoError?: string;
 }
 interface Pack {
   campaignName: string; campaignSlug: string;
@@ -2744,6 +2749,15 @@ function SurpriseContent() {
                           <div className="absolute top-2 right-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono"
                                style={{ background: PINK, color: "#fff" }}>
                             🎞 film
+                          </div>
+                        )}
+                        {!it.videoUrl && it.videoError && (
+                          <div
+                            className="absolute top-2 right-2 px-2 h-6 rounded-full inline-flex items-center gap-1 text-[10.5px] font-mono"
+                            style={{ background: "rgba(17,17,17,0.78)", color: "#fff", backdropFilter: "blur(6px)" }}
+                            title={`Video queued — ${it.videoError}. Retry the pack to add this clip.`}
+                          >
+                            🎞 queued
                           </div>
                         )}
                         {it.twistElement && (

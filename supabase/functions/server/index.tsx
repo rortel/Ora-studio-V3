@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T17:00Z — v696-video-tighten-no-cascade-on-timeout");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T17:20Z — v697-film-priority-story-tiktok-first");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11909,9 +11909,10 @@ OUTPUT JSON:
         return /\b(flat-?lay|flat lay|top-?down|overhead|bird'?s[- ]?eye|aerial|drone shot|tabletop|surface arrangement|laid out on|knolling)\b/.test(s);
       };
 
-      // Parallel film generation — concurrency 2 because each clip is heavy.
-      // Only animate shots whose per-job format is "film" AND aren't flat-lay
-      // (the rest stay as pure image deliverables for image-first platforms).
+      // Parallel film generation — concurrency 3 (matches FILM_CONCURRENCY
+      // below). Only animate shots whose per-job format is "film" AND
+      // aren't flat-lay (the rest stay as pure image deliverables for
+      // image-first platforms).
       const allFilmable = items
         .map((it, idx) => ({ it, idx, job: jobs.find((j) => j.fileName === it.fileName) }))
         .filter((x) => {
@@ -11922,13 +11923,36 @@ OUTPUT JSON:
           }
           return true;
         });
-      // FILM CAP: animate AT MOST half of the pack (rounded up). Trying to
-      // animate 6+ shots inside one Edge function call risks 504 timeouts
-      // and produces redundant motion (most viewers don't watch every
-      // clip). Half is the sweet spot — pack still feels "alive" without
-      // burning the wall-clock budget. Earliest filmable shots win the
-      // budget (deterministic, predictable for the user).
-      const MAX_FILMS = Math.ceil(allFilmable.length / 2);
+      // PRIORITY SORT — video-native platforms (Story, Reels, TikTok,
+      // Shorts) win the film budget over image-first platforms (feed,
+      // LinkedIn, Pinterest). When the user requests Video mode but the
+      // wall-clock can only fit 1-3 clips, the right ones to animate are
+      // the platforms where stills feel out of place. Sort is stable so
+      // ties keep the planner's deterministic ordering.
+      const VIDEO_NATIVE_PLATFORM = /^(instagram[- ]?story|instagram[- ]?reels?|facebook[- ]?story|tiktok|youtube[- ]?shorts?|snapchat|whatsapp[- ]?status)$/i;
+      allFilmable.sort((a, b) => {
+        const ap = VIDEO_NATIVE_PLATFORM.test(String(a.it.platform || "")) ? 0 : 1;
+        const bp = VIDEO_NATIVE_PLATFORM.test(String(b.it.platform || "")) ? 0 : 1;
+        return ap - bp;
+      });
+      // FILM CAP — bounded by FILM_CONCURRENCY (3) because the wall-clock
+      // math only allows one parallel batch per request:
+      //   per-clip Kling cap = 50s
+      //   FILMS_BUDGET_MS    = 40s for launching new batches
+      //   batch wall-clock   ≈ 50s
+      // After the 1st batch completes (50s elapsed), the budget check
+      // would refuse to launch a 2nd batch (50 > 40). So attempting more
+      // than FILM_CONCURRENCY filmable shots in one request is pure
+      // waste — they'd all bail with "Time budget exceeded".
+      //
+      // Previously this was ceil(filmable.length / 2) which threw away
+      // half the budget on small packs (3 filmable shots → 2 films, 1
+      // shipped as still even though the GPU had room). Now we cap at
+      // FILM_CONCURRENCY directly so small packs animate fully and big
+      // packs animate the top 3 (which the priority sort puts on
+      // video-native platforms).
+      const FILM_CONCURRENCY = 3;
+      const MAX_FILMS = Math.min(allFilmable.length, FILM_CONCURRENCY);
       const filmable = allFilmable.slice(0, MAX_FILMS);
       if (allFilmable.length > MAX_FILMS) {
         console.log(`[surprise-me:film] pack capped at ${MAX_FILMS}/${allFilmable.length} films (rest ship as stills only)`);
@@ -11957,7 +11981,6 @@ OUTPUT JSON:
           (items[idx] as any).videoError = "Skipped — pack hit budget on stills, retry to add films";
         }
       }
-      const FILM_CONCURRENCY = 3;
       for (let i = 0; handlerElapsedAtFilmStart <= 75_000 && i < filmable.length; i += FILM_CONCURRENCY) {
         // Check budget before launching next batch — bail if close to limit.
         if (Date.now() - filmsStartedAt > FILMS_BUDGET_MS) {
