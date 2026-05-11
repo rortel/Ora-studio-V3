@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T17:20Z — v697-film-priority-story-tiktok-first");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T18:00Z — v698-stills-films-90s-threshold");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11959,29 +11959,33 @@ OUTPUT JSON:
       }
       // FILM PHASE WALL-CLOCK BUDGET. Tightened together with the Kling
       // and Luma per-clip caps (50s + 35s) so the worst case for a single
-      // video sits at 85s — and with stills at 75s max + films at 85s max
-      // we land at 160s, just over the 150s edge gateway. The skip
-      // threshold below pulls us back under by gating on stills elapsed.
+      // video sits at 85s. With films now capped to FILM_CONCURRENCY=3
+      // parallel clips (≈ 50s wall-clock for the slowest), the math is:
       //
-      // Sequence:
-      //   concept ~25s
-      //   stills  ~50-75s (capped via stills budget elsewhere)
-      //   films   up to FILMS_BUDGET_MS for launching new batches; each
-      //           clip runs up to 50s (Kling) without cascade-on-timeout
-      //           so wall-clock per parallel batch ≈ 50s.
+      //   concept    ~25s
+      //   stills     up to 90s elapsed at start of films (else skipped)
+      //   films      1 batch × 50s = 50s wall-clock
+      //   persist    ~5s
+      //   ─────────
+      //   total      145s — fits under the 150s edge gateway
       //
-      // If stills used more than 75s, skip films entirely — better to
-      // return a clean still pack than 504 the request.
+      // The previous 75s threshold from v696 was too tight for
+      // Lifestyle/UGC packs where Photoroom's Virtual Model pipeline
+      // runs 40-50s per shot; those packs landed at 70-85s stills-end
+      // and got films skipped entirely. Bumped to 90s so realistic
+      // stills durations still let films fire while keeping the total
+      // under 150s.
       const FILMS_BUDGET_MS = 40_000;
+      const STILLS_BUDGET_FOR_FILMS_MS = 90_000;
       const filmsStartedAt = Date.now();
       const handlerElapsedAtFilmStart = filmsStartedAt - t0;
-      if (handlerElapsedAtFilmStart > 75_000) {
-        console.log(`[surprise-me:film] skipping film phase entirely — stills already used ${handlerElapsedAtFilmStart}ms, no budget left`);
+      if (handlerElapsedAtFilmStart > STILLS_BUDGET_FOR_FILMS_MS) {
+        console.log(`[surprise-me:film] skipping film phase entirely — stills already used ${handlerElapsedAtFilmStart}ms (> ${STILLS_BUDGET_FOR_FILMS_MS}ms), no budget left`);
         for (const { idx } of filmable) {
           (items[idx] as any).videoError = "Skipped — pack hit budget on stills, retry to add films";
         }
       }
-      for (let i = 0; handlerElapsedAtFilmStart <= 75_000 && i < filmable.length; i += FILM_CONCURRENCY) {
+      for (let i = 0; handlerElapsedAtFilmStart <= STILLS_BUDGET_FOR_FILMS_MS && i < filmable.length; i += FILM_CONCURRENCY) {
         // Check budget before launching next batch — bail if close to limit.
         if (Date.now() - filmsStartedAt > FILMS_BUDGET_MS) {
           console.log(`[surprise-me:film] film budget exceeded after ${i} clips, marking remaining as queued`);
