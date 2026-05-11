@@ -1,29 +1,23 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Home, FolderOpen, Calendar, Palette, Sparkles, Scissors, GitCompare,
-  User, LogOut, Shield, Zap, CreditCard, BarChart3, Eye,
+  FolderOpen, Palette, Sparkles, Wand2,
+  User, LogOut, Shield, Zap, CreditCard,
 } from "lucide-react";
 import { OraLogo } from "./OraLogo";
 import { CreditPacksModal } from "./CreditPacksModal";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
-import { PHASE_1_ONLY } from "../lib/phase";
 import { useState, useRef, useEffect } from "react";
 
 /**
  * AppSidebar — Blaze-inspired micro sidebar
  *   Desktop: ~52px icon-only sidebar, tooltips on hover
- *   Mobile:  bottom tab bar (5 items)
+ *   Mobile:  bottom tab bar
  */
 
 function isNavActive(href: string, pathname: string): boolean {
-  if (href === "/hub/library") return pathname.startsWith("/hub/library");
-  if (href === "/hub/vault") return pathname.startsWith("/hub/vault");
-  if (href === "/hub/analyze") return pathname.startsWith("/hub/analyze");
-  if (href === "/hub/dashboard") return pathname.startsWith("/hub/dashboard");
-  if (href === "/hub/compare") return pathname.startsWith("/hub/compare");
-  if (href === "/hub") return pathname === "/hub";
+  if (href === "/hub/surprise") return pathname === "/hub" || pathname.startsWith("/hub/surprise");
   return pathname.startsWith(href);
 }
 
@@ -34,28 +28,13 @@ export function AppSidebar() {
   const { t } = useI18n();
   const [tooltip, setTooltip] = useState<string | null>(null);
 
-  // Phase 2 items (Studio, Calendar, Brand Vault) are hidden in Phase 1.
-  // Keep the definitions so we can restore them by flipping PHASE_1_ONLY.
-  const allNavItems = [
-    { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
-    { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
-    { icon: GitCompare, label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library",   phase1: true  },
-    { icon: Palette,    label: t("sidebar.brandKit"),href: "/hub/vault",     phase1: true  },
-    { icon: Home,       label: t("sidebar.home"),    href: "/hub",           phase1: false },
-    { icon: Calendar,   label: t("sidebar.calendar"),href: "/hub/calendar",  phase1: false },
+  const navItems = [
+    { icon: Sparkles,   label: t("sidebar.home"),     href: "/hub/surprise" },
+    { icon: FolderOpen, label: t("sidebar.content"),  href: "/hub/library"  },
+    { icon: Wand2,      label: "Editor",              href: "/hub/editor"   },
+    { icon: Palette,    label: t("sidebar.brandKit"), href: "/hub/vault"    },
   ];
-  const navItems = allNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
-
-  const allMobileNavItems = [
-    { icon: Eye,        label: "Analyze",            href: "/hub/analyze",   phase1: true  },
-    { icon: BarChart3,  label: "Dashboard",          href: "/hub/dashboard", phase1: true  },
-    { icon: GitCompare, label: t("sidebar.compare"), href: "/hub/compare",   phase1: true  },
-    { icon: FolderOpen, label: t("sidebar.content"), href: "/hub/library",   phase1: true  },
-    { icon: Home,       label: t("sidebar.home"),    href: "/hub",           phase1: false },
-    { icon: Calendar,   label: t("sidebar.calendar"),href: "/hub/calendar",  phase1: false },
-  ];
-  const mobileNavItems = allMobileNavItems.filter((i) => !PHASE_1_ONLY || i.phase1);
+  const mobileNavItems = navItems;
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [showPacks, setShowPacks] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);

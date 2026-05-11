@@ -6,9 +6,8 @@ import { OraLogo } from "./OraLogo";
 export function Footer() {
   const { t } = useI18n();
   const productLinks = [
-    { label: t("footer.models"), href: "/models" },
     { label: t("footer.pricing"), href: "/pricing" },
-    { label: t("footer.hub"), href: "/hub" },
+    { label: t("footer.hub"), href: "/hub/surprise" },
   ];
   const companyLinks = [
     { label: t("footer.privacy"), href: "/privacy" },

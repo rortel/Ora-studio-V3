@@ -50,50 +50,48 @@ Fallback chain: if the primary provider fails, the system automatically tries th
 │   │   └── theme.css              # Design tokens & base styles
 │   └── app/
 │       ├── App.tsx                # Entry: RouterProvider
-│       ├── routes.ts              # createBrowserRouter (17 routes)
+│       ├── routes.ts              # createBrowserRouter
 │       ├── lib/
 │       │   ├── supabase.ts        # Supabase client singleton + API helpers
-│       │   └── auth-context.tsx   # Auth context provider
+│       │   ├── auth-context.tsx   # Auth context provider
+│       │   ├── i18n.tsx           # FR/EN translations
+│       │   └── editor/            # Editor state + undo/redo
 │       ├── pages/
-│       │   ├── RootLayout.tsx     # Navbar + Outlet + Footer
+│       │   ├── RootLayout.tsx     # Outlet + AppSidebar/AppTabs + Footer
 │       │   ├── LandingPage.tsx    # / -- marketing homepage
 │       │   ├── PricingPage.tsx    # /pricing
-│       │   ├── AgentsPage.tsx     # /agents & /models
-│       │   ├── HubPage.tsx        # /hub -- content hub
-│       │   ├── RemixPage.tsx      # /remix -- content remixing
-│       │   ├── FlowsPage.tsx      # /flows -- automation flows
-│       │   ├── StudioPage.tsx     # /studio -- main creative studio
-│       │   ├── VaultPage.tsx      # /studio/vault -- brand vault
-│       │   ├── CampaignsPage.tsx  # /studio/campaigns
-│       │   ├── AnalyticsPage.tsx  # /studio/analytics
-│       │   ├── BrandScorePage.tsx # /brand-score
-│       │   ├── RecipesPage.tsx    # /recipes
-│       │   ├── CalendarPage.tsx   # /calendar
-│       │   ├── ProfilePage.tsx    # /profile
-│       │   ├── AdminPage.tsx      # /admin -- cost tracking & diagnostics
-│       │   ├── SubscribePage.tsx  # /subscribe
+│       │   ├── AboutPage.tsx      # /about
+│       │   ├── TermsPage.tsx      # /terms
+│       │   ├── PrivacyPage.tsx    # /privacy
 │       │   ├── LoginPage.tsx      # /login
+│       │   ├── OnboardingPage.tsx # /onboarding
+│       │   ├── SurprisePage.tsx   # /hub/surprise -- AI pack generator (home)
+│       │   ├── LibraryPage.tsx    # /hub/library -- assets & packs
+│       │   ├── VaultPage.tsx      # /hub/vault -- brand kit
+│       │   ├── EditorPage.tsx     # /hub/editor -- image composer (logo, text, shapes)
+│       │   ├── ProfilePage.tsx    # /profile
+│       │   ├── SubscribePage.tsx  # /subscribe
+│       │   ├── AdminPage.tsx      # /admin -- cost tracking & diagnostics
 │       │   └── NotFoundPage.tsx   # 404
 │       └── components/
-│           ├── Navbar.tsx
-│           ├── Hero.tsx
-│           ├── PulseRadar.tsx     # SVG radar animation
-│           ├── PulseMotif.tsx     # Reusable pulse SVG + PulseIcon
-│           ├── SocialProof.tsx
-│           ├── ThreeSteps.tsx
-│           ├── StudioMock.tsx
-│           ├── DecisionMakers.tsx
-│           ├── Agents.tsx
-│           ├── Pricing.tsx
-│           ├── FAQ.tsx
-│           ├── CTASection.tsx
+│           ├── AppSidebar.tsx     # 52px desktop side rail + mobile bottom bar
+│           ├── AppTabs.tsx        # Top segmented control (Surprise/Library/Edit/Vault)
 │           ├── Footer.tsx
-│           ├── ProductShowcase.tsx
-│           ├── ArenaDemo.tsx
-│           ├── StudioSection.tsx
-│           ├── SupportedModels.tsx
-│           ├── hub/               # Hub sub-components
-│           ├── studio/            # Studio sub-components (canvas, layers, timeline, media)
+│           ├── OraLogo.tsx
+│           ├── PulseMotif.tsx     # Reusable pulse SVG
+│           ├── Pricing.tsx        # Pricing block (used in LandingPage)
+│           ├── RouteGuard.tsx     # Auth + plan gates
+│           ├── PublishModal.tsx   # Social publish flow (Library, Editor)
+│           ├── StylePicker.tsx    # Style chooser (Surprise)
+│           ├── ImageBank.tsx      # Brand image bank (Vault)
+│           ├── LibraryPicker.tsx
+│           ├── CreditGuard.tsx
+│           ├── CreditPacksModal.tsx
+│           ├── DeleteAccountModal.tsx
+│           ├── CookieBanner.tsx
+│           ├── OnboardingChecklist.tsx
+│           ├── ora/               # Design tokens + primitives (Button, Badge, Surface)
+│           ├── figma/             # Figma helpers (ImageWithFallback)
 │           └── ui/                # shadcn/ui primitives
 ├── supabase/
 │   └── functions/server/
@@ -113,22 +111,19 @@ Fallback chain: if the primary provider fails, the system automatically tries th
 |-------|------|-------------|
 | `/` | LandingPage | Marketing homepage |
 | `/pricing` | PricingPage | Pricing cards + comparison + FAQ |
-| `/agents` | AgentsPage | AI agent clusters |
-| `/models` | AgentsPage | Alias for /agents |
-| `/hub` | HubPage | Content hub |
-| `/remix` | RemixPage | Content remixing tool |
-| `/flows` | FlowsPage | Automation flows |
-| `/studio` | StudioPage | Main creative studio |
-| `/studio/vault` | VaultPage | Brand vault dashboard |
-| `/studio/campaigns` | CampaignsPage | Campaign management |
-| `/studio/analytics` | AnalyticsPage | KPIs & performance charts |
-| `/brand-score` | BrandScorePage | Brand compliance scoring |
-| `/recipes` | RecipesPage | Content recipes |
-| `/calendar` | CalendarPage | Content calendar |
-| `/profile` | ProfilePage | User profile |
-| `/admin` | AdminPage | Admin: cost tracking, provider diagnostics |
-| `/subscribe` | SubscribePage | Subscription flow |
+| `/about` | AboutPage | About / company info |
+| `/terms` | TermsPage | Terms of service |
+| `/privacy` | PrivacyPage | Privacy policy |
 | `/login` | LoginPage | Authentication |
+| `/onboarding` | OnboardingPage | First-signup wizard |
+| `/hub` | → `/hub/surprise` | Alias redirect |
+| `/hub/surprise` | SurprisePage | AI pack generator (in-app home) |
+| `/hub/library` | LibraryPage | Generated assets & packs |
+| `/hub/vault` | VaultPage | Brand kit (logo, palette, audiences, references) |
+| `/hub/editor` | EditorPage | Image composer (logo, text, shapes, formats) |
+| `/profile` | ProfilePage | User profile |
+| `/subscribe` | SubscribePage | Subscription & credit packs |
+| `/admin` | AdminPage | Admin: cost tracking, provider diagnostics |
 
 ---
 

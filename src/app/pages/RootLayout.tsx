@@ -20,19 +20,13 @@ function PageLoader() {
 export function RootLayout() {
   const location = useLocation();
   const isHub = location.pathname.startsWith("/hub");
-  const isProfile = location.pathname.startsWith("/profile");
   const isAdmin = location.pathname.startsWith("/admin");
   const isSubscribe = location.pathname.startsWith("/subscribe");
-  const isVideoEditor = location.pathname === "/hub/video-editor";
   // The 4-tab app shell (Surprise Me / Library / Edit / Vault) renders its
   // own sticky <AppTabs> header, so we drop the left AppSidebar on those
-  // routes to avoid a duplicate brand + double nav.
-  // Routes that host their own <AppTabs /> at the top of the page body and
-  // therefore MUST drop the left AppSidebar (would duplicate the brand
-  // lockup + double the nav). Profile joined the list so /profile stops
-  // looking like an older legacy surface — it now wears the same shell as
-  // Surprise / Library / Edit / Vault.
-  const isThreeTabApp =
+  // routes to avoid a duplicate brand + double nav. Profile wears the same
+  // shell as Surprise / Library / Edit / Vault.
+  const isFourTabApp =
     location.pathname === "/hub/surprise" ||
     location.pathname.startsWith("/hub/library") ||
     location.pathname.startsWith("/hub/editor") ||
@@ -41,10 +35,10 @@ export function RootLayout() {
   // The marketing landing (`/`) owns its own header + footer, so we skip the
   // shared Navbar/Footer for that path.
   const isLanding = location.pathname === "/";
-  const isAppView = (isHub && !isThreeTabApp) || isAdmin || isSubscribe;
+  const isAppView = (isHub && !isFourTabApp) || isAdmin || isSubscribe;
 
-  // Only scroll to top on actual page navigation (pathname change), not on search param changes
-  // Skip scroll-to-top for /hub paths to avoid disrupting Campaign Lab and other stateful views
+  // Only scroll to top on actual page navigation (pathname change), not on
+  // search param changes. Skip /hub to avoid disrupting stateful in-app views.
   useEffect(() => { if (!location.hash && !isHub) window.scrollTo(0, 0); }, [location.pathname]);
 
   return (
@@ -65,10 +59,9 @@ export function RootLayout() {
         }}
       />
 
-      {isVideoEditor || isThreeTabApp || isLanding ? (
-        /* -- Self-hosted view: the landing page and the 3-tab app shell
-              render their own header + footer. Also covers the
-              full-screen video editor. -- */
+      {isFourTabApp || isLanding ? (
+        /* -- Self-hosted view: the landing page and the 4-tab app shell
+              render their own header + footer. -- */
         <Suspense fallback={<PageLoader />}>
           <Outlet />
         </Suspense>
