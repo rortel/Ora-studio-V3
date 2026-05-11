@@ -1,1237 +1,272 @@
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Ora Editor — agency-grade image composer with optional AI fill.
-   Manual layers (text, logo, shapes) are first-class. AI Fill +
-   Expand let the user retouch / extend the underlying photo.
+   Ora Editor — Feads-style prompt-only image editor.
+
+   No layers. No format presets. No Inspector. No Konva. The whole
+   editor is: image preview on the left, prompt on the right, one
+   Generate button. Each Generate call hands the current image URL
+   and the prompt to Pollo's image2image pipeline; the result
+   replaces the displayed image. History tracks every step so the
+   user can undo the last edit and try a different prompt.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router";
-import type Konva from "konva";
-import { Stage, Layer as KonvaLayerGroup, Rect, Circle as KonvaCircle, Text as KonvaText, Image as KonvaImage, Transformer } from "react-konva";
+import { useState, useEffect, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { toast } from "sonner";
-import {
-  Type as TypeIcon, ImagePlus, Square, Circle as CircleIcon, Download, Save,
-  Undo2, Redo2, Trash2, Loader2, Wand2, X,
-} from "lucide-react";
-import { API_BASE, publicAnonKey } from "../lib/supabase";
+import { Loader2, Wand2, Download, ArrowLeft, RotateCcw, Sparkles } from "lucide-react";
 import { useAuth } from "../lib/auth-context";
 import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
 import { Button } from "../components/ora/Button";
 import { COLORS } from "../components/ora/tokens";
-import { useEditorProject } from "../lib/editor/useEditorProject";
-import {
-  createTextLayer, createLogoLayer, createShapeLayer, createDefaultSpatial,
-  type UnifiedLayer, type TextLayer, type LogoLayer, type ShapeLayer,
-} from "../lib/editor/types";
 import { editImage } from "../lib/editor/aiFill";
 
-/* ──────────────────────────────────────────────────────────────
-   Format presets — the platforms Ora ships into. Selecting one
-   resizes the canvas to exactly that platform's native spec.
-   ────────────────────────────────────────────────────────────── */
-const FORMATS = [
-  { id: "square",      label: "1:1 Square",   w: 1080, h: 1080, hint: "IG Feed · Facebook" },
-  { id: "portrait",    label: "4:5 Portrait", w: 1080, h: 1350, hint: "IG Portrait" },
-  { id: "story",       label: "9:16 Story",   w: 1080, h: 1920, hint: "IG Story · TikTok · Reels" },
-  { id: "wide",        label: "16:9 Wide",    w: 1920, h: 1080, hint: "YouTube · Facebook Cover" },
-  { id: "landscape",   label: "1.91:1",       w: 1200, h: 628,  hint: "OG card · Facebook post" },
-] as const;
+const DISPLAY = `"Bagel Fat One", "Inter", system-ui, sans-serif`;
 
-type FormatId = typeof FORMATS[number]["id"];
-
-/* Fonts available in the text layer inspector — small curated list,
- * not a system-wide picker. Bagel for display, Inter for editorial,
- * a classic serif and a mono for contrast. */
-const FONTS = [
-  { label: "Bagel Fat One",   value: '"Bagel Fat One", sans-serif' },
-  { label: "Inter",           value: 'Inter, sans-serif' },
-  { label: "Playfair",        value: '"Playfair Display", Georgia, serif' },
-  { label: "Mono",            value: 'ui-monospace, "SFMono-Regular", Menlo, monospace' },
+const EXAMPLES = [
+  "Replace the background with a sunset beach",
+  "Make it black and white",
+  "Add soft golden hour lighting",
+  "Remove the people behind",
 ];
 
-const WEIGHTS = [
-  { label: "Regular", value: "normal" },
-  { label: "Bold",    value: "bold" },
-  { label: "Italic",  value: "italic" },
-  { label: "B·I",     value: "bold italic" },
-];
-
-/* A tight default palette — always shown, regardless of Vault. */
-const DEFAULT_SWATCHES = [
-  COLORS.ink, "#FFFFFF", COLORS.coral, COLORS.butter, COLORS.violet, COLORS.warm,
-];
-
-/* ──────────────────────────────────────────────────────────────
-   Route entry — MUST be exported as BOTH named and default.
-   routes.ts uses lazyRetry with pick="EditorPage" which reads
-   `m["EditorPage"]` off the module namespace; a default-only
-   export would resolve to undefined there and React would throw
-   the infamous #306 from createFiberFromTypeAndProps (case 16,
-   REACT_LAZY_TYPE) with args=[undefined, ""]. Every other lazy
-   page in routes.ts follows this same named-export convention.
-   ────────────────────────────────────────────────────────────── */
 export function EditorPage() {
   return (
     <RouteGuard requireAuth>
-      <EditorAgency />
+      <EditorSimple />
     </RouteGuard>
   );
 }
 export default EditorPage;
 
-/* ──────────────────────────────────────────────────────────────
-   Main shell — split in 3 zones: top toolbar, format rail,
-   canvas, right inspector. No timeline, no video panels, no AI
-   prompt bar. Every action is explicit.
-   ────────────────────────────────────────────────────────────── */
-function EditorAgency() {
+function EditorSimple() {
   const { getAuthHeader } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const navState = location.state as { assetUrl?: string; assetId?: string } | null;
   const preloadUrl = navState?.assetUrl || null;
-  const preloadId  = navState?.assetId  || null;
 
-  // Core project state (layers, history, selection) — reuses the shared hook
-  const p = useEditorProject("Untitled", 1080, 1080);
+  // The displayed image URL. Starts at whatever Library handed over via
+  // router state; every successful Generate swaps it for the AI result.
+  const [imageUrl, setImageUrl] = useState<string | null>(preloadUrl);
+  const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Edit history — every entry is an image URL the user has seen, in
+  // order. Lets Undo step back one Generate at a time. We don't trim
+  // it; AI edits are cheap to keep around as strings.
+  const [history, setHistory] = useState<string[]>(preloadUrl ? [preloadUrl] : []);
 
-  // Visual state specific to this shell
-  const [activeFormat, setActiveFormat] = useState<FormatId>("square");
-  const [zoom, setZoom] = useState(1);
-
-  // Background image (if the user arrived from Library via Pencil icon)
-  const [backgroundImg, setBackgroundImg] = useState<HTMLImageElement | null>(null);
-  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
-
-  // AI mode — Feads-style on-demand. One prompt, the model decides what
-  // to change. No mask, no brush. Apply replaces the background image.
-  const [aiMode, setAiMode] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
-
-  // Vault data — the logo URL the +Logo button will place, and palette
-  // colours the inspector (next commit) will render as one-click swatches.
-  const [vaultLogoUrl, setVaultLogoUrl] = useState<string | null>(null);
-  const [vaultColors, setVaultColors] = useState<string[]>([]);
-
-  const stageRef = useRef<Konva.Stage | null>(null);
-  const transformerRef = useRef<Konva.Transformer | null>(null);
-  const nodeRegistry = useRef<Map<string, Konva.Node>>(new Map());
-
-  // Attach / detach the shared Transformer whenever selection flips.
-  useEffect(() => {
-    const tr = transformerRef.current;
-    if (!tr) return;
-    const sel = p.selectedLayerId;
-    const node = sel ? nodeRegistry.current.get(sel) : null;
-    if (node) {
-      tr.nodes([node]);
-    } else {
-      tr.nodes([]);
-    }
-    tr.getLayer()?.batchDraw();
-  }, [p.selectedLayerId, p.project.layers]);
-
-  // Load the Brand Vault on mount. Studio+-gated server-side; for Creator
-  // users this will return 402 and we silently leave vaultLogoUrl null
-  // (the +Logo button will prompt to upload from Vault if pressed).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = getAuthHeader();
-        const r = await fetch(`${API_BASE}/vault/load`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-          body: JSON.stringify({ _token: token }),
-        });
-        const d = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        const v = d?.vault;
-        if (v) {
-          setVaultLogoUrl(v.logo_url || v.logoUrl || null);
-          const hexes = (v.colors || [])
-            .map((c: any) => String(c?.hex || "").toUpperCase())
-            .filter((h: string) => /^#[0-9A-F]{3,8}$/.test(h));
-          setVaultColors(hexes);
-        }
-      } catch { /* silent — Vault is optional */ }
-    })();
-    return () => { cancelled = true; };
-  }, [getAuthHeader]);
-
-  // Preload asset handed over by Library's Pencil icon. Loaded into an
-  // <img> element with crossOrigin so Konva can use it as a full-canvas
-  // background; the canvas format is auto-matched to the image AR so
-  // the user starts on exactly the asset they were editing.
-  useEffect(() => {
-    if (!preloadUrl) return;
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      setBackgroundImg(img);
-      setBackgroundUrl(preloadUrl);
-      // Match the project to the image dimensions. If the image AR maps
-      // to one of our format presets, switch the active chip too.
-      const w = img.naturalWidth || 1080;
-      const h = img.naturalHeight || 1080;
-      p.updateProjectProps({ width: w, height: h, backgroundImageUrl: preloadUrl });
-      const ar = w / h;
-      const match = FORMATS.find((f) => Math.abs(f.w / f.h - ar) < 0.02);
-      if (match) setActiveFormat(match.id);
-    };
-    img.onerror = () => { toast.error("Couldn't load that post."); };
-    img.src = preloadUrl;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preloadUrl]);
-
-  const applyFormat = useCallback((f: typeof FORMATS[number]) => {
-    setActiveFormat(f.id);
-    p.updateProjectProps({ width: f.w, height: f.h });
-  }, [p]);
-
-  // ── Layer add actions ──
-  // Each action drops a new layer roughly centred for the current canvas,
-  // sensibly sized, and selects it so the inspector (next commit) can
-  // pick it up immediately.
-  const addText = useCallback(() => {
-    const W = p.project.width, H = p.project.height;
-    const w = Math.round(W * 0.65), h = Math.round(W * 0.12);
-    const layer = createTextLayer({
-      text: "Your headline",
-      fontSize: Math.round(W * 0.065),
-      fontFamily: '"Bagel Fat One", "Inter", sans-serif',
-      fill: COLORS.ink,
-      align: "left",
-      spatial: { ...createDefaultSpatial(), x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), width: w, height: h },
-    });
-    p.addLayer(layer);
-    p.setSelectedLayerId(layer.id);
-  }, [p]);
-
-  const addShape = useCallback((shape: "rect" | "circle") => {
-    const W = p.project.width, H = p.project.height;
-    const size = Math.round(W * 0.25);
-    const layer = createShapeLayer(shape, {
-      fill: COLORS.coral,
-      fillType: "solid",
-      cornerRadius: shape === "rect" ? 24 : 0,
-      spatial: { ...createDefaultSpatial(), x: Math.round((W - size) / 2), y: Math.round((H - size) / 2), width: size, height: size },
-    });
-    p.addLayer(layer);
-    p.setSelectedLayerId(layer.id);
-  }, [p]);
-
-  const addLogo = useCallback(() => {
-    if (!vaultLogoUrl) {
-      toast.error("No logo in your Brand Vault. Upload one there first.");
-      return;
-    }
-    // External logo URLs (the brand's own CDN, e.g. wp-content uploads)
-    // typically don't return Access-Control-Allow-Origin, so Konva can't
-    // load them onto the canvas. Route them through our /image-proxy
-    // which adds the CORS header. URLs already on our Supabase storage
-    // are passed through untouched.
-    const isOurStorage = vaultLogoUrl.includes("supabase") || vaultLogoUrl.includes("make-cad57f79") || vaultLogoUrl.startsWith("data:") || vaultLogoUrl.startsWith("blob:");
-    const safeLogoUrl = isOurStorage
-      ? vaultLogoUrl
-      : `${API_BASE}/image-proxy?url=${encodeURIComponent(vaultLogoUrl)}`;
-    const W = p.project.width, H = p.project.height;
-    const size = Math.round(W * 0.15);
-    const layer = createLogoLayer(safeLogoUrl, {
-      name: "Logo",
-      spatial: { ...createDefaultSpatial(), x: W - size - 40, y: H - size - 40, width: size, height: size },
-    });
-    p.addLayer(layer);
-    p.setSelectedLayerId(layer.id);
-  }, [p, vaultLogoUrl]);
-
-  // ── AI edit ──
-  // Feads-style on-demand: user types what to change, model rewrites the
-  // photo. Replaces backgroundImg with the returned URL.
-  const swapBackground = useCallback((nextUrl: string) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      setBackgroundImg(img);
-      setBackgroundUrl(nextUrl);
-      p.updateProjectProps({
-        width: img.naturalWidth,
-        height: img.naturalHeight,
-        backgroundImageUrl: nextUrl,
-      });
-    };
-    img.onerror = () => toast.error("Couldn't load AI result.");
-    img.src = nextUrl;
-  }, [p]);
-
-  const applyAiEdit = useCallback(async () => {
-    if (aiBusy) return;
-    if (!backgroundUrl) { toast.error("Open an image from your Library first."); return; }
-    if (!aiPrompt.trim()) { toast.error("Describe the edit you want."); return; }
-    setAiBusy(true);
+  const applyEdit = useCallback(async () => {
+    if (!imageUrl) { toast.error("Open an image from your Library first."); return; }
+    if (!prompt.trim()) { toast.error("Describe the edit you want."); return; }
+    if (busy) return;
+    setBusy(true);
     try {
-      const url = await editImage({ imageUrl: backgroundUrl, prompt: aiPrompt, getAuthHeader });
-      swapBackground(url);
-      setAiMode(false);
-      setAiPrompt("");
-      toast.success("AI edit applied");
-    } catch (err: any) {
-      toast.error(String(err?.message || err));
+      const newUrl = await editImage({ imageUrl, prompt, getAuthHeader });
+      setImageUrl(newUrl);
+      setHistory((h) => [...h, newUrl]);
+      setPrompt("");
+      toast.success("Created");
+    } catch (e: any) {
+      toast.error(String(e?.message || e));
     } finally {
-      setAiBusy(false);
+      setBusy(false);
     }
-  }, [aiBusy, backgroundUrl, aiPrompt, getAuthHeader, swapBackground]);
+  }, [imageUrl, prompt, busy, getAuthHeader]);
 
-  // ── Save to Library ──
-  // Rasterises the current Stage at 2× pixel ratio, POSTs the data URL to
-  // /editor/save which uploads to storage and creates a Library item
-  // (type:"image", preview.kind:"image", editedFrom: preloadId for lineage).
-  const [saving, setSaving] = useState(false);
-  const handleSave = useCallback(async () => {
-    if (saving) return;
-    const stage = stageRef.current;
-    if (!stage) return;
-    setSaving(true);
-    try {
-      // Take the dataURL at canvas-native size, not the zoomed display.
-      const dataUrl = stage.toDataURL({ pixelRatio: 2 / Math.max(0.01, zoom) });
-      const token = getAuthHeader();
-      const r = await fetch(`${API_BASE}/editor/save`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
-        body: JSON.stringify({
-          imageDataUrl: dataUrl,
-          prompt: p.project.name || "Edited in ORA Editor",
-          sourceItemId: preloadId || null,
-          _token: token,
-        }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (d?.success) toast.success("Saved to Library");
-      else toast.error(d?.error || "Save failed");
-    } catch (err: any) {
-      toast.error(String(err?.message || err));
-    } finally {
-      setSaving(false);
-    }
-  }, [saving, zoom, getAuthHeader, p.project.name, preloadId]);
-
-  // ── Export PNG at canvas-exact resolution ──
-  const handleExport = useCallback(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const dataUrl = stage.toDataURL({ pixelRatio: 2 / Math.max(0.01, zoom) });
-    const slug = (p.project.name || "ora").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ora";
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = `${slug}-${p.project.width}x${p.project.height}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }, [zoom, p.project.name, p.project.width, p.project.height]);
-
-  // ── Keyboard shortcuts ──
-  // - ⌘/Ctrl + Z → undo, ⇧⌘/Ctrl+Z → redo (Y alias)
-  // - ⌘/Ctrl + S → save to Library
-  // - ⌘/Ctrl + E → export PNG
-  // - Delete / Backspace → remove selected layer
-  // - Arrow keys → nudge 1px (10px with Shift)
-  // Respects form focus: shortcuts skip when the active element is an
-  // input, textarea, select or contentEditable field.
+  // ⌘↩ / Ctrl↩ to fire Generate from anywhere in the page (textarea
+  // included). Skipped while busy or with an empty prompt so the user
+  // doesn't accidentally double-submit.
   useEffect(() => {
-    const isFormTarget = (t: EventTarget | null) => {
-      if (!(t instanceof HTMLElement)) return false;
-      const tag = t.tagName;
-      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
-    };
     const onKey = (e: KeyboardEvent) => {
-      if (isFormTarget(e.target)) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "z") {
+      if (mod && e.key === "Enter") {
         e.preventDefault();
-        if (e.shiftKey) p.redo(); else p.undo();
-        return;
+        applyEdit();
       }
-      if (mod && (e.key.toLowerCase() === "y")) { e.preventDefault(); p.redo(); return; }
-      if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); handleSave(); return; }
-      if (mod && e.key.toLowerCase() === "e") { e.preventDefault(); handleExport(); return; }
-      const sel = p.selectedLayer;
-      if (!sel) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        p.removeLayer(sel.id);
-        return;
-      }
-      const step = e.shiftKey ? 10 : 1;
-      if (e.key === "ArrowLeft")  { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, x: sel.spatial.x - step } } as any); }
-      if (e.key === "ArrowRight") { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, x: sel.spatial.x + step } } as any); }
-      if (e.key === "ArrowUp")    { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, y: sel.spatial.y - step } } as any); }
-      if (e.key === "ArrowDown")  { e.preventDefault(); p.updateLayer(sel.id, { spatial: { ...sel.spatial, y: sel.spatial.y + step } } as any); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [p, handleSave, handleExport]);
+  }, [applyEdit]);
 
-  // Fit-to-viewport zoom: canvas should never overflow the center column.
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const recalc = () => {
-      const el = canvasRef.current;
-      if (!el) return;
-      const pad = 64;
-      const avW = el.clientWidth - pad;
-      const avH = el.clientHeight - pad;
-      const z = Math.min(avW / p.project.width, avH / p.project.height, 1);
-      setZoom(z > 0 ? z : 1);
-    };
-    recalc();
-    const ro = new ResizeObserver(recalc);
-    if (canvasRef.current) ro.observe(canvasRef.current);
-    window.addEventListener("resize", recalc);
-    return () => { ro.disconnect(); window.removeEventListener("resize", recalc); };
-  }, [p.project.width, p.project.height]);
+  const undo = () => {
+    if (history.length < 2) return;
+    const next = history.slice(0, -1);
+    setHistory(next);
+    setImageUrl(next[next.length - 1]);
+  };
+
+  const download = () => {
+    if (!imageUrl) return;
+    const a = document.createElement("a");
+    a.href = imageUrl;
+    a.download = "ora-edit.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.cream, color: COLORS.ink, display: "flex", flexDirection: "column" }}>
       <AppTabs active="edit" />
 
-      {/* ── Top toolbar ── */}
-      <header
-        className="flex items-center gap-2 px-5 md:px-8 h-14 border-b"
-        style={{ background: "#FFFFFF", borderColor: COLORS.line }}
-      >
-        {/* Project name */}
-        <input
-          value={p.project.name}
-          onChange={(e) => p.updateProjectProps({ name: e.target.value })}
-          className="bg-transparent outline-none font-medium"
-          style={{ fontSize: 14, color: COLORS.ink, minWidth: 140, maxWidth: 260 }}
-          placeholder="Untitled"
-        />
-        <span style={{ fontSize: 12, color: COLORS.subtle }}>·</span>
-        <span style={{ fontSize: 12, color: COLORS.muted, fontVariantNumeric: "tabular-nums" }}>
-          {p.project.width} × {p.project.height}
-        </span>
-
-        <div className="flex-1" />
-
-        {/* Undo / redo */}
-        <button
-          onClick={p.undo}
-          disabled={!p.canUndo}
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 disabled:opacity-30 disabled:cursor-not-allowed transition"
-          title="Undo (⌘Z)"
-        >
-          <Undo2 size={15} />
-        </button>
-        <button
-          onClick={p.redo}
-          disabled={!p.canRedo}
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-black/5 disabled:opacity-30 disabled:cursor-not-allowed transition"
-          title="Redo (⇧⌘Z)"
-        >
-          <Redo2 size={15} />
-        </button>
-
-        <div className="w-px h-6 mx-1" style={{ background: COLORS.line }} />
-
-        <Button
-          variant={aiMode ? "accent" : "ghost"}
-          size="sm"
-          onClick={() => setAiMode(!aiMode)}
-          disabled={!backgroundImg}
-          title={backgroundImg ? "Describe how to edit the photo" : "Open an image first"}
-        >
-          <Wand2 size={13} /> Ask AI
-        </Button>
-
-        <div className="w-px h-6 mx-1" style={{ background: COLORS.line }} />
-
-        <Button variant="ghost" size="sm" onClick={handleSave} disabled={saving} title="Save to Library (⌘S)">
-          {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-          {saving ? "Saving…" : "Save"}
-        </Button>
-        <Button variant="accent" size="sm" onClick={handleExport} title="Export PNG (⌘E)">
-          <Download size={13} /> Export
-        </Button>
-      </header>
-
-      {/* ── Body: left formats · canvas · right inspector ── */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Format rail (left) */}
-        <aside
-          className="hidden md:flex flex-col gap-1 p-4 border-r overflow-y-auto"
-          style={{ width: 200, background: "#FFFFFF", borderColor: COLORS.line }}
-        >
-          <div className="text-[10px] uppercase tracking-[0.18em] mb-3 px-1" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-            Format
-          </div>
-          {FORMATS.map((f) => {
-            const on = activeFormat === f.id;
-            return (
-              <button
-                key={f.id}
-                onClick={() => applyFormat(f)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition"
-                style={{
-                  background: on ? COLORS.ink : "transparent",
-                  color: on ? "#FFFFFF" : COLORS.ink,
-                }}
-                onMouseEnter={(e) => { if (!on) (e.currentTarget as HTMLButtonElement).style.background = "rgba(17,17,17,0.04)"; }}
-                onMouseLeave={(e) => { if (!on) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-              >
-                <span
-                  className="shrink-0 rounded"
-                  style={{
-                    background: on ? "#FFFFFF" : COLORS.warm,
-                    width: 20,
-                    height: 20 * (f.h / f.w),
-                    minHeight: 10,
-                    maxHeight: 28,
-                  }}
-                />
-                <span className="flex flex-col min-w-0">
-                  <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: "-0.01em" }}>{f.label}</span>
-                  <span style={{ fontSize: 10.5, opacity: 0.65 }}>{f.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </aside>
-
-        {/* Canvas */}
-        <main
-          ref={canvasRef}
-          className="flex-1 flex items-center justify-center overflow-hidden relative"
-          style={{ background: COLORS.cream }}
-        >
-          <div
-            style={{
-              width:  p.project.width  * zoom,
-              height: p.project.height * zoom,
-              boxShadow: "0 24px 60px -20px rgba(17,17,17,0.25), 0 2px 4px rgba(17,17,17,0.06)",
-              borderRadius: 10,
-              overflow: "hidden",
-              background: "#FFFFFF",
-              position: "relative",
-            }}
-          >
-            <Stage
-              ref={stageRef}
-              width={p.project.width * zoom}
-              height={p.project.height * zoom}
-              scaleX={zoom}
-              scaleY={zoom}
-              onMouseDown={(e) => {
-                // Click-away deselect: Stage root targeted directly.
-                if (e.target === e.target.getStage()) p.setSelectedLayerId(null);
-              }}
-              style={{ cursor: "default" }}
+      <main className="flex-1 flex flex-col items-center px-5 md:px-10 py-10 md:py-16">
+        <div className="w-full max-w-6xl">
+          {/* Heading */}
+          <div className="mb-10 md:mb-14">
+            <h1
+              className="leading-[0.98]"
+              style={{ fontFamily: DISPLAY, fontSize: "clamp(38px, 6vw, 72px)", color: COLORS.ink }}
             >
-              <KonvaLayerGroup>
-                {/* Canvas background */}
-                <Rect x={0} y={0} width={p.project.width} height={p.project.height} fill="#FFFFFF" listening={false} />
-                {/* Optional preloaded asset — ternary (not &&) so react-konva
-                 *  never sees a `false` child in its Layer tree.
-                 *  Aspect-preserving fit (object-fit: cover): scale the image
-                 *  to fill the canvas while preserving its native aspect, and
-                 *  centre-crop any overflow. Without this the image stretched
-                 *  whenever the user picked a different format (e.g. 1:1 →
-                 *  16:9 squashed the cake horizontally). */}
-                {backgroundImg ? (() => {
-                  const cw = p.project.width;
-                  const ch = p.project.height;
-                  const iw = backgroundImg.width || cw;
-                  const ih = backgroundImg.height || ch;
-                  const scale = Math.max(cw / iw, ch / ih);
-                  const drawW = iw * scale;
-                  const drawH = ih * scale;
-                  const dx = (cw - drawW) / 2;
-                  const dy = (ch - drawH) / 2;
-                  return (
-                    <KonvaImage
-                      image={backgroundImg}
-                      x={dx}
-                      y={dy}
-                      width={drawW}
-                      height={drawH}
-                      listening={false}
-                    />
-                  );
-                })() : null}
-
-                {/* User layers — insertion order = z-index */}
-                {p.project.layers.filter((l) => l.visible).map((layer) => (
-                  <LayerNode
-                    key={layer.id}
-                    layer={layer}
-                    onSelect={() => p.setSelectedLayerId(layer.id)}
-                    onChange={(next) => p.updateLayer(layer.id, next)}
-                    registerNode={(n) => { if (n) nodeRegistry.current.set(layer.id, n); else nodeRegistry.current.delete(layer.id); }}
-                  />
-                ))}
-              </KonvaLayerGroup>
-              {/* Transformer lives in its own Layer so the primary Layer's
-               *  child list stays stable (no conditional siblings) — avoids
-               *  the react-konva #306 seen in production. The Transformer
-               *  renders unconditionally and attaches by node reference via
-               *  the useEffect above; when nothing is selected it simply
-               *  transforms an empty node list and draws nothing. */}
-              <KonvaLayerGroup>
-                <Transformer
-                  ref={transformerRef}
-                  rotateEnabled
-                  flipEnabled={false}
-                  borderStroke={COLORS.coral}
-                  borderStrokeWidth={1.5}
-                  anchorStroke={COLORS.coral}
-                  anchorFill="#FFFFFF"
-                  anchorSize={8}
-                  anchorCornerRadius={4}
-                  boundBoxFunc={(oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox)}
-                />
-              </KonvaLayerGroup>
-            </Stage>
+              Edit your creation.
+            </h1>
+            <p className="mt-3 text-[15px] md:text-[16px]" style={{ color: COLORS.muted, maxWidth: 720 }}>
+              Describe the change. Ora rewrites the image from the original.
+            </p>
           </div>
-        </main>
 
-        {/* Inspector (right) — context-aware controls for the selected layer.
-         *  When AI Fill or Expand is active, this slot swaps to the AI
-         *  controls instead so the user has the brush + prompt + apply
-         *  flow in the same column as the canvas. */}
-        <aside
-          className="hidden lg:flex flex-col border-l overflow-y-auto"
-          style={{ width: 300, background: "#FFFFFF", borderColor: COLORS.line }}
-        >
-          {aiMode ? (
-            <AiPanel
-              prompt={aiPrompt}
-              onPromptChange={setAiPrompt}
-              busy={aiBusy}
-              onApply={applyAiEdit}
-              onCancel={() => { setAiMode(false); setAiPrompt(""); }}
-            />
+          {!imageUrl ? (
+            <EmptyState onOpenLibrary={() => navigate("/hub/library")} />
           ) : (
-            <Inspector
-              selected={p.selectedLayer}
-              onUpdate={(next) => p.selectedLayer && p.updateLayer(p.selectedLayer.id, next)}
-              onDelete={() => p.selectedLayer && p.removeLayer(p.selectedLayer.id)}
-              vaultColors={vaultColors}
-              vaultLogoUrl={vaultLogoUrl}
-              backgroundUrl={backgroundUrl}
-              onAddText={addText}
-              onAddLogo={addLogo}
-              onAddShape={addShape}
-              onRemoveBackground={() => {
-                setBackgroundImg(null);
-                setBackgroundUrl(null);
-                p.updateProjectProps({ backgroundImageUrl: null });
-              }}
-            />
-          )}
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-/* ──────────────────────────────────────────────────────────────
-   LayerNode — renders ONE Konva primitive for a layer. Returns a
-   single element (no fragment, no conditional) so react-konva's
-   reconciler sees a stable tree even when selection changes. The
-   Transformer is rendered once at the Layer level in the parent.
-   ────────────────────────────────────────────────────────────── */
-function LayerNode({
-  layer, onSelect, onChange, registerNode,
-}: {
-  layer: UnifiedLayer;
-  onSelect: () => void;
-  onChange: (next: Partial<UnifiedLayer>) => void;
-  registerNode: (n: Konva.Node | null) => void;
-}) {
-  const nodeRef = useRef<Konva.Node | null>(null);
-
-  // Register the Konva node in the parent's registry so the shared
-  // Transformer can attach by id.
-  const attachRef = useCallback((n: Konva.Node | null) => {
-    nodeRef.current = n;
-    registerNode(n);
-  }, [registerNode]);
-
-  const commitTransform = () => {
-    const node = nodeRef.current;
-    if (!node) return;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    node.scaleX(1);
-    node.scaleY(1);
-    onChange({
-      spatial: {
-        ...layer.spatial,
-        x: node.x(),
-        y: node.y(),
-        width: Math.max(10, node.width() * scaleX),
-        height: Math.max(10, node.height() * scaleY),
-        rotation: node.rotation(),
-      },
-    } as any);
-  };
-
-  const common = {
-    x: layer.spatial.x,
-    y: layer.spatial.y,
-    rotation: layer.spatial.rotation,
-    opacity: layer.spatial.opacity,
-    draggable: true,
-    onClick: onSelect,
-    onTap: onSelect,
-    onDragEnd: commitTransform,
-    onTransformEnd: commitTransform,
-  };
-
-  if (layer.type === "text") {
-    const t = layer as TextLayer;
-    return (
-      <KonvaText
-        {...common}
-        ref={attachRef as any}
-        text={t.text}
-        width={t.spatial.width}
-        fontSize={t.fontSize}
-        fontFamily={t.fontFamily}
-        fontStyle={t.fontStyle}
-        fill={t.fill}
-        align={t.align}
-        lineHeight={t.lineHeight}
-        letterSpacing={t.letterSpacing}
-      />
-    );
-  }
-  if (layer.type === "shape") {
-    const s = layer as ShapeLayer;
-    if (s.shape === "circle") {
-      return (
-        <KonvaCircle
-          {...common}
-          ref={attachRef as any}
-          x={layer.spatial.x + layer.spatial.width / 2}
-          y={layer.spatial.y + layer.spatial.height / 2}
-          radius={Math.min(layer.spatial.width, layer.spatial.height) / 2}
-          fill={s.fill}
-          stroke={s.stroke || undefined}
-          strokeWidth={s.strokeWidth}
-        />
-      );
-    }
-    return (
-      <Rect
-        {...common}
-        ref={attachRef as any}
-        width={layer.spatial.width}
-        height={layer.spatial.height}
-        fill={s.fill}
-        cornerRadius={s.cornerRadius}
-        stroke={s.stroke || undefined}
-        strokeWidth={s.strokeWidth}
-      />
-    );
-  }
-  if (layer.type === "logo") {
-    return (
-      <LogoImageNode
-        layer={layer as LogoLayer}
-        common={common}
-        forwardRef={attachRef}
-      />
-    );
-  }
-  // Fallback for unhandled layer types: render nothing rather than undefined.
-  return null;
-}
-
-/* ──────────────────────────────────────────────────────────────
-   LogoImageNode — loads a logo URL into an Image element once,
-   then renders it as a Konva Image. Extracted into its own
-   component so the load hook stays local and doesn't pollute
-   the LayerNode render body.
-   ────────────────────────────────────────────────────────────── */
-function LogoImageNode({
-  layer, common, forwardRef,
-}: {
-  layer: LogoLayer;
-  common: Record<string, any>;
-  forwardRef: (r: Konva.Node | null) => void;
-}) {
-  const [img, setImg] = useState<HTMLImageElement | null>(null);
-  useEffect(() => {
-    if (!layer.sourceUrl) { setImg(null); return; }
-    const i = new Image();
-    i.crossOrigin = "anonymous";
-    i.onload = () => setImg(i);
-    i.src = layer.sourceUrl;
-  }, [layer.sourceUrl]);
-
-  // Before the image resolves (or if sourceUrl is empty), show a
-  // dashed placeholder so the layer is still selectable.
-  if (!img) {
-    return (
-      <Rect
-        {...common}
-        ref={forwardRef as any}
-        width={layer.spatial.width}
-        height={layer.spatial.height}
-        fill="rgba(17,17,17,0.06)"
-        stroke="rgba(17,17,17,0.2)"
-        strokeWidth={1.5}
-        dash={[6, 6]}
-        cornerRadius={8}
-      />
-    );
-  }
-  return (
-    <KonvaImage
-      {...common}
-      ref={forwardRef as any}
-      image={img}
-      width={layer.spatial.width}
-      height={layer.spatial.height}
-    />
-  );
-}
-
-/* ──────────────────────────────────────────────────────────────
-   Inspector — right panel. Switches on the selected layer type:
-     · text   → content, font, weight, size, line-height,
-                letter-spacing, colour, alignment
-     · shape  → fill colour, corner radius, opacity
-     · logo   → opacity, rotation
-   A shared "Position" block shows X / Y / W / H for every type.
-   Vault palette swatches sit above the hex input so one click
-   locks the colour into the current selection.
-   ────────────────────────────────────────────────────────────── */
-function Inspector({
-  selected, onUpdate, onDelete, vaultColors, vaultLogoUrl, backgroundUrl,
-  onAddText, onAddLogo, onAddShape, onRemoveBackground,
-}: {
-  selected: UnifiedLayer | undefined;
-  onUpdate: (next: Partial<UnifiedLayer>) => void;
-  onDelete: () => void;
-  vaultColors: string[];
-  vaultLogoUrl: string | null;
-  backgroundUrl: string | null;
-  onAddText: () => void;
-  onAddLogo: () => void;
-  onAddShape: (kind: "rect" | "circle") => void;
-  onRemoveBackground: () => void;
-}) {
-  if (!selected) {
-    // Empty-state Inspector. Without this the right rail just said "pick a
-    // layer below" and pointed at a footer that has since been removed.
-    // Now: add-layer cards, background controls (when there's a BG), and a
-    // brand-kit preview surfacing the Vault logo + palette so the user
-    // sees what's at hand before they start composing.
-    const AddCard = ({ icon, label, onClick, disabled, hint }: {
-      icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean; hint?: string;
-    }) => (
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className="flex flex-col items-start gap-1.5 rounded-xl p-3 text-left transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-black/[0.03]"
-        style={{ border: `1px solid ${COLORS.line}`, background: "#FFF" }}
-        title={hint}
-      >
-        <span className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(17,17,17,0.04)" }}>
-          {icon}
-        </span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.ink }}>{label}</span>
-      </button>
-    );
-    return (
-      <div className="flex flex-col">
-        {/* Header */}
-        <div className="px-5 pt-5 pb-3 border-b" style={{ borderColor: COLORS.line }}>
-          <div className="text-[10px] uppercase tracking-[0.18em]" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-            Inspector
-          </div>
-          <div className="text-[13px]" style={{ color: COLORS.muted }}>
-            Nothing selected
-          </div>
-        </div>
-
-        {/* Add layer */}
-        <div className="px-5 py-4 border-b" style={{ borderColor: COLORS.line }}>
-          <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-            Add layer
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <AddCard icon={<TypeIcon size={13} />}   label="Text"      onClick={onAddText} />
-            <AddCard icon={<ImagePlus size={13} />}  label="Logo"      onClick={onAddLogo}
-                     disabled={!vaultLogoUrl} hint={vaultLogoUrl ? "Place your Vault logo" : "Upload a logo in Vault first"} />
-            <AddCard icon={<Square size={13} />}     label="Rectangle" onClick={() => onAddShape("rect")} />
-            <AddCard icon={<CircleIcon size={13} />} label="Circle"    onClick={() => onAddShape("circle")} />
-          </div>
-        </div>
-
-        {/* Background controls */}
-        {backgroundUrl && (
-          <div className="px-5 py-4 border-b" style={{ borderColor: COLORS.line }}>
-            <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-              Background
-            </div>
-            <div className="flex items-center gap-3">
+            <div className="grid md:grid-cols-2 gap-6 md:gap-10">
+              {/* Image preview — square frame, contain-fit so portraits + landscapes
+                  both fit nicely without cropping. Spinner overlay while busy. */}
               <div
-                className="shrink-0 rounded-lg overflow-hidden"
-                style={{ width: 48, height: 48, background: `center/cover no-repeat url("${backgroundUrl}")`, border: `1px solid ${COLORS.line}` }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-[11.5px] mb-1.5" style={{ color: COLORS.muted }}>
-                  Use <b style={{ color: COLORS.ink }}>Ask AI</b> in the top bar to rewrite it, or remove it.
-                </div>
-                <button
-                  onClick={onRemoveBackground}
-                  className="text-[11px] underline-offset-2 hover:underline"
-                  style={{ color: COLORS.coral, fontWeight: 600 }}
-                >
-                  Remove background
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Brand kit preview */}
-        {(vaultLogoUrl || vaultColors.length > 0) && (
-          <div className="px-5 py-4">
-            <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-              Brand kit
-            </div>
-            {vaultLogoUrl && (
-              <div className="flex items-center gap-3 mb-3">
-                <div
-                  className="shrink-0 rounded-lg flex items-center justify-center"
-                  style={{ width: 40, height: 40, background: COLORS.warm, border: `1px solid ${COLORS.line}` }}
-                >
-                  <img src={vaultLogoUrl} alt="Logo" style={{ maxWidth: 28, maxHeight: 28, objectFit: "contain" }} />
-                </div>
-                <span style={{ fontSize: 11.5, color: COLORS.muted }}>Logo from Vault</span>
-              </div>
-            )}
-            {vaultColors.length > 0 && (
-              <div className="flex items-center flex-wrap gap-1.5">
-                {vaultColors.slice(0, 8).map((c) => (
-                  <span key={c} className="w-6 h-6 rounded-full" style={{ background: c, boxShadow: "inset 0 0 0 1px rgba(17,17,17,0.08)" }} />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const label =
-    selected.type === "text"  ? "Text"
-    : selected.type === "logo" ? "Logo"
-    : selected.type === "shape" ? (selected as ShapeLayer).shape === "circle" ? "Circle" : "Rectangle"
-    : selected.type;
-
-  const swatches = [...new Set([...DEFAULT_SWATCHES, ...vaultColors])].slice(0, 12);
-
-  return (
-    <div className="flex flex-col">
-      {/* Header */}
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between border-b" style={{ borderColor: COLORS.line }}>
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.18em]" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-            {label}
-          </div>
-          <div className="text-[13px] truncate max-w-[180px]" style={{ color: COLORS.ink, fontWeight: 600 }}>
-            {selected.name}
-          </div>
-        </div>
-        <button
-          onClick={onDelete}
-          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-black/5 transition"
-          title="Delete layer"
-        >
-          <Trash2 size={13} />
-        </button>
-      </div>
-
-      {/* Type-specific block */}
-      {selected.type === "text"  && <TextControls  layer={selected as TextLayer}  onUpdate={onUpdate} swatches={swatches} />}
-      {selected.type === "shape" && <ShapeControls layer={selected as ShapeLayer} onUpdate={onUpdate} swatches={swatches} />}
-      {selected.type === "logo"  && <LogoControls  layer={selected as LogoLayer}  onUpdate={onUpdate} />}
-
-      {/* Position + size — common to every layer */}
-      <div className="px-5 py-4 border-t" style={{ borderColor: COLORS.line }}>
-        <div className="text-[10px] uppercase tracking-[0.14em] mb-3" style={{ color: COLORS.subtle, fontWeight: 700 }}>
-          Position
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField label="X" value={Math.round(selected.spatial.x)}       onChange={(v) => onUpdate({ spatial: { ...selected.spatial, x: v } } as any)} />
-          <NumberField label="Y" value={Math.round(selected.spatial.y)}       onChange={(v) => onUpdate({ spatial: { ...selected.spatial, y: v } } as any)} />
-          <NumberField label="W" value={Math.round(selected.spatial.width)}   onChange={(v) => onUpdate({ spatial: { ...selected.spatial, width:  Math.max(10, v) } } as any)} />
-          <NumberField label="H" value={Math.round(selected.spatial.height)}  onChange={(v) => onUpdate({ spatial: { ...selected.spatial, height: Math.max(10, v) } } as any)} />
-        </div>
-        <div className="mt-3">
-          <RangeField label="Opacity" value={Math.round(selected.spatial.opacity * 100)} min={0} max={100}
-                      onChange={(v) => onUpdate({ spatial: { ...selected.spatial, opacity: v / 100 } } as any)} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Text controls ── */
-function TextControls({ layer, onUpdate, swatches }: { layer: TextLayer; onUpdate: (n: any) => void; swatches: string[] }) {
-  return (
-    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
-      {/* Content */}
-      <div>
-        <Label>Content</Label>
-        <textarea
-          value={layer.text}
-          onChange={(e) => onUpdate({ text: e.target.value })}
-          rows={2}
-          className="w-full resize-none rounded-lg px-2.5 py-2 text-[13px] outline-none"
-          style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
-        />
-      </div>
-      {/* Font family */}
-      <div>
-        <Label>Font</Label>
-        <select
-          value={layer.fontFamily}
-          onChange={(e) => onUpdate({ fontFamily: e.target.value })}
-          className="w-full rounded-lg px-2.5 h-9 text-[13px] outline-none cursor-pointer"
-          style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
-        >
-          {FONTS.map((f) => (<option key={f.value} value={f.value}>{f.label}</option>))}
-        </select>
-      </div>
-      {/* Weight + alignment */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label>Weight</Label>
-          <div className="flex gap-1">
-            {WEIGHTS.map((w) => (
-              <button
-                key={w.value}
-                onClick={() => onUpdate({ fontStyle: w.value })}
-                className="flex-1 h-9 rounded-lg text-[11.5px] transition"
+                className="relative rounded-2xl overflow-hidden flex items-center justify-center"
                 style={{
-                  background: layer.fontStyle === w.value ? COLORS.ink : "rgba(17,17,17,0.04)",
-                  color: layer.fontStyle === w.value ? "#FFFFFF" : COLORS.ink,
+                  background: "#FFF",
                   border: `1px solid ${COLORS.line}`,
-                  fontWeight: 600,
+                  aspectRatio: "1 / 1",
+                  boxShadow: "0 1px 2px rgba(17,17,17,0.04)",
                 }}
               >
-                {w.label}
-              </button>
-            ))}
-          </div>
+                <img
+                  src={imageUrl}
+                  alt="Current"
+                  style={{ width: "100%", height: "100%", objectFit: "contain", background: "#FFF" }}
+                />
+                {busy && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center"
+                    style={{ background: "rgba(244, 239, 230, 0.82)", backdropFilter: "blur(6px)" }}
+                  >
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 size={28} className="animate-spin" style={{ color: COLORS.coral }} />
+                      <span className="text-[13px]" style={{ color: COLORS.muted }}>Generating…</span>
+                    </div>
+                  </div>
+                )}
+                {history.length > 1 && !busy && (
+                  <div
+                    className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-mono"
+                    style={{ background: "rgba(10,10,10,0.78)", color: "#FFF", letterSpacing: "0.04em" }}
+                  >
+                    Edit {history.length - 1}
+                  </div>
+                )}
+              </div>
+
+              {/* Prompt + actions */}
+              <div className="flex flex-col gap-5">
+                <div>
+                  <label
+                    className="text-[10px] uppercase tracking-[0.22em] block mb-3"
+                    style={{ color: COLORS.subtle, fontWeight: 700 }}
+                  >
+                    What do you want to change?
+                  </label>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="e.g. replace the background with a sunset beach"
+                    rows={6}
+                    autoFocus
+                    disabled={busy}
+                    className="w-full rounded-2xl p-4 text-[15px] outline-none resize-none transition disabled:opacity-60"
+                    style={{
+                      background: "#FFF",
+                      border: `1px solid ${COLORS.line}`,
+                      color: COLORS.ink,
+                      fontFamily: "inherit",
+                      minHeight: 200,
+                    }}
+                  />
+                  <div className="mt-2 text-[11px]" style={{ color: COLORS.subtle }}>
+                    ⌘↩ to generate
+                  </div>
+                </div>
+
+                {/* Example chips — one-click prompt seeders. */}
+                <div className="flex flex-wrap gap-2">
+                  {EXAMPLES.map((ex) => (
+                    <button
+                      key={ex}
+                      onClick={() => setPrompt(ex)}
+                      disabled={busy}
+                      className="rounded-full px-3 py-1.5 text-[11.5px] transition hover:bg-black/[0.04] disabled:opacity-40"
+                      style={{ border: `1px solid ${COLORS.line}`, color: COLORS.muted }}
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Actions: Generate is the primary; secondary row holds Undo
+                    (only meaningful after ≥1 edit) and Download. */}
+                <div className="flex flex-col gap-2 mt-1">
+                  <Button
+                    variant="accent"
+                    size="lg"
+                    onClick={applyEdit}
+                    disabled={busy || !prompt.trim()}
+                  >
+                    {busy ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
+                    {busy ? "Generating…" : "Generate"}
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={undo}
+                      disabled={history.length < 2 || busy}
+                      title="Step back to the previous result"
+                    >
+                      <RotateCcw size={13} /> Undo last edit
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={download} disabled={busy}>
+                      <Download size={13} /> Download
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-        <div>
-          <Label>Align</Label>
-          <div className="flex gap-1">
-            {(["left","center","right"] as const).map((a) => (
-              <button
-                key={a}
-                onClick={() => onUpdate({ align: a })}
-                className="flex-1 h-9 rounded-lg text-[11.5px] capitalize transition"
-                style={{
-                  background: layer.align === a ? COLORS.ink : "rgba(17,17,17,0.04)",
-                  color: layer.align === a ? "#FFFFFF" : COLORS.ink,
-                  border: `1px solid ${COLORS.line}`,
-                  fontWeight: 600,
-                }}
-              >
-                {a}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {/* Size / line-height / letter-spacing */}
-      <div className="grid grid-cols-3 gap-2">
-        <NumberField label="Size"   value={layer.fontSize}            onChange={(v) => onUpdate({ fontSize: Math.max(8, v) })} />
-        <NumberField label="Line"   value={Number(layer.lineHeight.toFixed(2))} step={0.1} onChange={(v) => onUpdate({ lineHeight: v })} />
-        <NumberField label="Letter" value={layer.letterSpacing}       onChange={(v) => onUpdate({ letterSpacing: v })} />
-      </div>
-      {/* Colour */}
-      <ColourField label="Colour" value={layer.fill} swatches={swatches} onChange={(v) => onUpdate({ fill: v })} />
-    </div>
-  );
-}
-
-/* ── Shape controls ── */
-function ShapeControls({ layer, onUpdate, swatches }: { layer: ShapeLayer; onUpdate: (n: any) => void; swatches: string[] }) {
-  return (
-    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
-      <ColourField label="Fill" value={layer.fill} swatches={swatches} onChange={(v) => onUpdate({ fill: v })} />
-      {layer.shape !== "circle" && (
-        <div>
-          <Label>Corner radius</Label>
-          <RangeField label="" hideLabel value={layer.cornerRadius} min={0} max={120}
-                      onChange={(v) => onUpdate({ cornerRadius: v })} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Logo controls ── */
-function LogoControls({ layer, onUpdate }: { layer: LogoLayer; onUpdate: (n: any) => void }) {
-  return (
-    <div className="px-5 py-4 flex flex-col gap-4 border-b" style={{ borderColor: COLORS.line }}>
-      <div>
-        <Label>Rotation</Label>
-        <RangeField label="" hideLabel value={Math.round(layer.spatial.rotation)} min={-180} max={180}
-                    onChange={(v) => onUpdate({ spatial: { ...layer.spatial, rotation: v } } as any)} />
-      </div>
-    </div>
-  );
-}
-
-/* ── Reusable fields ── */
-function Label({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10px] uppercase tracking-[0.12em] mb-1.5" style={{ color: COLORS.muted, fontWeight: 600 }}>{children}</div>;
-}
-
-function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (v: number) => void; step?: number }) {
-  return (
-    <label className="flex flex-col">
-      <Label>{label}</Label>
-      <input
-        type="number"
-        value={Number.isFinite(value) ? value : 0}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-lg px-2.5 h-9 text-[13px] outline-none font-mono"
-        style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
-      />
-    </label>
-  );
-}
-
-function RangeField({ label, hideLabel, value, min, max, onChange }: { label: string; hideLabel?: boolean; value: number; min: number; max: number; onChange: (v: number) => void }) {
-  return (
-    <div>
-      {!hideLabel && <div className="flex items-center justify-between mb-1"><Label>{label}</Label><span className="text-[11px] font-mono" style={{ color: COLORS.muted }}>{value}</span></div>}
-      <input
-        type="range" min={min} max={max} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-        style={{ accentColor: COLORS.coral, background: "rgba(17,17,17,0.08)" }}
-      />
-    </div>
-  );
-}
-
-function ColourField({ label, value, swatches, onChange }: { label: string; value: string; swatches: string[]; onChange: (v: string) => void }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <Label>{label}</Label>
-        <span className="font-mono text-[11px]" style={{ color: COLORS.muted }}>{value}</span>
-      </div>
-      <div className="flex items-center flex-wrap gap-1 mb-2">
-        {swatches.map((c) => (
-          <button
-            key={c}
-            onClick={() => onChange(c)}
-            aria-label={`Set color ${c}`}
-            className="w-7 h-7 rounded-full transition hover:scale-110"
-            style={{
-              background: c,
-              boxShadow: value.toUpperCase() === c.toUpperCase()
-                ? `0 0 0 2px #FFFFFF, 0 0 0 4px ${COLORS.coral}`
-                : "inset 0 0 0 1px rgba(17,17,17,0.08)",
-            }}
-          />
-        ))}
-      </div>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="#RRGGBB"
-        className="w-full rounded-lg px-2.5 h-9 text-[12.5px] outline-none font-mono"
-        style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink }}
-      />
+      </main>
     </div>
   );
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   AiPanel — right rail when "Ask AI" is active. Feads-style:
-   one prompt, one Apply. The model decides what to change.
-   Hands the current background URL + prompt to the image2image
-   pipeline; on success the BG swaps.
+   EmptyState — shown when the user lands on /hub/editor without an
+   image in router state (direct nav, refresh after closing the tab).
+   AI editing is image2image; there's nothing useful to do without a
+   source, so we route them to Library to pick one.
    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function AiPanel({
-  prompt, onPromptChange, busy, onApply, onCancel,
-}: {
-  prompt: string;
-  onPromptChange: (s: string) => void;
-  busy: boolean;
-  onApply: () => void;
-  onCancel: () => void;
-}) {
-  const examples = [
-    "Remove the background and put a sunset beach",
-    "Make the model smile",
-    "Change the lighting to golden hour",
-    "Add soft shadows behind the product",
-  ];
+function EmptyState({ onOpenLibrary }: { onOpenLibrary: () => void }) {
   return (
-    <div className="p-5 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wand2 size={14} style={{ color: COLORS.coral }} />
-          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>Ask AI</span>
-        </div>
-        <button onClick={onCancel} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 transition" title="Close">
-          <X size={13} />
-        </button>
-      </div>
-
-      <p style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>
-        Describe the edit in plain language. The model rewrites the photo.
+    <div
+      className="rounded-3xl p-10 md:p-14 text-center"
+      style={{ background: "#FFF", border: `1px dashed ${COLORS.line}` }}
+    >
+      <Sparkles size={28} className="mx-auto mb-4" style={{ color: COLORS.coral }} />
+      <h2 className="mb-2" style={{ fontSize: 22, fontWeight: 700, color: COLORS.ink }}>
+        Nothing to edit yet
+      </h2>
+      <p className="mb-6 text-[14px]" style={{ color: COLORS.muted, maxWidth: 460, marginInline: "auto" }}>
+        Open an image from your Library to start. Each edit rewrites the photo from a prompt — no brush, no layers.
       </p>
-
-      <div>
-        <Label>Prompt</Label>
-        <textarea
-          value={prompt}
-          onChange={(e) => onPromptChange(e.target.value)}
-          placeholder="e.g. put it in a Parisian café at sunset"
-          rows={4}
-          className="w-full rounded-lg px-2.5 py-2 text-[12.5px] outline-none resize-none"
-          style={{ background: "rgba(17,17,17,0.04)", border: `1px solid ${COLORS.line}`, color: COLORS.ink, fontFamily: "inherit" }}
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label>Examples</Label>
-        {examples.map((ex) => (
-          <button
-            key={ex}
-            onClick={() => onPromptChange(ex)}
-            disabled={busy}
-            className="text-left rounded-md px-2.5 py-1.5 transition hover:bg-black/5 disabled:opacity-40"
-            style={{ fontSize: 11.5, color: COLORS.muted, border: `1px solid ${COLORS.line}` }}
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
-
-      <Button variant="accent" size="sm" onClick={onApply} disabled={busy || !prompt.trim()}>
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
-        {busy ? "Generating…" : "Apply"}
+      <Button variant="accent" size="md" onClick={onOpenLibrary}>
+        <ArrowLeft size={14} /> Open Library
       </Button>
     </div>
   );
