@@ -298,7 +298,13 @@ function SurpriseContent() {
     try { return localStorage.getItem("ora:vault-nudge-dismissed") === "1"; } catch { return false; }
   });
   useEffect(() => {
-    if (!hasVaultFeature || vaultNudgeDismissed) return;
+    // Always load the Vault when the user has the feature — we need the
+    // logo + palette regardless of whether the "set up your Vault" nudge
+    // is dismissed. The nudge banner has its own visibility gate
+    // (vaultMissing && !vaultNudgeDismissed) at the render site, so
+    // dismissing it correctly hides the banner without disabling the
+    // logo / palette pipeline downstream.
+    if (!hasVaultFeature) return;
     const token = getAuthHeader();
     if (!token) return; // wait for auth to hydrate before firing the call
     let cancelled = false;
@@ -329,7 +335,7 @@ function SurpriseContent() {
       } catch { /* silent — banner just stays hidden */ }
     })();
     return () => { cancelled = true; };
-  }, [hasVaultFeature, vaultNudgeDismissed, getAuthHeader]);
+  }, [hasVaultFeature, getAuthHeader]);
   const dismissVaultNudge = useCallback(() => {
     try { localStorage.setItem("ora:vault-nudge-dismissed", "1"); } catch {}
     setVaultNudgeDismissed(true);
