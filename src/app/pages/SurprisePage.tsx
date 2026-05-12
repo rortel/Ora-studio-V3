@@ -227,23 +227,13 @@ function SurpriseContent() {
   //   place   = restaurant/hôtel/spa/studio yoga (Ideogram Remix high-weight)
   //   person  = coach/photographe/thérapeute/agent immo (Ideogram Remix high-weight)
   //   service = coiffeur/jardinier/garagiste — result/before-after photo (Ideogram Remix high-weight)
+  // The simple-bar default is "product" with no UI escape hatch — non-product
+  // subjects (place / person / service) stay reachable via the legacy form
+  // mode where the chip row is rendered (line ~2050+) but they're intentionally
+  // off the main flow because pixel-perfect preservation only works reliably
+  // for cutout-able products today.
   type SubjectKind = "product" | "place" | "person" | "service";
   const [subjectKind, setSubjectKind] = useState<SubjectKind>("product");
-  // Place sub-type — only set when subjectKind=place. Drives the angle
-  // suggester to propose venue-appropriate scenes (massage / soundcheck /
-  // crowd energy / brunch terrace / etc.) instead of generic "venue".
-  // The "people in the scene" decision is implicit in each angle.
-  type VenueType = "spa" | "hotel" | "restaurant" | "bar" | "concert" | "gallery" | "other";
-  const [venueType, setVenueType] = useState<VenueType>("hotel");
-  const VENUE_TYPES: { id: VenueType; label: string; emoji: string }[] = [
-    { id: "hotel",      label: "Hôtel",       emoji: "🏨" },
-    { id: "restaurant", label: "Restaurant",  emoji: "🍽️" },
-    { id: "bar",        label: "Bar",         emoji: "🍸" },
-    { id: "spa",        label: "Spa",         emoji: "🧖" },
-    { id: "concert",    label: "Concert",     emoji: "🎤" },
-    { id: "gallery",    label: "Galerie",     emoji: "🖼️" },
-    { id: "other",      label: "Autre",       emoji: "📍" },
-  ];
   const SUBJECT_KINDS: { id: SubjectKind; label: string; photoLabel: string; descLabel: string; descPlaceholder: string; urlLabel: string }[] = [
     { id: "product", label: "Produit",  photoLabel: "Photo de ton produit",         descLabel: "Quel produit ?",     descPlaceholder: "Polo lin · coupe relax · crème", urlLabel: "Ou colle l'URL de ta fiche produit" },
     { id: "place",   label: "Lieu",     photoLabel: "Photo de ton lieu",            descLabel: "Quel lieu ?",        descPlaceholder: "Resto bistronomique · 30 couverts · terrasse", urlLabel: "Ou colle l'URL de ton site/Google Maps" },
@@ -468,10 +458,6 @@ function SurpriseContent() {
           enrichedDescription: enrichedDescription || undefined,
           productPrice: productPrice.trim() || undefined,
           subjectKind,
-          // For place subjects, the venueType lets the angle suggester
-          // propose context-aware scenes (massage / brunch / soundcheck
-          // / crowd) instead of a generic "venue" sweep.
-          venueType: subjectKind === "place" ? venueType : undefined,
         }),
         signal: AbortSignal.timeout(35_000),
       });
@@ -487,7 +473,7 @@ function SurpriseContent() {
     } finally {
       setAnglesLoading(false);
     }
-  }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice, subjectKind, venueType]);
+  }, [anglesLoading, getAuthHeader, productPhotos, productDescription, enrichedDescription, productPrice, subjectKind]);
 
   // Auto-fetch angles in simple-bar mode the moment a product is added (or
   // swapped). The signature ref guards against re-fires when state churns
@@ -502,12 +488,12 @@ function SurpriseContent() {
       if (fetchedAnglesSigRef.current) fetchedAnglesSigRef.current = "";
       return;
     }
-    const sig = `${productPhotos.join("|")}::${scrapedProduct?.fullDescription || ""}::${subjectKind}::${subjectKind === "place" ? venueType : ""}`;
+    const sig = `${productPhotos.join("|")}::${scrapedProduct?.fullDescription || ""}::${subjectKind}`;
     if (fetchedAnglesSigRef.current === sig) return;
     if (anglesLoading) return;
     fetchedAnglesSigRef.current = sig;
     fetchAngles();
-  }, [simpleMode, stage, productPhotos, scrapedProduct, suggestedAngles.length, anglesLoading, fetchAngles, subjectKind, venueType]);
+  }, [simpleMode, stage, productPhotos, scrapedProduct, suggestedAngles.length, anglesLoading, fetchAngles, subjectKind]);
 
   const serverPost = useCallback(async (path: string, body: any, timeoutMs = 90_000) => {
     const token = getAuthHeader();
@@ -869,10 +855,6 @@ function SurpriseContent() {
         // Photoroom cutout — irrelevant for spaces and faces — and use
         // Ideogram Remix at high image_weight to preserve the subject).
         subjectKind,
-        // For place subjects, venueType refines the planner's scene language
-        // (spa vs hotel vs concert vs gallery) so the 6 shots feel native
-        // to the venue instead of generic "indoor space".
-        venueType: subjectKind === "place" ? venueType : undefined,
         brief: override?.brief || undefined,
         context: override?.brief ? undefined : (() => {
           // Compose ctxWhy from intent + key message chips + CTA chip so the
@@ -1032,7 +1014,7 @@ function SurpriseContent() {
       setBusy(false);
       setActiveRequestId(null);
     }
-  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, venueType, serverPost, refreshProfile, styleId, scrapedProduct, productPageUrl, logoChoice, vaultLogoUrl, customLogoUrl]);
+  }, [busy, productPhotos, productDescription, enrichedDescription, productPrice, creativity, assetCount, platformPicks, mediaType, videoDuration, withCaption, what, who, ctxWhy, keyMessageChips, ctaChip, subjectKind, serverPost, refreshProfile, styleId, scrapedProduct, productPageUrl, logoChoice, vaultLogoUrl, customLogoUrl]);
 
   // Display expansion: when a shot has BOTH an image and a film (the
   // "Images + Films" mode), render them as TWO cards — one for the image,
@@ -1120,9 +1102,7 @@ function SurpriseContent() {
                 <div className="flex items-center justify-between mb-4 mt-2">
                   <div className="text-[11px] font-mono uppercase tracking-[0.22em] flex items-center gap-2" style={{ color: MUTED }}>
                     <Sparkles size={11} style={{ color: ACCENT }} />
-                    {subjectKind === "place"
-                      ? `Ideas for your ${VENUE_TYPES.find(v => v.id === venueType)?.label.toLowerCase() || "venue"}`
-                      : "Ideas for your product"}
+                    Ideas for your product
                     {monthLabel && <span style={{ color: COLORS.subtle }}>· {monthLabel}</span>}
                   </div>
                   {suggestedAngles.length > 0 && (
@@ -1223,7 +1203,7 @@ function SurpriseContent() {
                     }}
                   >
                     <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2" style={{ color: MUTED }}>
-                      {subjectKind === "place" ? "Lieu" : "Product"}
+                      Product
                     </div>
                     {productPhotos.length > 0 ? (
                       <div className="flex items-center gap-2">
@@ -1242,9 +1222,7 @@ function SurpriseContent() {
                           <Plus size={14} style={{ color: ACCENT }} />
                         </div>
                         <div className="text-[12.5px] font-medium" style={{ color: TEXT }}>
-                          {subjectKind === "place"
-                            ? `Add a photo of your ${VENUE_TYPES.find(v => v.id === venueType)?.label.toLowerCase() || "venue"}`
-                            : "Add a product"}
+                          Add a product
                         </div>
                       </div>
                     )}
@@ -1266,69 +1244,6 @@ function SurpriseContent() {
                           boxShadow: "0 18px 36px -10px rgba(17,17,17,0.18)",
                         }}
                       >
-                        {/* Subject type toggle — Product vs Place. Drives
-                            angle suggestions, scene generation, and the
-                            "auto-insert wearer" default server-side. Default
-                            is Product (current behaviour, zero regression
-                            for the 90% who upload products). */}
-                        <div className="px-3 py-2.5" style={{ borderBottom: `1px solid ${BORDER}` }}>
-                          <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2" style={{ color: MUTED }}>
-                            Sujet
-                          </div>
-                          <div className="inline-flex rounded-full p-0.5" style={{ background: "rgba(17,17,17,0.05)" }}>
-                            {([
-                              { id: "product" as const, label: "Produit" },
-                              { id: "place"   as const, label: "Lieu" },
-                            ]).map((opt) => {
-                              const on = subjectKind === opt.id;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  type="button"
-                                  onClick={() => setSubjectKind(opt.id)}
-                                  className="px-3 h-7 rounded-full text-[12px] font-medium transition"
-                                  style={{
-                                    background: on ? "#FFFFFF" : "transparent",
-                                    color: on ? TEXT : MUTED,
-                                    boxShadow: on ? "0 1px 2px rgba(17,17,17,0.08)" : "none",
-                                  }}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {subjectKind === "place" && (
-                            <div className="mt-3">
-                              <div className="text-[10px] font-mono uppercase tracking-[0.18em] mb-1.5" style={{ color: MUTED }}>
-                                Type de lieu
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {VENUE_TYPES.map((v) => {
-                                  const on = venueType === v.id;
-                                  return (
-                                    <button
-                                      key={v.id}
-                                      type="button"
-                                      onClick={() => setVenueType(v.id)}
-                                      className="inline-flex items-center gap-1 px-2.5 h-7 rounded-full text-[11.5px] transition"
-                                      style={{
-                                        background: on ? "rgba(255,107,71,0.08)" : "#FFFFFF",
-                                        color: on ? ACCENT : TEXT,
-                                        border: `1px solid ${on ? "rgba(255,107,71,0.45)" : BORDER}`,
-                                        fontWeight: on ? 600 : 500,
-                                      }}
-                                    >
-                                      <span style={{ fontSize: 12, lineHeight: 1 }}>{v.emoji}</span>
-                                      {v.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
                         {/* Option 1 — saved products library (future feature) */}
                         <div
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-left opacity-50 cursor-not-allowed"
@@ -1464,18 +1379,7 @@ function SurpriseContent() {
                   <textarea
                     value={simpleBrief}
                     onChange={(e) => setSimpleBrief(e.target.value)}
-                    placeholder={(() => {
-                      if (subjectKind !== "place") return "ex: outdoors, white background, natural light";
-                      switch (venueType) {
-                        case "spa":        return "ex: séance de massage, lumière dorée, peignoirs blancs";
-                        case "hotel":      return "ex: couple au petit-déjeuner, terrasse vue mer, golden hour";
-                        case "restaurant": return "ex: dîner ami·es à table, lumière chaleureuse, plats fumants";
-                        case "bar":        return "ex: cocktails sur le comptoir, ambiance tamisée, soirée";
-                        case "concert":    return "ex: foule levant les mains, fumée, lasers, énergie";
-                        case "gallery":    return "ex: visiteurs devant une œuvre, lumière musée, calme";
-                        default:           return "ex: ambiance recherchée, daypart, présence de personnes ou non";
-                      }
-                    })()}
+                    placeholder="ex: outdoors, white background, natural light"
                     rows={2}
                     maxLength={1000}
                     className="w-full text-[12.5px] resize-none bg-transparent outline-none"
