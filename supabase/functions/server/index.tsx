@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T19:00Z — v700-admin-email-bypass-self-heal");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T19:30Z — v701-venue-preservation-iw99-no-magic");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -11713,16 +11713,30 @@ OUTPUT JSON:
               return { platform: job.platform, aspectRatio: job.aspectRatio, label: job.label, fileName: job.fileName, twistElement: job.twistElement, caption: job.caption, status: "failed", error: "Virtual Model failed" };
             }
 
-            // 3. place / person / service — Photoroom can't preserve room layouts
-            // or faces 1:1, Ideogram Remix at imageWeight=95 is the only
-            // practical preservation tool here.
+            // 3. place / person / service — Photoroom can't cutout a room
+            // or a face, so the only preservation tool here is Ideogram
+            // Remix with the highest image_weight the API accepts.
+            //
+            // Tuning history:
+            //   v699 (previous): imageWeight=95, magicPrompt=ON → venues
+            //   visibly drifted on signage, decor, specific furniture.
+            //   User reported "photos des lieux dénaturées".
+            //   v701 (this fix): imageWeight=99 + magicPrompt=OFF. 99
+            //   leaves a sliver of headroom for the named additions
+            //   (people, lighting, atmosphere) while clamping everything
+            //   else to the source. magicPrompt=OFF kills the LLM
+            //   prompt-expander that was injecting extra adjectives
+            //   ("a beautiful spa with marble walls and golden lighting"),
+            //   which the model then had to render and which forced
+            //   drift. The brief from the planner is now used verbatim.
             const isRegenSubject = subjectKind === "place" || subjectKind === "person" || subjectKind === "service";
             if (isRegenSubject) {
               const remix = await runIdeogramRemixOnRef({
                 productImageUrl: productRef,
                 prompt: buildShotPrompt("regen-with-subject", { scene: job.scene, promptText: job.promptText }, promptCtx),
                 aspectRatio: job.aspectRatio,
-                imageWeight: 95,
+                imageWeight: 99,
+                magicPrompt: false,
                 userId: user.id,
                 campaignSlug,
               });
@@ -13402,13 +13416,28 @@ async function runIdeogramRemixOnRef(opts: {
   prompt: string;
   aspectRatio?: string;
   imageWeight?: number;
+  // magicPrompt expands the user prompt with extra adjectives via
+  // Ideogram's planner LLM. Great for creative variety, terrible for
+  // pixel preservation — it adds details the model then has to render,
+  // which forces drift. For venue / face / service shots where the
+  // source photo is the ground truth, pass false so the prompt stays
+  // tight and the regen only fills the explicitly-named additions
+  // (people, lighting, atmosphere). Default true preserves old call
+  // sites' behaviour.
+  magicPrompt?: boolean;
   userId: string | null;
   campaignSlug?: string;
 }): Promise<{ imageUrl: string; provider: string } | null> {
   const t0 = Date.now();
   const { productImageUrl, prompt, userId, campaignSlug } = opts;
   const aspectRatio = opts.aspectRatio || "1:1";
-  const imageWeight = Math.max(50, Math.min(95, opts.imageWeight ?? 78));
+  // Cap raised from 95 → 99 so subject-preserving paths (subjectKind=place
+  // / person / service) can really lean into the source structure. Ideogram
+  // accepts 1-100; 99 is one notch off the hard ceiling, leaving the model
+  // a sliver of headroom to render the named additions without re-rolling
+  // the whole frame.
+  const imageWeight = Math.max(50, Math.min(99, opts.imageWeight ?? 78));
+  const magicPrompt = opts.magicPrompt !== false;
   const ideogramKey = Deno.env.get("IDEOGRAM_API_KEY");
   if (!ideogramKey) {
     console.log(`[ideogram-remix] IDEOGRAM_API_KEY not set`);
@@ -13455,7 +13484,7 @@ async function runIdeogramRemixOnRef(opts: {
     fd.append("image_weight", String(imageWeight));
     fd.append("aspect_ratio", ideogramAspect);
     fd.append("style_type", "REALISTIC");
-    fd.append("magic_prompt", "ON");
+    fd.append("magic_prompt", magicPrompt ? "ON" : "OFF");
     fd.append("rendering_speed", "TURBO");
     const res = await fetch("https://api.ideogram.ai/v1/ideogram-v3/remix", {
       method: "POST", headers: { "Api-Key": ideogramKey }, body: fd,
