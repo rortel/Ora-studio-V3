@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T18:30Z — v699-venue-subjectKind-aware-angles");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T19:00Z — v700-admin-email-bypass-self-heal");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -842,6 +842,32 @@ async function getOrCreateProfile(userId: string, email: string, name?: string) 
       lastLoginAt: new Date().toISOString(),
     };
     await withTimeout(kv.set(`user:${userId}`, profile), 5_000, "kv.set new profile");
+  } else {
+    // ── Self-heal stale admin profiles ──
+    // Accounts created before the email-based admin check existed can
+    // sit with role="user" forever even when their email matches
+    // ADMIN_EMAIL. Subsequent deductCredit / plan gates then treat them
+    // as a normal user, so they hit "Insufficient credits" on routes
+    // like /vault/analyze even though the UI badge shows 999999 (the
+    // client-side isAdmin check uses role==="admin", which is consistent
+    // until the credit deduction path bites).
+    //
+    // Heal in place: if the stored email matches ADMIN_EMAIL but the
+    // role / plan / credits drifted, normalise the profile so every
+    // subsequent call sees consistent admin state. Fire-and-forget save
+    // because we don't want to delay the auth path on a write that
+    // might lag.
+    const matchesAdminEmail = String(profile.email || email || "").toLowerCase() === ADMIN_EMAIL;
+    if (matchesAdminEmail) {
+      let mutated = false;
+      if (profile.role !== "admin") { profile.role = "admin"; mutated = true; }
+      if (profile.plan !== "studio") { profile.plan = "studio"; mutated = true; }
+      if ((profile.credits || 0) < 999999) { profile.credits = 999999; mutated = true; }
+      if (mutated) {
+        console.log(`[getOrCreateProfile] auto-heal admin profile ${email} (role=${profile.role}, plan=${profile.plan}, credits=${profile.credits})`);
+        kv.set(`user:${userId}`, profile).catch((e) => console.log(`[getOrCreateProfile] heal save fail: ${e}`));
+      }
+    }
   }
   return profile;
 }
@@ -853,7 +879,17 @@ async function deductCredit(userId: string, amount = 1): Promise<boolean> {
       console.log(`[deductCredit] No profile for ${userId.slice(0,8)} — BLOCKING (KV miss)`);
       return false; // block if profile not found — no free rides
     }
+    // Bypass for admin role OR admin email — covers the case where an
+    // older profile drifted to role="user" but the email still matches
+    // ADMIN_EMAIL. The next requireAuth → getOrCreateProfile call will
+    // self-heal the role; in the meantime this prevents a false-positive
+    // "Insufficient credits" rejection on plan-gated routes (vault/analyze,
+    // /surprise-me, etc.).
     if (profile.role === "admin") return true;
+    if (String(profile.email || "").toLowerCase() === ADMIN_EMAIL) {
+      console.log(`[deductCredit] admin-email bypass for ${profile.email} (role=${profile.role} — will self-heal on next profile load)`);
+      return true;
+    }
     const remaining = (profile.credits || 0) - (profile.creditsUsed || 0);
     if (remaining < amount) return false;
     profile.creditsUsed = (profile.creditsUsed || 0) + amount;
