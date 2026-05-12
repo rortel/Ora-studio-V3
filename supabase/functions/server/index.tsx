@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { Image as ImagescriptImage } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
 import * as kv from "./kv_store.tsx";
 
-console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T18:00Z — v698-stills-films-90s-threshold");
+console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T18:30Z — v699-venue-subjectKind-aware-angles");
 
 // ── Pollo webhook secret (for signature verification) ──
 const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
@@ -9895,6 +9895,20 @@ app.post("/analyze/suggest-angles", async (c) => {
     const enrichedDescription = typeof body?.enrichedDescription === "string" ? body.enrichedDescription.trim().slice(0, 1200) : "";
     const productDescription = enrichedDescription || userDescription;
     const productPrice = typeof body?.productPrice === "string" ? body.productPrice.trim().slice(0, 40) : "";
+    // Subject archetype — product / place / person / service. Defaults to
+    // product. When place, venueType refines the angle catalogue (spa vs
+    // hotel vs concert vs gallery) so the 3 angles propose context-aware
+    // scenes (massage / brunch / soundcheck / quiet editorial).
+    const subjectKindRaw = String(body?.subjectKind || "product").toLowerCase();
+    const subjectKind: "product" | "place" | "person" | "service" =
+      subjectKindRaw === "place"   ? "place"
+      : subjectKindRaw === "person"  ? "person"
+      : subjectKindRaw === "service" ? "service"
+      : "product";
+    const venueTypeRaw = String(body?.venueType || "").toLowerCase();
+    const venueType: "spa" | "hotel" | "restaurant" | "bar" | "concert" | "gallery" | "other" | "" =
+      ["spa","hotel","restaurant","bar","concert","gallery","other"].includes(venueTypeRaw)
+        ? (venueTypeRaw as any) : "";
 
     // Load vault — angles lean hard on it. If missing, we still return three
     // generic angles from the current month so the UI stays functional.
@@ -10053,17 +10067,130 @@ app.post("/analyze/suggest-angles", async (c) => {
     const archetypeCategory = pickArchetypeCategory();
     const archetypes = ARCHETYPES_BY_CATEGORY[archetypeCategory];
 
+    // ── VENUE ARCHETYPE CATALOGUE ──────────────────────────────────────
+    // When subjectKind=place, we override the product-centric archetypes
+    // with venue-context ones. Each set is hand-tuned for the venueType
+    // and bakes in the "people in scene" decision: some archetypes assume
+    // guests / performers / dancers, others assume the venue is empty
+    // (editorial, ambient). The user picks which by choosing the angle.
+    const VENUE_ARCHETYPES_BY_TYPE: Record<string, string[]> = {
+      spa: [
+        "treatment in motion (massage, facial, hands working — client face cropped)",
+        "ritual cocoon (steam, plunge pool, robe-wrapped guest at rest)",
+        "post-treatment glow (real person, fresh skin, robe, soft daylight)",
+        "ingredient close-up (oils, salts, stones, plants — the props of the protocol)",
+        "empty editorial (treatment room alone, candle-lit, no people — design as art)",
+        "founder / therapist voice (the practitioner introduces their method)",
+        "after-hours sanctuary (twilight, lit-pool, single silhouette, contemplative)",
+        "before / after (real client transformation, ethical framing)",
+        "behind-the-protocol (training, the products lined up, methodology shown)",
+        "manifesto (the spa philosophy — slow living, traditional, science-based)",
+      ],
+      hotel: [
+        "guest moment (couple/family/friends in a real scene — breakfast, balcony, pool)",
+        "suite reveal (empty, perfectly made, morning light or evening lamps)",
+        "destination context (the view, the neighbourhood, the surroundings)",
+        "amenity in use (gym, spa, restaurant, rooftop bar — with a single guest if it fits)",
+        "ritual of stay (morning coffee on the terrace, sunset cocktail by the pool)",
+        "behind-the-hospitality (the housekeeping detail, the concierge, the chef)",
+        "ambient editorial (corridor at dawn, no humans, design takes the frame)",
+        "seasonal package (the offer rendered as a scene — Valentine's room, summer suite)",
+        "guest voice (real review quote overlaid on the space)",
+        "neighbourhood guide (the hotel as basecamp — local picks, day in the area)",
+      ],
+      restaurant: [
+        "table moment (diners eating, glasses raised, plates fumant — group warmth)",
+        "plat hero (one dish, top-down or 45°, with the room defocused behind)",
+        "chef at work (hands plating, kitchen pass, real fire and steam)",
+        "evening atmosphere (candles, glassware glow, packed but defocused crowd)",
+        "behind-the-cuisine (mise en place, market arrival, ingredient prep)",
+        "private moment (intimate two-top, sommelier pouring, conversation)",
+        "empty editorial (dining room before service, set tables, light only)",
+        "seasonal menu drop (the new card rendered as the hero)",
+        "founder / chef voice (their philosophy on plate, on table)",
+        "ritual (Sunday brunch, after-work apéro, late-night dessert)",
+      ],
+      bar: [
+        "cocktail hero (drink mid-pour, garnish, glass close-up, smoke if relevant)",
+        "crowd at the bar (animated, lit faces, glasses up — defocused for vibe)",
+        "bartender in action (shaker mid-throw, citrus zest, focused expression)",
+        "ambient empty (the bar before opening, neon on, no people — design hero)",
+        "menu reveal (the new card, signature drink, story behind a name)",
+        "happy hour ritual (the post-work moment, golden hour through windows)",
+        "guest moment (two friends laughing, clinking, in soft focus)",
+        "late-night DJ / live music (lights, energy, blurred motion)",
+        "behind-the-bar (recipes, citrus prep, infusions in glass bottles)",
+        "manifesto (the bar's stance — craft, no-bs cocktails, no-phone policy)",
+      ],
+      concert: [
+        "crowd energy (audience hands up, lasers, fog, blurred faces — pure energy)",
+        "stage hero (lit performer mid-song, mic in hand, sweat catching light)",
+        "soundcheck quiet (empty venue, gear lit, the calm before)",
+        "pre-show ritual (audience arriving, bar packed, lights low)",
+        "after-show afterglow (empty seats, smoke lingering, gear still warm)",
+        "behind-the-stage (load-in, riggers, the unseen production)",
+        "venue-as-art (architecture, lighting design, the room as the subject)",
+        "lineup reveal (the poster as scene — names floating, dates, hero photo)",
+        "fan voice (a real attendee's quote, in their own words)",
+        "manifesto (the curatorial vision — the type of music, the type of room)",
+      ],
+      gallery: [
+        "visitor at work (single person contemplating a piece, soft hush)",
+        "opening night (small crowd, wine glasses, conversation, art behind)",
+        "single piece reveal (the artwork hero, lit gallery context behind)",
+        "artist in dialogue (artist with their work, talking to a visitor)",
+        "behind-the-curation (works being hung, lighting tested, install)",
+        "empty editorial (the room alone, lighting precise, sculptural)",
+        "exhibition guide (room-by-room, the journey rendered as a carousel)",
+        "press quote / review (a critic's pull-quote over an installation shot)",
+        "manifesto (the gallery stance — what they show, what they refuse)",
+        "neighbourhood (the gallery in its district — quartier, façade, sign)",
+      ],
+      other: [
+        "subject as hero (the venue/space the centre, dramatized lighting)",
+        "people in context (guests, visitors, members in real moments)",
+        "ritual of the place (the recurring moment people come for)",
+        "behind-the-scenes (the team, the prep, the unseen)",
+        "ambient editorial (empty, designed, slow)",
+        "founder / host voice (their POV on the place)",
+        "neighbourhood / location (the surroundings as character)",
+        "moment of the day (golden hour, late night, morning, blue hour)",
+        "manifesto (the place's reason to exist)",
+        "guest voice (real testimonial / quote)",
+      ],
+    };
+
+    // Pick the right archetype set + axes labels based on subjectKind.
+    const isPlace = subjectKind === "place";
+    const effectiveArchetypes = isPlace
+      ? (VENUE_ARCHETYPES_BY_TYPE[venueType || "other"] || VENUE_ARCHETYPES_BY_TYPE.other)
+      : archetypes;
+    const effectiveCategory = isPlace
+      ? `venue · ${venueType || "other"}`
+      : archetypeCategory;
+
+    const axesBlock = isPlace
+      ? `THE 3 ANGLES MUST OCCUPY 3 DIFFERENT CREATIVE AXES (NEVER 3 VARIATIONS OF THE SAME IDEA):
+- Angle 1 = VENUE-CENTRED. The venue itself is the hero — its design, light, architecture. Often EMPTY (no people) so the space speaks. creativityLevel: 1 (safe & brand-conventional).
+- Angle 2 = GUEST EXPERIENCE / RITUAL. People in context using the venue — couple at breakfast, client mid-massage, crowd at the show, diners at table. The scene shows what guests actually come for. creativityLevel: 3 (bold but recognisable).
+- Angle 3 = ATMOSPHERE / MANIFESTO. The venue as a cultural statement — its philosophy, its neighbourhood, its time-of-day signature, its curatorial stance. creativityLevel: 4 (surreal, art-directed, provocative — but on-brand).`
+      : `THE 3 ANGLES MUST OCCUPY 3 DIFFERENT CREATIVE AXES (NEVER 3 VARIATIONS OF THE SAME IDEA):
+- Angle 1 = PRODUCT-CENTRED. The product itself is the hero — its design, craft, detail, story. creativityLevel: 1 (safe & brand-conventional).
+- Angle 2 = USE-CASE / UNEXPECTED CONTEXT. The product placed in a moment that surprises (a wrong place, an off-script time, a non-obvious user). creativityLevel: 3 (bold but recognisable).
+- Angle 3 = MANIFESTO / PROVOCATION. The product as cultural statement, not as object. The brand declares something ABOUT the world. creativityLevel: 4 (surreal, art-directed, provocative — but on-brand).`;
+
+    const subjectContextBlock = isPlace
+      ? (productDescription || productImageUrl ? `Venue context the user wants to ship RIGHT NOW (type: ${venueType || "other"}):${productDescription ? `\n- description: ${productDescription}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact venue photo — the venue stays pixel-perfect, people / mood / props are generated around it)` : ""}\n→ Every angle MUST be SPECIFIC to a ${venueType || "venue"}: don't propose generic "indoor space" scenes. Mention concrete venue cues (the bar / the suite / the treatment room / the stage / the courtyard / the rooftop / the entrance). State EXPLICITLY in each brief whether people are in the scene (and what kind — a couple, a single client, a crowd, a chef, empty) so the downstream planner doesn't guess.` : "")
+      : (productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST mention a SPECIFIC ATTRIBUTE of this product (a material, a cut, a colour name, a likely wearer/user, a setting where it makes sense). Generic angles that could apply to any product = automatic reject.` : "");
+
     const systemPrompt = `You are Ora — a senior creative director. Propose 3 distinct, SPECIFIC campaign angles this brand could ship THIS MONTH (${monthName}, ${season}).
 
 The user should NEVER have to write a brief. Each angle must be self-contained and ready to turn into a full social campaign pack without any further input.
 
-THE 3 ANGLES MUST OCCUPY 3 DIFFERENT CREATIVE AXES (NEVER 3 VARIATIONS OF THE SAME IDEA):
-- Angle 1 = PRODUCT-CENTRED. The product itself is the hero — its design, craft, detail, story. creativityLevel: 1 (safe & brand-conventional).
-- Angle 2 = USE-CASE / UNEXPECTED CONTEXT. The product placed in a moment that surprises (a wrong place, an off-script time, a non-obvious user). creativityLevel: 3 (bold but recognisable).
-- Angle 3 = MANIFESTO / PROVOCATION. The product as cultural statement, not as object. The brand declares something ABOUT the world. creativityLevel: 4 (surreal, art-directed, provocative — but on-brand).
+${axesBlock}
 
-CAMPAIGN ARCHETYPE CATALOGUE (${archetypeCategory} category — pick a DIFFERENT archetype for each angle, never the same one twice):
-${archetypes.map((a, i) => `${i + 1}. ${a}`).join("\n")}
+CAMPAIGN ARCHETYPE CATALOGUE (${effectiveCategory} category — pick a DIFFERENT archetype for each angle, never the same one twice):
+${effectiveArchetypes.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
 NON-NEGOTIABLE RULES:
 - BANNED VOCABULARY in titles, subtitles, briefs: "elegance", "elegant", "timeless", "timelessness", "iconic", "sophisticated", "sophistication", "refined", "celebrate", "essence", "embrace", "discover", "redefine", "journey", "moments", "curated", "crafted", "art of", "love at first", "where * meets *". These are fortune-cookie words that signal nothing. If you write any of them, the angle is rejected.
@@ -10077,7 +10204,7 @@ NON-NEGOTIABLE RULES:
 
 CONTEXT:
 ${brandSummary ? `Brand vault: ${brandSummary}` : "No brand vault — keep angles tight to the product itself."}
-${productDescription || productPrice || productImageUrl ? `Product the user wants to ship RIGHT NOW:${productDescription ? `\n- description: ${productDescription}` : ""}${productPrice ? `\n- price: ${productPrice}` : ""}${productImageUrl ? `\n- photo provided: yes (every angle must build the scene AROUND this exact product photo)` : ""}\n→ Every angle MUST mention a SPECIFIC ATTRIBUTE of this product (a material, a cut, a colour name, a likely wearer/user, a setting where it makes sense). Generic angles that could apply to any product = automatic reject.` : ""}
+${subjectContextBlock}
 ${upcomingEvents.length > 0 ? `Calendar moments in the next 45 days. ONLY use one of these IF the moment makes natural sense for THIS specific product + audience. Forced calendar match = rejected. If none of these fit, skip them entirely:\n${upcomingEvents.map((e) => `- ${e}`).join("\n")}` : ""}
 
 OUTPUT SHAPE (strict):
@@ -10098,11 +10225,12 @@ OUTPUT SHAPE (strict):
 }
 
 Self-check before outputting:
-- Are the 3 angles on the 3 different creative axes (PRODUCT-CENTRED / USE-CASE / MANIFESTO)? If two share an axis, rewrite.
+- Are the 3 angles on the 3 different creative axes (${isPlace ? "VENUE-CENTRED / GUEST EXPERIENCE / ATMOSPHERE" : "PRODUCT-CENTRED / USE-CASE / MANIFESTO"})? If two share an axis, rewrite.
 - Are the creativity levels exactly 1, 3, and 4 (one of each)? If two angles share a level, rewrite.
 - Does each angle use a DIFFERENT campaign archetype from the catalogue? Two same archetypes = rewrite.
-- Does each TITLE contain a concrete element from the product (material, colour, cut, use-case)?
-- Does each BRIEF name its archetype explicitly (e.g. "Manifesto: …" / "Behind-the-seams: …") so the downstream planner knows the genre?
+- Does each TITLE contain a concrete element from the ${isPlace ? "venue (a room / a moment / a guest archetype)" : "product (material, colour, cut, use-case)"}?
+- Does each BRIEF name its archetype explicitly (e.g. "${isPlace ? "Treatment in motion: …" : "Behind-the-seams: …"}" / "Manifesto: …") so the downstream planner knows the genre?
+${isPlace ? "- Does each brief EXPLICITLY state whether people are in the scene and what kind (none / single guest / couple / small group / crowd / chef / performer)?" : ""}
 - Vary platform mixes — not all 3 angles target the same 5 platforms.
 If any check fails, rewrite the angle before outputting.`;
 
@@ -10703,6 +10831,13 @@ app.post("/analyze/surprise-me", async (c) => {
       const raw = String(body?.subjectKind || "product").toLowerCase();
       return ["product", "place", "person", "service"].includes(raw) ? raw : "product";
     })() as "product" | "place" | "person" | "service";
+    // venueType refines subjectKind=place so the planner picks scenes
+    // native to the type (massage room, hotel terrace, concert pit,
+    // gallery vernissage). Empty string = generic place handling.
+    const venueType = (() => {
+      const raw = String(body?.venueType || "").toLowerCase();
+      return ["spa","hotel","restaurant","bar","concert","gallery","other"].includes(raw) ? raw : "";
+    })() as "spa" | "hotel" | "restaurant" | "bar" | "concert" | "gallery" | "other" | "";
     const season     = String(body?.season || "").trim();
     const creativity = Math.max(1, Math.min(4, parseInt(String(body?.creativityLevel || 2), 10) || 2));
     const lang       = body?.lang === "en" ? "en" : "fr";
@@ -11341,6 +11476,7 @@ OUTPUT JSON:
             // name so existing builders pick it up unchanged.
             productDescription: richProductDescription || productDescription,
             subjectKind: subjectKind as ShotPromptCtx["subjectKind"],
+            venueType,
             jobIsApparel: false,
           };
 
@@ -12812,6 +12948,11 @@ interface ShotPromptCtx {
   styleDirective: string;     // empty string when no style picked
   productDescription: string; // empty string when no product description
   subjectKind: "product" | "place" | "person" | "service";
+  // When subjectKind=place, the specific venue archetype lets scene
+  // regeneration prompts pick the right vocabulary (spa = robes,
+  // candles, hands; hotel = guests, terrace, daypart; concert =
+  // crowd, lasers, stage; gallery = visitors, hush, lighting).
+  venueType?: "spa" | "hotel" | "restaurant" | "bar" | "concert" | "gallery" | "other" | "";
   jobIsApparel: boolean;
 }
 
@@ -12914,8 +13055,34 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const silhouetteAnchor = ctx.subjectKind === "product" && ctx.jobIsApparel
         ? "\n\nSILHOUETTE LOCK (apparel): COPY FROM REFERENCE PHOTO — sleeve length (sleeveless / short / 3-4 / long), neckline shape (crew / V / scoop / collar / button-up), hem length (cropped / waist / hip / mid-thigh / knee / floor), closure (zip / button row / pullover), fit (slim / regular / oversized), fabric weight and texture. Any deviation from the reference on these features = REJECTED. The wearer changes, the garment is identical."
         : "";
+      // Venue-aware regeneration: when ctx.venueType is set, the prompt
+      // names the right vocabulary for the place — guests vs visitors
+      // vs dancers vs diners, robes vs cocktails vs lasers, the
+      // venue-specific signature props. The architecture stays locked
+      // to the source photo; only the people / lighting / mood vary.
+      const venueSceneRegen = (vt: ShotPromptCtx["venueType"]): string => {
+        const base = "Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo.";
+        switch (vt) {
+          case "spa":
+            return `REGENERATE the lighting, daypart, and any people present (a single client in a white robe, the therapist's hands at work, or no one at all). Mood signals: candle-lit, low light, steam, oils on linen, stones, plants. ${base} If people are in the scene, they must look at peace — eyes closed, slow breath, never to-camera.`;
+          case "hotel":
+            return `REGENERATE the lighting, daypart, and any guests present (a couple at breakfast, a single guest reading on the terrace, a family arriving, or the room empty). Mood signals: morning sun on linen sheets, golden hour on the terrace, lit lamps and books in the evening, pool reflections. ${base} Guests should look mid-experience, never posing.`;
+          case "restaurant":
+            return `REGENERATE the lighting, daypart, and any diners present (a two-top mid-conversation, a small group raising glasses, the chef plating, or the dining room empty before service). Mood signals: candlelight, glassware glow, fumant plates, hands cutting bread, defocused crowd. ${base}`;
+          case "bar":
+            return `REGENERATE the lighting and the people at the bar (the bartender mid-shake, two friends laughing, a small crowd around the counter, or the bar lit but empty before opening). Mood signals: neon, glass shine, citrus zest, smoke, soft music energy. ${base}`;
+          case "concert":
+            return `REGENERATE the lighting, the stage state, and the audience (a packed crowd hands up with fog and lasers, a single performer mid-song, the empty venue at soundcheck). Mood signals: smoke, beam light, blurred motion, sweat catching light. ${base} Crowd faces should be lit but never fully resolved — energy over identity.`;
+          case "gallery":
+            return `REGENERATE the lighting, daypart, and any visitors present (a single contemplative person, a small opening-night crowd with wine, or the room empty between visits). Mood signals: clean walls, precise track lighting, hush. ${base} Visitors should be soft-focused, the works clearly readable.`;
+          case "other":
+          case "":
+          default:
+            return `REGENERATE the lighting, season, time of day, and any people present around the locked space. ${base} Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm.`;
+        }
+      };
       const sceneRegen = ctx.subjectKind === "place"
-        ? "REGENERATE the lighting, season, time of day, and any people present around the locked space. Keep the architecture, layout, signature details (counter, plants, furniture, typography on walls) IDENTICAL to the source photo. Vary the mood: morning light, golden hour, evening ambiance, busy service vs. empty calm."
+        ? venueSceneRegen(ctx.venueType)
         : ctx.subjectKind === "person"
         ? "REGENERATE the background and styling around the locked face/portrait. Keep the person's identity (face, hair, ethnicity, build) IDENTICAL to the source. Vary the setting: studio backdrop, candid lifestyle, on-location, branded environment."
         : ctx.subjectKind === "service"
