@@ -1315,22 +1315,18 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
     }
   };
 
-  // ── Showcase slots for phase 3 ──
-  // Each slot reads from /public/landing-showcase/0X.jpg. When the file
-  // is missing, the <img> hides itself via onError and the parent's
-  // designed fallback background (warm gradient, on-brand) shows through
-  // with the platform tag still readable on top — a clean "frame waiting
-  // for content" state, not a fake product placeholder.
-  //
-  // To populate: drop 6 real Ora outputs (4:5 aspect, ideally) into
-  // /public/landing-showcase/ named 01.jpg, 02.jpg, ..., 06.jpg.
-  const SHOWCASE_SLOTS: { tag: string; file: string; fallbackBg: string }[] = [
-    { tag: "Lifestyle", file: "01.jpg", fallbackBg: "linear-gradient(135deg, #E7D4C4, #F2EFEA)" },
-    { tag: "Packshot",  file: "02.jpg", fallbackBg: "linear-gradient(135deg, #F2D0C4, #FFE7DC)" },
-    { tag: "Story",     file: "03.jpg", fallbackBg: "linear-gradient(135deg, #FFC9B5, #FFE0CF)" },
-    { tag: "Carousel",  file: "04.jpg", fallbackBg: "linear-gradient(135deg, #E5DBCA, #F4EEE3)" },
-    { tag: "Promo",     file: "05.jpg", fallbackBg: "linear-gradient(135deg, #FF6B47, #FF8E6F)" },
-    { tag: "Reel",      file: "06.jpg", fallbackBg: "linear-gradient(135deg, #1A0F0C, #2A1A14)" },
+  // ── Showcase angles for phase 3 ──
+  // Text-only angle cards (emoji + title + subtitle) that mirror the
+  // real product's /analyze/suggest-angles output. Zero image-rights
+  // exposure — the cards are pure copy + design. They communicate
+  // Ora's value better than placeholder image tiles because they show
+  // the product THINKING (proposing creative direction), not just
+  // rendering frames. Match the actual angle card layout used in
+  // SurprisePage so the landing previews the real UX.
+  const SHOWCASE_ANGLES: { emoji: string; title: string; subtitle: string }[] = [
+    { emoji: "🌅", title: "Linen After Hours", subtitle: "Sunset terrace · slow gestures · golden hour" },
+    { emoji: "📦", title: "Capsule Drop · 12", subtitle: "Numbered run · field-tested · scarcity" },
+    { emoji: "✨", title: "Manifesto",         subtitle: "We don't sponsor races — we engineer them" },
   ];
 
   return (
@@ -1392,7 +1388,7 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
                     <div className="absolute left-0 right-0 h-[3px]" style={{ background: "linear-gradient(90deg, transparent, #FF6B47, transparent)", boxShadow: "0 0 32px #FF6B47", animation: "scan 2.4s ease-in-out infinite" }} />
                   </div>
                   <div className="flex flex-col gap-2.5">
-                    {["Reading product photo", "Extracting brand voice", "Composing six angles"].map((s, i) => (
+                    {["Reading product photo", "Extracting brand voice", "Composing three angles"].map((s, i) => (
                       <motion.div
                         key={s}
                         initial={{ opacity: 0, x: -10 }}
@@ -1408,36 +1404,40 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
                   </div>
                 </div>
               )}
-              {/* Phase 3 — grid of real Ora outputs (with designed fallback) */}
+              {/* Phase 3 — Ora's 3 angle cards (text-only, mirrors the
+                  real /analyze/suggest-angles output). Shows that Ora
+                  THINKS — proposes creative direction — not just
+                  generates rectangles. Zero image rights exposure since
+                  the cards are pure copy + emoji. */}
               {phase === 3 && (
-                <div className="absolute inset-0 grid grid-cols-3 gap-3 p-6">
-                  {SHOWCASE_SLOTS.map((c, i) => (
-                    <motion.div
-                      key={c.tag}
-                      initial={{ opacity: 0, y: 14, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ delay: i * 0.08 }}
-                      className="rounded-lg relative overflow-hidden"
-                      style={{ aspectRatio: "4/5", background: c.fallbackBg, border: "1px solid rgba(17,17,17,0.06)" }}
-                    >
-                      {/* Real Ora output. When the file is missing on disk
-                          the <img> hides itself via onError and the parent
-                          div's designed fallback gradient shows through —
-                          the platform tag stays readable on top so the
-                          slot still communicates intent. */}
-                      <img
-                        src={`/landing-showcase/${c.file}`}
-                        alt={`Ora ${c.tag} output`}
-                        loading="lazy"
-                        decoding="async"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9.5px] font-semibold" style={{ background: c.tag === "Promo" ? "#FFFFFF" : "rgba(17,17,17,0.78)", color: c.tag === "Promo" ? "#FF6B47" : "#FFFFFF" }}>
-                        {c.tag}
-                      </div>
-                    </motion.div>
-                  ))}
+                <div className="absolute inset-0 flex flex-col gap-5 px-8 py-10 justify-center">
+                  <div className="text-[11px] font-mono uppercase tracking-[0.22em] text-center" style={{ color: "#FF6B47" }}>
+                    Step 03 · Pick your angle
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                    {SHOWCASE_ANGLES.map((a, i) => (
+                      <motion.div
+                        key={a.title}
+                        initial={{ opacity: 0, y: 14, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ delay: 0.1 + i * 0.12, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                        className="rounded-2xl p-5"
+                        style={{
+                          background: "#FFFFFF",
+                          border: "1px solid rgba(17,17,17,0.08)",
+                          boxShadow: "0 1px 3px rgba(17,17,17,0.05), 0 8px 22px -10px rgba(17,17,17,0.08)",
+                        }}
+                      >
+                        <div className="text-[26px] leading-none mb-3">{a.emoji}</div>
+                        <div className="leading-[1.1] mb-1.5" style={{ ...bagel, fontSize: 18, color: COLORS.ink, letterSpacing: "-0.01em" }}>
+                          {a.title}
+                        </div>
+                        <div className="text-[11.5px] leading-snug" style={{ color: "rgba(17,17,17,0.55)" }}>
+                          {a.subtitle}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
                 </div>
               )}
               {/* Phase dots */}
