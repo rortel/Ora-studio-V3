@@ -1273,7 +1273,7 @@ function StickyCTA({ primaryHref, label }: { primaryHref: string; label: string 
 function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   const [typed, setTyped] = useState("");
-  const URL_TARGET = "yourshop.com/product";
+  const URL_TARGET = "yourshop.com/your-best-product";
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const runningRef = useRef(false);
 
@@ -1296,105 +1296,144 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
 
   const loop = async () => {
     while (runningRef.current) {
-      // Phase 1: typing
+      // Phase 1: typing — slowed slightly so the URL reads as deliberate.
       setPhase(1); setTyped("");
       for (let i = 1; i <= URL_TARGET.length; i++) {
         if (!runningRef.current) return;
-        await new Promise((r) => setTimeout(r, 60));
+        await new Promise((r) => setTimeout(r, 55));
         setTyped(URL_TARGET.slice(0, i));
       }
-      await new Promise((r) => setTimeout(r, 700));
-      // Phase 2: analysis
+      await new Promise((r) => setTimeout(r, 1100));
+      // Phase 2: analysis — extended so the checklist "tick-tick-tick" lands.
       if (!runningRef.current) return;
       setPhase(2);
-      await new Promise((r) => setTimeout(r, 3500));
-      // Phase 3: grid
+      await new Promise((r) => setTimeout(r, 5000));
+      // Phase 3: grid — longer linger so the user sees the payoff.
       if (!runningRef.current) return;
       setPhase(3);
-      await new Promise((r) => setTimeout(r, 4500));
+      await new Promise((r) => setTimeout(r, 6000));
     }
   };
 
+  // ── Showcase slots for phase 3 ──
+  // Each slot reads from /public/landing-showcase/0X.jpg. When the file
+  // is missing, the <img> hides itself via onError and the parent's
+  // designed fallback background (warm gradient, on-brand) shows through
+  // with the platform tag still readable on top — a clean "frame waiting
+  // for content" state, not a fake product placeholder.
+  //
+  // To populate: drop 6 real Ora outputs (4:5 aspect, ideally) into
+  // /public/landing-showcase/ named 01.jpg, 02.jpg, ..., 06.jpg.
+  const SHOWCASE_SLOTS: { tag: string; file: string; fallbackBg: string }[] = [
+    { tag: "Lifestyle", file: "01.jpg", fallbackBg: "linear-gradient(135deg, #E7D4C4, #F2EFEA)" },
+    { tag: "Packshot",  file: "02.jpg", fallbackBg: "linear-gradient(135deg, #F2D0C4, #FFE7DC)" },
+    { tag: "Story",     file: "03.jpg", fallbackBg: "linear-gradient(135deg, #FFC9B5, #FFE0CF)" },
+    { tag: "Carousel",  file: "04.jpg", fallbackBg: "linear-gradient(135deg, #E5DBCA, #F4EEE3)" },
+    { tag: "Promo",     file: "05.jpg", fallbackBg: "linear-gradient(135deg, #FF6B47, #FF8E6F)" },
+    { tag: "Reel",      file: "06.jpg", fallbackBg: "linear-gradient(135deg, #1A0F0C, #2A1A14)" },
+  ];
+
   return (
     <section ref={sectionRef} style={{ background: "#FFFFFF", borderBottom: `1px solid rgba(17,17,17,0.06)` }}>
-      <div className="px-5 md:px-10 py-16 md:py-24 max-w-[1320px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
-        {/* LEFT — animated demo window */}
-        <div className="order-2 md:order-1">
-          <div className="rounded-2xl overflow-hidden" style={{ background: "#F2EFEA", border: `1px solid rgba(17,17,17,0.08)` }}>
+      <div className="px-5 md:px-10 pt-14 md:pt-20 pb-16 md:pb-24 max-w-[1240px] mx-auto">
+        {/* ── Eyebrow ── */}
+        <div className="text-center mb-6 md:mb-8">
+          <div className="mono-label" style={{ color: "rgba(17,17,17,0.55)" }}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
+            For shops that don't have time
+          </div>
+        </div>
+
+        {/* ── BIG centered demo mockup ── */}
+        <div className="max-w-[960px] mx-auto mb-10 md:mb-14">
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+              background: "#F2EFEA",
+              border: `1px solid rgba(17,17,17,0.08)`,
+              boxShadow: "0 32px 80px -24px rgba(17,17,17,0.22), 0 10px 28px -12px rgba(17,17,17,0.08)",
+            }}
+          >
             {/* Window chrome */}
-            <div className="flex items-center gap-2 px-3 py-2.5" style={{ background: "rgba(255,255,255,0.55)", borderBottom: "1px solid rgba(17,17,17,0.06)" }}>
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FF5F56" }} />
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#FFBD2E" }} />
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#27C93F" }} />
-              <div className="flex-1 mx-3 text-center text-[11px] font-medium" style={{ color: "rgba(17,17,17,0.5)" }}>
+            <div className="flex items-center gap-2 px-4 py-3" style={{ background: "rgba(255,255,255,0.55)", borderBottom: "1px solid rgba(17,17,17,0.06)" }}>
+              <span className="w-3 h-3 rounded-full" style={{ background: "#FF5F56" }} />
+              <span className="w-3 h-3 rounded-full" style={{ background: "#FFBD2E" }} />
+              <span className="w-3 h-3 rounded-full" style={{ background: "#27C93F" }} />
+              <div className="flex-1 mx-3 text-center text-[12px] font-medium" style={{ color: "rgba(17,17,17,0.5)" }}>
                 Ora Studio
               </div>
             </div>
-            {/* Body */}
-            <div className="relative" style={{ minHeight: 360, padding: "1.5rem" }}>
+            {/* Body — taller envelope, more breathing room */}
+            <div className="relative" style={{ minHeight: 540, padding: "2rem" }}>
               {/* Phase 1 — URL bar */}
               {phase === 1 && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6">
-                  <div className="text-[10.5px] font-mono uppercase tracking-[0.18em]" style={{ color: "#FF6B47" }}>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-8">
+                  <div className="text-[11px] font-mono uppercase tracking-[0.22em]" style={{ color: "#FF6B47" }}>
                     Step 01 · Drop your product
                   </div>
-                  <div className="flex items-center gap-2 w-full max-w-[420px] px-4 py-3 rounded-xl" style={{ background: "#FFF", border: "1px solid rgba(17,17,17,0.08)" }}>
-                    <Globe2 size={16} style={{ color: "rgba(17,17,17,0.45)" }} />
-                    <span className="flex-1 text-[14px] font-medium tabular-nums" style={{ color: COLORS.ink }}>
+                  <div className="flex items-center gap-2.5 w-full max-w-[520px] px-5 py-4 rounded-2xl" style={{ background: "#FFF", border: "1px solid rgba(17,17,17,0.08)", boxShadow: "0 4px 14px -6px rgba(17,17,17,0.08)" }}>
+                    <Globe2 size={18} style={{ color: "rgba(17,17,17,0.45)" }} />
+                    <span className="flex-1 text-[16px] font-medium tabular-nums" style={{ color: COLORS.ink }}>
                       {typed}<span className="inline-block w-[2px] h-[1em] align-middle ml-0.5" style={{ background: "#FF6B47", animation: "blink 0.9s steps(2) infinite" }} />
                     </span>
                   </div>
-                  <button className="px-5 py-2.5 rounded-xl text-[13px] font-semibold" style={{ background: "#FF6B47", color: "#FFF" }}>
+                  <button className="px-6 py-3 rounded-xl text-[14px] font-semibold" style={{ background: "#FF6B47", color: "#FFF", boxShadow: "0 14px 28px -10px rgba(255,107,71,0.5)" }}>
                     Generate →
                   </button>
                 </div>
               )}
               {/* Phase 2 — analysis */}
               {phase === 2 && (
-                <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-4 p-6 items-center">
+                <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-6 p-8 items-center">
                   <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-black">
-                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tracking-widest" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    <div className="absolute inset-0 flex items-center justify-center text-[11px] font-mono tracking-[0.25em]" style={{ color: "rgba(255,255,255,0.5)" }}>
                       ANALYZING…
                     </div>
-                    <div className="absolute left-0 right-0 h-[3px]" style={{ background: "linear-gradient(90deg, transparent, #FF6B47, transparent)", boxShadow: "0 0 24px #FF6B47", animation: "scan 2.4s ease-in-out infinite" }} />
+                    <div className="absolute left-0 right-0 h-[3px]" style={{ background: "linear-gradient(90deg, transparent, #FF6B47, transparent)", boxShadow: "0 0 32px #FF6B47", animation: "scan 2.4s ease-in-out infinite" }} />
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2.5">
                     {["Reading product photo", "Extracting brand voice", "Composing six angles"].map((s, i) => (
                       <motion.div
                         key={s}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.4 + i * 0.5 }}
-                        className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl"
+                        transition={{ delay: 0.5 + i * 0.7 }}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl"
                         style={{ background: "rgba(17,17,17,0.04)", border: "1px solid rgba(17,17,17,0.06)" }}
                       >
                         <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: "#FF6B47", color: "#FFF" }}>✓</span>
-                        <span className="text-[13px] font-medium" style={{ color: COLORS.ink }}>{s}</span>
+                        <span className="text-[14px] font-medium" style={{ color: COLORS.ink }}>{s}</span>
                       </motion.div>
                     ))}
                   </div>
                 </div>
               )}
-              {/* Phase 3 — grid of results */}
+              {/* Phase 3 — grid of real Ora outputs (with designed fallback) */}
               {phase === 3 && (
-                <div className="absolute inset-0 grid grid-cols-3 gap-2.5 p-5">
-                  {[
-                    { tag: "Lifestyle",  hue: "#E7D4C4" },
-                    { tag: "Packshot",   hue: "#F2D0C4" },
-                    { tag: "Story",      hue: "#FFC9B5" },
-                    { tag: "Carousel",   hue: "#E5DBCA" },
-                    { tag: "Promo",      hue: "#FF6B47" },
-                    { tag: "Reel",       hue: "#1A0F0C" },
-                  ].map((c, i) => (
+                <div className="absolute inset-0 grid grid-cols-3 gap-3 p-6">
+                  {SHOWCASE_SLOTS.map((c, i) => (
                     <motion.div
                       key={c.tag}
                       initial={{ opacity: 0, y: 14, scale: 0.96 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={{ delay: i * 0.08 }}
                       className="rounded-lg relative overflow-hidden"
-                      style={{ aspectRatio: "4/5", background: c.hue, border: "1px solid rgba(17,17,17,0.06)" }}
+                      style={{ aspectRatio: "4/5", background: c.fallbackBg, border: "1px solid rgba(17,17,17,0.06)" }}
                     >
-                      <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[8.5px] font-semibold" style={{ background: c.tag === "Promo" ? "#FFFFFF" : "rgba(17,17,17,0.78)", color: c.tag === "Promo" ? "#FF6B47" : "#FFFFFF" }}>
+                      {/* Real Ora output. When the file is missing on disk
+                          the <img> hides itself via onError and the parent
+                          div's designed fallback gradient shows through —
+                          the platform tag stays readable on top so the
+                          slot still communicates intent. */}
+                      <img
+                        src={`/landing-showcase/${c.file}`}
+                        alt={`Ora ${c.tag} output`}
+                        loading="lazy"
+                        decoding="async"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9.5px] font-semibold" style={{ background: c.tag === "Promo" ? "#FFFFFF" : "rgba(17,17,17,0.78)", color: c.tag === "Promo" ? "#FF6B47" : "#FFFFFF" }}>
                         {c.tag}
                       </div>
                     </motion.div>
@@ -1402,12 +1441,12 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
                 </div>
               )}
               {/* Phase dots */}
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
                 {[1, 2, 3].map((p) => (
                   <span
                     key={p}
                     style={{
-                      width: phase === p ? 18 : 5, height: 5, borderRadius: 99,
+                      width: phase === p ? 20 : 6, height: 6, borderRadius: 99,
                       background: phase === p ? "#FF6B47" : "rgba(17,17,17,0.18)",
                       transition: "all 0.35s ease",
                     }}
@@ -1418,20 +1457,16 @@ function CleanHero({ user, primaryHref }: { user: any; primaryHref: string }) {
           </div>
         </div>
 
-        {/* RIGHT — headline */}
-        <div className="order-1 md:order-2">
-          <div className="mono-label mb-5" style={{ color: "rgba(17,17,17,0.55)" }}>
-            <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: "#FF6B47" }} />
-            For shops that don't have time
-          </div>
-          <h1 className="leading-[1.0] mb-6" style={{ ...bagel, fontSize: "clamp(44px, 7vw, 88px)", color: COLORS.ink, letterSpacing: "-0.025em" }}>
-            Drop a photo.<br/>
+        {/* ── Headline + CTA below the mockup ── */}
+        <div className="text-center max-w-[820px] mx-auto">
+          <h1 className="leading-[0.96] mb-5" style={{ ...bagel, fontSize: "clamp(40px, 6.5vw, 80px)", color: COLORS.ink, letterSpacing: "-0.025em" }}>
+            Drop a photo.{" "}
             <span style={{ color: "#FF6B47" }}>Get a pack.</span>
           </h1>
-          <p className="body-tight text-[16px] md:text-[17.5px] mb-8 max-w-[480px]" style={{ color: "rgba(17,17,17,0.65)", lineHeight: 1.55 }}>
+          <p className="body-tight text-[16px] md:text-[17.5px] mb-8 max-w-[560px] mx-auto" style={{ color: "rgba(17,17,17,0.65)", lineHeight: 1.55 }}>
             Six platform-ready posts from one product photo. Your real product — pixel-perfect, never re-rendered. Ship in thirty seconds.
           </p>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link to={primaryHref} onClick={() => trackEvent("cta_click", { location: "hero", dest: primaryHref, authed: !!user })}>
               <Button variant="accent" size="lg">
                 {user ? "Open Ora" : "Try free · no card"} <ArrowRight size={16} />
