@@ -55,11 +55,11 @@
     "lucide-react": "0.487.0",
     "motion": "12.23.24",
     "pdfjs-dist": "^5.5.207",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "react-konva": "^18.2.14",
     "react-resizable-panels": "2.1.7",
-    "react-router": "7.13.0",
+    "react-router": "7.15.1",
     "remotion": "^4.0.441",
     "sonner": "2.0.3",
     "tailwind-merge": "3.2.0",
@@ -75,8 +75,8 @@
     "vitest": "^2.1.9"
   },
   "peerDependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
   },
   "peerDependenciesMeta": {
     "react": {
