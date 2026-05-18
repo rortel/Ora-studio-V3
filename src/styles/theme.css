@@ -203,6 +203,66 @@
     @apply border-border outline-ring/50;
   }
 
+  /* WCAG 2.1 SC 2.4.7 — visible focus indicator on every interactive
+     element. Uses the brand accent so it stays consistent across pages.
+     Mouse users keep a clean look thanks to :focus-visible (only fires
+     for keyboard / programmatic focus). */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 2px solid var(--accent, #FF5C39);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid var(--accent, #FF5C39);
+    outline-offset: 2px;
+  }
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent, #FF5C39);
+    outline-offset: 1px;
+  }
+
+  /* WCAG 2.3.3 — honour the user's reduced-motion preference. Keeps
+     transitions snappy without disabling them entirely (UX cue). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Skip-link landing target — kept invisible but focusable so screen
+     readers and keyboard users can jump past the chrome. */
+  .skip-to-content {
+    position: absolute;
+    left: -10000px;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .skip-to-content:focus {
+    left: 16px;
+    top: 16px;
+    width: auto;
+    height: auto;
+    padding: 12px 16px;
+    background: var(--background);
+    color: var(--foreground);
+    border: 2px solid var(--accent, #FF5C39);
+    border-radius: 8px;
+    z-index: 9999;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-family);

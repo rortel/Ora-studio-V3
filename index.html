@@ -2,13 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ora — Stop prompting. Surprise your brand.</title>
-    <meta name="description" content="Ora writes the concept and ships a campaign pack for Instagram, Facebook and TikTok. One click. No prompts. Brand DA locked." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ORA Studio — AI marketing content for Instagram, TikTok & Facebook</title>
+    <meta name="description" content="Turn your brand URL into a full pack of ready-to-publish posts for Instagram, Facebook and TikTok. Brand voice locked, multi-modal AI (text, image, video, audio), one-click multi-platform publishing." />
 
     <!-- Theme — cream to match the Ora DA -->
     <meta name="theme-color" content="#F4EFE6" />
     <link rel="canonical" href="https://ora-studio.app/" />
+
+    <!-- Multilingual signalling. The marketing pages currently render in
+         English only, but the i18n dictionary holds French translations
+         and the Profile lang switch will re-enable them. The hreflang
+         tags keep Google's index aware. -->
+    <link rel="alternate" hreflang="en" href="https://ora-studio.app/" />
+    <link rel="alternate" hreflang="fr" href="https://ora-studio.app/" />
+    <link rel="alternate" hreflang="x-default" href="https://ora-studio.app/" />
+
+    <!-- PWA manifest + installable icon set -->
+    <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Fonts — Bagel Fat One for display headlines, JetBrains Mono for
          technical labels (data, version, timing), Inter already bundled
@@ -24,22 +35,23 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Ora" />
-    <meta property="og:title" content="Ora — Stop prompting. Surprise your brand." />
-    <meta property="og:description" content="Ora writes the concept and ships a campaign pack for Instagram, Facebook and TikTok. One click. No prompts. Brand DA locked." />
+    <meta property="og:site_name" content="ORA Studio" />
+    <meta property="og:title" content="ORA Studio — AI marketing content for Instagram, TikTok & Facebook" />
+    <meta property="og:description" content="Turn your brand URL into a full pack of ready-to-publish posts. Brand voice locked, multi-modal AI, one-click multi-platform publishing." />
     <meta property="og:url" content="https://ora-studio.app/" />
     <meta property="og:image" content="https://ora-studio.app/og-image.svg" />
     <meta property="og:image:type" content="image/svg+xml" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Ora — Stop prompting. Surprise your brand." />
+    <meta property="og:image:alt" content="ORA Studio — AI-generated marketing packs for social media" />
     <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="fr_FR" />
 
     <!-- Twitter Card — prefers a raster image, so we fall back to a real PNG from the template set
-         until a proper 1200×630 PNG is produced from og-image.svg. -->
+         until a proper 1200x630 PNG is produced from og-image.svg. -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Ora — Stop prompting. Surprise your brand." />
-    <meta name="twitter:description" content="Ora writes the concept and ships a campaign pack for Instagram, Facebook and TikTok. One click. No prompts. Brand DA locked." />
+    <meta name="twitter:title" content="ORA Studio — AI marketing content for social media" />
+    <meta name="twitter:description" content="Turn your brand URL into a full pack of ready-to-publish posts for Instagram, TikTok and Facebook." />
     <meta name="twitter:image" content="https://ora-studio.app/templates/figma-fashion-post-01.png" />
 
     <!-- JSON-LD: SoftwareApplication for richer Google card -->
@@ -47,11 +59,11 @@
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        "name": "Ora",
+        "name": "ORA Studio",
         "url": "https://ora-studio.app/",
         "applicationCategory": "DesignApplication",
         "operatingSystem": "Web",
-        "description": "Ora writes the concept and ships a full campaign pack for Instagram, Facebook and TikTok. One click. No prompt writing.",
+        "description": "AI marketing content generator. Turn your brand URL into a full pack of ready-to-publish posts for Instagram, Facebook and TikTok. Multi-modal (text, image, video, audio), brand voice locked, one-click multi-platform publishing.",
         "offers": [
           { "@type": "Offer", "name": "Creator", "price": "19", "priceCurrency": "EUR" },
           { "@type": "Offer", "name": "Studio",  "price": "49", "priceCurrency": "EUR" },
@@ -61,6 +73,7 @@
     </script>
   </head>
   <body>
+    <a href="#root" class="skip-to-content">Skip to content</a>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
