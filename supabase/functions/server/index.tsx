@@ -21959,13 +21959,15 @@ function isValidScrapeUrl(raw: string): boolean {
   try {
     const u = new URL(raw);
     if (!["http:", "https:"].includes(u.protocol)) return false;
-    const host = u.hostname.toLowerCase();
+    // WHATWG URL keeps IPv6 hostnames wrapped in [...] — strip the
+    // brackets so our pattern matching works on bare addresses.
+    const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (!host) return false;
     if (host === "localhost" || host === "0.0.0.0") return false;
     if (host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return false;
     // 172.16.0.0/12 (172.16.0.0 → 172.31.255.255)
     if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return false;
-    // IPv6: hostnames are wrapped in brackets but URL.hostname strips them
+    // IPv6 loopback, unique-local (fc00::/7) and link-local (fe80::/10)
     if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return false;
     if (host.endsWith(".internal") || host.endsWith(".local")) return false;
     return true;

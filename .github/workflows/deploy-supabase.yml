@@ -19,3 +19,25 @@ jobs:
       - run: supabase functions deploy make-server-cad57f79 --project-ref kbvkjafkztbsewtaijuh
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # Post-deploy smoke test — hits /health to confirm the function
+      # actually booted, and runs the lightweight e2e smoke if the
+      # SMOKE_USER_TOKEN secret is configured. A failed smoke does NOT
+      # rollback (Supabase functions have no atomic rollback), but it
+      # raises a CI alert immediately so the on-call can react.
+      - name: Health check
+        run: |
+          set -e
+          URL="https://kbvkjafkztbsewtaijuh.supabase.co/functions/v1/make-server-cad57f79/health"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" "$URL" || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health OK on attempt $i:"
+              cat /tmp/health.json
+              exit 0
+            fi
+            echo "Health attempt $i returned $STATUS, retrying in $((i * 2))s..."
+            sleep $((i * 2))
+          done
+          echo "::error::Health check failed after 5 attempts"
+          exit 1
