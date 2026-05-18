@@ -99,11 +99,15 @@ function CinematicPanel({
             muted
             loop
             playsInline
-            preload="auto"
+            // metadata (not auto) — defers the 2.6MB hero clip so the
+            // LCP (poster image) doesn't block on it. Browsers still
+            // start playback on autoplay once the buffer fills.
+            preload="metadata"
             className="h-full w-full object-cover"
+            aria-hidden="true"
           />
         ) : imageSrc ? (
-          <img src={imageSrc} alt="" className="h-full w-full object-cover" />
+          <img src={imageSrc} alt="" aria-hidden="true" className="h-full w-full object-cover" />
         ) : null}
       </motion.div>
 

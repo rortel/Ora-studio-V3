@@ -54,6 +54,8 @@ const LibraryPage = lazyRetry(() => import("./pages/LibraryPage"), "LibraryPage"
 const OnboardingPage = lazyRetry(() => import("./pages/OnboardingPage"), "OnboardingPage");
 const TermsPage = lazyRetry(() => import("./pages/TermsPage"), "TermsPage");
 const PrivacyPage = lazyRetry(() => import("./pages/PrivacyPage"), "PrivacyPage");
+const LegalNoticesPage = lazyRetry(() => import("./pages/LegalNoticesPage"), "LegalNoticesPage");
+const SubprocessorsPage = lazyRetry(() => import("./pages/SubprocessorsPage"), "SubprocessorsPage");
 const AboutPage = lazyRetry(() => import("./pages/AboutPage"), "AboutPage");
 const EditorPage = lazyRetry(() => import("./pages/EditorPage"), "EditorPage");
 const SurprisePage = lazyRetry(() => import("./pages/SurprisePage"), "SurprisePage");
@@ -97,6 +99,8 @@ export const router = createBrowserRouter([
       { path: "login", Component: LoginPage },
       { path: "terms", Component: TermsPage },
       { path: "privacy", Component: PrivacyPage },
+      { path: "legal-notices", Component: LegalNoticesPage },
+      { path: "subprocessors", Component: SubprocessorsPage },
       { path: "about", Component: AboutPage },
 
       // Authenticated routes (guard inside component)

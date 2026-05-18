@@ -1,0 +1,29 @@
+name: Unit tests
+
+# Vitest gate. Three suites cover the security regressions from the
+# May 2026 audit (SSRF, admin escalation, credit CAS, consent gate).
+# Fail-fast: a regression here closes the merge button.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Run vitest
+        run: npm test

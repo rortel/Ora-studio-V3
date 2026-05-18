@@ -903,6 +903,20 @@ function SettingsTab({ isSubscriber, authEmail, userName, userCompany }: { isSub
       {/* Social Accounts */}
       <SocialAccountsSection />
 
+      {/* GDPR Art. 20 — data portability. Always available, no plan gate. */}
+      <div>
+        <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 500, color: "var(--foreground)" }}>Your data (GDPR)</h3>
+        <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "var(--border)" }}>
+          <div className="flex items-center justify-between px-5 py-3">
+            <div>
+              <p style={{ fontSize: "13px", color: "var(--foreground)" }}>Export my data</p>
+              <p style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>Download a JSON file containing every piece of data ORA Studio stores about you.</p>
+            </div>
+            <ExportDataButton />
+          </div>
+        </div>
+      </div>
+
       <div>
         <h3 className="mb-4" style={{ fontSize: "14px", fontWeight: 500, color: "var(--destructive)" }}>{t("profile.dangerZone")}</h3>
         <div className="border rounded-xl bg-card overflow-hidden" style={{ borderColor: "rgba(212,24,61,0.15)" }}>
@@ -917,5 +931,53 @@ function SettingsTab({ isSubscriber, authEmail, userName, userCompany }: { isSub
       </div>
       <DeleteAccountModal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} />
     </div>
+  );
+}
+
+/**
+ * GDPR Art. 20 portability button. Calls the server endpoint which
+ * streams a JSON file containing every per-user record (profile, vault,
+ * library, campaigns, credit ledger, etc.) and saves it via a temporary
+ * anchor — no extra deps. The endpoint sets Content-Disposition, but
+ * we also force a filename here in case a proxy strips the header.
+ */
+function ExportDataButton() {
+  const { accessToken } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const onClick = async () => {
+    if (loading || !accessToken) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/export-data`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${publicAnonKey}`, "Content-Type": "text/plain" },
+        body: JSON.stringify({ _token: accessToken }),
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ora-studio-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[ExportDataButton]", err);
+      alert("Sorry, the export failed. Please email privacy@ora-studio.app and we'll send it manually.");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading || !accessToken}
+      className="px-3 py-1.5 rounded-md border hover:bg-secondary cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ borderColor: "var(--border)", fontSize: "11px", fontWeight: 500 }}
+    >
+      {loading ? "Exporting…" : "Download JSON"}
+    </button>
   );
 }

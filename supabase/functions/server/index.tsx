@@ -11,7 +11,11 @@ import * as kv from "./kv_store.tsx";
 console.log("[boot] ORA server starting (inline AI) — deploy 2026-05-11T19:30Z — v701-venue-preservation-iw99-no-magic");
 
 // ── Pollo webhook secret (for signature verification) ──
-const POLLO_WEBHOOK_SECRET = "YvQWMx84zOqCPDtGe57K74Ym5m0aclYXboGisESeVJYE";
+// SECURITY: read from env only. If the env var is missing, the value is
+// empty and verifyPolloSignature() in /webhook/pollo will reject every
+// inbound webhook — safer than running unsigned. ROTATE the previous
+// hardcoded value at the Pollo dashboard before re-enabling traffic.
+const POLLO_WEBHOOK_SECRET = Deno.env.get("POLLO_WEBHOOK_SECRET") || "";
 
 const app = new Hono().basePath("/make-server-cad57f79");
 
@@ -123,14 +127,39 @@ app.use("*", async (c, next) => {
   console.log(`[RES] ${method} ${path} -> ${c.res.status} (${Date.now() - t0}ms)`);
 });
 
+// ── DEBUG/TEST ROUTE GUARD ──
+// SECURITY: every /debug/* and /test-* route is admin-only. Several of
+// them call paid AI providers (text/image generation, Photoroom) with
+// no credit deduction — the previous public exposure let anyone burn
+// our provider budget by hitting these endpoints. The /health check
+// must stay public so uptime monitors can poll it without auth.
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS") return next();
+  const path = c.req.path || "";
+  // Strip the Hono basePath prefix to match clean paths
+  const clean = path.replace(/^\/make-server-cad57f79/, "");
+  if (clean.startsWith("/debug/") || clean.startsWith("/test-") || clean === "/debug" || clean === "/debug/echo") {
+    try {
+      await requireAdmin(c);
+    } catch {
+      return c.json({ ok: false, error: "Forbidden" }, 403);
+    }
+  }
+  return next();
+});
+
 // ── HEALTH CHECK (earliest route — tests that function booted) ──
 app.get("/health", (c) => c.json({ ok: true, ts: Date.now(), v: 203, audio: "suno-start-poll", credits: "tiered", apiBalances: true }));
 
 // ── DIAGNOSTIC: test Photoroom pipeline on a given image URL ──
+// SECURITY: admin-only — burns PHOTOROOM_API_KEY budget on every call.
 app.get("/debug/photoroom-test", async (c) => {
+  try { await requireAdmin(c); } catch { return c.json({ error: "Forbidden" }, 403); }
   const imageUrl = c.req.query("imageUrl");
   const bgPrompt = c.req.query("bgPrompt") || "elegant marble bathroom, warm lighting";
   if (!imageUrl) return c.json({ error: "imageUrl required" }, 400);
+  const safe = isSafePublicUrl(imageUrl);
+  if (!safe.ok) return c.json({ error: `URL not allowed: ${safe.reason}` }, 400);
   const photoroomKey = Deno.env.get("PHOTOROOM_API_KEY");
   if (!photoroomKey) return c.json({ error: "PHOTOROOM_API_KEY not configured" }, 500);
   const steps: { step: string; ok: boolean; detail: string; ms: number }[] = [];
@@ -189,14 +218,60 @@ app.get("/debug/photoroom-test", async (c) => {
   return c.json({ imageUrl, accessibleUrl: accessibleUrl.slice(0, 100), bgPrompt, steps, totalMs: Date.now() - t0 });
 });
 
+// ── SSRF GUARD — shared validator for any route that fetches a
+//    user-supplied URL (image-proxy, vault/scan-url, vault/scrape-url,
+//    compare/scrape-urls, products/scrape-url). Blocks loopback, link-
+//    local, RFC1918 private ranges, file://, gopher://, dict://, ftp://
+//    and anything that isn't HTTP(S). Public DNS is intentionally
+//    permitted so the scrape-vault and Surprise-Me pipelines keep
+//    working unchanged.
+const PRIVATE_HOST_PATTERNS: RegExp[] = [
+  /^localhost$/i,
+  /^127\./,                                // 127.0.0.0/8
+  /^10\./,                                 // 10.0.0.0/8
+  /^192\.168\./,                           // 192.168.0.0/16
+  /^172\.(1[6-9]|2\d|3[0-1])\./,           // 172.16.0.0/12
+  /^169\.254\./,                           // 169.254.0.0/16 (link-local)
+  /^0\.0\.0\.0$/,
+  /^\[?::1\]?$/i,                          // IPv6 loopback
+  /^\[?fc00:/i, /^\[?fd00:/i,              // IPv6 ULA
+  /^\[?fe80:/i,                            // IPv6 link-local
+  /\.internal$/i, /\.local$/i,             // common internal TLDs
+];
+function isSafePublicUrl(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
+  let u: URL;
+  try { u = new URL(raw); } catch { return { ok: false, reason: "invalid_url" }; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    return { ok: false, reason: `protocol_not_allowed:${u.protocol}` };
+  }
+  const host = u.hostname;
+  if (!host) return { ok: false, reason: "empty_host" };
+  for (const re of PRIVATE_HOST_PATTERNS) {
+    if (re.test(host)) return { ok: false, reason: `private_host:${host}` };
+  }
+  return { ok: true, url: u };
+}
+
 // ── IMAGE PROXY — bypass CORS for external image URLs (DALL-E Azure Blob, etc.) ──
 app.get("/image-proxy", async (c) => {
   const url = c.req.query("url");
   if (!url) return c.text("Missing url param", 400);
+  const safe = isSafePublicUrl(url);
+  if (!safe.ok) {
+    console.log(`[image-proxy] BLOCKED: ${safe.reason} url=${url.slice(0, 200)}`);
+    return c.text(`URL not allowed: ${safe.reason}`, 400);
+  }
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    const res = await fetch(safe.url.toString(), {
+      signal: AbortSignal.timeout(15_000),
+      redirect: "follow",
+    });
     if (!res.ok) return c.text(`Upstream ${res.status}`, res.status as any);
     const contentType = res.headers.get("content-type") || "image/png";
+    // Reject anything that isn't an image — proxy must not serve HTML/JS
+    if (!/^(image\/|video\/|application\/octet-stream)/i.test(contentType)) {
+      return c.text(`Refusing non-image content-type: ${contentType}`, 400);
+    }
     const body = await res.arrayBuffer();
     return new Response(body, {
       headers: {
@@ -557,8 +632,13 @@ app.get("/credit-costs", (c) => {
   });
 });
 
-// ── DEBUG ECHO — returns exactly what the server receives (no auth needed) ──
+// ── DEBUG ECHO — admin-only. Was previously public, but it reflects
+//    request headers and parsed body (incl. _token previews), which is
+//    useful only to operators and leaks reconnaissance to attackers.
 app.all("/debug/echo", async (c) => {
+  if (c.req.method !== "OPTIONS") {
+    try { await requireAdmin(c); } catch { return c.json({ ok: false, error: "Forbidden" }, 403); }
+  }
   const method = c.req.method;
   const url = c.req.url;
   const headers: Record<string, string> = {};
@@ -616,7 +696,17 @@ function supabaseAdmin() {
 const supabase = supabaseAdmin();
 
 // ── Auth Helpers ─────────────────────────────────────────────
-const ADMIN_EMAIL = Deno.env.get("ADMIN_EMAIL") || "romainortel@gmail.com"; // FIX: depuis env
+// SECURITY: ADMIN_EMAIL is used ONLY at first signup (to bootstrap the
+// initial admin role on a brand-new account) and as a server-side check
+// in requireAdmin(). It MUST come from env vars — never hardcode an
+// email here. If ADMIN_EMAIL is unset, no email-based bypass exists and
+// admin status is granted exclusively through profile.role === "admin"
+// stored in KV (managed via /admin/* endpoints).
+const ADMIN_EMAIL = (Deno.env.get("ADMIN_EMAIL") || "").toLowerCase().trim();
+function isAdminEmail(email: string | null | undefined): boolean {
+  if (!ADMIN_EMAIL) return false;
+  return String(email || "").toLowerCase().trim() === ADMIN_EMAIL;
+}
 
 interface AuthUser { id: string; email: string; }
 
@@ -830,7 +920,10 @@ async function getOrCreateProfile(userId: string, email: string, name?: string) 
   let profile = await withTimeout(kv.get(`user:${userId}`), 5_000, "kv.get profile");
   console.log(`[getOrCreateProfile] kv.get took ${Date.now() - t0}ms`);
   if (!profile) {
-    const isAdmin = email.toLowerCase() === ADMIN_EMAIL;
+    // Admin status is granted at signup only when ADMIN_EMAIL is set in
+    // env AND matches. This is the bootstrap path for the first admin.
+    // Subsequent admins must be promoted via /admin/users/:userId/plan.
+    const isAdmin = isAdminEmail(email);
     profile = {
       userId, email,
       name: name || email.split("@")[0],
@@ -842,78 +935,140 @@ async function getOrCreateProfile(userId: string, email: string, name?: string) 
       lastLoginAt: new Date().toISOString(),
     };
     await withTimeout(kv.set(`user:${userId}`, profile), 5_000, "kv.set new profile");
-  } else {
-    // ── Self-heal stale admin profiles ──
-    // Accounts created before the email-based admin check existed can
-    // sit with role="user" forever even when their email matches
-    // ADMIN_EMAIL. Subsequent deductCredit / plan gates then treat them
-    // as a normal user, so they hit "Insufficient credits" on routes
-    // like /vault/analyze even though the UI badge shows 999999 (the
-    // client-side isAdmin check uses role==="admin", which is consistent
-    // until the credit deduction path bites).
-    //
-    // Heal in place: if the stored email matches ADMIN_EMAIL but the
-    // role / plan / credits drifted, normalise the profile so every
-    // subsequent call sees consistent admin state. Fire-and-forget save
-    // because we don't want to delay the auth path on a write that
-    // might lag.
-    const matchesAdminEmail = String(profile.email || email || "").toLowerCase() === ADMIN_EMAIL;
-    if (matchesAdminEmail) {
-      let mutated = false;
-      if (profile.role !== "admin") { profile.role = "admin"; mutated = true; }
-      if (profile.plan !== "studio") { profile.plan = "studio"; mutated = true; }
-      if ((profile.credits || 0) < 999999) { profile.credits = 999999; mutated = true; }
-      if (mutated) {
-        console.log(`[getOrCreateProfile] auto-heal admin profile ${email} (role=${profile.role}, plan=${profile.plan}, credits=${profile.credits})`);
-        kv.set(`user:${userId}`, profile).catch((e) => console.log(`[getOrCreateProfile] heal save fail: ${e}`));
-      }
-    }
   }
+  // SECURITY: removed the previous "self-heal admin profile" block that
+  // re-elevated any user whose email matched ADMIN_EMAIL on every load.
+  // It was a privilege-escalation foothold: a user who changed their
+  // Supabase Auth email to the (formerly hardcoded) admin address would
+  // be granted role=admin + 999999 credits on the next request. Admin
+  // role is now granted only at signup (via getOrCreateProfile when no
+  // profile exists yet) or explicitly through /admin/users/:userId/plan.
   return profile;
 }
 
-async function deductCredit(userId: string, amount = 1): Promise<boolean> {
+/**
+ * Atomic-ish credit deduction with compare-and-swap retry.
+ *
+ * SECURITY: admin status is derived ONLY from profile.role === "admin".
+ * The previous email-based bypass was removed because Supabase Auth
+ * lets a user set their own email — combined with the hardcoded
+ * ADMIN_EMAIL, it allowed trivial privilege escalation. Admin role is
+ * now persisted server-side in KV and managed via /admin endpoints.
+ *
+ * CONCURRENCY: KV has no transactions. We mitigate the read-modify-write
+ * race by re-reading after the write and retrying up to 3 times if the
+ * stored creditsUsed diverges from what we expected. This is not perfect
+ * (a small window of double-spend remains under heavy concurrency) but
+ * eliminates the deterministic race that existed before. Every deduction
+ * is logged to a credit_ledger:* key for audit and refund support.
+ */
+async function deductCredit(userId: string, amount = 1, ctx?: { route?: string; refId?: string }): Promise<boolean> {
+  const route = ctx?.route || "unknown";
+  const refId = ctx?.refId || "";
   try {
-    const profile = await withTimeout(kv.get(`user:${userId}`), 3_000, "kv.get deduct");
-    if (!profile) {
-      console.log(`[deductCredit] No profile for ${userId.slice(0,8)} — BLOCKING (KV miss)`);
-      return false; // block if profile not found — no free rides
-    }
-    // Bypass for admin role OR admin email — covers the case where an
-    // older profile drifted to role="user" but the email still matches
-    // ADMIN_EMAIL. The next requireAuth → getOrCreateProfile call will
-    // self-heal the role; in the meantime this prevents a false-positive
-    // "Insufficient credits" rejection on plan-gated routes (vault/analyze,
-    // /surprise-me, etc.).
-    if (profile.role === "admin") return true;
-    if (String(profile.email || "").toLowerCase() === ADMIN_EMAIL) {
-      console.log(`[deductCredit] admin-email bypass for ${profile.email} (role=${profile.role} — will self-heal on next profile load)`);
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const profile = await withTimeout(kv.get(`user:${userId}`), 3_000, "kv.get deduct");
+      if (!profile) {
+        console.log(`[deductCredit] No profile for ${userId.slice(0,8)} — BLOCKING (KV miss)`);
+        return false; // block if profile not found — no free rides
+      }
+      if (profile.role === "admin") return true;
+      const prevUsed = profile.creditsUsed || 0;
+      const total = profile.credits || 0;
+      const remaining = total - prevUsed;
+      if (remaining < amount) return false;
+      profile.creditsUsed = prevUsed + amount;
+      try {
+        await withTimeout(kv.set(`user:${userId}`, profile), 3_000, "kv.set deduct");
+      } catch (setErr) {
+        lastErr = setErr;
+        continue; // retry
+      }
+      // CAS verification — re-read and ensure our write landed without
+      // being overwritten by a concurrent deduction.
+      try {
+        const verify = await withTimeout(kv.get(`user:${userId}`), 2_000, "kv.get verify");
+        const got = verify?.creditsUsed || 0;
+        if (got < profile.creditsUsed) {
+          console.log(`[deductCredit] CAS retry ${attempt + 1} for ${userId.slice(0,8)}: expected>=${profile.creditsUsed}, got=${got}`);
+          continue; // someone else wrote, retry
+        }
+      } catch { /* verification timeout — accept the write */ }
+
+      // Audit trail (separate from cost ledger which logs provider costs)
+      logCreditDeduction(userId, amount, route, refId, prevUsed, profile.creditsUsed).catch(() => {});
+
+      // ── Low credits alert: send email when < 10% remaining ──
+      const newRemaining = total - profile.creditsUsed;
+      const threshold = Math.max(total * 0.1, 5);
+      if (newRemaining <= threshold && remaining > threshold && total > 0) {
+        const name = profile.name || profile.email?.split("@")[0] || "there";
+        const email = profile.email;
+        if (email) {
+          const { subject, html } = emailLowCredits(name, newRemaining, profile.plan || "free");
+          sendEmail(email, subject, html).catch(() => {}); // fire-and-forget
+        }
+      }
       return true;
     }
-    const remaining = (profile.credits || 0) - (profile.creditsUsed || 0);
-    if (remaining < amount) return false;
-    profile.creditsUsed = (profile.creditsUsed || 0) + amount;
-    kv.set(`user:${userId}`, profile).catch(() => {}); // fire-and-forget
-
-    // ── Low credits alert: send email when < 10% remaining ──
-    const totalCredits = profile.credits || 0;
-    const newRemaining = remaining - amount;
-    const threshold = Math.max(totalCredits * 0.1, 5);
-    const prevRemaining = remaining;
-    // Only send once: when crossing the threshold (previous was above, now below)
-    if (newRemaining <= threshold && prevRemaining > threshold && totalCredits > 0) {
-      const name = profile.name || profile.email?.split("@")[0] || "there";
-      const email = profile.email;
-      if (email) {
-        const { subject, html } = emailLowCredits(name, newRemaining, profile.plan || "free");
-        sendEmail(email, subject, html).catch(() => {}); // fire-and-forget
-      }
-    }
-    return true;
+    console.log(`[deductCredit] CAS exhausted for ${userId.slice(0,8)} (route=${route}): ${lastErr}`);
+    return false;
   } catch (err) {
-    console.log(`[deductCredit] KV timeout for ${userId.slice(0,8)} — BLOCKING: ${err}`);
+    console.log(`[deductCredit] KV timeout for ${userId.slice(0,8)} (route=${route}) — BLOCKING: ${err}`);
     return false; // block on timeout — prevents free generation under load
   }
+}
+
+/**
+ * Refund a previously deducted credit when the AI provider failed and
+ * the user got nothing in return. Logs the refund for audit trail.
+ * Safe to call multiple times — refund logs are append-only.
+ */
+async function refundCredit(userId: string, amount = 1, ctx?: { route?: string; refId?: string; reason?: string }): Promise<boolean> {
+  const route = ctx?.route || "unknown";
+  const refId = ctx?.refId || "";
+  const reason = ctx?.reason || "ai_failure";
+  try {
+    const profile = await withTimeout(kv.get(`user:${userId}`), 3_000, "kv.get refund");
+    if (!profile) return false;
+    if (profile.role === "admin") return true; // nothing to refund
+    const prevUsed = profile.creditsUsed || 0;
+    profile.creditsUsed = Math.max(0, prevUsed - amount);
+    await withTimeout(kv.set(`user:${userId}`, profile), 3_000, "kv.set refund");
+    logCreditDeduction(userId, -amount, route, refId, prevUsed, profile.creditsUsed, reason).catch(() => {});
+    return true;
+  } catch (err) {
+    console.log(`[refundCredit] failed for ${userId.slice(0,8)} (route=${route}): ${err}`);
+    return false;
+  }
+}
+
+/** Append-only audit log for every credit movement. Used for support
+ *  requests ("I was charged but got nothing") and abuse detection. */
+async function logCreditDeduction(
+  userId: string,
+  amount: number,
+  route: string,
+  refId: string,
+  prevUsed: number,
+  newUsed: number,
+  reason?: string,
+) {
+  try {
+    const ts = Date.now();
+    const id = `credit_ledger:${userId}:${ts}-${Math.random().toString(36).slice(2, 8)}`;
+    await kv.set(id, {
+      userId,
+      amount, // positive = debit, negative = refund
+      route,
+      refId,
+      prevUsed,
+      newUsed,
+      reason: reason || (amount >= 0 ? "debit" : "refund"),
+      ts,
+    });
+  } catch { /* never block on audit log */ }
 }
 
 async function logEvent(type: string, details: any) {
@@ -4804,6 +4959,89 @@ app.post("/auth/delete-account", async (c) => {
   }
 });
 
+/**
+ * GDPR Article 20 — Right to data portability.
+ * Returns every piece of user data stored in our KV in a structured,
+ * machine-readable JSON envelope, sent as an attachment so it can be
+ * saved or piped into another service. The same per-user prefixes as
+ * delete-account are enumerated, so any module that introduces a new
+ * prefix must be added here too.
+ *
+ * Credit ledger entries (credit_ledger:<userId>:*) and PfM publishing
+ * logs (pfm:log:<userId>:*) are included for audit transparency.
+ */
+app.post("/auth/export-data", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const profile = await kv.get(`user:${user.id}`);
+    const sanitizedProfile = profile ? { ...profile } : null;
+    if (sanitizedProfile) {
+      // Never include the password hash even if it landed in the profile blob
+      delete (sanitizedProfile as any).passwordHash;
+      delete (sanitizedProfile as any).stripeCustomerId;
+    }
+
+    // Prefixes that hold lists of items keyed by `${prefix}<id>`
+    const listPrefixes = [
+      `calendar:${user.id}:`,
+      `campaign:${user.id}:`,
+      `deploy:${user.id}:`,
+      `flow:${user.id}:`,
+      `brand-score:${user.id}:`,
+      `analysis:${user.id}:`,
+      `playlist:${user.id}:`,
+      `event:${user.id}:`,
+      `brand-image:${user.id}:`,
+      `library:${user.id}:`,
+      `product:${user.id}:`,
+      `credit_ledger:${user.id}:`,
+      `pfm:log:${user.id}:`,
+    ];
+
+    const sections: Record<string, unknown> = { profile: sanitizedProfile };
+    for (const prefix of listPrefixes) {
+      try {
+        const items = await kv.getByPrefix(prefix);
+        // Strip the user prefix from the key for clarity
+        sections[prefix.replace(`:${user.id}:`, "").replace(/:$/, "")] = items || [];
+      } catch (e) {
+        sections[prefix] = { error: String(e).slice(0, 120) };
+      }
+    }
+
+    // Single-key entities (no trailing colon)
+    for (const key of [`vault:${user.id}`, `pfm:profile:${user.id}`, `zernio:profile:${user.id}`, `zernio:accounts:${user.id}`]) {
+      try { sections[key.split(":")[0]] = await kv.get(key); } catch (e) { sections[key] = { error: String(e).slice(0, 120) }; }
+    }
+
+    await logEvent("data_exported", { userId: user.id, durationMs: Date.now() - t0 }).catch(() => {});
+
+    const payload = {
+      export_format_version: 1,
+      export_generated_at: new Date().toISOString(),
+      user_id: user.id,
+      user_email: user.email,
+      notice: "This export contains every piece of data ORA Studio stores about you. Outputs hosted on third-party providers (Supabase Storage signed URLs) are listed by reference; download them within their validity window.",
+      data: sections,
+    };
+
+    const filename = `ora-studio-export-${user.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.json`;
+    return new Response(JSON.stringify(payload, null, 2), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${filename}"`,
+        "cache-control": "no-store",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    console.log(`[/auth/export-data] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /auth/me — preferred: user token in body._token (avoids CORS issues)
 app.post("/auth/me", async (c) => {
   const t0 = Date.now();
@@ -7154,10 +7392,10 @@ app.post("/compare/scrape-urls", async (c) => {
     // Content-Type: text/plain to skip CORS preflight; c.req.json() may not parse that.
     const body = c.get("parsedBody") || await c.req.json().catch(() => ({}));
     const urls: string[] = Array.isArray(body.urls)
-      ? body.urls.filter((u: any) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 3)
+      ? body.urls.filter((u: any) => typeof u === "string" && isValidScrapeUrl(u)).slice(0, 3)
       : [];
     console.log(`[compare/scrape-urls] body keys=[${Object.keys(body || {}).join(",")}], urls=${urls.length}`);
-    if (urls.length === 0) return c.json({ success: false, error: "urls required" }, 400);
+    if (urls.length === 0) return c.json({ success: false, error: "urls required — public http/https only" }, 400);
 
     console.log(`[compare/scrape-urls] scraping ${urls.length} url(s): ${urls.map(u => u.slice(0, 60)).join(", ")}`);
 
@@ -21708,13 +21946,30 @@ async function fetchWithTimeout(input: string, init: any = {}, ms = 10_000): Pro
   finally { clearTimeout(timer); }
 }
 
-// ── Shared: validate URL (basic SSRF protection) ──
+// ── Shared: validate URL (SSRF protection — RFC1918 + link-local + IPv6) ──
+// Hardened version. Blocks:
+//   - non-HTTP(S) protocols (file://, gopher://, dict://, ftp://...)
+//   - IPv4 loopback (127/8), private (10/8, 172.16/12, 192.168/16)
+//   - link-local (169.254/16), unspecified (0.0.0.0)
+//   - IPv6 loopback (::1), ULA (fc00::/7), link-local (fe80::/10)
+//   - common internal TLDs (.internal, .local)
+// All public DNS hostnames keep passing — Vault scrape and Surprise Me
+// pipelines remain functional.
 function isValidScrapeUrl(raw: string): boolean {
   try {
     const u = new URL(raw);
     if (!["http:", "https:"].includes(u.protocol)) return false;
-    const host = u.hostname.toLowerCase();
-    if (host === "localhost" || host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") || host === "0.0.0.0") return false;
+    // WHATWG URL keeps IPv6 hostnames wrapped in [...] — strip the
+    // brackets so our pattern matching works on bare addresses.
+    const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (!host) return false;
+    if (host === "localhost" || host === "0.0.0.0") return false;
+    if (host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return false;
+    // 172.16.0.0/12 (172.16.0.0 → 172.31.255.255)
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return false;
+    // IPv6 loopback, unique-local (fc00::/7) and link-local (fe80::/10)
+    if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return false;
+    if (host.endsWith(".internal") || host.endsWith(".local")) return false;
     return true;
   } catch { return false; }
 }
@@ -22028,9 +22283,13 @@ app.post("/vault/scan-url", async (c) => {
 
     // Normalize URL
     const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+    // SSRF guard — public HTTP(S) only, no private ranges
+    if (!isValidScrapeUrl(normalizedUrl)) {
+      return c.json({ error: "Invalid URL. Only public http/https URLs are allowed." }, 400);
+    }
 
     // Deduct credit
-    const canDeduct = await deductCredit(user.id, 1);
+    const canDeduct = await deductCredit(user.id, 1, { route: "vault/scan-url", refId: normalizedUrl });
     if (!canDeduct) return c.json({ error: "Insufficient credits" }, 403);
 
     // ── 1. SCRAPE WITH JINA READER ──────────────────────────────
@@ -33519,6 +33778,10 @@ app.post("/products/scrape-url", async (c) => {
     const body = c.get?.("parsedBody") || await c.req.json().catch(() => ({}));
     const url = body?.url || body?._url;
     if (!url) return c.json({ success: false, error: "url required" }, 400);
+    // SSRF guard
+    if (!isValidScrapeUrl(url)) {
+      return c.json({ success: false, error: "Invalid URL. Only public http/https URLs are allowed." }, 400);
+    }
 
     console.log(`[products/scrape-url] Scraping: ${url.slice(0, 100)}`);
 

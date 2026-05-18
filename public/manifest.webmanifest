@@ -1,0 +1,21 @@
+{
+  "name": "ORA Studio",
+  "short_name": "ORA",
+  "description": "AI marketing content for Instagram, TikTok and Facebook. Turn your URL into a full ready-to-publish pack.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F4EFE6",
+  "theme_color": "#F4EFE6",
+  "lang": "en",
+  "categories": ["productivity", "business", "design"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

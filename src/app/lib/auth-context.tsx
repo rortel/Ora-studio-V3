@@ -164,28 +164,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[fetchProfile] fetch failed: ${err instanceof Error ? err.message : err}`);
     }
 
-    console.log(`[fetchProfile] server fetch failed after ${Date.now() - t0}ms, using JWT fallback`);
-    // Last resort: decode JWT locally to create a minimal profile
+    console.log(`[fetchProfile] server fetch failed after ${Date.now() - t0}ms, using minimal JWT fallback`);
+    // Last resort: decode JWT locally to create a MINIMAL profile.
+    // SECURITY: never grant admin or credits client-side. Privileges are
+    // server-authoritative — the client-side fallback shows a logged-in
+    // shell only so the UI can render while the server is unreachable.
     try {
       const parts = token.split(".");
       if (parts.length === 3) {
         const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
         if (payload?.sub && payload?.email && !signingOut.current) {
-          const isAdminEmail = payload.email.toLowerCase() === "romainortel@gmail.com";
           const fallbackProfile: UserProfile = {
             userId: payload.sub,
             email: payload.email,
             name: payload.user_metadata?.name || payload.email.split("@")[0],
-            role: isAdminEmail ? "admin" : "user",
-            plan: isAdminEmail ? "business" : "free",
-            credits: isAdminEmail ? 999999 : 50,
+            role: "user",
+            plan: "free",
+            credits: 0,
             creditsUsed: 0,
             company: "",
             jobTitle: "",
             createdAt: new Date().toISOString(),
             lastLoginAt: new Date().toISOString(),
           };
-          console.log("fetchProfile: using JWT fallback profile");
+          console.log("fetchProfile: using minimal JWT fallback profile (no privileges)");
           setProfile(fallbackProfile);
           return fallbackProfile;
         }

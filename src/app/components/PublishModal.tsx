@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { API_BASE, publicAnonKey } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { useI18n } from "../lib/i18n";
+import { AIGeneratedBadge } from "./AIGeneratedBadge";
 
 /**
  * PublishModal — shared publish flow for ComparePage, LibraryPage, EditorPage.
@@ -419,26 +420,31 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
         onClick={onClose}
       >
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="publish-modal-title"
+          aria-describedby="publish-modal-desc"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2 }}
           onClick={e => e.stopPropagation()}
+          onKeyDown={e => { if (e.key === "Escape") onClose(); }}
           className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl"
           style={{ background: "var(--background)", border: "1px solid var(--border)", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--foreground)" }}>
+              <div id="publish-modal-title" style={{ fontSize: 16, fontWeight: 700, color: "var(--foreground)" }}>
                 {isFr ? "Publier" : "Publish"}
               </div>
-              <div style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
+              <div id="publish-modal-desc" style={{ fontSize: 11, color: "var(--muted-foreground)" }}>
                 {isFr ? "Diffusez sur vos réseaux en un clic" : "Distribute to your networks in one click"}
               </div>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-secondary">
-              <X size={16} />
+            <button onClick={onClose} aria-label={isFr ? "Fermer" : "Close"} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-secondary">
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
 
@@ -446,10 +452,16 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
             {/* Preview */}
             <div className="flex items-start gap-3">
               {asset.imageUrl && (
-                <img src={asset.imageUrl} alt="preview" className="w-24 h-24 rounded-lg object-cover flex-shrink-0" />
+                <div className="relative w-24 h-24 flex-shrink-0">
+                  <img src={asset.imageUrl} alt={isFr ? "Aperçu du visuel généré par IA" : "Preview of AI-generated visual"} className="w-24 h-24 rounded-lg object-cover" />
+                  <div className="absolute bottom-1 left-1"><AIGeneratedBadge size="xs" variant="overlay" /></div>
+                </div>
               )}
               {asset.videoUrl && !asset.imageUrl && (
-                <video src={asset.videoUrl} className="w-24 h-24 rounded-lg object-cover flex-shrink-0" muted />
+                <div className="relative w-24 h-24 flex-shrink-0">
+                  <video src={asset.videoUrl} className="w-24 h-24 rounded-lg object-cover" muted aria-label={isFr ? "Aperçu de la vidéo générée par IA" : "Preview of AI-generated video"} />
+                  <div className="absolute bottom-1 left-1"><AIGeneratedBadge size="xs" variant="overlay" /></div>
+                </div>
               )}
               <div className="flex-1 min-w-0">
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted-foreground)", marginBottom: 4 }}>
@@ -457,6 +469,11 @@ export function PublishModal({ asset, open, onClose, onPublished }: PublishModal
                 </div>
                 <div style={{ fontSize: 12, color: "var(--foreground)", lineHeight: 1.5 }}>
                   {asset.imageUrl ? (isFr ? "Image prête à diffuser" : "Image ready to publish") : (isFr ? "Vidéo prête à diffuser" : "Video ready to publish")}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted-foreground)", lineHeight: 1.5, marginTop: 6 }}>
+                  {isFr
+                    ? "Conformément à l'article 50 du règlement IA européen, ce contenu est synthétique. Pensez à le mentionner si votre audience l'exige."
+                    : "Under EU AI Act art. 50, this content is synthetic. Disclose where your audience or local rules require it."}
                 </div>
               </div>
             </div>
