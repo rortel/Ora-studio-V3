@@ -393,7 +393,7 @@ For any questions regarding the protection of your data, you may contact our Dat
 - Vercel Inc. (US) - frontend hosting and CDN
 - Resend Inc. (US) - transactional email delivery
 - Jina AI GmbH (DE) and ScrapingBee SAS (FR) - public web scraping for the Brand Vault
-- AI generation providers used to fulfil your prompts: Together AI Inc. (US), APIPod (US, gateway to OpenAI, Anthropic and Google models), OpenAI L.L.C. (US), Google LLC (US), Luma AI Inc. (US, Photon image and Ray-2/Dream Machine video), FAL.ai Inc. (US), Photoroom SAS (FR, product cutout), Ideogram AI Inc. (US, typography), Leonardo Interactive Pty Ltd (AU), Pollo AI (US, video), Suno Inc. (US, audio).
+- AI generation providers used to fulfil your prompts: Together AI Inc. (US), APIPod (US, gateway to OpenAI, Anthropic and Google text models), OpenAI L.L.C. (US), Google LLC (US), Luma AI Inc. (US, Photon image and Ray-2 video fallback), Pollo AI (US, video gateway routing to Kling, Veo, Sora, Runway, Pika, Pixverse, Minimax, Wan, Seedance, Luma Ray, Vidu, Hunyuan, Grok, Midjourney - 50+ models), FAL.ai Inc. (US, image and video alternative), Photoroom SAS (FR, product cutout), Ideogram AI Inc. (US, typography), Leonardo Interactive Pty Ltd (AU), Suno Inc. (US, audio).
 
 For sub-processors located outside the EEA, transfers rely on the European Commission's Standard Contractual Clauses (SCCs) and, where applicable, the EU-US Data Privacy Framework. We have conducted a Transfer Impact Assessment (TIA) for each US provider; the summary is available on request to privacy@ora-studio.app.`,
     s6Title: "6. Data Retention Period",

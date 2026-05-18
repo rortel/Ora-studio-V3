@@ -81,12 +81,12 @@ a DPA executed and stored:
 | APIPod | Text gateway (routes to OpenAI/Anthropic/Google) | DPA on request |
 | OpenAI | Text direct fallback | https://openai.com/policies/data-processing-addendum |
 | Google (Gemini) | Text alternative | https://cloud.google.com/terms/data-processing-addendum |
-| Luma AI | Photon (image) + Ray-2 / Dream Machine (video) | DPA on request |
-| FAL.ai | Image + video composite | DPA on request |
+| Luma AI | Photon (image) + Ray-2 (video fallback, direct) | DPA on request |
+| Pollo AI | Video gateway (Kling, Veo, Sora, Runway, Pika, Pixverse, Minimax, Wan, Seedance, Luma Ray, Vidu, Hunyuan, Grok, Midjourney — 50+ models) | DPA on request |
+| FAL.ai | Image + video alternative | DPA on request |
 | Photoroom | Pixel-perfect product cutout | https://www.photoroom.com/legal/dpa |
 | Ideogram | Image with typography | privacy@ideogram.ai |
 | Leonardo | Image alternative | DPA on request |
-| Pollo.AI | Video (additional path) | DPA on request |
 | Suno | Audio (BGM video) | https://suno.com/legal |
 | Resend | Email | https://resend.com/legal/dpa |
 | Vercel | Frontend hosting | https://vercel.com/legal/dpa |
@@ -95,10 +95,11 @@ a DPA executed and stored:
 | Jina AI | Scrape (EEA) | DPA on request — EEA intra-EU |
 | ScrapingBee | Scrape fallback (EEA) | DPA on request — EEA intra-EU |
 
-APIPod is a gateway: a single DPA with APIPod is needed, but the
-sub-sub-processors (OpenAI / Anthropic / Google) must be named in the
-APIPod DPA. A Transfer Impact Assessment must accompany each US
-provider.
+Two gateway providers (APIPod for text, Pollo for video) each route to
+multiple upstream models. A single DPA with each gateway is required;
+the sub-sub-processors (Kling, Veo, Sora, etc. behind Pollo; OpenAI /
+Anthropic / Google behind APIPod) must be named in the gateway DPA.
+A Transfer Impact Assessment must accompany each US provider.
 
 Owner: legal / founder.
 
