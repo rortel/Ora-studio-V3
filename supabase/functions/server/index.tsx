@@ -12308,29 +12308,24 @@ OUTPUT JSON:
 
       // Primary path = Kling 2.5 Turbo Pro on FAL (better product consistency,
       // good scene awareness, uses the FAL_API_KEY we already have).
-      // Falls back to Luma Ray Flash 2 only when (a) Kling returned a hard
-      // failure (model error, bad params) and (b) we have enough wall-clock
-      // left to actually finish a Luma poll. Timeouts in particular DON'T
-      // cascade — when Kling times out at 50s, the i2v GPU pipeline is
-      // congested and Luma's GPU isn't going to be faster; cascading just
-      // burns another 35s for the same outcome and risks blowing the
-      // edge function's 150s wall-clock. Better to surface the timeout
-      // immediately so the user can retry that single film standalone.
+      // Falls back to Luma Ray Flash 2 on any failure (including timeouts) as
+      // long as we have enough wall-clock left. The previous "don't cascade
+      // on timeout" rule was too pessimistic: in practice Kling timeouts on
+      // FAL do not always correlate with Luma congestion (different infra,
+      // different queues), so the cascade rescues most retries. The
+      // remainingMs guard still prevents the Edge function from blowing its
+      // 150s wall-clock when only a few seconds are left.
       const runVideoForShot = async (opts: { imageUrl: string; motion: string; aspectRatio: string; duration: string; scene: string }) => {
         const k = await runKlingI2v(opts);
         if (k.ok) return k;
         const errStr = String((k as any).error || "");
-        const isTimeout = /timed out|timeout/i.test(errStr);
         const remainingMs = 150_000 - (Date.now() - t0);
-        if (isTimeout) {
-          console.log(`[surprise-me:film] kling timed out (${errStr}) — NOT cascading to Luma (same GPU congestion would just burn 35s more)`);
-          return k;
-        }
         if (remainingMs < 40_000) {
           console.log(`[surprise-me:film] kling failed (${errStr}) but only ${remainingMs}ms left — skipping Luma cascade to stay under edge budget`);
           return k;
         }
-        console.log(`[surprise-me:film] kling failed (${errStr}) — falling back to Luma Ray Flash 2 (${remainingMs}ms left)`);
+        const isTimeout = /timed out|timeout/i.test(errStr);
+        console.log(`[surprise-me:film] kling ${isTimeout ? "timed out" : "failed"} (${errStr}) — cascading to Luma Ray Flash 2 (${remainingMs}ms left)`);
         return await runRayVideo(opts);
       };
 
