@@ -18,6 +18,7 @@ import { RouteGuard } from "../components/RouteGuard";
 import { AppTabs } from "../components/AppTabs";
 import { useI18n } from "../lib/i18n";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
+import { FEATURES } from "../lib/features";
 import { bagel, COLORS } from "../components/ora/tokens";
 
 /* ═══════════════════════════════════
@@ -1730,7 +1731,7 @@ function LibraryPageContent() {
                             </span>
                           </div>
                           <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {(item.preview?.kind === "image" || item.preview?.kind === "film") && (
+                            {FEATURES.publish && (item.preview?.kind === "image" || item.preview?.kind === "film") && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1852,7 +1853,7 @@ function LibraryPageContent() {
                       <span className="w-20 hidden sm:block" style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{getTypeLabel(item.type)}</span>
                       <span className="w-24 hidden lg:block" style={{ fontSize: "11px", color: "var(--muted-foreground)" }}>{new Date(item.savedAt).toLocaleDateString()}</span>
                       <div className="w-28 flex items-center gap-1">
-                        {(item.preview?.kind === "image" || item.preview?.kind === "film") && (
+                        {FEATURES.publish && (item.preview?.kind === "image" || item.preview?.kind === "film") && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

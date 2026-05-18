@@ -188,6 +188,32 @@ Owner: marketing / analyst.
 
 ---
 
+### 20bis. Publishing module is dormant (May 2026 decision)
+
+In-app social publishing (PublishModal + /campaign/deploy* + /zernio/*
++ /webhook/pollo for video status) is hidden behind the
+`FEATURES.publish` flag in `src/app/lib/features.ts`. Set to `false`.
+
+Reason: connecting a social account requires a Meta Business Suite /
+Pro account on every platform — too much friction for the independent
+sellers Ora targets. The download flow is the supported alternative.
+
+Implications:
+  - Sub-processors registry already trimmed (Zernio / Post-for-Me are
+    out of `/subprocessors` and Privacy s5).
+  - Server routes stay in place so flipping the flag back to `true`
+    re-enables publishing without restoring deleted code.
+  - The publish-funnel analytics roadmap item is dropped; the moat
+    shifts to "insights + download quality" (see item 20).
+
+Re-evaluate in 6 months: if a self-publishing audience emerges that
+already has Meta Business, the flag can flip back on without code
+changes.
+
+Owner: product.
+
+---
+
 ## P2 — within 90 days
 
 ### 12. Split the 34 537-line monolith into modules

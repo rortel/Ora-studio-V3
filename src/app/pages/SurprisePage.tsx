@@ -12,6 +12,7 @@ import { Button } from "../components/ora/Button";
 import { Badge } from "../components/ora/Badge";
 import { bagel, COLORS } from "../components/ora/tokens";
 import { PublishModal, type PublishableAsset } from "../components/PublishModal";
+import { FEATURES } from "../lib/features";
 import { StylePicker } from "../components/StylePicker";
 import { parseHex, scorePack, type RGB } from "../lib/brand-fidelity";
 
@@ -2837,17 +2838,19 @@ function SurpriseContent() {
                                 aria-label="Remove from pack" title="Cacher ce shot du pack (reste sauvegardé en Library)">
                                 <Trash2 size={12} style={{ color: "rgba(220, 50, 50, 0.7)" }} />
                               </button>
-                              <button
-                                onClick={() => setPublishTarget({
-                                  imageUrl: it.imageUrl,
-                                  videoUrl: it.videoUrl,
-                                  defaultCaption: it.caption || "",
-                                })}
-                                className="shrink-0 h-7 px-2 rounded-full flex items-center justify-center gap-1 text-[11px]"
-                                style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
-                                aria-label="Publish" title="Publish now or schedule on your networks">
-                                <Send size={11} /> Publish
-                              </button>
+                              {FEATURES.publish && (
+                                <button
+                                  onClick={() => setPublishTarget({
+                                    imageUrl: it.imageUrl,
+                                    videoUrl: it.videoUrl,
+                                    defaultCaption: it.caption || "",
+                                  })}
+                                  className="shrink-0 h-7 px-2 rounded-full flex items-center justify-center gap-1 text-[11px]"
+                                  style={{ background: COLORS.coral, color: "#fff", fontWeight: 600 }}
+                                  aria-label="Publish" title="Publish now or schedule on your networks">
+                                  <Send size={11} /> Publish
+                                </button>
+                              )}
                             </>
                           )}
                         </div>
