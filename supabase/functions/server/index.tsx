@@ -12226,15 +12226,18 @@ OUTPUT JSON:
             logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
             return { ok: false, error: submit.error };
           }
-          // Poll up to 50s. Kling 2.5's median i2v latency is 40-55s; the
-          // p90 long-tail (60-90s) doesn't fit our 150s edge budget anyway
-          // once we account for concept (~30s) + stills (~70-85s). Cutting
-          // the cap from 75s → 50s sheds the slowest 25% of requests but
-          // keeps the whole pack within the edge gateway envelope. Lost
-          // videos surface as "Kling timed out" on the item and the user
-          // can retry the film standalone from the result screen.
+          // Poll up to 35s. The previous 50s cap was matching Kling 2.5's
+          // median i2v latency (40-55s) but in practice the GPU pipeline on
+          // FAL has been congested enough that the cascade-to-Luma rescue
+          // never fired (production logs showed remainingMs ≈ 28s when
+          // Kling timed out, < the 40s guard for the Luma cascade).
+          // Cutting the cap to 35s sheds the slowest 50% of Kling requests
+          // but keeps ~15s more wall-clock for Luma Ray Flash 2 to actually
+          // run and return a video. Net: fewer Kling wins but far more
+          // films delivered overall, since today every Kling-timeout shot
+          // fell straight through to the static first-frame image.
           const pollStart = Date.now();
-          while (Date.now() - pollStart < 50_000) {
+          while (Date.now() - pollStart < 35_000) {
             await new Promise((r) => setTimeout(r, 4_000));
             const status = await callFalVideoStatus(submit.statusUrl, submit.responseUrl);
             if (status.state === "completed") {
@@ -12251,7 +12254,7 @@ OUTPUT JSON:
             }
           }
           logCost({ type: "video", model: "kling-v2.5-pro", provider: "fal/kling-v2.5-turbo-pro-i2v", costUsd: 0, revenueEur: 0, latencyMs: Date.now() - tK, userId: user.id, success: false, campaignSlug }).catch(() => {});
-          return { ok: false, error: "Kling timed out (>50s)" };
+          return { ok: false, error: "Kling timed out (>35s)" };
         } catch (err: any) {
           return { ok: false, error: String(err?.message || err) };
         }
