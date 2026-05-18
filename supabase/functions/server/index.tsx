@@ -13259,6 +13259,60 @@ interface ShotPromptJob {
   promptText: string;
 }
 
+/**
+ * Detect a gender / age hint in the product description, brief, scene
+ * or planner copy. Image models default to a young female model for
+ * apparel ~65% of the time regardless of the actual target audience
+ * (training-set bias). Without an explicit directive a "Polo Papa
+ * Poule" — a polo marketed to dads — was returning a blonde woman in
+ * every Surprise Me pack. This helper scans the joined text for
+ * unambiguous demographic markers and returns a prompt fragment that
+ * locks the wearer's gender + age band downstream in buildShotPrompt.
+ *
+ * Returns "" when no signal is found (we then let the model decide,
+ * but still nudge towards diversity via the default directive).
+ */
+type WearerHint = "" | "male-adult" | "female-adult" | "male-kid" | "female-kid" | "couple" | "family";
+
+function detectWearerHint(parts: string[]): WearerHint {
+  const text = parts.filter(Boolean).join(" ").toLowerCase();
+  if (!text) return "";
+  // Family / couple wins over single gender if both signals are present
+  const hasFamily = /\b(family|familly|famille|parent|parents|household|tribu)\b/.test(text);
+  const hasCouple = /\b(couple|duo|pair|partner|lovers?|amoureux)\b/.test(text);
+  if (hasFamily) return "family";
+  if (hasCouple) return "couple";
+  const maleAdult = /\b(papa|papas|dad|dads|daddy|father|fathers|fatherhood|paternal|men|man|gentleman|gents|guys?|monsieur|messieurs|homme|hommes|masculin|mec|mecs)\b/.test(text);
+  const femaleAdult = /\b(maman|mamans|mom|moms|mum|mother|mothers|motherhood|maternal|women|woman|ladies|girls?|madame|mesdames|femme|femmes|féminin|feminin)\b/.test(text);
+  const kid = /\b(kid|kids|child|children|enfant|enfants|bambin|toddler|teen|teenager|ado|adolescent|son|fils|daughter|fille)\b/.test(text);
+  if (maleAdult && kid && !femaleAdult) return "male-adult"; // dad with kids = still male-adult
+  if (femaleAdult && kid && !maleAdult) return "female-adult";
+  if (maleAdult && !femaleAdult) return "male-adult";
+  if (femaleAdult && !maleAdult) return "female-adult";
+  if (kid && !maleAdult && !femaleAdult) return "male-kid"; // arbitrary default for kid-only contexts
+  return "";
+}
+
+function wearerDirective(hint: WearerHint): string {
+  switch (hint) {
+    case "male-adult":
+      return "WEARER LOCK: the model in this image MUST be an adult male (man, age 28-50, plausible as a father or modern dad), grounded body language, never feminine features. If the AI tries to render a female model, this output is REJECTED.";
+    case "female-adult":
+      return "WEARER LOCK: the model in this image MUST be an adult female (woman, age 22-45), never masculine features. If the AI tries to render a male model, this output is REJECTED.";
+    case "male-kid":
+      return "WEARER LOCK: the model in this image MUST be a boy (age 4-12). No adults front-and-centre.";
+    case "female-kid":
+      return "WEARER LOCK: the model in this image MUST be a girl (age 4-12). No adults front-and-centre.";
+    case "couple":
+      return "WEARER LOCK: the scene MUST show a couple (two adults together). Mixed-gender unless the brand context implies otherwise.";
+    case "family":
+      return "WEARER LOCK: the scene MUST show a family group (parent(s) with child(ren)). Body language warm, candid, never posed.";
+    case "":
+    default:
+      return "";
+  }
+}
+
 // Style directives sometimes embed typography vocabulary (Magazine =
 // "oversized condensed display typography", Minimal = "thin centred
 // sans", Editorial = "magazine-cover gravitas"). When this directive
@@ -13349,6 +13403,16 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const subjectAnchor = ctx.productDescription
         ? `\n\nSUBJECT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
         : "";
+      // Wearer demographic lock — scans product description, planner copy
+      // and scene for gender/age markers ("papa", "dad", "femme", etc.)
+      // and injects an explicit directive. Image models default to a
+      // young female model for apparel ~65% of the time without this
+      // nudge, which is wrong for products like a "Polo Papa Poule"
+      // explicitly marketed to dads.
+      const wearerHint = ctx.subjectKind === "product" && ctx.jobIsApparel
+        ? detectWearerHint([ctx.productDescription, job.promptText, job.scene])
+        : "";
+      const wearerLock = wearerHint ? `\n\n${wearerDirective(wearerHint)}` : "";
       // Apparel-only: name the silhouette features that drift most.
       const silhouetteAnchor = ctx.subjectKind === "product" && ctx.jobIsApparel
         ? "\n\nSILHOUETTE LOCK (apparel): COPY FROM REFERENCE PHOTO — sleeve length (sleeveless / short / 3-4 / long), neckline shape (crew / V / scoop / collar / button-up), hem length (cropped / waist / hip / mid-thigh / knee / floor), closure (zip / button row / pullover), fit (slim / regular / oversized), fabric weight and texture. Any deviation from the reference on these features = REJECTED. The wearer changes, the garment is identical."
@@ -13400,7 +13464,7 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const singleItemCap = ctx.subjectKind === "product" && ctx.jobIsApparel
         ? "\n\nSINGLE-GARMENT RULE (apparel — non-negotiable): exactly ONE instance of the garment in the frame. WEARER REQUIRED — a real person is wearing the garment, with their body fully visible (face, hands, arms, legs, feet as relevant to the framing). The wearer's own body parts are EXPECTED and CORRECT. What's FORBIDDEN: a SECOND identical garment elsewhere in the frame (duplicate pair of pants in the background, clone jacket on a hanger as prop, stack of similar items, garment held by an extra phantom hand). The wearer's hands holding their own coat lapel = fine. A floating disembodied hand holding a duplicate garment = rejected. ONE wearer, ONE garment, ONE scene."
         : "";
-      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}${singleItemCap}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${cleanPromptText}${noTextCap}`;
+      return `${styleHead}SUBJECT FIDELITY IS NON-NEGOTIABLE. The ${subjectNoun} in the reference photo MUST be reproduced VERBATIM in every visual detail.${subjectAnchor}${silhouetteAnchor}${wearerLock}${singleItemCap}\n\n${sceneRegen}\n\nREAL-LIFE SCENE: build a coherent setting with believable interaction that respects the PICKED VISUAL STYLE above. Avoid floating compositions, avoid empty backdrops, avoid surreal twists or graphic overlays.\n\nFRAMING SAFETY: never crop the subject. Keep clear margins. Heads fully visible.\n\n${cleanPromptText}${noTextCap}`;
     }
     case "studio-composite": {
       // Photoroom Studio AI bg.prompt — full scene description with
