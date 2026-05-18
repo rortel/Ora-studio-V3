@@ -935,14 +935,26 @@ async function getOrCreateProfile(userId: string, email: string, name?: string) 
       lastLoginAt: new Date().toISOString(),
     };
     await withTimeout(kv.set(`user:${userId}`, profile), 5_000, "kv.set new profile");
+  } else if (isAdminEmail(profile.email || email)) {
+    // SAFE self-heal: re-elevate the configured admin if their stored
+    // role drifted (e.g. profile created before ADMIN_EMAIL was set,
+    // or KV write race during signup). The previous implementation was
+    // a privilege-escalation vector because ADMIN_EMAIL was hardcoded
+    // in source — anyone could change their Supabase Auth email to the
+    // literal and be auto-promoted. This version is safe because:
+    //   1. ADMIN_EMAIL comes exclusively from Deno env (not source).
+    //   2. Supabase Auth blocks duplicate emails, so the only account
+    //      that can match is the legitimate admin who created it first.
+    //   3. The heal runs on profile load (= per request after cache),
+    //      not on every credit deduction — so a constant-time check.
+    let mutated = false;
+    if (profile.role !== "admin") { profile.role = "admin"; mutated = true; }
+    if ((profile.credits || 0) < 999999) { profile.credits = 999999; mutated = true; }
+    if (mutated) {
+      console.log(`[getOrCreateProfile] safe self-heal admin profile (email=${email.slice(0, 3)}***, env ADMIN_EMAIL match)`);
+      kv.set(`user:${userId}`, profile).catch((e) => console.log(`[getOrCreateProfile] heal save fail: ${e}`));
+    }
   }
-  // SECURITY: removed the previous "self-heal admin profile" block that
-  // re-elevated any user whose email matched ADMIN_EMAIL on every load.
-  // It was a privilege-escalation foothold: a user who changed their
-  // Supabase Auth email to the (formerly hardcoded) admin address would
-  // be granted role=admin + 999999 credits on the next request. Admin
-  // role is now granted only at signup (via getOrCreateProfile when no
-  // profile exists yet) or explicitly through /admin/users/:userId/plan.
   return profile;
 }
 
