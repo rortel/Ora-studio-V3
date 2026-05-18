@@ -13296,17 +13296,17 @@ function detectWearerHint(parts: string[]): WearerHint {
 function wearerDirective(hint: WearerHint): string {
   switch (hint) {
     case "male-adult":
-      return "WEARER LOCK: the model in this image MUST be an adult male (man, age 28-50, plausible as a father or modern dad), grounded body language, never feminine features. If the AI tries to render a female model, this output is REJECTED.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the human in this image MUST be an adult MALE — a MAN, age 28-50, plausible as a father / modern dad. Masculine facial features, masculine body proportions, masculine hair (short or trimmed), no make-up, no feminine clothing other than the product itself. NEGATIVE: no woman, no female, no feminine features, no long flowing hair, no painted nails, no lipstick. If a female model appears in the output it is REJECTED and must be regenerated.";
     case "female-adult":
-      return "WEARER LOCK: the model in this image MUST be an adult female (woman, age 22-45), never masculine features. If the AI tries to render a male model, this output is REJECTED.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the human in this image MUST be an adult FEMALE — a WOMAN, age 22-45. Feminine features, never masculine. NEGATIVE: no man, no male, no beard, no facial hair, no masculine jawline. If a male model appears in the output it is REJECTED and must be regenerated.";
     case "male-kid":
-      return "WEARER LOCK: the model in this image MUST be a boy (age 4-12). No adults front-and-centre.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the human in this image MUST be a BOY (male child, age 4-12). NEGATIVE: no girls, no adults front-and-centre.";
     case "female-kid":
-      return "WEARER LOCK: the model in this image MUST be a girl (age 4-12). No adults front-and-centre.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the human in this image MUST be a GIRL (female child, age 4-12). NEGATIVE: no boys, no adults front-and-centre.";
     case "couple":
-      return "WEARER LOCK: the scene MUST show a couple (two adults together). Mixed-gender unless the brand context implies otherwise.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the scene MUST show a couple (two adults together, mixed-gender unless brand context implies otherwise). Body language warm, candid.";
     case "family":
-      return "WEARER LOCK: the scene MUST show a family group (parent(s) with child(ren)). Body language warm, candid, never posed.";
+      return "WEARER LOCK (NON-NEGOTIABLE): the scene MUST show a family group — parent(s) with at least one child. Body language warm and candid, never posed. At least one adult, at least one child visible.";
     case "":
     default:
       return "";
@@ -13475,10 +13475,14 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const cleanPromptText = stripPlannerQuotedText(job.promptText);
       const cleanStyle = stripTypographyFromStyle(ctx.styleDirective);
       const styleHead = cleanStyle ? `${cleanStyle.slice(0, 240)}\n\n` : "";
+      const wearerHint = ctx.subjectKind === "product" && ctx.jobIsApparel
+        ? detectWearerHint([ctx.productDescription, job.promptText, job.scene])
+        : "";
+      const wearerLock = wearerHint ? `\n\n${wearerDirective(wearerHint)}` : "";
       const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — render ZERO letters, words, brand names, sale tags, signs, billboards, or labels of any kind in the image. Hallucinated text (even partial like 'BEL CHOU' or 'VALE') = REJECTED. Use coloured shapes / bands / blocks for any element that might want a label.";
       return ctx.productDescription
-        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}\n\n${cleanPromptText}${noTextCap}`
-        : `${styleHead}${cleanPromptText}${noTextCap}`;
+        ? `${styleHead}PRODUCT IDENTITY (preserve exactly): ${ctx.productDescription.slice(0, 400)}${wearerLock}\n\n${cleanPromptText}${noTextCap}`
+        : `${styleHead}${cleanPromptText}${wearerLock}${noTextCap}`;
     }
     case "text-card-with-product": {
       // Image stays clean — the headline is rendered downstream as an
@@ -13494,8 +13498,12 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const productAnchor = ctx.productDescription
         ? `\n\nPRODUCT IDENTITY ANCHOR (must reproduce VERBATIM from the reference photo — drift = reject): ${ctx.productDescription.slice(0, 400)}`
         : "";
+      const wearerHint = ctx.subjectKind === "product" && ctx.jobIsApparel
+        ? detectWearerHint([ctx.productDescription, job.promptText, job.scene])
+        : "";
+      const wearerLock = wearerHint ? `\n\n${wearerDirective(wearerHint)}` : "";
       const noTextCap = "\n\nABSOLUTE NO-TEXT RULE — this image MUST be CLEAN. Render the product + scene only. Do NOT bake any headline, slogan, copy, marketing tagline, brand name, or any rendered letterform into the image. The headline + copy will be added by a separate HTML overlay layer downstream. Garbled or hallucinated text = REJECTED. Use coloured shapes / bands / blocks for any element that wants a label.";
-      return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}\n\n${cleanPromptText}${noTextCap}`;
+      return `${styleHead}PRODUCT FIDELITY IS NON-NEGOTIABLE. The product in the reference photo MUST be reproduced VERBATIM in colour, material, cut, hardware, brand marks, stitching, logo placement, and proportions.${productAnchor}${wearerLock}\n\n${cleanPromptText}${noTextCap}`;
     }
     case "lifestyle-t2i-rich": {
       // Text-to-image with rich product description as the anchor. Used
@@ -13525,7 +13533,15 @@ function buildShotPrompt(category: ShotPromptCategory, job: ShotPromptJob, ctx: 
       const singleItemCap = ctx.jobIsApparel
         ? "\n\nWEARER REQUIRED: a real human is wearing the product in the frame. Their full body is part of the scene — face / hands / arms / legs as relevant to the platform framing. The wearer is alive and engaged in the scene (walking, sitting, standing, working). NEVER show the product alone on a surface, in a void, or floating. NEVER show a duplicate of the product elsewhere in the frame (a second pair on a hanger as a backdrop prop, a clone in the background, a stack of identical items). The wearer's own hands and limbs are expected and correct. ONE wearer, ONE product, real scene with real human presence."
         : "";
-      return `${styleHead}${productBlock}SCENE: ${stripPlannerQuotedText(job.promptText)}${singleItemCap}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
+      // Wearer demographic lock — this is the path most prone to female-
+      // model bias because the image is generated from scratch (no
+      // reference photo to bias against). Without an explicit lock,
+      // apparel T2I returns a young blonde woman ~65% of the time.
+      const wearerHint = ctx.jobIsApparel
+        ? detectWearerHint([ctx.productDescription, job.promptText, job.scene])
+        : "";
+      const wearerLock = wearerHint ? `\n\n${wearerDirective(wearerHint)}` : "";
+      return `${styleHead}${productBlock}SCENE: ${stripPlannerQuotedText(job.promptText)}${singleItemCap}${wearerLock}\n\nFRAMING SAFETY: never crop heads, keep clear margins, wearer fully visible. NO rendered text in the image — text overlays are added by a separate downstream layer.`;
     }
     case "text-card-only":
     case "pure-t2i":
