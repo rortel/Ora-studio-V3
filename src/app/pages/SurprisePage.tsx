@@ -53,11 +53,11 @@ const PLATFORM_OPTIONS = [
  *  Carousel/reel platforms are locked to one type (no film toggle). */
 const DEFAULT_PLATFORM_FORMAT: Record<string, "image" | "film"> = {
   "instagram-feed":     "image",
-  "instagram-story":    "image",  // small-commerce stories are mostly static images with overlay
+  "instagram-story":    "film",   // stories are video-first (boomerangs, motion typo, transitions)
   "instagram-carousel": "image",  // carousels are always image (every slide)
   "instagram-reel":     "film",   // reel = motion-first by definition
   "facebook":           "image",
-  "facebook-story":     "image",
+  "facebook-story":     "film",   // same logic as IG story
   "facebook-carousel":  "image",  // FB carousel = same shape as IG carousel
   "tiktok":             "film",
 };
