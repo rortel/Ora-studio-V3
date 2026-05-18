@@ -388,13 +388,12 @@ For any questions regarding the protection of your data, you may contact our Dat
     s5Title: "5. Sub-processors and Data Hosting",
     s5Content: `Your data is processed by the following sub-processors. The full, up-to-date list with the precise role and location of each is published at ora-studio.app/subprocessors.
 
-- Supabase Inc. (US, EU hosting region) — database, authentication, object storage
-- Stripe Payments Europe Ltd. (IE) — payment processing, PCI DSS Level 1
-- Vercel Inc. (US) — frontend hosting and CDN
-- Resend Inc. (US) — transactional email delivery
-- Jina AI GmbH (DE) — public web scraping for the Brand Vault
-- AI generation providers used to fulfil your prompts: OpenAI L.L.C. (US), Anthropic PBC (US), Google LLC (US), Runware OÜ (EE), FAL.ai Inc. (US), Replicate Inc. (US), ElevenLabs Inc. (US), Suno Inc. (US), Pollo AI (US), Photoroom SAS (FR), Leonardo Interactive Pty Ltd (AU), Ideogram AI Inc. (US).
-- Social publishing infrastructure (Zernio / Post-for-Me) — only when you connect a social account.
+- Supabase Inc. (US, EU hosting region) - database, authentication, object storage
+- Stripe Payments Europe Ltd. (IE) - payment processing, PCI DSS Level 1
+- Vercel Inc. (US) - frontend hosting and CDN
+- Resend Inc. (US) - transactional email delivery
+- Jina AI GmbH (DE) and ScrapingBee SAS (FR) - public web scraping for the Brand Vault
+- AI generation providers used to fulfil your prompts: Together AI Inc. (US), APIPod (US, gateway to OpenAI, Anthropic and Google models), OpenAI L.L.C. (US), Google LLC (US), Luma AI Inc. (US, Photon image and Ray-2/Dream Machine video), FAL.ai Inc. (US), Photoroom SAS (FR, product cutout), Ideogram AI Inc. (US, typography), Leonardo Interactive Pty Ltd (AU), Pollo AI (US, video), Suno Inc. (US, audio).
 
 For sub-processors located outside the EEA, transfers rely on the European Commission's Standard Contractual Clauses (SCCs) and, where applicable, the EU-US Data Privacy Framework. We have conducted a Transfer Impact Assessment (TIA) for each US provider; the summary is available on request to privacy@ora-studio.app.`,
     s6Title: "6. Data Retention Period",

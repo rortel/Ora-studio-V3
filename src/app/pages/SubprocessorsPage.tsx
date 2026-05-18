@@ -41,30 +41,24 @@ const PROVIDERS: { category: string; items: Subprocessor[] }[] = [
   {
     category: "AI generation providers (process user prompts to produce outputs)",
     items: [
-      { name: "OpenAI L.L.C.", purpose: "Text generation (via APIPod gateway)", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Anthropic PBC", purpose: "Text generation (via APIPod gateway)", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Google LLC", purpose: "Text generation (via APIPod gateway)", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Runware OÜ", purpose: "Image & video generation", country: "Estonia (EEA)", transferBasis: "Intra-EEA" },
-      { name: "FAL.ai Inc.", purpose: "Image & video generation fallback", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Replicate Inc.", purpose: "Image, video & audio (MusicGen) generation", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Leonardo Interactive Pty Ltd", purpose: "Image generation", country: "Australia", transferBasis: "SCCs" },
-      { name: "Ideogram AI Inc.", purpose: "Image generation (typography-heavy)", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "ElevenLabs Inc.", purpose: "Voice synthesis & cloning (opt-in)", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Suno Inc.", purpose: "Music generation", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Pollo AI", purpose: "Video generation, webhook-driven", country: "United States", transferBasis: "SCCs + DPF" },
-      { name: "Photoroom SAS", purpose: "Background removal, product compositing", country: "France (EEA)", transferBasis: "Intra-EEA" },
+      { name: "Together AI Inc.", purpose: "Text generation (insights, captions) and image generation", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "APIPod", purpose: "Text generation gateway routing to OpenAI, Anthropic and Google models", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "OpenAI L.L.C.", purpose: "Text generation (direct fallback for APIPod and image generation in some flows)", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "Google LLC", purpose: "Text generation (Gemini, direct fallback)", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "Luma AI Inc.", purpose: "Image generation (Photon) and video generation (Ray-2, Dream Machine)", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "FAL.ai Inc.", purpose: "Image and video generation, background compositing", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "Photoroom SAS", purpose: "Pixel-perfect product cutout and background removal", country: "France (EEA)", transferBasis: "Intra-EEA" },
+      { name: "Ideogram AI Inc.", purpose: "Image generation with legible typography (titles on social posts)", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "Leonardo Interactive Pty Ltd", purpose: "Image generation (alternative)", country: "Australia", transferBasis: "SCCs" },
+      { name: "Pollo AI", purpose: "Video generation (additional path, webhook-driven)", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "Suno Inc.", purpose: "Background music generation for video assets", country: "United States", transferBasis: "SCCs + DPF" },
     ],
   },
   {
     category: "Web scraping & enrichment (Brand Vault)",
     items: [
       { name: "Jina AI GmbH", purpose: "Reading and indexing public web pages for brand extraction", country: "Germany (EEA)", transferBasis: "Intra-EEA" },
-    ],
-  },
-  {
-    category: "Social publishing (only when you connect a social account)",
-    items: [
-      { name: "Zernio / Post-for-Me", purpose: "Publishing scheduled content to your connected social accounts", country: "United States", transferBasis: "SCCs + DPF" },
+      { name: "ScrapingBee SAS", purpose: "Web scraping fallback when Jina is unavailable", country: "France (EEA)", transferBasis: "Intra-EEA" },
     ],
   },
 ];

@@ -69,27 +69,36 @@ Owner: backend engineer.
 ## P1 — within 30 days
 
 ### 5. Sign real DPAs with US-based sub-processors
-The sub-processors registry at `/subprocessors` lists eleven AI
-providers + Resend + Vercel as relying on SCCs / DPF. The contracts
-need to be actually executed and stored:
+The sub-processors registry at `/subprocessors` was trimmed to the
+providers actually called by the Edge Function (Replicate, Anthropic
+direct, Runware, Mistral, ElevenLabs, Higgsfield were removed — they
+were code paths that never fired). The remaining providers each need
+a DPA executed and stored:
 
-| Provider | DPA URL / contact |
-|----------|-------------------|
-| OpenAI | https://openai.com/policies/data-processing-addendum |
-| Anthropic | dpa-requests via console.anthropic.com |
-| Google (Gemini) | https://cloud.google.com/terms/data-processing-addendum |
-| Runware | sales@runware.ai |
-| FAL.ai | DPA on request |
-| Replicate | privacy@replicate.com |
-| Leonardo | DPA on request |
-| Ideogram | privacy@ideogram.ai |
-| ElevenLabs | DPA on request |
-| Suno | https://suno.com/legal |
-| Pollo.AI | DPA on request |
-| Resend | https://resend.com/legal/dpa |
-| Vercel | https://vercel.com/legal/dpa |
+| Provider | Role | DPA URL / contact |
+|----------|------|-------------------|
+| Together AI | Primary text + image | DPA on request |
+| APIPod | Text gateway (routes to OpenAI/Anthropic/Google) | DPA on request |
+| OpenAI | Text direct fallback | https://openai.com/policies/data-processing-addendum |
+| Google (Gemini) | Text alternative | https://cloud.google.com/terms/data-processing-addendum |
+| Luma AI | Photon (image) + Ray-2 / Dream Machine (video) | DPA on request |
+| FAL.ai | Image + video composite | DPA on request |
+| Photoroom | Pixel-perfect product cutout | https://www.photoroom.com/legal/dpa |
+| Ideogram | Image with typography | privacy@ideogram.ai |
+| Leonardo | Image alternative | DPA on request |
+| Pollo.AI | Video (additional path) | DPA on request |
+| Suno | Audio (BGM video) | https://suno.com/legal |
+| Resend | Email | https://resend.com/legal/dpa |
+| Vercel | Frontend hosting | https://vercel.com/legal/dpa |
+| Supabase | Backend hosting | https://supabase.com/legal/dpa |
+| Stripe | Payments | https://stripe.com/legal/dpa |
+| Jina AI | Scrape (EEA) | DPA on request — EEA intra-EU |
+| ScrapingBee | Scrape fallback (EEA) | DPA on request — EEA intra-EU |
 
-A Transfer Impact Assessment must accompany each US provider.
+APIPod is a gateway: a single DPA with APIPod is needed, but the
+sub-sub-processors (OpenAI / Anthropic / Google) must be named in the
+APIPod DPA. A Transfer Impact Assessment must accompany each US
+provider.
 
 Owner: legal / founder.
 
