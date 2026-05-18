@@ -4959,6 +4959,89 @@ app.post("/auth/delete-account", async (c) => {
   }
 });
 
+/**
+ * GDPR Article 20 — Right to data portability.
+ * Returns every piece of user data stored in our KV in a structured,
+ * machine-readable JSON envelope, sent as an attachment so it can be
+ * saved or piped into another service. The same per-user prefixes as
+ * delete-account are enumerated, so any module that introduces a new
+ * prefix must be added here too.
+ *
+ * Credit ledger entries (credit_ledger:<userId>:*) and PfM publishing
+ * logs (pfm:log:<userId>:*) are included for audit transparency.
+ */
+app.post("/auth/export-data", async (c) => {
+  const t0 = Date.now();
+  try {
+    const user = await requireAuth(c);
+    const profile = await kv.get(`user:${user.id}`);
+    const sanitizedProfile = profile ? { ...profile } : null;
+    if (sanitizedProfile) {
+      // Never include the password hash even if it landed in the profile blob
+      delete (sanitizedProfile as any).passwordHash;
+      delete (sanitizedProfile as any).stripeCustomerId;
+    }
+
+    // Prefixes that hold lists of items keyed by `${prefix}<id>`
+    const listPrefixes = [
+      `calendar:${user.id}:`,
+      `campaign:${user.id}:`,
+      `deploy:${user.id}:`,
+      `flow:${user.id}:`,
+      `brand-score:${user.id}:`,
+      `analysis:${user.id}:`,
+      `playlist:${user.id}:`,
+      `event:${user.id}:`,
+      `brand-image:${user.id}:`,
+      `library:${user.id}:`,
+      `product:${user.id}:`,
+      `credit_ledger:${user.id}:`,
+      `pfm:log:${user.id}:`,
+    ];
+
+    const sections: Record<string, unknown> = { profile: sanitizedProfile };
+    for (const prefix of listPrefixes) {
+      try {
+        const items = await kv.getByPrefix(prefix);
+        // Strip the user prefix from the key for clarity
+        sections[prefix.replace(`:${user.id}:`, "").replace(/:$/, "")] = items || [];
+      } catch (e) {
+        sections[prefix] = { error: String(e).slice(0, 120) };
+      }
+    }
+
+    // Single-key entities (no trailing colon)
+    for (const key of [`vault:${user.id}`, `pfm:profile:${user.id}`, `zernio:profile:${user.id}`, `zernio:accounts:${user.id}`]) {
+      try { sections[key.split(":")[0]] = await kv.get(key); } catch (e) { sections[key] = { error: String(e).slice(0, 120) }; }
+    }
+
+    await logEvent("data_exported", { userId: user.id, durationMs: Date.now() - t0 }).catch(() => {});
+
+    const payload = {
+      export_format_version: 1,
+      export_generated_at: new Date().toISOString(),
+      user_id: user.id,
+      user_email: user.email,
+      notice: "This export contains every piece of data ORA Studio stores about you. Outputs hosted on third-party providers (Supabase Storage signed URLs) are listed by reference; download them within their validity window.",
+      data: sections,
+    };
+
+    const filename = `ora-studio-export-${user.id.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.json`;
+    return new Response(JSON.stringify(payload, null, 2), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${filename}"`,
+        "cache-control": "no-store",
+        ...CORS_HEADERS,
+      },
+    });
+  } catch (err) {
+    console.log(`[/auth/export-data] error (${Date.now() - t0}ms):`, err);
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // POST /auth/me — preferred: user token in body._token (avoids CORS issues)
 app.post("/auth/me", async (c) => {
   const t0 = Date.now();

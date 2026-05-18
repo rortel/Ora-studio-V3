@@ -289,7 +289,7 @@ const en = {
   terms: {
     headerLabel: "Legal",
     title: "Terms of Use",
-    lastUpdated: "Last updated: March 31, 2026",
+    lastUpdated: "Last updated: May 18, 2026",
     s1Title: "1. Purpose and Acceptance of the Terms",
     s1Content: `These Terms of Use (hereinafter "Terms") define the terms and conditions of use of the ORA Studio platform (hereinafter "the Service"), accessible at ora-studio.app.
 
@@ -306,8 +306,12 @@ By accessing the Service or creating an account, you unconditionally accept thes
     s3Content: `To use the Service, you must create an account by providing a valid email address. You are responsible for maintaining the confidentiality of your login credentials and for all activity carried out from your account.
 
 You must be at least 16 years old to use the Service. By creating an account, you represent that the information provided is accurate and up to date.`,
-    s4Title: "4. Plans and Pricing",
-    s4Content: `ORA Studio offers tiered subscription plans, billed monthly via Stripe, with generation credits adjusted to each tier. A free plan is available to try the Service. Credit top-up packs can be purchased at any time. Up-to-date pricing is shown on the public pricing page. Prices may change with 30 days' notice given by email and in-app.`,
+    s4Title: "4. Plans, Pricing and Right of Withdrawal",
+    s4Content: `ORA Studio offers tiered subscription plans, billed monthly via Stripe, with generation credits adjusted to each tier. A free plan is available to try the Service. Credit top-up packs can be purchased at any time. Up-to-date pricing is shown on the public pricing page. Prices may change with 30 days' notice given by email and in-app.
+
+RIGHT OF WITHDRAWAL (consumers, EU/UK). If you subscribe as a consumer, you have a statutory right to withdraw from the contract within fourteen (14) days of the initial purchase, without giving any reason and without penalty (article L.221-18 of the French Consumer Code). To exercise this right, send an unambiguous statement to hello@ora-studio.app within the 14-day period. We will refund the amount paid within 14 days of receiving your request.
+
+IMPORTANT: by starting to generate AI content during the withdrawal period you expressly request immediate execution of the Service and acknowledge that the right of withdrawal is lost for the portion of credits already consumed (article L.221-28 of the Consumer Code). Unused credits remain refundable on a pro rata basis.`,
     __unusedOldS4: `ORA offers the following plans:
 
 • Starter — \u20AC29/month: 200 generations/month, 15 AI models, 3-way side-by-side comparison
@@ -319,10 +323,14 @@ A free plan is available to try the Service. Top-up generation packs (50 / 150 /
     s5Content: `Content generated through ORA Studio using artificial intelligence belongs entirely to the user who created it. You are free to use, modify, publish, and commercialise your creations without restriction.
 
 The ORA Studio brand, logo, interface, and graphic elements are the exclusive property of ORA Studio and may not be reproduced without written authorisation.`,
-    s6Title: "6. Use of Third-Party AI",
-    s6Content: `The Service integrates artificial intelligence models developed by third-party providers. Use of these models is subject to the respective terms of use of each provider, accepted on your behalf when you use the Service.
+    s6Title: "6. Use of Third-Party AI & EU AI Act Transparency",
+    s6Content: `The Service integrates artificial intelligence models developed by third-party providers. The current list of these sub-processors is published at ora-studio.app/subprocessors. Use of these models is subject to the respective terms of use of each provider, accepted on your behalf when you use the Service.
 
-ORA Studio acts as a technical intermediary and shall not be held liable for the results produced by third-party models, nor for any change in their availability, behaviour or terms.`,
+In application of Regulation (EU) 2024/1689 (the "EU AI Act"), article 50:
+- You are informed that all visuals, videos, captions and audio produced by the Service are synthetic — generated or substantially modified by artificial intelligence. They are labelled "AI-generated" in the interface and carry machine-readable provenance metadata wherever the underlying provider supports it.
+- You undertake not to use the Service to generate deepfakes of real persons, impersonations of living individuals, fraudulent content, content infringing third-party rights, NSFW content, or any content prohibited by article 5 of the AI Act.
+
+ORA Studio acts as a technical intermediary (deployer under the AI Act) and shall not be held liable for the results produced by third-party models, nor for any change in their availability, behaviour or terms.`,
     s7Title: "7. Liability and Limitations",
     s7Content: `ORA Studio endeavours to provide a high-quality service with optimal availability. However, the Service is provided "as is" and ORA Studio does not guarantee:
 
@@ -335,20 +343,20 @@ The user is solely responsible for their use of the generated content and agrees
     s8Content: `ORA Studio collects and processes personal data in compliance with the General Data Protection Regulation (GDPR). To learn more about the collection, processing, and protection of your data, please refer to our Privacy Policy.`,
     s8LinkLabel: "View the Privacy Policy",
     s9Title: "9. Termination",
-    s9Content: `You may terminate your account at any time from your profile settings. Termination takes effect at the end of the current billing period. Remaining credits are non-refundable.
+    s9Content: `You may close your account at any time from your profile settings or by emailing hello@ora-studio.app. Termination takes effect at the end of the current billing period. Unused credits are refundable on a pro rata basis within 30 days, subject to the right of withdrawal regime described in section 4.
 
-ORA Studio reserves the right to suspend or delete an account in the event of a breach of these Terms, without prior notice or compensation.`,
+ORA Studio reserves the right to suspend or delete an account in the event of a breach of these Terms, fraud, or non-payment, with prior notice except in cases of serious breach.`,
     s10Title: "10. Amendments to the Terms",
-    s10Content: `ORA Studio reserves the right to amend these Terms at any time. Users will be notified of any material changes by email or in-app notification. Continued use of the Service after amendment constitutes acceptance of the new Terms.`,
-    s11Title: "11. Governing Law and Jurisdiction",
-    s11Content: `These Terms are governed by the laws of France. In the event of a dispute, the parties agree to seek an amicable resolution. Failing that, the competent courts of Paris shall have exclusive jurisdiction.`,
+    s10Content: `ORA Studio reserves the right to amend these Terms at any time. Users will be notified of any material changes by email or in-app notification at least 30 days before they take effect. Continued use of the Service after amendment constitutes acceptance of the new Terms.`,
+    s11Title: "11. Governing Law, Jurisdiction & Consumer Mediation",
+    s11Content: `These Terms are governed by the laws of France. In the event of a dispute, the parties first agree to seek an amicable resolution. Consumers may, prior to any litigation, contact our customer service at hello@ora-studio.app, then refer the matter to a consumer mediator (CNPM - Médiation de la Consommation, 27 avenue de la Libération, 42400 Saint-Chamond, https://cnpm-mediation-consommation.eu/). Failing amicable resolution, the courts having jurisdiction under article R.631-3 of the Consumer Code shall apply.`,
     s12Title: "12. Contact",
     s12Content: `For any questions regarding these Terms, you may contact us at the following address:`,
   },
   privacy: {
     headerLabel: "Legal",
     title: "Privacy Policy",
-    lastUpdated: "Last updated: March 31, 2026",
+    lastUpdated: "Last updated: May 18, 2026",
     s1Title: "1. Data Controller",
     s1Content: `The data controller for personal data collected through the ORA Studio platform (accessible at ora-studio.app) is ORA Studio.
 
@@ -377,8 +385,18 @@ For any questions regarding the protection of your data, you may contact our Dat
 • Consent: for sending marketing communications and the use of certain cookies
 • Legitimate interest: service improvement, security, fraud prevention
 • Legal obligation: data retention for accounting and tax purposes`,
-    s5Title: "5. Data Hosting",
-    s5Content: `Your data is hosted by hosting and database providers operating within the European Union, payment processing certified PCI DSS Level 1, and a global content delivery network with European nodes. We ensure that all our providers comply with GDPR requirements and offer appropriate data protection guarantees. The list of sub-processors is available on request.`,
+    s5Title: "5. Sub-processors and Data Hosting",
+    s5Content: `Your data is processed by the following sub-processors. The full, up-to-date list with the precise role and location of each is published at ora-studio.app/subprocessors.
+
+- Supabase Inc. (US, EU hosting region) — database, authentication, object storage
+- Stripe Payments Europe Ltd. (IE) — payment processing, PCI DSS Level 1
+- Vercel Inc. (US) — frontend hosting and CDN
+- Resend Inc. (US) — transactional email delivery
+- Jina AI GmbH (DE) — public web scraping for the Brand Vault
+- AI generation providers used to fulfil your prompts: OpenAI L.L.C. (US), Anthropic PBC (US), Google LLC (US), Runware OÜ (EE), FAL.ai Inc. (US), Replicate Inc. (US), ElevenLabs Inc. (US), Suno Inc. (US), Pollo AI (US), Photoroom SAS (FR), Leonardo Interactive Pty Ltd (AU), Ideogram AI Inc. (US).
+- Social publishing infrastructure (Zernio / Post-for-Me) — only when you connect a social account.
+
+For sub-processors located outside the EEA, transfers rely on the European Commission's Standard Contractual Clauses (SCCs) and, where applicable, the EU-US Data Privacy Framework. We have conducted a Transfer Impact Assessment (TIA) for each US provider; the summary is available on request to privacy@ora-studio.app.`,
     s6Title: "6. Data Retention Period",
     s6Content: `Your data is retained for the following periods:
 
@@ -396,18 +414,19 @@ For any questions regarding the protection of your data, you may contact our Dat
 
 You may manage your cookie preferences at any time through your browser settings or the consent banner displayed on your first visit.`,
     s8Title: "8. User Rights",
-    s8Content: `In accordance with the GDPR, you have the following rights over your personal data:
+    s8Content: `In accordance with the GDPR (articles 15-22), you have the following rights over your personal data:
 
-• Right of access: obtain a copy of all your data
-• Right of rectification: correct inaccurate or incomplete data
-• Right of erasure: request deletion of your data ("right to be forgotten")
-• Right to data portability: receive your data in a structured, reusable format
-• Right to object: object to the processing of your data on legitimate grounds
-• Right to restriction: restrict the processing of your data in certain cases
+- Right of access (art. 15): obtain a copy of all your data
+- Right of rectification (art. 16): correct inaccurate or incomplete data
+- Right of erasure (art. 17): request deletion of your data ("right to be forgotten") - available directly from Profile > Delete account
+- Right to data portability (art. 20): receive your data in a structured, machine-readable JSON format - available directly from Profile > Export my data
+- Right to object (art. 21): object to the processing of your data on legitimate grounds
+- Right to restriction (art. 18): restrict the processing of your data in certain cases
+- Right to withdraw consent at any time (cookies, marketing emails)
 
-To exercise your rights, contact us at: privacy@ora-studio.app. We are committed to responding within 30 days.
+Most rights can be exercised directly from your account settings. Otherwise, contact privacy@ora-studio.app — we respond within 30 days.
 
-You also have the right to lodge a complaint with the CNIL (French Data Protection Authority).`,
+You also have the right to lodge a complaint with the CNIL (French Data Protection Authority, https://www.cnil.fr/) or with your local supervisory authority.`,
     s9Title: "9. International Transfers",
     s9Content: `Some of our providers may be located outside the European Economic Area. In such cases, data transfers are governed by:
 

@@ -12,6 +12,8 @@ export function Footer() {
   const companyLinks = [
     { label: t("footer.privacy"), href: "/privacy" },
     { label: t("footer.terms"), href: "/terms" },
+    { label: "Sub-processors", href: "/subprocessors" },
+    { label: "Legal notices", href: "/legal-notices" },
     { label: t("footer.about"), href: "/about" },
   ];
 
